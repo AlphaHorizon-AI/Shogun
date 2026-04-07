@@ -6,21 +6,100 @@ import gradio as gr
 
 from shogun.ui.theme import create_tenshu_theme
 
+# ── Logo as base64 data URI (avoids file-serving config) ─────
+import pathlib
+import base64
+
+def _logo_data_uri() -> str:
+    """Load the Shogun logo as a base64 data URI."""
+    logo_path = pathlib.Path(__file__).parent / "static" / "images" / "shogun-logo.png"
+    if logo_path.exists():
+        data = logo_path.read_bytes()
+        b64 = base64.b64encode(data).decode("ascii")
+        return f"data:image/png;base64,{b64}"
+    return ""
+
+_LOGO_URI = _logo_data_uri()
+
 
 # ── Custom CSS ───────────────────────────────────────────────
 TENSHU_CSS = """
-/* Global */
-.gradio-container { max-width: 100% !important; }
-
-/* Top bar */
-.shogun-topbar {
-    background: linear-gradient(135deg, #0f1320 0%, #151a2e 100%);
-    border-bottom: 1px solid #1e2540;
-    padding: 8px 16px !important;
-    min-height: 60px;
+/* Force dark mode at the root level */
+html, body {
+    color-scheme: dark !important;
 }
-.shogun-topbar .prose h1 { font-size: 20px; margin: 0; color: #60a5fa; }
-.shogun-topbar .prose p { font-size: 12px; margin: 0; color: #94a3b8; }
+
+:root, .dark, .gradio-container {
+    --body-background-fill: #0a0e1a !important;
+    --background-fill-primary: #0e1225 !important;
+    --background-fill-secondary: #121830 !important;
+    --border-color-primary: #1a2040 !important;
+    --body-text-color: #c8d0d8 !important;
+    --body-text-color-subdued: #7a8899 !important;
+    --block-background-fill: #0e1225 !important;
+    --block-border-color: #1a2040 !important;
+    --block-title-text-color: #c8d0d8 !important;
+    --block-label-text-color: #7a8899 !important;
+    --input-background-fill: #121830 !important;
+    --input-border-color: #1a2040 !important;
+    --button-primary-background-fill: #4a8cc7 !important;
+    --button-primary-background-fill-hover: #6eb5e8 !important;
+    --button-primary-text-color: #ffffff !important;
+    --button-secondary-background-fill: #121830 !important;
+    --button-secondary-text-color: #c8d0d8 !important;
+    --table-even-background-fill: #121830 !important;
+    --table-odd-background-fill: #0e1225 !important;
+    --table-row-focus: #1a2040 !important;
+    --neutral-50: #0a0e1a !important;
+    --neutral-100: #0e1225 !important;
+    --neutral-200: #121830 !important;
+    --neutral-300: #1a2040 !important;
+    --neutral-400: #3a4560 !important;
+    --neutral-500: #5a6580 !important;
+    --neutral-600: #7a8899 !important;
+    --neutral-700: #c8d0d8 !important;
+    --neutral-800: #e0e6eb !important;
+    --neutral-900: #f0f2f5 !important;
+    --neutral-950: #ffffff !important;
+    --color-accent: #4a8cc7 !important;
+    --shadow-drop: 0 2px 8px rgba(0,0,0,0.5) !important;
+    --block-shadow: 0 2px 8px rgba(0,0,0,0.5) !important;
+}
+
+/* Global container */
+.gradio-container {
+    max-width: 100% !important;
+    background: #0a0e1a !important;
+    color: #c8d0d8 !important;
+}
+.dark .gradio-container, .gradio-container {
+    background: #0a0e1a !important;
+}
+
+/* Top bar — deep black with subtle steel-blue bottom glow */
+.shogun-topbar {
+    background: linear-gradient(135deg, #050508 0%, #0a0e1a 100%) !important;
+    border-bottom: 1px solid #1a2040;
+    box-shadow: 0 2px 12px rgba(74, 140, 199, 0.08);
+    padding: 6px 16px !important;
+    min-height: 56px;
+}
+.shogun-topbar .prose h1 {
+    font-size: 20px; margin: 0; color: #d4a017;
+    text-shadow: 0 0 12px rgba(212, 160, 23, 0.25);
+}
+.shogun-topbar .prose p { font-size: 12px; margin: 0; color: #7a8899; }
+
+/* Logo in topbar — constrained size */
+.shogun-logo-wrap {
+    display: flex; align-items: center; gap: 12px;
+}
+.shogun-logo-wrap img {
+    height: 44px !important; width: auto !important;
+    max-height: 44px !important;
+    object-fit: contain;
+    filter: drop-shadow(0 0 6px rgba(74, 140, 199, 0.3));
+}
 
 /* Status pills */
 .status-pill {
@@ -30,16 +109,16 @@ TENSHU_CSS = """
     font-size: 11px;
     font-weight: 600;
 }
-.status-online { background: #064e3b; color: #6ee7b7; }
-.status-healthy { background: #064e3b; color: #6ee7b7; }
-.status-warning { background: #78350f; color: #fbbf24; }
-.status-error { background: #7f1d1d; color: #fca5a5; }
-.status-offline { background: #1e293b; color: #94a3b8; }
+.status-online  { background: #0a3020; color: #6ee7b7; }
+.status-healthy { background: #0a3020; color: #6ee7b7; }
+.status-warning { background: #3d2808; color: #f0c040; }
+.status-error   { background: #3d0808; color: #fca5a5; }
+.status-offline { background: #121830; color: #7a8899; }
 
-/* Left nav */
+/* Left nav — matches deep black */
 .shogun-nav {
-    background: #0a0e1a !important;
-    border-right: 1px solid #1e2540;
+    background: #050508 !important;
+    border-right: 1px solid #1a2040;
     min-width: 180px;
 }
 .shogun-nav button {
@@ -50,24 +129,29 @@ TENSHU_CSS = """
     margin: 2px 4px !important;
     padding: 10px 14px !important;
     font-size: 13px !important;
-    color: #94a3b8 !important;
+    color: #7a8899 !important;
     background: transparent !important;
-    transition: all 0.15s ease !important;
+    transition: all 0.2s ease !important;
 }
 .shogun-nav button:hover {
-    background: #151a2e !important;
-    color: #e2e8f0 !important;
+    background: #121830 !important;
+    color: #c8d0d8 !important;
 }
 .shogun-nav button.selected {
-    background: #1e293b !important;
-    color: #60a5fa !important;
+    background: #121830 !important;
+    color: #4a8cc7 !important;
     font-weight: 600 !important;
+    border-left: 2px solid #d4a017 !important;
 }
 
-/* Cards */
+/* Cards + all block/panel backgrounds */
+.shogun-card,
+.block, .panel, .form, .tabitem, .tab-nav,
+.table-wrap, .dataframe {
+    background: #121830 !important;
+    border-color: #1a2040 !important;
+}
 .shogun-card {
-    background: #151a2e;
-    border: 1px solid #1e2540;
     border-radius: 10px;
     padding: 16px;
 }
@@ -76,17 +160,41 @@ TENSHU_CSS = """
 .shogun-main {
     padding: 16px !important;
     overflow-y: auto;
+    background: #0e1225 !important;
 }
 
-/* Section headers */
+/* Tables — dark rows */
+.dataframe tbody tr { background: #0e1225 !important; color: #c8d0d8 !important; }
+.dataframe tbody tr:nth-child(even) { background: #121830 !important; }
+.dataframe thead { background: #121830 !important; color: #c8d0d8 !important; }
+.dataframe td, .dataframe th { border-color: #1a2040 !important; color: #c8d0d8 !important; }
+
+/* Inputs, dropdowns */
+input, textarea, select, .input-wrap, .secondary-wrap {
+    background: #121830 !important;
+    color: #c8d0d8 !important;
+    border-color: #1a2040 !important;
+}
+
+/* Button overrides */
+.primary { background: #4a8cc7 !important; }
+.primary:hover { background: #6eb5e8 !important; }
+.secondary { background: #121830 !important; border-color: #1a2040 !important; }
+.stop { background: #7f1d1d !important; }
+
+/* Section headers — gold accent */
 .section-header {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 1.5px;
-    color: #475569;
+    color: #d4a017;
     margin: 16px 0 8px 0;
     font-weight: 700;
 }
+
+/* Gold accent for h2 page titles */
+.shogun-main .prose h2 { color: #6eb5e8; }
+.shogun-main .prose h3 { color: #c8d0d8; }
 """
 
 # ── Navigation Items ─────────────────────────────────────────
@@ -110,10 +218,25 @@ def _status_pill(text: str, status: str = "online") -> str:
 
 
 def _build_top_bar():
-    """Build the top status bar."""
+    """Build the top status bar with Shogun logo."""
     with gr.Row(elem_classes=["shogun-topbar"]):
-        with gr.Column(scale=2, min_width=200):
-            gr.Markdown("# ⬡ SHOGUN\n*The Tenshu — Mission Control*")
+        with gr.Column(scale=2, min_width=240):
+            gr.HTML(
+                f"""<div style="display:flex; align-items:center; gap:12px;">
+                    <img src="{_LOGO_URI}" alt="Shogun"
+                         style="height:44px; width:auto; max-height:44px; object-fit:contain;
+                                filter:drop-shadow(0 0 6px rgba(74,140,199,0.3));" />
+                    <div>
+                        <div style="font-size:18px; font-weight:700; color:#d4a017;
+                             text-shadow: 0 0 10px rgba(212,160,23,0.2);">
+                            SHOGUN
+                        </div>
+                        <div style="font-size:11px; color:#7a8899;">
+                            The Tenshu — Mission Control
+                        </div>
+                    </div>
+                </div>"""
+            )
         with gr.Column(scale=4, min_width=300):
             gr.HTML(
                 f"""<div style="display:flex; gap:12px; align-items:center; padding-top:8px; flex-wrap:wrap;">
@@ -125,7 +248,10 @@ def _build_top_bar():
                 </div>"""
             )
         with gr.Column(scale=1, min_width=120):
-            gr.Markdown("*v0.1.0*", elem_classes=["text-right"])
+            gr.HTML(
+                '<div style="text-align:right; padding-top:10px; color:#7a8899; font-size:12px;">'
+                'v0.1.0</div>'
+            )
 
 
 def _build_page_overview():
@@ -492,9 +618,13 @@ def create_tenshu_ui() -> gr.Blocks:
     """Build the complete Tenshu UI."""
     theme = create_tenshu_theme()
 
+    # Force dark mode via JS
+    dark_js = "() => { document.body.classList.add('dark'); document.querySelector('.gradio-container').classList.add('dark'); }"
+
     with gr.Blocks(
         theme=theme,
         css=TENSHU_CSS,
+        js=dark_js,
         title="Shogun — The Tenshu",
     ) as app:
         # Top bar

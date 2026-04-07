@@ -10,7 +10,7 @@ Built with Python, FastAPI, Gradio, and SQLAlchemy. Ships with [OpenClaw College
 
 ```bash
 # Clone
-git clone https://github.com/YOUR_ORG/Shogun.git
+git clone https://github.com/AlphaHorizon-AI/Shogun.git
 cd Shogun
 
 # Create virtual environment
@@ -41,7 +41,7 @@ That's it. **No Docker, no external services.** SQLite + Qdrant embedded handles
 ## One-Liner Install (pip from GitHub)
 
 ```bash
-pip install git+https://github.com/YOUR_ORG/Shogun.git
+pip install git+https://github.com/AlphaHorizon-AI/Shogun.git
 ```
 
 Then in your code:
