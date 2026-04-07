@@ -1,0 +1,47 @@
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Virtual Environment ──────────────────────────────────────
+.venv/
+venv/
+ENV/
+
+# ── IDE ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Environment / Secrets ────────────────────────────────────
+.env
+vault/
+*.pem
+*.key
+
+# ── Data (generated at runtime) ──────────────────────────────
+data/
+logs/
+configs/
+
+# ── Misc ─────────────────────────────────────────────────────
+*.log
+*.bak
+*.tmp
+
+# ── Local-only assets ────────────────────────────────────────
+Blueprints and Requirement specs/
+Assets/
+docker-compose.yml
