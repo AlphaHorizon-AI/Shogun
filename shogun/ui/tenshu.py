@@ -260,11 +260,12 @@ def _build_page_overview():
     gr.Markdown("## Overview", elem_id="page-title")
     gr.Markdown("*Central command dashboard. Monitor system health, active profiles, and real-time event streams.*")
 
+    refresh_btn = gr.Button("🔄 Refresh Dashboard", variant="secondary", size="sm")
 
     with gr.Row():
         with gr.Column():
             gr.Markdown("### System Health")
-            gr.Dataframe(
+            health_table = gr.Dataframe(
                 value=[
                     ["Runtime", "🟢 Online"],
                     ["Database", "🟢 Healthy"],
@@ -276,11 +277,11 @@ def _build_page_overview():
             )
         with gr.Column():
             gr.Markdown("### Active Shogun Profile")
-            gr.Dataframe(
+            shogun_table = gr.Dataframe(
                 value=[
                     ["Persona", "Not configured"],
-                    ["Primary Model", "Not configured"],
-                    ["Fallbacks", "0"],
+                    ["Status", "—"],
+                    ["Spawn Policy", "—"],
                     ["Autonomy", "—"],
                 ],
                 headers=["Setting", "Value"],
@@ -288,7 +289,7 @@ def _build_page_overview():
             )
         with gr.Column():
             gr.Markdown("### Security Posture")
-            gr.Dataframe(
+            security_table = gr.Dataframe(
                 value=[
                     ["Tier", "Guarded"],
                     ["File Access", "Scoped"],
@@ -302,7 +303,7 @@ def _build_page_overview():
     with gr.Row():
         with gr.Column():
             gr.Markdown("### Active Samurai")
-            gr.Dataframe(
+            samurai_table = gr.Dataframe(
                 value=[],
                 headers=["Name", "Role", "Status", "Model", "Last Active"],
                 interactive=False,
@@ -323,23 +324,60 @@ def _build_page_overview():
         gr.Button("📂 Open Archives", variant="secondary", size="sm")
         gr.Button("🛡 Change Security Tier", variant="secondary", size="sm")
 
+    # Wire refresh
+    async def _refresh_overview():
+        from shogun.ui.ui_actions import load_overview
+        data = await load_overview()
+        return (
+            data["health"],
+            data["shogun_profile"],
+            data["security"],
+            data["samurai_rows"],
+        )
+
+    refresh_btn.click(
+        fn=_refresh_overview,
+        outputs=[health_table, shogun_table, security_table, samurai_table],
+    )
+
+
 
 def _build_page_shogun():
     """Shogun configuration page."""
     gr.Markdown("## Shogun Configuration")
     gr.Markdown("*Define the core identity, primary persona, and base intelligence stack for your Shogun.*")
 
+    status_msg = gr.Markdown("", elem_id="shogun-status")
+
     with gr.Tabs():
         with gr.Tab("General"):
             with gr.Row():
                 with gr.Column():
                     gr.Markdown("### Identity & Persona")
-                    gr.Textbox(label="Name", value="Primary Shogun")
-                    gr.Dropdown(label="Persona", choices=["Strategist", "Field Commander", "Analyst"], value="Strategist")
-                    gr.Dropdown(label="Tone", choices=["analytical", "direct", "supportive", "strategic"], value="analytical")
-                    gr.Slider(label="Autonomy", minimum=0, maximum=100, value=50, step=10)
-                    gr.Dropdown(label="Risk Tolerance", choices=["low", "medium", "high"], value="low")
-                    gr.Dropdown(label="Verbosity", choices=["low", "medium", "high"], value="medium")
+                    name_input = gr.Textbox(label="Name", value="Primary Shogun")
+                    persona_dd = gr.Dropdown(
+                        label="Persona",
+                        choices=["Strategist", "Field Commander", "Analyst"],
+                        value="Strategist",
+                    )
+                    tone_dd = gr.Dropdown(
+                        label="Tone",
+                        choices=["analytical", "direct", "supportive", "strategic"],
+                        value="analytical",
+                    )
+                    autonomy_slider = gr.Slider(
+                        label="Autonomy", minimum=0, maximum=100, value=50, step=10
+                    )
+                    risk_dd = gr.Dropdown(
+                        label="Risk Tolerance",
+                        choices=["low", "medium", "high"],
+                        value="low",
+                    )
+                    verbosity_dd = gr.Dropdown(
+                        label="Verbosity",
+                        choices=["low", "medium", "high"],
+                        value="medium",
+                    )
                 with gr.Column():
                     gr.Markdown("### Model Stack")
                     gr.Dropdown(label="Primary Model", choices=["(Configure providers first)"])
@@ -349,9 +387,9 @@ def _build_page_shogun():
                     gr.Number(label="Temperature", value=0.4, minimum=0, maximum=2, step=0.1)
                     gr.Number(label="Max Context Injection", value=8, minimum=1, maximum=50, step=1)
             with gr.Row():
-                gr.Button("💾 Save Configuration", variant="primary")
+                save_btn = gr.Button("💾 Save Configuration", variant="primary")
                 gr.Button("🧪 Test Persona", variant="secondary")
-                gr.Button("↩ Revert", variant="secondary")
+                revert_btn = gr.Button("↩ Revert", variant="secondary")
         with gr.Tab("Behavior"):
             gr.Markdown("### Kaizen Excerpt")
             gr.Code(label="Behavioral Rules", language="yaml", value="priorities:\n  - Safety before autonomy\n  - Use existing skills when possible\n  - Escalate ambiguous high-risk actions")
@@ -368,44 +406,141 @@ def _build_page_shogun():
                 interactive=False,
             )
 
+    # Wire save
+    async def _save_config(name, persona, tone, autonomy, risk, verbosity):
+        from shogun.ui.ui_actions import save_shogun_config
+        return await save_shogun_config(name, persona, tone, autonomy, risk, verbosity)
+
+    save_btn.click(
+        fn=_save_config,
+        inputs=[name_input, persona_dd, tone_dd, autonomy_slider, risk_dd, verbosity_dd],
+        outputs=[status_msg],
+    )
+
+    # Wire revert (reload from DB)
+    async def _revert_config():
+        from shogun.ui.ui_actions import load_shogun_config
+        cfg = await load_shogun_config()
+        autonomy_map = {"low": 20, "medium": 50, "high": 80}
+        return (
+            cfg["name"],
+            gr.update(value=cfg["persona"], choices=cfg["persona_names"] or ["Strategist", "Field Commander", "Analyst"]),
+            cfg["tone"],
+            autonomy_map.get(cfg["autonomy"], 50),
+            cfg["risk_tolerance"],
+            cfg["verbosity"],
+            f"*Loaded from database.*",
+        )
+
+    revert_btn.click(
+        fn=_revert_config,
+        outputs=[name_input, persona_dd, tone_dd, autonomy_slider, risk_dd, verbosity_dd, status_msg],
+    )
+
 
 def _build_page_samurai():
     """Samurai management page."""
     gr.Markdown("## Samurai Management")
     gr.Markdown("*Deploy and manage specialized autonomous agents (Samurai) to execute domain-specific missions.*")
 
+    samurai_status = gr.Markdown("", elem_id="samurai-status")
+    # Hidden state for selected agent ID
+    selected_id = gr.State("")
+
     with gr.Row():
         with gr.Column(scale=1, min_width=200):
             gr.Markdown("### Registry")
-            gr.Button("➕ Create New", variant="primary", size="sm")
-            gr.Dataframe(
+            refresh_btn = gr.Button("🔄 Refresh", variant="secondary", size="sm")
+            registry_table = gr.Dataframe(
                 value=[],
-                headers=["Name", "Role", "Status"],
+                headers=["Name", "Slug", "Status", "ID"],
                 interactive=False,
             )
         with gr.Column(scale=3):
             gr.Markdown("### Samurai Configuration")
-            gr.Markdown("*Select a Samurai from the registry, or create a new one.*")
+            gr.Markdown("*Fill in the fields below and click Create to add a new Samurai.*")
             with gr.Row():
-                gr.Textbox(label="Name", interactive=True)
-                gr.Dropdown(label="Role", choices=["research", "coding", "security", "memory", "custom"])
+                sam_name = gr.Textbox(label="Name", interactive=True)
+                sam_role = gr.Dropdown(label="Role", choices=["research", "coding", "security", "memory", "custom"], value="research")
             with gr.Row():
-                gr.Dropdown(label="Persona", choices=["Analyst", "Strategist", "Field Commander"])
+                sam_persona = gr.Dropdown(label="Persona", choices=["Analyst", "Strategist", "Field Commander"], value="Analyst")
                 gr.Dropdown(label="Primary Model", choices=["(Configure providers first)"])
             with gr.Row():
-                gr.Dropdown(label="Security Tier", choices=["shrine", "guarded", "tactical", "campaign", "ronin"])
-                gr.Dropdown(label="Spawn Rule", choices=["manual", "auto", "shogun_decides"])
+                sam_security = gr.Dropdown(label="Security Tier", choices=["shrine", "guarded", "tactical", "campaign", "ronin"], value="guarded")
+                sam_spawn = gr.Dropdown(label="Spawn Rule", choices=["manual", "auto", "shogun_decides"], value="manual")
             with gr.Row():
-                gr.Button("💾 Save", variant="primary", size="sm")
+                create_btn = gr.Button("➕ Create New", variant="primary", size="sm")
                 gr.Button("📋 Duplicate", variant="secondary", size="sm")
-                gr.Button("⏸ Suspend", variant="secondary", size="sm")
-                gr.Button("🗑 Delete", variant="stop", size="sm")
+                suspend_btn = gr.Button("⏸ Suspend", variant="secondary", size="sm")
+                delete_btn = gr.Button("🗑 Delete", variant="stop", size="sm")
 
     gr.Markdown("### Active / Recent Missions")
     gr.Dataframe(
         value=[],
         headers=["Mission ID", "Samurai", "Task", "Status", "Duration", "Outcome"],
         interactive=False,
+    )
+
+    # Wire Refresh
+    async def _refresh_samurai():
+        from shogun.ui.ui_actions import list_samurai
+        return await list_samurai()
+
+    refresh_btn.click(fn=_refresh_samurai, outputs=[registry_table])
+
+    # Wire Create
+    async def _create_samurai(name, role, persona, security, spawn):
+        from shogun.ui.ui_actions import create_samurai, list_samurai
+        msg = await create_samurai(name, role, persona, security, spawn)
+        rows = await list_samurai()
+        return msg, rows, ""  # clear name field
+
+    create_btn.click(
+        fn=_create_samurai,
+        inputs=[sam_name, sam_role, sam_persona, sam_security, sam_spawn],
+        outputs=[samurai_status, registry_table, sam_name],
+    )
+
+    # Wire row select → capture agent ID
+    def _on_row_select(evt: gr.SelectData, table_data):
+        if evt.index and len(evt.index) >= 1:
+            row_idx = evt.index[0]
+            if table_data and row_idx < len(table_data):
+                agent_id = table_data[row_idx][3]  # ID column
+                agent_name = table_data[row_idx][0]
+                return agent_id, f"*Selected: {agent_name}*"
+        return "", ""
+
+    registry_table.select(
+        fn=_on_row_select,
+        inputs=[registry_table],
+        outputs=[selected_id, samurai_status],
+    )
+
+    # Wire Suspend
+    async def _suspend(agent_id):
+        from shogun.ui.ui_actions import suspend_samurai, list_samurai
+        msg = await suspend_samurai(agent_id)
+        rows = await list_samurai()
+        return msg, rows
+
+    suspend_btn.click(
+        fn=_suspend,
+        inputs=[selected_id],
+        outputs=[samurai_status, registry_table],
+    )
+
+    # Wire Delete
+    async def _delete(agent_id):
+        from shogun.ui.ui_actions import delete_samurai, list_samurai
+        msg = await delete_samurai(agent_id)
+        rows = await list_samurai()
+        return msg, rows, ""
+
+    delete_btn.click(
+        fn=_delete,
+        inputs=[selected_id],
+        outputs=[samurai_status, registry_table, selected_id],
     )
 
 
