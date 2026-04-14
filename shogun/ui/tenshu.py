@@ -325,9 +325,9 @@ def _build_page_overview():
         gr.Button("🛡 Change Security Tier", variant="secondary", size="sm")
 
     # Wire refresh
-    async def _refresh_overview():
+    def _refresh_overview():
         from shogun.ui.ui_actions import load_overview
-        data = await load_overview()
+        data = load_overview()
         return (
             data["health"],
             data["shogun_profile"],
@@ -407,9 +407,9 @@ def _build_page_shogun():
             )
 
     # Wire save
-    async def _save_config(name, persona, tone, autonomy, risk, verbosity):
+    def _save_config(name, persona, tone, autonomy, risk, verbosity):
         from shogun.ui.ui_actions import save_shogun_config
-        return await save_shogun_config(name, persona, tone, autonomy, risk, verbosity)
+        return save_shogun_config(name, persona, tone, autonomy, risk, verbosity)
 
     save_btn.click(
         fn=_save_config,
@@ -418,9 +418,9 @@ def _build_page_shogun():
     )
 
     # Wire revert (reload from DB)
-    async def _revert_config():
+    def _revert_config():
         from shogun.ui.ui_actions import load_shogun_config
-        cfg = await load_shogun_config()
+        cfg = load_shogun_config()
         autonomy_map = {"low": 20, "medium": 50, "high": 80}
         return (
             cfg["name"],
@@ -482,17 +482,17 @@ def _build_page_samurai():
     )
 
     # Wire Refresh
-    async def _refresh_samurai():
+    def _refresh_samurai():
         from shogun.ui.ui_actions import list_samurai
-        return await list_samurai()
+        return list_samurai()
 
     refresh_btn.click(fn=_refresh_samurai, outputs=[registry_table])
 
     # Wire Create
-    async def _create_samurai(name, role, persona, security, spawn):
+    def _create_samurai(name, role, persona, security, spawn):
         from shogun.ui.ui_actions import create_samurai, list_samurai
-        msg = await create_samurai(name, role, persona, security, spawn)
-        rows = await list_samurai()
+        msg = create_samurai(name, role, persona, security, spawn)
+        rows = list_samurai()
         return msg, rows, ""  # clear name field
 
     create_btn.click(
@@ -518,10 +518,10 @@ def _build_page_samurai():
     )
 
     # Wire Suspend
-    async def _suspend(agent_id):
+    def _suspend(agent_id):
         from shogun.ui.ui_actions import suspend_samurai, list_samurai
-        msg = await suspend_samurai(agent_id)
-        rows = await list_samurai()
+        msg = suspend_samurai(agent_id)
+        rows = list_samurai()
         return msg, rows
 
     suspend_btn.click(
@@ -531,10 +531,10 @@ def _build_page_samurai():
     )
 
     # Wire Delete
-    async def _delete(agent_id):
+    def _delete(agent_id):
         from shogun.ui.ui_actions import delete_samurai, list_samurai
-        msg = await delete_samurai(agent_id)
-        rows = await list_samurai()
+        msg = delete_samurai(agent_id)
+        rows = list_samurai()
         return msg, rows, ""
 
     delete_btn.click(
