@@ -200,15 +200,16 @@ input, textarea, select, .input-wrap, .secondary-wrap {
 # ── Navigation Items ─────────────────────────────────────────
 NAV_ITEMS = [
     ("⬡ Overview", "overview"),
-    ("将 Shogun", "shogun"),
-    ("侍 Samurai", "samurai"),
-    ("巻 Archives", "archives"),
-    ("改 Kaizen", "kaizen"),
-    ("武 Bushido", "bushido"),
-    ("刀 The Katana", "katana"),
-    ("⛩ The Torii", "torii"),
-    ("道 Dojo", "dojo"),
-    ("📋 Logs", "logs"),
+    ("Shogun", "shogun"),
+    ("Samurai", "samurai"),
+    ("Archives", "archives"),
+    ("Kaizen", "kaizen"),
+    ("Bushido", "bushido"),
+    ("The Katana", "katana"),
+    ("The Torii", "torii"),
+    ("Dojo", "dojo"),
+    ("Logs", "logs"),
+    ("Help & Guide", "guide"),
 ]
 
 
@@ -256,7 +257,9 @@ def _build_top_bar():
 
 def _build_page_overview():
     """Overview page — command center summary."""
-    gr.Markdown("## ⬡ Overview", elem_id="page-title")
+    gr.Markdown("## Overview", elem_id="page-title")
+    gr.Markdown("*Central command dashboard. Monitor system health, active profiles, and real-time event streams.*")
+
 
     with gr.Row():
         with gr.Column():
@@ -323,7 +326,9 @@ def _build_page_overview():
 
 def _build_page_shogun():
     """Shogun configuration page."""
-    gr.Markdown("## 将 Shogun Configuration")
+    gr.Markdown("## Shogun Configuration")
+    gr.Markdown("*Define the core identity, primary persona, and base intelligence stack for your Shogun.*")
+
     with gr.Tabs():
         with gr.Tab("General"):
             with gr.Row():
@@ -366,7 +371,9 @@ def _build_page_shogun():
 
 def _build_page_samurai():
     """Samurai management page."""
-    gr.Markdown("## 侍 Samurai Management")
+    gr.Markdown("## Samurai Management")
+    gr.Markdown("*Deploy and manage specialized autonomous agents (Samurai) to execute domain-specific missions.*")
+
     with gr.Row():
         with gr.Column(scale=1, min_width=200):
             gr.Markdown("### Registry")
@@ -404,7 +411,9 @@ def _build_page_samurai():
 
 def _build_page_archives():
     """Archives / memory browser page."""
-    gr.Markdown("## 巻 Archives — Memory Browser")
+    gr.Markdown("## Archives — Memory Browser")
+    gr.Markdown("*Explore and manage the long-term memory layer, including episodic, semantic, and procedural knowledge.*")
+
     with gr.Row():
         gr.Textbox(label="Search memories", scale=4)
         gr.Dropdown(label="Type", choices=["All", "Episodic", "Semantic", "Procedural", "Persona", "Skills"], scale=1)
@@ -432,7 +441,9 @@ def _build_page_archives():
 
 def _build_page_kaizen():
     """Kaizen constitutional layer page."""
-    gr.Markdown("## 改 Kaizen — Constitutional Layer")
+    gr.Markdown("## Kaizen — Constitutional Layer")
+    gr.Markdown("*The guiding principles and versioned behavioral rules that define how your agents operate.*")
+
     with gr.Row():
         with gr.Column():
             gr.Markdown("### Current Constitution")
@@ -459,7 +470,9 @@ def _build_page_kaizen():
 
 def _build_page_bushido():
     """Bushido reflection engine page."""
-    gr.Markdown("## 武 Bushido — Reflection Engine")
+    gr.Markdown("## Bushido — Reflection Engine")
+    gr.Markdown("*Automated optimization and self-correction loop. Agents reflect on performance to improve over time.*")
+
     with gr.Row():
         with gr.Column():
             gr.Markdown("### Scheduled Cycles")
@@ -484,7 +497,9 @@ def _build_page_bushido():
 
 def _build_page_katana():
     """The Katana — models, APIs, tools page."""
-    gr.Markdown("## 刀 The Katana — Models, APIs & Tools")
+    gr.Markdown("## The Katana — Models, APIs & Tools")
+    gr.Markdown("*The toolset hub. Manage LLM providers, API integrations, and specialized agent tools.*")
+
     with gr.Tabs():
         with gr.Tab("Providers"):
             gr.Button("➕ Add Provider", variant="primary", size="sm")
@@ -516,7 +531,9 @@ def _build_page_katana():
 
 def _build_page_torii():
     """The Torii — security posture page."""
-    gr.Markdown("## ⛩ The Torii — Security & Permissions")
+    gr.Markdown("## The Torii — Security & Permissions")
+    gr.Markdown("*Security gateway. Define system-wide safety tiers and monitor environment access-control.*")
+
     gr.Markdown("### Active Security Tier")
     gr.Radio(
         ["Shrine (Locked)", "Guarded (Default)", "Tactical", "Campaign", "Ronin (Open)"],
@@ -550,7 +567,9 @@ def _build_page_torii():
 
 def _build_page_dojo():
     """Dojo — skills system page."""
-    gr.Markdown("## 道 Dojo — Skills System")
+    gr.Markdown("## Dojo — Skills System")
+    gr.Markdown("*The skill registry. Discover and install specialized capabilities from OpenClaw College.*")
+
     with gr.Row():
         gr.Dropdown(label="Source", choices=["OpenClawCollege.com"], scale=2)
         gr.Button("🔄 Refresh", variant="secondary", size="sm", scale=1)
@@ -584,7 +603,9 @@ def _build_page_dojo():
 
 def _build_page_logs():
     """Logs and audit page."""
-    gr.Markdown("## 📋 Logs & Audit")
+    gr.Markdown("## Logs & Audit")
+    gr.Markdown("*System-wide diagnostic stream and mission audit trail for transparency and debugging.*")
+
     with gr.Row():
         gr.Dropdown(label="Severity", choices=["All", "debug", "info", "warn", "error", "critical"], scale=1)
         gr.Dropdown(label="Agent", choices=["All"], scale=1)
@@ -599,6 +620,46 @@ def _build_page_logs():
     )
 
 
+def _build_page_guide():
+    """Help & Guide page — framework documentation."""
+    gr.Markdown("## Shogun — Framework Guide")
+    gr.Markdown("*New to Shogun? This guide explains the core architecture and how to master your autonomous workspace.*")
+
+    with gr.Row():
+        with gr.Column():
+            gr.Markdown("### 🏛 Core Philosophy")
+            gr.Markdown(
+                "Shogun is a **Modular Monolith** for AI orchestration. It is designed to be "
+                "agent-independent, security-first, and zero-dependency (SQLite/Embedded Qdrant)."
+            )
+
+            gr.Markdown("### 🛠 High-Level Architecture")
+            gr.Markdown(
+                "1. **The Shogun**: Your primary 'Strategist' agent. It doesn't do tasks; it delegates them.\n"
+                "2. **The Samurai**: Specialized agents created by Shogun to handle specific domains (Coding, Research, etc.).\n"
+                "3. **The Katana**: The tools, models, and APIs that agents use to interact with the world.\n"
+                "4. **The Dojo**: Where skills are learned and registered (OpenClaw integration).\n"
+                "5. **Archives**: Long-term memory storage enabling session-to-session persistence."
+            )
+
+        with gr.Column():
+            gr.Markdown("### 🚀 Quick Start")
+            gr.Markdown(
+                "1. **Katana**: First, add an LLM provider (OpenAI, Anthropic, or Ollama) in the Katana tab.\n"
+                "2. **Shogun**: Select your primary model and define your Shogun's persona.\n"
+                "3. **Torii**: Set your security tier. 'Guarded' is recommended for initial use.\n"
+                "4. **Samurai**: Spawn your first specialist to begin executing missions."
+            )
+
+            gr.Markdown("### 📜 The Bushido & Kaizen")
+            gr.Markdown(
+                "- **Kaizen** is the Constitution. It defines the 'laws' your agents cannot break.\n"
+                "- **Bushido** is the Reflection engine. It's an automated loop where agents review their "
+                "past actions to improve their importance scores and strategy."
+            )
+
+
+
 # ── Page registry ────────────────────────────────────────────
 PAGE_BUILDERS = {
     "overview": _build_page_overview,
@@ -611,20 +672,24 @@ PAGE_BUILDERS = {
     "torii": _build_page_torii,
     "dojo": _build_page_dojo,
     "logs": _build_page_logs,
+    "guide": _build_page_guide,
 }
 
 
-def create_tenshu_ui() -> gr.Blocks:
-    """Build the complete Tenshu UI."""
+def create_tenshu_ui() -> tuple:
+    """Build the complete Tenshu UI.
+
+    Returns:
+        Tuple of (app, theme, css, js) — Gradio 6.0 requires
+        theme/css/js to be passed to launch() or mount_gradio_app(),
+        not to the Blocks constructor.
+    """
     theme = create_tenshu_theme()
 
     # Force dark mode via JS
     dark_js = "() => { document.body.classList.add('dark'); document.querySelector('.gradio-container').classList.add('dark'); }"
 
     with gr.Blocks(
-        theme=theme,
-        css=TENSHU_CSS,
-        js=dark_js,
         title="Shogun — The Tenshu",
     ) as app:
         # Top bar
@@ -662,4 +727,6 @@ def create_tenshu_ui() -> gr.Blocks:
                 outputs=list(page_groups.values()),
             )
 
-    return app
+    return app, theme, TENSHU_CSS, dark_js
+
+
