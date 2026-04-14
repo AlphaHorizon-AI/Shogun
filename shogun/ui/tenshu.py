@@ -637,12 +637,23 @@ def _build_page_katana():
 
     with gr.Tabs():
         with gr.Tab("Providers"):
-            gr.Button("➕ Add Provider", variant="primary", size="sm")
-            gr.Dataframe(
-                value=[],
-                headers=["Provider", "Type", "Status", "Health", "Models"],
-                interactive=False,
-            )
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("### Add New Provider")
+                    prov_name = gr.Textbox(label="Provider Name")
+                    prov_type = gr.Dropdown(label="Provider Type", choices=["openai", "anthropic", "local", "ollama"], value="openai")
+                    prov_url = gr.Textbox(label="Base URL (optional)")
+                    prov_auth = gr.Dropdown(label="Auth Type", choices=["api_key", "none", "oauth"], value="api_key")
+                    add_prov_btn = gr.Button("➕ Add Provider", variant="primary", size="sm")
+                    prov_status = gr.Markdown("", elem_id="prov-status")
+                with gr.Column(scale=3):
+                    gr.Markdown("### Configured Providers")
+                    prov_refresh_btn = gr.Button("🔄 Refresh", variant="secondary", size="sm")
+                    prov_table = gr.Dataframe(
+                        value=[],
+                        headers=["Provider", "Type", "Status", "Health", "Models"],
+                        interactive=False,
+                    )
         with gr.Tab("Models"):
             gr.Dataframe(
                 value=[],
@@ -650,12 +661,22 @@ def _build_page_katana():
                 interactive=False,
             )
         with gr.Tab("APIs & Tools"):
-            gr.Button("➕ Add API", variant="primary", size="sm")
-            gr.Dataframe(
-                value=[],
-                headers=["Tool", "Type", "Status", "Risk", "Scope"],
-                interactive=False,
-            )
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("### Add New Tool/API")
+                    tool_name = gr.Textbox(label="Tool Name")
+                    tool_type = gr.Dropdown(label="Connector Type", choices=["api", "database", "script"], value="api")
+                    tool_url = gr.Textbox(label="Base URL/Path")
+                    add_tool_btn = gr.Button("➕ Add Tool", variant="primary", size="sm")
+                    tool_status = gr.Markdown("", elem_id="tool-status")
+                with gr.Column(scale=3):
+                    gr.Markdown("### Active Tools")
+                    tool_refresh_btn = gr.Button("🔄 Refresh", variant="secondary", size="sm")
+                    tool_table = gr.Dataframe(
+                        value=[],
+                        headers=["Tool", "Type", "Status", "Risk", "Scope"],
+                        interactive=False,
+                    )
         with gr.Tab("Routing Rules"):
             gr.Dataframe(
                 value=[],
@@ -663,41 +684,92 @@ def _build_page_katana():
                 interactive=False,
             )
 
+    # Handlers for Katana
+    def _refresh_prov():
+        from shogun.ui.ui_actions import list_providers
+        return list_providers()
+
+    prov_refresh_btn.click(fn=_refresh_prov, outputs=[prov_table])
+
+    def _add_prov(name, ptype, url, auth):
+        from shogun.ui.ui_actions import create_provider, list_providers
+        msg = create_provider(name, ptype, url, auth)
+        return msg, list_providers(), ""
+
+    add_prov_btn.click(
+        fn=_add_prov,
+        inputs=[prov_name, prov_type, prov_url, prov_auth],
+        outputs=[prov_status, prov_table, prov_name],
+    )
+
+    def _refresh_tools():
+        from shogun.ui.ui_actions import list_tools
+        return list_tools()
+
+    tool_refresh_btn.click(fn=_refresh_tools, outputs=[tool_table])
+
+    def _add_tool(name, ttype, url):
+        from shogun.ui.ui_actions import create_tool, list_tools
+        msg = create_tool(name, ttype, url)
+        return msg, list_tools(), ""
+
+    add_tool_btn.click(
+        fn=_add_tool,
+        inputs=[tool_name, tool_type, tool_url],
+        outputs=[tool_status, tool_table, tool_name],
+    )
+
 
 def _build_page_torii():
     """The Torii — security posture page."""
     gr.Markdown("## The Torii — Security & Permissions")
     gr.Markdown("*Security gateway. Define system-wide safety tiers and monitor environment access-control.*")
 
-    gr.Markdown("### Active Security Tier")
-    gr.Radio(
-        ["Shrine (Locked)", "Guarded (Default)", "Tactical", "Campaign", "Ronin (Open)"],
-        value="Guarded (Default)",
-        label="Security Tier",
-    )
-
     with gr.Row():
-        with gr.Column():
-            gr.Markdown("### Permission Domains")
-            gr.Dataframe(
-                value=[
-                    ["Filesystem", "Scoped", "🟢"],
-                    ["Network", "Allowlist", "🟢"],
-                    ["Shell / Process", "Disabled", "🟢"],
-                    ["Skills", "Approval Required", "🟢"],
-                    ["Subagent Spawning", "Allowed (max 5)", "🟡"],
-                    ["Memory Writes", "Allowed", "🟡"],
-                ],
-                headers=["Domain", "Mode", "Risk"],
-                interactive=False,
+        with gr.Column(scale=2):
+            gr.Markdown("### Active Security Tier")
+            tier_radio = gr.Radio(
+                ["shrine", "guarded", "tactical", "campaign", "ronin"],
+                value="guarded",
+                label="Security Tier",
             )
-        with gr.Column():
+            policy_name = gr.Textbox(label="Policy Name", value="Global Policy")
+            save_tier_btn = gr.Button("💾 Save Security Policy", variant="primary", size="sm")
+            torii_status = gr.Markdown("", elem_id="torii-status")
+        with gr.Column(scale=1):
             gr.Markdown("### Safety Controls")
             gr.Checkbox(label="Enable Dry Run Mode", value=False)
             gr.Checkbox(label="Require Approval for New Skills", value=True)
             gr.Checkbox(label="Global Kill Switch", value=True)
             gr.Button("🔴 Activate Kill Switch", variant="stop", size="sm")
-            gr.Button("📤 Export Policy", variant="secondary", size="sm")
+
+    with gr.Row():
+        with gr.Column():
+            gr.Markdown("### Active Permission Sets")
+            torii_refresh_btn = gr.Button("🔄 Refresh", variant="secondary", size="sm")
+            policies_table = gr.Dataframe(
+                value=[],
+                headers=["Policy Name", "Tier", "Filesystem", "Network", "Shell"],
+                interactive=False,
+            )
+
+    # Handlers for Torii
+    def _refresh_torii():
+        from shogun.ui.ui_actions import load_security_policies
+        return load_security_policies()
+
+    torii_refresh_btn.click(fn=_refresh_torii, outputs=[policies_table])
+
+    def _save_torii(name, tier):
+        from shogun.ui.ui_actions import create_security_policy, load_security_policies
+        msg = create_security_policy(name, tier)
+        return msg, load_security_policies()
+
+    save_tier_btn.click(
+        fn=_save_torii,
+        inputs=[policy_name, tier_radio],
+        outputs=[torii_status, policies_table],
+    )
 
 
 def _build_page_dojo():

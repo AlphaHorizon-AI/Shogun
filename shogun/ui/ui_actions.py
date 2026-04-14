@@ -360,6 +360,42 @@ def load_security_policies() -> list[list[str]]:
     return _run(_load_security_policies())
 
 
+async def _create_security_policy(name: str, tier: str) -> str:
+    from shogun.db.models.security_policy import SecurityPolicy
+    from sqlalchemy import select
+
+    if not name or not name.strip():
+        return "⚠️ Policy name is required."
+
+    tier_perms = {
+        "shrine": {"filesystem": "none", "network": "none", "shell": "disabled", "skills": "disabled", "subagents": "disabled"},
+        "guarded": {"filesystem": "scoped", "network": "allowlist", "shell": "disabled", "skills": "approval", "subagents": "max_5"},
+        "tactical": {"filesystem": "scoped", "network": "allowlist", "shell": "sandboxed", "skills": "auto", "subagents": "max_10"},
+        "campaign": {"filesystem": "broad", "network": "open", "shell": "sandboxed", "skills": "auto", "subagents": "unlimited"},
+        "ronin": {"filesystem": "full", "network": "open", "shell": "enabled", "skills": "auto", "subagents": "unlimited"},
+    }
+
+    async with async_session_factory() as session:
+        policy = SecurityPolicy(
+            id=uuid.uuid4(),
+            name=name.strip(),
+            tier=tier or "guarded",
+            permissions=tier_perms.get(tier, tier_perms["guarded"]),
+            kill_switch_enabled=True,
+            dry_run_supported=True,
+            is_builtin=False,
+            created_by="operator",
+            updated_by="operator",
+        )
+        session.add(policy)
+        await session.commit()
+        return f"✅ Security policy '{name}' created."
+
+
+def create_security_policy(name, tier) -> str:
+    return _run(_create_security_policy(name, tier))
+
+
 # ═══════════════════════════════════════════════════════════════
 #  KATANA — PROVIDERS
 # ═══════════════════════════════════════════════════════════════
@@ -371,8 +407,105 @@ async def _list_providers() -> list[list[str]]:
     async with async_session_factory() as session:
         result = await session.execute(select(ModelProvider))
         providers = result.scalars().all()
-        return [[p.name, p.provider_type, p.status, "—", "—"] for p in providers]
+        return [[p.name, p.provider_type, p.status, p.health_status, "—"] for p in providers]
 
 
 def list_providers() -> list[list[str]]:
     return _run(_list_providers())
+
+
+async def _create_provider(name: str, provider_type: str, base_url: str, auth_type: str) -> str:
+    from shogun.db.models.model_provider import ModelProvider
+    from sqlalchemy import select
+
+    if not name or not name.strip():
+        return "⚠️ Provider name is required."
+
+    slug = name.lower().replace(" ", "-").replace("_", "-")
+
+    async with async_session_factory() as session:
+        existing = await session.execute(
+            select(ModelProvider).where(ModelProvider.slug == slug)
+        )
+        if existing.scalars().first():
+            return f"⚠️ A provider with slug '{slug}' already exists."
+
+        provider = ModelProvider(
+            id=uuid.uuid4(),
+            name=name.strip(),
+            slug=slug,
+            provider_type=provider_type or "openai",
+            base_url=base_url or None,
+            auth_type=auth_type or "api_key",
+            is_local=provider_type in ("ollama", "local"),
+            status="not_configured",
+            health_status="unknown",
+            config={},
+            created_by="operator",
+            updated_by="operator",
+        )
+        session.add(provider)
+        await session.commit()
+        return f"✅ Provider '{name}' added."
+
+
+def create_provider(name, provider_type, base_url, auth_type) -> str:
+    return _run(_create_provider(name, provider_type, base_url, auth_type))
+
+
+# ═══════════════════════════════════════════════════════════════
+#  KATANA — TOOLS
+# ═══════════════════════════════════════════════════════════════
+
+async def _list_tools() -> list[list[str]]:
+    from shogun.db.models.tool_connector import ToolConnector
+    from sqlalchemy import select
+
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(ToolConnector).where(ToolConnector.is_deleted == False)
+        )
+        tools = result.scalars().all()
+        return [[t.name, t.connector_type, t.status, t.risk_level, t.scope or "—"] for t in tools]
+
+
+def list_tools() -> list[list[str]]:
+    return _run(_list_tools())
+
+
+async def _create_tool(name: str, connector_type: str, base_url: str) -> str:
+    from shogun.db.models.tool_connector import ToolConnector
+    from sqlalchemy import select
+
+    if not name or not name.strip():
+        return "⚠️ Tool name is required."
+
+    slug = name.lower().replace(" ", "-").replace("_", "-")
+
+    async with async_session_factory() as session:
+        existing = await session.execute(
+            select(ToolConnector).where(ToolConnector.slug == slug)
+        )
+        if existing.scalars().first():
+            return f"⚠️ A tool with slug '{slug}' already exists."
+
+        tool = ToolConnector(
+            id=uuid.uuid4(),
+            name=name.strip(),
+            slug=slug,
+            connector_type=connector_type or "api",
+            base_url=base_url or None,
+            status="not_configured",
+            risk_level="low",
+            config={},
+            created_by="operator",
+            updated_by="operator",
+        )
+        session.add(tool)
+        await session.commit()
+        return f"✅ Tool '{name}' added."
+
+
+def create_tool(name, connector_type, base_url) -> str:
+    return _run(_create_tool(name, connector_type, base_url))
+
