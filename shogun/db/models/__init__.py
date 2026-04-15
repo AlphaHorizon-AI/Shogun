@@ -20,6 +20,7 @@ from shogun.db.models.execution_event import ExecutionEvent
 from shogun.db.models.memory_record import MemoryRecord, MemoryProvenanceLink
 from shogun.db.models.snapshot import Snapshot
 from shogun.db.models.runtime_session import RuntimeSession
+from shogun.db.models.samurai_role import SamuraiRole
 
 __all__ = [
     "Operator",
@@ -44,4 +45,5 @@ __all__ = [
     "MemoryProvenanceLink",
     "Snapshot",
     "RuntimeSession",
+    "SamuraiRole",
 ]

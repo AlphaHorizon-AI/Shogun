@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme {
+  --color-shogun-bg: #0a0e1a;
+  --color-shogun-card: #0e1225;
+  --color-shogun-border: #1a2040;
+  --color-shogun-gold: #d4a017;
+  --color-shogun-blue: #4a8cc7;
+  --color-shogun-text: #c8d0d8;
+  --color-shogun-subdued: #7a8899;
+  
+  --shadow-shogun: 0 0 20px rgba(74, 140, 199, 0.1);
+}
+
+@layer base {
+  body {
+    @apply bg-shogun-bg text-shogun-text font-sans antialiased;
+  }
+}
+
+@layer components {
+  .shogun-card {
+    @apply bg-shogun-card border border-shogun-border rounded-lg p-6 shadow-shogun;
+  }
+  
+  .shogun-title {
+    @apply text-shogun-gold font-bold tracking-tight;
+  }
+}
+
+/* Custom scrollbar for deep dark aesthetic */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #050508;
+}
+::-webkit-scrollbar-thumb {
+  background: #1a2040;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a3060;
+}

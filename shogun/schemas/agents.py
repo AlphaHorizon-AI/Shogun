@@ -34,6 +34,9 @@ class AgentCreate(ShogunBase):
     memory_scope: MemoryScope = Field(default_factory=MemoryScope)
     spawn_policy: SpawnPolicy = SpawnPolicy.MANUAL
     parent_agent_id: uuid.UUID | None = None
+    role_id: uuid.UUID | None = None
+    avatar_url: str | None = "/shogun-avatar.png"
+    bushido_settings: dict = Field(default_factory=lambda: {"nightly_consolidation": True, "weekly_performance_audit": True, "skill_health_check": True, "persona_drift_check": False})
     tags: list[str] = Field(default_factory=list)
 
 
@@ -48,6 +51,8 @@ class AgentUpdate(ShogunBase):
     model_routing_profile_id: uuid.UUID | None = None
     memory_scope: MemoryScope | None = None
     spawn_policy: SpawnPolicy | None = None
+    avatar_url: str | None = None
+    bushido_settings: dict | None = None
     tags: list[str] | None = None
 
 
@@ -68,16 +73,30 @@ class AgentResponse(ShogunBase):
     spawn_policy: SpawnPolicy
     is_primary: bool = False
     parent_agent_id: uuid.UUID | None = None
+    avatar_url: str | None = None
+    bushido_settings: dict = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list)
     last_heartbeat_at: datetime | None = None
+    samurai_profile: SamuraiProfileResponse | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class SamuraiRoleInline(ShogunBase):
+    """Lightweight inline model for nested samurai role serialization."""
+
+    id: uuid.UUID
+    slug: str
+    name: str
+    purpose: str
+    description: str | None = None
 
 
 class SamuraiProfileCreate(ShogunBase):
     """Request body for creating/updating a Samurai capability profile."""
 
-    role: str = Field(..., min_length=1, max_length=100)
+    role: str | None = None
+    role_id: uuid.UUID | None = None
     specializations: list[str] = Field(default_factory=list)
     allowed_task_types: list[str] = Field(default_factory=list)
     blocked_task_types: list[str] = Field(default_factory=list)
@@ -91,6 +110,8 @@ class SamuraiProfileResponse(ShogunBase):
     id: uuid.UUID
     agent_id: uuid.UUID
     role: str
+    role_id: uuid.UUID | None = None
+    samurai_role: SamuraiRoleInline | None = None
     specializations: list[str]
     allowed_task_types: list[str]
     blocked_task_types: list[str]

@@ -21,6 +21,26 @@ from shogun.services.memory_service import MemoryService
 router = APIRouter(prefix="/memory", tags=["Memory"])
 
 
+@router.get("", response_model=ApiResponse)
+async def list_memories(
+    agent_id: uuid.UUID | None = None,
+    category: str | None = None,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    from shogun.db.models.memory_record import MemoryRecord
+    filters = [MemoryRecord.is_archived == False]
+    if agent_id:
+        filters.append(MemoryRecord.agent_id == agent_id)
+    if category:
+        filters.append(MemoryRecord.category == category)
+    
+    records, total = await svc.get_all(filters=filters)
+    return ApiResponse(
+        data=[MemoryRecordResponse.model_validate(r) for r in records],
+        meta={"total": total},
+    )
+
+
 @router.post("/search", response_model=ApiResponse)
 async def search_memory(body: MemorySearchRequest):
     """Search memory via vector similarity + salience reranking.

@@ -60,6 +60,17 @@ async def test_provider(provider_id: uuid.UUID):
     return ApiResponse(data={"status": "test_not_implemented", "provider_id": str(provider_id)})
 
 
+@provider_router.delete("/{provider_id}", response_model=ApiResponse)
+async def delete_provider(
+    provider_id: uuid.UUID,
+    svc: ModelProviderService = Depends(get_model_provider_service),
+):
+    deleted = await svc.delete(provider_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    return ApiResponse(data={"deleted": True})
+
+
 # ── Routing Profiles ─────────────────────────────────────────
 
 routing_router = APIRouter(prefix="/model-routing-profiles")
@@ -98,6 +109,17 @@ async def update_routing_profile(
     if not record:
         raise HTTPException(status_code=404, detail="Routing profile not found")
     return ApiResponse(data=ModelRoutingProfileResponse.model_validate(record))
+
+
+@routing_router.delete("/{profile_id}", response_model=ApiResponse)
+async def delete_routing_profile(
+    profile_id: uuid.UUID,
+    svc: ModelRoutingProfileService = Depends(get_model_routing_service),
+):
+    deleted = await svc.delete(profile_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Routing profile not found")
+    return ApiResponse(data={"deleted": True})
 
 
 router.include_router(provider_router)

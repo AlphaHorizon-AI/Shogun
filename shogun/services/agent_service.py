@@ -57,6 +57,13 @@ class AgentService(BaseService[Agent]):
         profile = result.scalars().first()
 
         if profile is None:
+            # If creating new profile, ensure role name is set if role_id is provided
+            if "role" not in kwargs and "role_id" in kwargs:
+                from shogun.db.models.samurai_role import SamuraiRole
+                role_res = await self.session.get(SamuraiRole, kwargs["role_id"])
+                if role_res:
+                    kwargs["role"] = role_res.name
+            
             profile = SamuraiProfile(agent_id=agent_id, **kwargs)
             self.session.add(profile)
         else:
@@ -67,3 +74,17 @@ class AgentService(BaseService[Agent]):
         await self.session.flush()
         await self.session.refresh(profile)
         return profile
+
+    async def create(self, **kwargs) -> Agent:
+        """Override create to handle samurai profile if role_id is provided."""
+        role_id = kwargs.pop("role_id", None)
+        
+        # Create the base agent
+        agent = await super().create(**kwargs)
+        
+        # If it's a samurai and we have a role_id, create the profile
+        if agent.agent_type == "samurai" and role_id:
+            await self.update_samurai_profile(agent.id, role_id=role_id)
+            
+        await self.session.refresh(agent)
+        return agent

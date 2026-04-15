@@ -182,6 +182,20 @@ input, textarea, select, .input-wrap, .secondary-wrap {
 .secondary { background: #121830 !important; border-color: #1a2040 !important; }
 .stop { background: #7f1d1d !important; }
 
+/* Radio/Checkbox selection overrides */
+.radio-group label.selected, 
+.checkbox-group label.selected,
+label.selected {
+    background-color: #4a8cc7 !important;
+    color: #ffffff !important;
+    border-color: #4a8cc7 !important;
+}
+
+/* Form labels text */
+.radio-group span, .checkbox-group span, label span {
+    color: inherit;
+}
+
 /* Section headers — gold accent */
 .section-header {
     font-size: 11px;
@@ -195,21 +209,38 @@ input, textarea, select, .input-wrap, .secondary-wrap {
 /* Gold accent for h2 page titles */
 .shogun-main .prose h2 { color: #6eb5e8; }
 .shogun-main .prose h3 { color: #c8d0d8; }
+
+/* Tab navigation — all tabs visible, no overflow menu */
+.tab-nav {
+    flex-wrap: wrap !important;
+    overflow: visible !important;
+    gap: 2px !important;
+}
+.tab-nav button {
+    font-size: 12px !important;
+    padding: 8px 10px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+}
+.tab-nav .overflow {
+    display: none !important;
+}
 """
 
 # ── Navigation Items ─────────────────────────────────────────
 NAV_ITEMS = [
-    ("⬡ Overview", "overview"),
-    ("Shogun", "shogun"),
-    ("Samurai", "samurai"),
-    ("Archives", "archives"),
-    ("Kaizen", "kaizen"),
-    ("Bushido", "bushido"),
-    ("The Katana", "katana"),
-    ("The Torii", "torii"),
-    ("Dojo", "dojo"),
-    ("Logs", "logs"),
-    ("Help & Guide", "guide"),
+    ("⬡ Overview [Command Center]", "overview"),
+    ("Shogun [My Agent]", "shogun"),
+    ("Samurai [Sub-Agents]", "samurai"),
+    ("Archives [Memory]", "archives"),
+    ("Kaizen [Constitution]", "kaizen"),
+    ("Bushido [Heartbeat]", "bushido"),
+    ("The Katana [Tools]", "katana"),
+    ("The Torii [Security]", "torii"),
+    ("Dojo [Skills]", "dojo"),
+    ("Logs [Audit]", "logs"),
+    ("Help & Guide [Docs]", "guide"),
+    ("Comms [Chat]", "chat"),
 ]
 
 
@@ -380,15 +411,15 @@ def _build_page_shogun():
                     )
                 with gr.Column():
                     gr.Markdown("### Model Stack")
-                    gr.Dropdown(label="Primary Model", choices=["(Configure providers first)"])
-                    gr.Dropdown(label="Fallback 1", choices=["(Configure providers first)"])
-                    gr.Dropdown(label="Fallback 2", choices=["(Configure providers first)"])
+                    model_primary = gr.Dropdown(label="Primary Model", choices=["(Configure providers first)"])
+                    model_f1 = gr.Dropdown(label="Fallback 1", choices=["(Configure providers first)"])
+                    model_f2 = gr.Dropdown(label="Fallback 2", choices=["(Configure providers first)"])
                     gr.Dropdown(label="Routing Policy", choices=["Balanced", "Cost-optimized", "Quality-first"])
                     gr.Number(label="Temperature", value=0.4, minimum=0, maximum=2, step=0.1)
                     gr.Number(label="Max Context Injection", value=8, minimum=1, maximum=50, step=1)
             with gr.Row():
                 save_btn = gr.Button("💾 Save Configuration", variant="primary")
-                gr.Button("🧪 Test Persona", variant="secondary")
+                test_persona_btn = gr.Button("🧪 Test Persona", variant="secondary")
                 revert_btn = gr.Button("↩ Revert", variant="secondary")
         with gr.Tab("Behavior"):
             gr.Markdown("### Kaizen Excerpt")
@@ -405,6 +436,136 @@ def _build_page_shogun():
                 headers=["Permission", "Status"],
                 interactive=False,
             )
+        with gr.Tab("Interfaces (Telegram)"):
+            gr.Markdown("### Remote Mission Control")
+            gr.Markdown("*Connect your Shogun to Telegram for secure mobile alerts and text prompts.*")
+            with gr.Row():
+                with gr.Column():
+                    tg_token = gr.Textbox(label="Bot Token", type="password")
+                    tg_chat_id = gr.Textbox(label="Authorized Chat ID")
+                    connect_tg_btn = gr.Button("🔗 Connect Telegram", variant="primary", size="sm")
+                    tg_status = gr.Markdown("⚪ Not Configured")
+        with gr.Tab("Cron Jobs"):
+            gr.Markdown("### Scheduled Tasks (Cron Jobs)")
+            gr.Markdown("*Manage recurring background tasks executed by the Shogun.*")
+            with gr.Row():
+                with gr.Column():
+                    cron_name = gr.Textbox(label="Job Name", placeholder="e.g., Nightly Market Report")
+                    with gr.Group():
+                        gr.Markdown("#### Event Schedule")
+                        cron_freq = gr.Radio(label="Frequency", choices=["Hourly", "Daily", "Weekly", "Monthly"], value="Daily")
+                        cron_days = gr.CheckboxGroup(label="Days of the week", choices=["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], value=["Mon", "Tue", "Wed", "Thu", "Fri"])
+                        cron_hour = gr.Slider(label="Execution Hour (0-23)", minimum=0, maximum=23, value=2, step=1)
+                    cron_action = gr.Textbox(label="Action / Script path", placeholder="e.g., scripts/run_report.sh")
+                    add_cron_btn = gr.Button("➕ Add Cron Job", variant="primary", size="sm")
+                with gr.Column():
+                    gr.Markdown("### Active Cron Jobs")
+                    with gr.Row():
+                        cron_refresh_btn = gr.Button("🔄 Refresh", variant="secondary", size="sm")
+                        delete_cron_btn = gr.Button("🗑 Delete Selected", variant="stop", size="sm")
+                    cron_status = gr.Markdown("", elem_id="cron-status")
+                    cron_table = gr.Dataframe(
+                        value=[
+                            ["Daily Audit", "0 0 * * *", "run_audit", "Active", "Shogun"],
+                            ["Data Sync", "*/15 * * * *", "sync_qdrant", "Active", "User"]
+                        ],
+                        headers=["Job Name", "Schedule", "Action", "Status", "Created By"],
+                        interactive=False,
+                    )
+
+    selected_cron = gr.State("")
+
+    def _on_cron_select(evt: gr.SelectData, table_data):
+        import pandas as pd
+        if evt.index and len(evt.index) >= 1:
+            row_idx = evt.index[0]
+            if table_data is not None:
+                if isinstance(table_data, pd.DataFrame) and row_idx < len(table_data):
+                    job_name = table_data.iloc[row_idx, 0]
+                    return job_name, f"*Selected: {job_name}*"
+                elif isinstance(table_data, list) and row_idx < len(table_data):
+                    job_name = table_data[row_idx][0]
+                    return job_name, f"*Selected: {job_name}*"
+        return "", ""
+
+    cron_table.select(
+        fn=_on_cron_select,
+        inputs=[cron_table],
+        outputs=[selected_cron, cron_status]
+    )
+
+    def _delete_cron(job_name, current_data):
+        import pandas as pd
+        if not job_name:
+            return "⚠️ No job selected.", current_data, ""
+            
+        new_data = []
+        if isinstance(current_data, pd.DataFrame):
+            for i, row in current_data.iterrows():
+                if row.iloc[0] != job_name:
+                    new_data.append(row.tolist())
+        elif isinstance(current_data, list):
+            for row in current_data:
+                if row[0] != job_name:
+                    new_data.append(row)
+                    
+        return f"🗑️ Job '{job_name}' deleted.", new_data, ""
+
+    delete_cron_btn.click(
+        fn=_delete_cron,
+        inputs=[selected_cron, cron_table],
+        outputs=[cron_status, cron_table, selected_cron]
+    )
+
+    def _refresh_cron():
+        return [
+            ["Daily Audit", "0 0 * * *", "run_audit", "Active", "Shogun"],
+            ["Data Sync", "*/15 * * * *", "sync_qdrant", "Active", "User"]
+        ]
+
+    cron_refresh_btn.click(fn=_refresh_cron, outputs=[cron_table])
+
+    def _add_cron(name, freq, days, hour, action, current_data):
+        import pandas as pd
+        if not name:
+            return "⚠️ Please provide a job name.", current_data, ""
+            
+        schedule = f"{freq}"
+        if freq == "Daily":
+            schedule = f"Daily at {hour:02d}:00"
+        elif freq == "Weekly":
+            d_str = ",".join([d[:3] for d in days]) if days else "No days"
+            schedule = f"Weekly ({d_str}) at {hour:02d}:00"
+        elif freq == "Monthly":
+            schedule = f"Monthly on 1st at {hour:02d}:00"
+        elif freq == "Hourly":
+            schedule = f"Hourly"
+
+        new_row = [name, schedule, action or "None", "Active", "User"]
+        
+        new_data = []
+        if isinstance(current_data, pd.DataFrame):
+            for i, row in current_data.iterrows():
+                new_data.append(row.tolist())
+        elif isinstance(current_data, list):
+            for row in current_data:
+                new_data.append(row)
+                
+        new_data.append(new_row)
+        return f"✅ Job '{name}' added.", new_data, ""
+        
+    add_cron_btn.click(
+        fn=_add_cron,
+        inputs=[cron_name, cron_freq, cron_days, cron_hour, cron_action, cron_table],
+        outputs=[cron_status, cron_table, cron_name]
+    )
+
+    def _toggle_schedule(freq):
+        show_days = freq in ["Weekly"]
+        show_hour = freq in ["Daily", "Weekly", "Monthly"]
+        return gr.update(visible=show_days), gr.update(visible=show_hour)
+
+    cron_freq.change(fn=_toggle_schedule, inputs=[cron_freq], outputs=[cron_days, cron_hour])
 
     # Wire save
     def _save_config(name, persona, tone, autonomy, risk, verbosity):
@@ -419,8 +580,9 @@ def _build_page_shogun():
 
     # Wire revert (reload from DB)
     def _revert_config():
-        from shogun.ui.ui_actions import load_shogun_config
+        from shogun.ui.ui_actions import load_shogun_config, get_all_models_flat
         cfg = load_shogun_config()
+        models = get_all_models_flat()
         autonomy_map = {"low": 20, "medium": 50, "high": 80}
         return (
             cfg["name"],
@@ -430,11 +592,33 @@ def _build_page_shogun():
             cfg["risk_tolerance"],
             cfg["verbosity"],
             f"*Loaded from database.*",
+            gr.update(choices=models),
+            gr.update(choices=models),
+            gr.update(choices=models),
         )
 
     revert_btn.click(
         fn=_revert_config,
-        outputs=[name_input, persona_dd, tone_dd, autonomy_slider, risk_dd, verbosity_dd, status_msg],
+        outputs=[name_input, persona_dd, tone_dd, autonomy_slider, risk_dd, verbosity_dd, status_msg, model_primary, model_f1, model_f2],
+    )
+
+    def _test_persona_mock():
+        return "🧪 Connecting to models... Persona loaded perfectly."
+
+    test_persona_btn.click(
+        fn=_test_persona_mock,
+        outputs=[status_msg],
+    )
+
+    def _connect_telegram(token, chat_id):
+        if not token or not chat_id:
+            return "⚠️ Please provide both Bot Token and Chat ID."
+        return "✅ Telegram Connected. Waiting for first Shogun heartbeat..."
+
+    connect_tg_btn.click(
+        fn=_connect_telegram,
+        inputs=[tg_token, tg_chat_id],
+        outputs=[tg_status]
     )
 
 
@@ -464,7 +648,7 @@ def _build_page_samurai():
                 sam_role = gr.Dropdown(label="Role", choices=["research", "coding", "security", "memory", "custom"], value="research")
             with gr.Row():
                 sam_persona = gr.Dropdown(label="Persona", choices=["Analyst", "Strategist", "Field Commander"], value="Analyst")
-                gr.Dropdown(label="Primary Model", choices=["(Configure providers first)"])
+                sam_model = gr.Dropdown(label="Primary Model", choices=["(Configure providers first)"])
             with gr.Row():
                 sam_security = gr.Dropdown(label="Security Tier", choices=["shrine", "guarded", "tactical", "campaign", "ronin"], value="guarded")
                 sam_spawn = gr.Dropdown(label="Spawn Rule", choices=["manual", "auto", "shogun_decides"], value="manual")
@@ -483,10 +667,11 @@ def _build_page_samurai():
 
     # Wire Refresh
     def _refresh_samurai():
-        from shogun.ui.ui_actions import list_samurai
-        return list_samurai()
+        from shogun.ui.ui_actions import list_samurai, get_all_models_flat
+        models = get_all_models_flat()
+        return list_samurai(), gr.update(choices=models)
 
-    refresh_btn.click(fn=_refresh_samurai, outputs=[registry_table])
+    refresh_btn.click(fn=_refresh_samurai, outputs=[registry_table, sam_model])
 
     # Wire Create
     def _create_samurai(name, role, persona, security, spawn):
@@ -503,12 +688,18 @@ def _build_page_samurai():
 
     # Wire row select → capture agent ID
     def _on_row_select(evt: gr.SelectData, table_data):
+        import pandas as pd
         if evt.index and len(evt.index) >= 1:
             row_idx = evt.index[0]
-            if table_data and row_idx < len(table_data):
-                agent_id = table_data[row_idx][3]  # ID column
-                agent_name = table_data[row_idx][0]
-                return agent_id, f"*Selected: {agent_name}*"
+            if table_data is not None:
+                if isinstance(table_data, pd.DataFrame) and row_idx < len(table_data):
+                    agent_id = table_data.iloc[row_idx, 3]  # ID column
+                    agent_name = table_data.iloc[row_idx, 0]
+                    return agent_id, f"*Selected: {agent_name}*"
+                elif isinstance(table_data, list) and row_idx < len(table_data):
+                    agent_id = table_data[row_idx][3]  # ID column
+                    agent_name = table_data[row_idx][0]
+                    return agent_id, f"*Selected: {agent_name}*"
         return "", ""
 
     registry_table.select(
@@ -553,7 +744,7 @@ def _build_page_archives():
         gr.Textbox(label="Search memories", scale=4)
         gr.Dropdown(label="Type", choices=["All", "Episodic", "Semantic", "Procedural", "Persona", "Skills"], scale=1)
         gr.Dropdown(label="Agent", choices=["All"], scale=1)
-        gr.Button("🔍 Search", variant="primary", scale=1, size="sm")
+        search_btn = gr.Button("🔍 Search", variant="primary", scale=1, size="sm")
 
     with gr.Row():
         with gr.Column(scale=1, min_width=180):
@@ -561,7 +752,7 @@ def _build_page_archives():
             gr.Radio(["Episodic", "Semantic", "Procedural", "Persona", "Skills"], label="Memory Type")
         with gr.Column(scale=3):
             gr.Markdown("### Search Results")
-            gr.Dataframe(
+            search_results_table = gr.Dataframe(
                 value=[],
                 headers=["ID", "Type", "Title", "Importance", "Last Recalled"],
                 interactive=False,
@@ -572,6 +763,11 @@ def _build_page_archives():
                 headers=["Dense Score", "Sparse Score", "Recency Boost", "Persona Boost", "Final"],
                 interactive=False,
             )
+
+    def _mock_archive_search():
+        return [["E-4710", "Episodic", "Framework bootstrapping sequence", "High", "Just now"]]
+
+    search_btn.click(fn=_mock_archive_search, outputs=[search_results_table])
 
 
 def _build_page_kaizen():
@@ -615,12 +811,13 @@ def _build_page_bushido():
             gr.Checkbox(label="Weekly Performance Audit", value=True)
             gr.Checkbox(label="Skill Health Check", value=True)
             gr.Checkbox(label="Persona Drift Check", value=False)
+            gr.Slider(label="Heartbeat Frequency (Minutes)", minimum=1, maximum=120, value=15, step=1)
             with gr.Row():
-                gr.Button("▶ Run Now", variant="primary", size="sm")
-                gr.Button("⏸ Pause All", variant="secondary", size="sm")
+                bushido_run_btn = gr.Button("▶ Run Now", variant="primary", size="sm")
+                bushido_pause_btn = gr.Button("⏸ Pause All", variant="secondary", size="sm")
         with gr.Column():
             gr.Markdown("### Latest Reflection Report")
-            gr.Textbox(label="Summary", value="No Bushido cycles have run yet.", lines=6, interactive=False)
+            bushido_report = gr.Textbox(label="Summary", value="No Bushido cycles have run yet.", lines=6, interactive=False)
 
     gr.Markdown("### Job Queue")
     gr.Dataframe(
@@ -629,6 +826,14 @@ def _build_page_bushido():
         interactive=False,
     )
 
+    def _mock_bushido_run():
+        return "▶ Bushido manual cycle initiated. Agents are reviewing their telemetry..."
+    def _mock_bushido_pause():
+        return "⏸ All autonomous Bushido schedules have been paused temporarily."
+
+    bushido_run_btn.click(fn=_mock_bushido_run, outputs=[bushido_report])
+    bushido_pause_btn.click(fn=_mock_bushido_pause, outputs=[bushido_report])
+
 
 def _build_page_katana():
     """The Katana — models, APIs, tools page."""
@@ -636,26 +841,41 @@ def _build_page_katana():
     gr.Markdown("*The toolset hub. Manage LLM providers, API integrations, and specialized agent tools.*")
 
     with gr.Tabs():
-        with gr.Tab("Providers"):
+        with gr.Tab("Model setup"):
             with gr.Row():
                 with gr.Column(scale=1):
-                    gr.Markdown("### Add New Provider")
-                    prov_name = gr.Textbox(label="Provider Name")
-                    prov_type = gr.Dropdown(label="Provider Type", choices=["openai", "anthropic", "local", "ollama"], value="openai")
+                    gr.Markdown("### Add Model")
+                    prov_name = gr.Dropdown(label="Provider Name", choices=["openai", "anthropic", "google", "openrouter", "local network"], value="openai")
+                    prov_link = gr.Markdown("Available Models: [OpenAI Models Documentation](https://platform.openai.com/docs/models)")
+                    
+                    with gr.Column(visible=False) as local_panel:
+                        local_app = gr.Dropdown(label="Local AI Platform", choices=["Ollama", "LM Studio", "Jan.ai", "AnythingLLM", "GPT4All", "Llamafile"], value="Ollama")
+                        with gr.Row():
+                            fetch_local_btn = gr.Button("🔄 Fetch Local Models", size="sm")
+                            local_models_dd = gr.Dropdown(label="Discovered Models", choices=["(Fetch First)"])
+
+                    prov_chosen_model = gr.Textbox(label="Chosen Model", placeholder="Paste or type model name here...")
                     prov_url = gr.Textbox(label="Base URL (optional)")
-                    prov_auth = gr.Dropdown(label="Auth Type", choices=["api_key", "none", "oauth"], value="api_key")
-                    add_prov_btn = gr.Button("➕ Add Provider", variant="primary", size="sm")
+                    with gr.Row():
+                        prov_auth = gr.Dropdown(label="Auth Type", choices=["api_key", "none", "oauth"], value="api_key")
+                        prov_key = gr.Textbox(label="API Key", type="password", placeholder="Enter key (if needed)")
+                    with gr.Row():
+                        add_prov_btn = gr.Button("➕ Save Setup", variant="primary", size="sm")
                     prov_status = gr.Markdown("", elem_id="prov-status")
                 with gr.Column(scale=3):
-                    gr.Markdown("### Configured Providers")
-                    prov_refresh_btn = gr.Button("🔄 Refresh", variant="secondary", size="sm")
+                    gr.Markdown("### Configured Models")
+                    with gr.Row():
+                        prov_refresh_btn = gr.Button("🔄 Refresh", variant="secondary", size="sm")
+                        delete_prov_btn = gr.Button("🗑 Delete Selected", variant="stop", size="sm")
                     prov_table = gr.Dataframe(
                         value=[],
-                        headers=["Provider", "Type", "Status", "Health", "Models"],
+                        headers=["Provider", "Type", "Status", "Health", "Models", "ID"],
                         interactive=False,
                     )
         with gr.Tab("Models"):
-            gr.Dataframe(
+            gr.Markdown("### Available Models")
+            models_refresh_btn = gr.Button("🔄 Refresh Models", variant="secondary", size="sm")
+            models_table = gr.Dataframe(
                 value=[],
                 headers=["Model", "Provider", "Modality", "Context", "Cost", "Status"],
                 interactive=False,
@@ -685,22 +905,114 @@ def _build_page_katana():
             )
 
     # Handlers for Katana
+    selected_prov_id = gr.State("")
+
     def _refresh_prov():
         from shogun.ui.ui_actions import list_providers
         return list_providers()
 
     prov_refresh_btn.click(fn=_refresh_prov, outputs=[prov_table])
 
-    def _add_prov(name, ptype, url, auth):
+    def _on_prov_select(evt: gr.SelectData, table_data):
+        import pandas as pd
+        if evt.index and len(evt.index) >= 1:
+            row_idx = evt.index[0]
+            if table_data is not None:
+                if isinstance(table_data, pd.DataFrame) and row_idx < len(table_data):
+                    prov_id = table_data.iloc[row_idx, 5]  # ID column
+                    prov_name = table_data.iloc[row_idx, 0]
+                    return prov_id, f"*Selected Profile: {prov_name}*"
+                elif isinstance(table_data, list) and row_idx < len(table_data):
+                    prov_id = table_data[row_idx][5]  # ID column
+                    prov_name = table_data[row_idx][0]
+                    return prov_id, f"*Selected Profile: {prov_name}*"
+        return "", ""
+
+    prov_table.select(
+        fn=_on_prov_select,
+        inputs=[prov_table],
+        outputs=[selected_prov_id, prov_status],
+    )
+
+    def _auto_provider_defaults(ptype):
+        defaults = {
+            "openai": "https://api.openai.com/v1",
+            "anthropic": "https://api.anthropic.com",
+            "openrouter": "https://openrouter.ai/api/v1",
+            "google": "https://generativelanguage.googleapis.com/v1beta",
+            "local network": "http://127.0.0.1:11434"
+        }
+        links = {
+            "openai": "Available Models: [OpenAI Models Documentation](https://platform.openai.com/docs/models)",
+            "anthropic": "Available Models: [Anthropic Models Overview](https://docs.anthropic.com/en/docs/models-overview)",
+            "google": "Available Models: [Google Gemini Models](https://ai.google.dev/gemini-api/docs/models)",
+            "openrouter": "Available Models: [OpenRouter Supported Models](https://openrouter.ai/models)",
+            "local network": "*(Fetching models directly from local server)*"
+        }
+        
+        is_local = (ptype == "local network")
+        return (
+            defaults.get(ptype, ""), 
+            links.get(ptype, ""), 
+            gr.update(visible=is_local), 
+            gr.update(visible=not is_local)
+        )
+
+    prov_name.change(fn=_auto_provider_defaults, inputs=[prov_name], outputs=[prov_url, prov_link, local_panel, prov_link])
+
+    def _auto_local_defaults(app):
+        defaults = {
+            "Ollama": "http://127.0.0.1:11434",
+            "LM Studio": "http://127.0.0.1:1234/v1",
+            "Jan.ai": "http://127.0.0.1:1337/v1",
+            "AnythingLLM": "http://127.0.0.1:3001/api/v1",
+            "GPT4All": "http://127.0.0.1:4891/v1",
+            "Llamafile": "http://127.0.0.1:8080/v1"
+        }
+        return defaults.get(app, "")
+
+    local_app.change(fn=_auto_local_defaults, inputs=[local_app], outputs=[prov_url])
+
+    def _do_fetch_local(app, url):
+        from shogun.ui.ui_actions import fetch_local_models
+        res = fetch_local_models(app, url)
+        if res:
+            return gr.update(choices=res, value=res[0])
+        return gr.update(choices=["(Failed to fetch)"])
+
+    fetch_local_btn.click(fn=_do_fetch_local, inputs=[local_app, prov_url], outputs=[local_models_dd])
+    local_models_dd.change(fn=lambda x: x, inputs=[local_models_dd], outputs=[prov_chosen_model])
+
+    def _add_prov(model_name, ptype, url, auth, key):
         from shogun.ui.ui_actions import create_provider, list_providers
-        msg = create_provider(name, ptype, url, auth)
+        # Ensure we categorize 'local network' accurately internally if needed, but the provider schema supports any string.
+        msg = create_provider(model_name, ptype, url, auth, key)
         return msg, list_providers(), ""
 
     add_prov_btn.click(
         fn=_add_prov,
-        inputs=[prov_name, prov_type, prov_url, prov_auth],
-        outputs=[prov_status, prov_table, prov_name],
+        inputs=[prov_chosen_model, prov_name, prov_url, prov_auth, prov_key],
+        outputs=[prov_status, prov_table, prov_chosen_model],
     )
+
+    def _del_prov(prov_id):
+        from shogun.ui.ui_actions import delete_provider, list_providers
+        if not prov_id:
+            return "⚠️ No provider selected.", list_providers(), ""
+        msg = delete_provider(prov_id)
+        return msg, list_providers(), ""
+
+    delete_prov_btn.click(
+        fn=_del_prov,
+        inputs=[selected_prov_id],
+        outputs=[prov_status, prov_table, selected_prov_id],
+    )
+
+    def _refresh_models():
+        from shogun.ui.ui_actions import get_models_table
+        return get_models_table()
+    
+    models_refresh_btn.click(fn=_refresh_models, outputs=[models_table])
 
     def _refresh_tools():
         from shogun.ui.ui_actions import list_tools
@@ -786,12 +1098,12 @@ def _build_page_dojo():
         gr.Textbox(label="Search Skills", scale=4)
         gr.Dropdown(label="Category", choices=["All"], scale=1)
         gr.Dropdown(label="Trust", choices=["All", "Trusted", "Unverified"], scale=1)
-        gr.Button("🔍 Search", variant="primary", size="sm", scale=1)
+        dojo_search_btn = gr.Button("🔍 Search", variant="primary", size="sm", scale=1)
 
     with gr.Row():
         with gr.Column(scale=1):
             gr.Markdown("### Available Skills")
-            gr.Dataframe(
+            dojo_table = gr.Dataframe(
                 value=[],
                 headers=["Skill", "Type", "Version", "Trust"],
                 interactive=False,
@@ -802,11 +1114,20 @@ def _build_page_dojo():
 
     gr.Markdown("### Installed Skills")
     gr.Dataframe(
-        value=[],
+        value=[
+            ["core-web-scraping", "1.4.2", "Active", "Yes", "🟢 Healthy"],
+            ["git-manager-toolkit", "0.9.1", "Active", "No", "🟢 Healthy"],
+        ],
         headers=["Skill", "Version", "Status", "Auto-update", "Last Health Check"],
         interactive=False,
     )
 
+    def _mock_dojo_search():
+        return [
+            ["advanced-data-analyzer", "processor", "2.0", "Trusted"],
+            ["github-issue-manager", "integration", "1.1", "Unverified"]
+        ]
+    dojo_search_btn.click(fn=_mock_dojo_search, outputs=[dojo_table])
 
 def _build_page_logs():
     """Logs and audit page."""
@@ -818,13 +1139,40 @@ def _build_page_logs():
         gr.Dropdown(label="Agent", choices=["All"], scale=1)
         gr.Dropdown(label="Type", choices=["All"], scale=1)
         gr.Textbox(label="Search", scale=2)
-        gr.Button("🔍 Filter", variant="primary", size="sm", scale=1)
+        log_filter_btn = gr.Button("🔍 Filter", variant="primary", size="sm", scale=1)
 
-    gr.Dataframe(
-        value=[],
+    logs_table = gr.Dataframe(
+        value=[
+            ["2026-04-14 10:00", "System", "Startup", "info", "Tenshu framework initialized"],
+            ["2026-04-14 10:01", "Shogun", "Event", "info", "Awaiting mission directives"],
+        ],
         headers=["Timestamp", "Source", "Event Type", "Severity", "Summary"],
         interactive=False,
     )
+
+    def _mock_logs_filter():
+        return [
+            ["2026-04-14 10:05", "Samurai-01", "Task", "warn", "Rate limit detected. Backing off..."],
+        ]
+    log_filter_btn.click(fn=_mock_logs_filter, outputs=[logs_table])
+
+
+def _build_page_chat():
+    """Direct Talk page."""
+    gr.Markdown("## Comms — Direct Chat")
+    gr.Markdown("*Communicate directly with your primary Shogun agent.*")
+
+    chatbot = gr.Chatbot(height=500, label="Shogun Mission Control")
+    msg = gr.Textbox(placeholder="Send directive to the Shogun...", label="Operator Input", show_label=False)
+    
+    def respond(user_msg, chat_history):
+        if not chat_history:
+            chat_history = []
+        bot_msg = f"Shogun acknowledges: '{user_msg}'. Awaiting parameters."
+        chat_history.append((user_msg, bot_msg))
+        return "", chat_history
+    
+    msg.submit(respond, [msg, chatbot], [msg, chatbot])
 
 
 def _build_page_guide():
@@ -880,6 +1228,7 @@ PAGE_BUILDERS = {
     "dojo": _build_page_dojo,
     "logs": _build_page_logs,
     "guide": _build_page_guide,
+    "chat": _build_page_chat,
 }
 
 
@@ -902,38 +1251,11 @@ def create_tenshu_ui() -> tuple:
         # Top bar
         _build_top_bar()
 
-        # Main layout
-        with gr.Row():
-            # Left nav
-            with gr.Column(scale=1, min_width=180, elem_classes=["shogun-nav"]):
-                gr.Markdown('<p class="section-header">NAVIGATION</p>')
-                nav_buttons = []
-                for label, key in NAV_ITEMS:
-                    btn = gr.Button(label, size="sm", elem_id=f"nav-{key}")
-                    nav_buttons.append((btn, key))
-
-            # Main workspace
-            with gr.Column(scale=6, elem_classes=["shogun-main"]):
-                # Create all pages as separate groups
-                page_groups = {}
-                for key, builder_fn in PAGE_BUILDERS.items():
-                    visible = key == "overview"
-                    with gr.Group(visible=visible) as group:
-                        builder_fn()
-                    page_groups[key] = group
-
-        # Wire navigation
-        def make_nav_handler(target_key):
-            def handler():
-                return [gr.update(visible=(k == target_key)) for k in PAGE_BUILDERS]
-            return handler
-
-        for btn, key in nav_buttons:
-            btn.click(
-                fn=make_nav_handler(key),
-                outputs=list(page_groups.values()),
-            )
+        # Main layout — using native gr.Tabs for reliable page switching
+        with gr.Tabs():
+            for label, key in NAV_ITEMS:
+                with gr.Tab(label):
+                    PAGE_BUILDERS[key]()
 
     return app, theme, TENSHU_CSS, dark_js
-
 

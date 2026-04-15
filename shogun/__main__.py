@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import shutil
 import sys
+import uuid
 from pathlib import Path
 
 
 def _ensure_env_file() -> None:
     """Auto-generate .env from .env.example on first run if missing."""
-    env_path = Path(".env")
+    project_root = Path(__file__).resolve().parent.parent
+    env_path = project_root / ".env"
     if env_path.exists():
         return
 
@@ -30,22 +32,22 @@ def _ensure_env_file() -> None:
             return
 
     # No example found — write sensible defaults inline
+    project_root = Path(__file__).resolve().parent.parent
     env_path.write_text(
-        "# Shogun — auto-generated defaults\n"
-        "APP_ENV=development\n"
-        "DEBUG=true\n"
-        "API_HOST=0.0.0.0\n"
-        "API_PORT=8000\n"
-        "DATABASE_URL=sqlite+aiosqlite:///./data/shogun.db\n"
-        "QDRANT_PATH=./data/qdrant\n"
-        "SECRET_KEY=change-me-to-a-random-64-char-string\n"
-        "VAULT_ENCRYPTION_KEY=change-me-to-a-fernet-base64-key\n"
-        "VAULT_PATH=./vault\n"
-        "LOG_PATH=./logs\n"
-        "CONFIG_PATH=./configs\n",
+        f"APP_ENV=development\n"
+        f"DEBUG=true\n"
+        f"API_HOST=0.0.0.0\n"
+        f"API_PORT=8888\n"
+        f"DATABASE_URL=sqlite+aiosqlite:///{project_root}/data/shogun.db\n"
+        f"QDRANT_PATH={project_root}/data/qdrant\n"
+        f"SECRET_KEY={uuid.uuid4().hex}\n"
+        f"VAULT_ENCRYPTION_KEY=change-me-to-a-fernet-base64-key\n"
+        f"VAULT_PATH={project_root}/vault\n"
+        f"LOG_PATH={project_root}/logs\n"
+        f"CONFIG_PATH={project_root}/configs\n",
         encoding="utf-8",
     )
-    print("📋 Created .env with defaults — edit it to configure API keys.")
+    print(f"📋 Created {env_path} with defaults.")
 
 
 def _auto_bootstrap() -> None:
@@ -67,51 +69,53 @@ def _auto_bootstrap() -> None:
 
 
 def main() -> None:
-    """Start Shogun — API server and Gradio UI."""
-    import gradio as gr
+    """Start Shogun — Unified FastAPI + React entrypoint."""
     import uvicorn
+    import os
 
     # Step 1: Ensure .env exists
     _ensure_env_file()
 
     # Step 2: Load config (now that .env is guaranteed)
     from shogun.config import settings
-
     settings.ensure_directories()
 
     # Step 3: Auto-bootstrap if needed
     _auto_bootstrap()
-
-    # Step 4: Build app
-    from shogun.app import create_app
-    from shogun.ui.tenshu import create_tenshu_ui
-
-    api_app = create_app()
-    tenshu, theme, css, js = create_tenshu_ui()
-
-    # Gradio 6.0: theme/css/js are passed here, not to gr.Blocks()
-    app = gr.mount_gradio_app(
-        api_app,
-        tenshu,
-        path="/",
-        theme=theme,
-        css=css,
-        js=js,
-    )
-
+    
+    # Step 4: Run Server
     print("=" * 60)
-    print("  SHOGUN — The Tenshu")
+    print("  SHOGUN — The Tenshu (FastAPI + React)")
     print("=" * 60)
-    print(f"  API:  http://localhost:{settings.api_port}/docs")
-    print(f"  UI:   http://localhost:{settings.api_port}/")
-    print("=" * 60)
-
-    uvicorn.run(
-        app,
-        host=settings.api_host,
-        port=settings.api_port,
-        log_level="info",
-    )
+    
+    app_env = os.getenv("APP_ENV", "development")
+    if app_env == "development":
+        print("  [DEVELOPMENT MODE]")
+        print("  - Backend: http://localhost:8888")
+        print("  - Frontend: http://localhost:3000 (run: npm run dev in /frontend)")
+        print("-" * 60)
+        
+        uvicorn.run(
+            "shogun.app:create_app",
+            host=settings.api_host,
+            port=settings.api_port,
+            factory=True,
+            reload=True,
+            log_level="info",
+        )
+    else:
+        print("  [PRODUCTION MODE]")
+        print(f"  - Serving Shogun at http://{settings.api_host}:{settings.api_port}")
+        print("-" * 60)
+        
+        uvicorn.run(
+            "shogun.app:create_app",
+            host=settings.api_host,
+            port=settings.api_port,
+            factory=True,
+            reload=False,
+            log_level="info",
+        )
 
 
 if __name__ == "__main__":

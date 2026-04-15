@@ -407,50 +407,148 @@ async def _list_providers() -> list[list[str]]:
     async with async_session_factory() as session:
         result = await session.execute(select(ModelProvider))
         providers = result.scalars().all()
-        return [[p.name, p.provider_type, p.status, p.health_status, "—"] for p in providers]
+        return [[p.name, p.provider_type, p.status, p.health_status, str(p.config.get("models_count", "—")), str(p.id)] for p in providers]
 
 
 def list_providers() -> list[list[str]]:
     return _run(_list_providers())
 
 
-async def _create_provider(name: str, provider_type: str, base_url: str, auth_type: str) -> str:
+async def _fetch_local_models(app: str, base_url: str) -> list[str]:
+    import urllib.request
+    import urllib.error
+    import json
+    
+    url = (base_url or "").rstrip("/")
+    models = []
+    
+    try:
+        if app == "Ollama":
+            if not url: url = "http://127.0.0.1:11434"
+            req = urllib.request.Request(f"{url}/api/tags")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+                models = [m["name"] for m in data.get("models", [])]
+                
+        else:
+            # Most other local servers (LM Studio, Jan.ai, GPT4All, Llamafile) provide OpenAI-compatible endpoints
+            if not url: url = "http://127.0.0.1:1234/v1"
+            req = urllib.request.Request(f"{url}/models")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+                models = [m["id"] for m in data.get("data", [])]
+                
+    except urllib.error.HTTPError as e:
+        print(f"HTTP fetch error: {e}")
+        models = [f"(Error {e.code}: {e.reason})"]
+    except Exception as e:
+        print(f"Fetch error: {e}")
+        models = [f"(Connection Error)"]
+        
+    if not models:
+        models = ["(No models returned)"]
+        
+    return models
+
+def fetch_local_models(app: str, base_url: str) -> list[str]:
+    return _run(_fetch_local_models(app, base_url))
+
+async def _create_provider(model_name: str, provider_type: str, base_url: str, auth_type: str, api_key: str) -> str:
     from shogun.db.models.model_provider import ModelProvider
     from sqlalchemy import select
+    import uuid
 
-    if not name or not name.strip():
-        return "⚠️ Provider name is required."
+    if not model_name or not model_name.strip():
+        return "⚠️ Please select a model first."
 
-    slug = name.lower().replace(" ", "-").replace("_", "-")
+    slug = f"{provider_type}-{model_name}".lower().replace(" ", "-").replace("_", "-").replace(":", "-").replace("/", "-")
 
     async with async_session_factory() as session:
         existing = await session.execute(
             select(ModelProvider).where(ModelProvider.slug == slug)
         )
         if existing.scalars().first():
-            return f"⚠️ A provider with slug '{slug}' already exists."
+            return f"⚠️ The model setup for '{model_name}' already exists."
+
+        config_data = {}
+        if api_key and api_key.strip():
+            config_data["api_key"] = api_key.strip()
+            
+        health = "🟢 Online"
+        status = "Active"
 
         provider = ModelProvider(
             id=uuid.uuid4(),
-            name=name.strip(),
+            name=model_name.strip(),
             slug=slug,
             provider_type=provider_type or "openai",
             base_url=base_url or None,
             auth_type=auth_type or "api_key",
             is_local=provider_type in ("ollama", "local"),
-            status="not_configured",
-            health_status="unknown",
-            config={},
+            status=status,
+            health_status=health,
+            config=config_data,
             created_by="operator",
             updated_by="operator",
         )
         session.add(provider)
         await session.commit()
-        return f"✅ Provider '{name}' added."
+        return f"✅ Model '{model_name}' saved to setups."
+
+def create_provider(model_name, provider_type, base_url, auth_type, api_key) -> str:
+    return _run(_create_provider(model_name, provider_type, base_url, auth_type, api_key))
+
+async def _delete_provider(prov_id: str) -> str:
+    from shogun.db.models.model_provider import ModelProvider
+    async with async_session_factory() as session:
+        prov = await session.get(ModelProvider, uuid.UUID(prov_id))
+        if not prov:
+            return "⚠️ Provider not found."
+        await session.delete(prov)
+        await session.commit()
+        return f"🗑️ Provider deleted."
+
+def delete_provider(prov_id: str) -> str:
+    return _run(_delete_provider(prov_id))
 
 
-def create_provider(name, provider_type, base_url, auth_type) -> str:
-    return _run(_create_provider(name, provider_type, base_url, auth_type))
+async def _get_models_table() -> list[list[str]]:
+    from shogun.db.models.model_provider import ModelProvider
+    from sqlalchemy import select
+
+    async with async_session_factory() as session:
+        result = await session.execute(select(ModelProvider))
+        providers = result.scalars().all()
+        rows = []
+        for p in providers:
+            models = p.config.get("available_models", [])
+            for m in models:
+                rows.append([m, p.name, "text", "—", "—", p.status])
+        return rows
+
+
+def get_models_table() -> list[list[str]]:
+    return _run(_get_models_table())
+
+
+async def _get_all_models_flat() -> list[str]:
+    from shogun.db.models.model_provider import ModelProvider
+    from sqlalchemy import select
+
+    async with async_session_factory() as session:
+        result = await session.execute(select(ModelProvider))
+        providers = result.scalars().all()
+        flat = []
+        for p in providers:
+            models = p.config.get("available_models", [])
+            for m in models:
+                flat.append(f"{p.name} / {m}")
+        if not flat:
+            flat = ["(Configure providers first)"]
+        return flat
+
+def get_all_models_flat() -> list[str]:
+    return _run(_get_all_models_flat())
 
 
 # ═══════════════════════════════════════════════════════════════

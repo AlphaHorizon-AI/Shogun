@@ -7,9 +7,19 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from shogun.api.deps import get_bushido_job_service, get_bushido_recommendation_service
-from shogun.schemas.bushido import BushidoJobResponse, BushidoRecommendationResponse, BushidoRunRequest, BushidoScheduleUpdate
+from shogun.api.deps import (
+    get_agent_service,
+    get_bushido_job_service,
+    get_bushido_recommendation_service,
+)
+from shogun.schemas.bushido import (
+    BushidoJobResponse,
+    BushidoRecommendationResponse,
+    BushidoRunRequest,
+    BushidoScheduleUpdate,
+)
 from shogun.schemas.common import ApiResponse
+from shogun.services.agent_service import AgentService
 from shogun.services.bushido_service import BushidoJobService, BushidoRecommendationService
 
 router = APIRouter(prefix="/bushido", tags=["Bushido"])
@@ -76,5 +86,20 @@ async def reject_recommendation(
 
 
 @router.put("/schedule", response_model=ApiResponse)
-async def update_schedule(body: BushidoScheduleUpdate):
-    return ApiResponse(data=body.model_dump())
+async def update_schedule(
+    body: BushidoScheduleUpdate,
+    svc: AgentService = Depends(get_agent_service),
+):
+    """Update the Bushido schedule for the primary Shogun."""
+    # Find primary shogun
+    from shogun.db.models.agent import Agent
+    filters = [Agent.agent_type == "shogun", Agent.is_primary == True]
+    records, _ = await svc.get_all(filters=filters)
+    
+    if not records:
+        raise HTTPException(status_code=404, detail="Primary Shogun agent not found")
+        
+    shogun = records[0]
+    updated = await svc.update(shogun.id, bushido_settings=body.model_dump())
+    
+    return ApiResponse(data=updated.bushido_settings)

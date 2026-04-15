@@ -61,3 +61,11 @@ async def disable_tool(tool_id: uuid.UUID, svc: ToolService = Depends(get_tool_s
     if not record:
         raise HTTPException(status_code=404, detail="Tool not found")
     return ApiResponse(data=ToolConnectorResponse.model_validate(record))
+
+
+@router.delete("/{tool_id}", response_model=ApiResponse)
+async def delete_tool(tool_id: uuid.UUID, svc: ToolService = Depends(get_tool_service)):
+    deleted = await svc.delete(tool_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    return ApiResponse(data={"deleted": True})

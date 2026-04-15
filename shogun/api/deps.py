@@ -13,6 +13,7 @@ from shogun.services.kaizen_service import KaizenService
 from shogun.services.agent_service import AgentService
 from shogun.services.model_service import ModelProviderService, ModelRoutingProfileService
 from shogun.services.tool_service import ToolService
+from shogun.services.samurai_role_service import SamuraiRoleService
 from shogun.services.security_service import SecurityService
 from shogun.services.skill_service import SkillService, SkillSourceService
 from shogun.services.memory_service import MemoryService
@@ -80,3 +81,7 @@ def get_mission_service(db: AsyncSession = Depends(get_db)) -> MissionService:
 
 def get_audit_service(db: AsyncSession = Depends(get_db)) -> AuditService:
     return AuditService(db)
+
+
+def get_samurai_role_service(db: AsyncSession = Depends(get_db)) -> SamuraiRoleService:
+    return SamuraiRoleService(db)

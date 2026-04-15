@@ -6,9 +6,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
+from pathlib import Path
 
 from shogun.config import settings
 
+# Calculate project root (assuming this file is in shogun/app.py)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,6 +61,7 @@ def create_app() -> FastAPI:
     from shogun.api.logs import router as logs_router
     from shogun.api.memory import router as memory_router
     from shogun.api.dojo import router as dojo_router
+    from shogun.api.samurai_roles import router as samurai_roles_router
 
     prefix = "/api/v1"
     app.include_router(system_router, prefix=prefix)
@@ -70,5 +77,30 @@ def create_app() -> FastAPI:
     app.include_router(logs_router, prefix=prefix)
     app.include_router(memory_router, prefix=prefix)
     app.include_router(dojo_router, prefix=prefix)
+    app.include_router(samurai_roles_router, prefix=prefix)
+
+    # Static serving for user uploads
+    uploads_path = Path(settings.uploads_path)
+    if uploads_path.exists():
+        app.mount("/uploads", StaticFiles(directory=str(uploads_path)), name="uploads")
+
+    # Static file serving for React frontend (anchored to PROJECT_ROOT)
+    frontend_path = PROJECT_ROOT / "frontend" / "dist"
+    if frontend_path.exists():
+        app.mount("/assets", StaticFiles(directory=str(frontend_path / "assets")), name="static")
+
+        @app.get("/{full_path:path}")
+        async def serve_frontend(full_path: str):
+            # Avoid intercepting API routes
+            if full_path.startswith("api/v1") or full_path.startswith("docs") or full_path.startswith("redoc"):
+                return None
+            
+            # Serve matching files (for icons, extra images outside assets)
+            target_file = frontend_path / full_path
+            if target_file.is_file():
+                return FileResponse(target_file)
+            
+            # Default to index.html for SPA routing
+            return FileResponse(str(frontend_path / "index.html"))
 
     return app

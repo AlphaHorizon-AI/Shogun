@@ -27,6 +27,8 @@ class Agent(Base, UUIDMixin, AuditMixin, SoftDeleteMixin):
     spawn_policy: Mapped[str] = mapped_column(String(50), nullable=False, default="manual")
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     parent_agent_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("agents.id"), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True, default="/shogun-avatar.png")
+    bushido_settings: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=lambda: {"nightly_consolidation": True, "weekly_performance_audit": True, "skill_health_check": True, "persona_drift_check": False})
     tags: Mapped[list] = mapped_column(JSONType(), nullable=False, default=list)
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
