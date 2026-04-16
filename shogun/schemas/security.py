@@ -126,3 +126,4 @@ class SecurityPostureResponse(ShogunBase):
     skill_auto_install: bool
     max_active_subagents: int
     kill_switch_enabled: bool
+    kill_switch_active: bool = False

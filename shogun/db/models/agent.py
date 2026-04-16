@@ -34,3 +34,4 @@ class Agent(Base, UUIDMixin, AuditMixin, SoftDeleteMixin):
 
     persona = relationship("Persona", lazy="joined", foreign_keys=[persona_id])
     samurai_profile = relationship("SamuraiProfile", back_populates="agent", uselist=False, lazy="joined")
+    routing_profile = relationship("ModelRoutingProfile", lazy="joined", foreign_keys=[model_routing_profile_id])

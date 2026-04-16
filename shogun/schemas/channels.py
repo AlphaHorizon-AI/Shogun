@@ -10,6 +10,8 @@ class TelegramConnectRequest(ShogunBase):
 
     bot_token: str
     mode: str = "polling"
+    allowed_chat_ids: list[str] | None = None
+    webhook_url: str | None = None
 
 
 class TelegramSettingsUpdate(ShogunBase):
@@ -17,6 +19,7 @@ class TelegramSettingsUpdate(ShogunBase):
 
     mode: str | None = None
     allowed_chat_ids: list[str] | None = None
+    webhook_url: str | None = None
 
 
 class TelegramStatusResponse(ShogunBase):
@@ -24,5 +27,9 @@ class TelegramStatusResponse(ShogunBase):
 
     connected: bool = False
     bot_username: str | None = None
+    bot_id: int | None = None
+    first_name: str | None = None
     mode: str | None = None
-    last_message_at: str | None = None
+    allowed_chat_ids: list[str] = []
+    webhook_url: str | None = None
+    last_connected_at: str | None = None

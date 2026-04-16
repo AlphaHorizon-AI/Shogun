@@ -21,8 +21,47 @@ async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown hooks."""
     # Startup
     settings.ensure_directories()
+
+    # ── Auto-heal: promote any stuck 'not_configured' providers to 'connected'
+    try:
+        from shogun.db.engine import async_session_factory
+        from sqlalchemy import text
+        async with async_session_factory() as session:
+            await session.execute(
+                text("UPDATE model_providers SET status = 'connected' WHERE status = 'not_configured'")
+            )
+            await session.commit()
+    except Exception:
+        pass  # Non-fatal — don't block startup
+
+    # ── Ensure bushido_schedules table exists and presets are seeded
+    try:
+        from shogun.services.bushido_engine import ensure_preset_schedules
+        await ensure_preset_schedules()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Bushido preset seeding failed: %s", exc)
+
+    # ── Start APScheduler and load all enabled schedules
+    try:
+        from shogun.scheduler import start_scheduler, sync_all_schedules
+        from shogun.db.engine import async_session_factory
+        await start_scheduler()
+        async with async_session_factory() as session:
+            await sync_all_schedules(session)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Bushido scheduler startup failed: %s", exc)
+
     yield
+
     # Shutdown
+    try:
+        from shogun.scheduler import stop_scheduler
+        await stop_scheduler()
+    except Exception:
+        pass
+
     from shogun.db.engine import engine
     await engine.dispose()
 
@@ -62,6 +101,7 @@ def create_app() -> FastAPI:
     from shogun.api.memory import router as memory_router
     from shogun.api.dojo import router as dojo_router
     from shogun.api.samurai_roles import router as samurai_roles_router
+    from shogun.api.kaizen import router as kaizen_router
 
     prefix = "/api/v1"
     app.include_router(system_router, prefix=prefix)
@@ -78,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(memory_router, prefix=prefix)
     app.include_router(dojo_router, prefix=prefix)
     app.include_router(samurai_roles_router, prefix=prefix)
+    app.include_router(kaizen_router, prefix=prefix)
 
     # Static serving for user uploads
     uploads_path = Path(settings.uploads_path)

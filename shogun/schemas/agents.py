@@ -20,6 +20,48 @@ class MemoryScope(ShogunBase):
     skills: bool = True
 
 
+# ── Inline nested models (must be defined before AgentResponse) ──
+
+
+class SamuraiRoleInline(ShogunBase):
+    """Lightweight inline model for nested samurai role serialization."""
+
+    id: uuid.UUID
+    slug: str
+    name: str
+    purpose: str
+    description: str | None = None
+
+
+class RoutingProfileInline(ShogunBase):
+    """Lightweight inline model for nested routing profile serialization."""
+
+    id: uuid.UUID
+    name: str
+    description: str | None = None
+    is_default: bool = False
+
+
+class SamuraiProfileResponse(ShogunBase):
+    """Response model for a Samurai capability profile."""
+
+    id: uuid.UUID
+    agent_id: uuid.UUID
+    role: str
+    role_id: uuid.UUID | None = None
+    samurai_role: SamuraiRoleInline | None = None
+    specializations: list[str]
+    allowed_task_types: list[str]
+    blocked_task_types: list[str]
+    max_parallel_jobs: int
+    auto_spawnable: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+# ── Agent ────────────────────────────────────────────────────
+
+
 class AgentCreate(ShogunBase):
     """Request body for creating a new agent (Shogun or Samurai)."""
 
@@ -69,6 +111,7 @@ class AgentResponse(ShogunBase):
     kaizen_profile_id: uuid.UUID | None = None
     security_policy_id: uuid.UUID | None = None
     model_routing_profile_id: uuid.UUID | None = None
+    routing_profile: RoutingProfileInline | None = None
     memory_scope: MemoryScope
     spawn_policy: SpawnPolicy
     is_primary: bool = False
@@ -82,14 +125,7 @@ class AgentResponse(ShogunBase):
     updated_at: datetime
 
 
-class SamuraiRoleInline(ShogunBase):
-    """Lightweight inline model for nested samurai role serialization."""
-
-    id: uuid.UUID
-    slug: str
-    name: str
-    purpose: str
-    description: str | None = None
+# ── Samurai profile CRUD ─────────────────────────────────────
 
 
 class SamuraiProfileCreate(ShogunBase):
@@ -102,20 +138,3 @@ class SamuraiProfileCreate(ShogunBase):
     blocked_task_types: list[str] = Field(default_factory=list)
     max_parallel_jobs: int = Field(default=2, ge=1, le=20)
     auto_spawnable: bool = False
-
-
-class SamuraiProfileResponse(ShogunBase):
-    """Response model for a Samurai capability profile."""
-
-    id: uuid.UUID
-    agent_id: uuid.UUID
-    role: str
-    role_id: uuid.UUID | None = None
-    samurai_role: SamuraiRoleInline | None = None
-    specializations: list[str]
-    allowed_task_types: list[str]
-    blocked_task_types: list[str]
-    max_parallel_jobs: int
-    auto_spawnable: bool
-    created_at: datetime
-    updated_at: datetime

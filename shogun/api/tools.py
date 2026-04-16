@@ -34,7 +34,11 @@ async def get_tool(tool_id: uuid.UUID, svc: ToolService = Depends(get_tool_servi
 
 @router.post("", response_model=ApiResponse, status_code=201)
 async def create_tool(body: ToolConnectorCreate, svc: ToolService = Depends(get_tool_service)):
-    record = await svc.create(**body.model_dump())
+    data = body.model_dump()
+    # Auto-promote to 'connected' if no auth is required and a URL is set
+    if data.get("auth_type", "none") == "none" and data.get("base_url"):
+        data.setdefault("status", "connected")
+    record = await svc.create(**data)
     return ApiResponse(data=ToolConnectorResponse.model_validate(record))
 
 

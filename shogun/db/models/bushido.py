@@ -1,11 +1,11 @@
-"""Bushido ORM models — jobs and recommendations."""
+"""Bushido ORM models — jobs, recommendations, and schedules."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, String, Boolean, ForeignKey
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from shogun.db.base import AuditMixin, Base, GUID, JSONType, UUIDMixin
@@ -37,3 +37,35 @@ class BushidoRecommendation(Base, UUIDMixin, AuditMixin):
     risk_level: Mapped[str] = mapped_column(String(50), nullable=False, default="low")
     approval_required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
+
+
+class BushidoSchedule(Base, UUIDMixin, AuditMixin):
+    """Persistent cron schedule definition for a recurring Bushido job."""
+
+    __tablename__ = "bushido_schedules"
+
+    # Identity
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    job_type: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # Schedule configuration
+    frequency: Mapped[str] = mapped_column(String(50), nullable=False, default="nightly")
+    schedule_time: Mapped[str | None] = mapped_column(String(10), nullable=True)   # "HH:MM"
+    schedule_days: Mapped[list | None] = mapped_column(JSONType(), nullable=True)   # ["mon","wed"]
+    schedule_day: Mapped[int | None] = mapped_column(Integer, nullable=True)        # day-of-month
+    minute_offset: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # for hourly
+    schedule_datetime: Mapped[str | None] = mapped_column(String(50), nullable=True) # ISO for one-off
+
+    # Execution parameters
+    scope: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=dict)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    all_agents: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    dry_run: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    auto_approve: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    task_instruction: Mapped[str | None] = mapped_column(String(4000), nullable=True)
+
+    # State
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_preset: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -105,6 +105,7 @@ class MemoryRecordCreate(ShogunBase):
     agent_id: uuid.UUID
     title: str
     content: str
+    summary: str | None = None
     # Salience fields
     relevance_score: float = Field(default=0.7, ge=0.0, le=1.0)
     importance_score: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -137,6 +138,8 @@ class MemoryRecordResponse(ShogunBase):
     source_type: str | None = None
     source_ref_id: uuid.UUID | None = None
     title: str
+    content: str = ""
+    summary: str | None = None
     # Salience scores
     relevance_score: float
     importance_score: float

@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { 
-  Cpu, 
-  Wrench, 
-  ArrowRightLeft, 
-  Plus, 
-  Save, 
-  CheckCircle2, 
+  Cpu,
+  Wrench,
+  ArrowRightLeft,
+  Plus,
+  Save,
+  CheckCircle2,
   AlertCircle,
   ExternalLink,
   ShieldCheck,
@@ -28,11 +28,18 @@ import {
   Download,
   Layers,
   Folder,
+  MessageCircle,
+  Send,
+  Wifi,
+  WifiOff,
+  Check,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import axios from 'axios';
 import { cn } from '../lib/utils';
 
-type TabType = 'providers' | 'tools' | 'routing';
+type TabType = 'providers' | 'tools' | 'routing' | 'telegram';
 type RegisterMode = 'quick' | 'manual';
 
 // ── Documentation links for cloud providers ─────────────────────
@@ -41,6 +48,17 @@ const PROVIDER_DOCS: Record<string, { label: string; url: string }> = {
   openai:     { label: 'OpenAI Model Reference',    url: 'https://platform.openai.com/docs/models' },
   anthropic:  { label: 'Claude Model Overview',     url: 'https://platform.claude.com/docs/en/about-claude/models/overview' },
   openrouter: { label: 'OpenRouter Model Catalog',  url: 'https://openrouter.ai/models' },
+};
+
+const PROVIDER_BASE_URLS: Record<string, string> = {
+  openai:     'https://api.openai.com/v1',
+  google:     'https://generativelanguage.googleapis.com/v1beta/openai',
+  anthropic:  'https://api.anthropic.com/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+  ollama:     'http://localhost:11434',
+  lmstudio:   'http://localhost:1234/v1',
+  local:      'http://localhost:1234/v1',
+  custom:     '',
 };
 
 const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'local'];
@@ -214,6 +232,18 @@ const riskColor = (r: RiskLevelVal) => {
 
 export function Katana() {
   const [activeTab, setActiveTab] = useState<TabType>('providers');
+
+  // ── Telegram state ──────────────────────────────────────────────
+  const [tgStatus, setTgStatus]         = useState<any>(null);
+  const [tgToken, setTgToken]           = useState('');
+  const [tgMode, setTgMode]             = useState<'polling' | 'webhook'>('polling');
+  const [tgWebhook, setTgWebhook]       = useState('');
+  const [tgChatIds, setTgChatIds]       = useState('');
+  const [tgTestChat, setTgTestChat]     = useState('');
+  const [tgSaving, setTgSaving]         = useState(false);
+  const [tgTesting, setTgTesting]       = useState(false);
+  const [tgTestResult, setTgTestResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
+  const [tgShowToken, setTgShowToken]   = useState(false);
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
 
@@ -227,9 +257,10 @@ export function Katana() {
     name: '',
     provider_type: 'openai',
     api_key: '',
-    base_url: '',
+    base_url: PROVIDER_BASE_URLS['openai'],
     is_active: true
   });
+  const [baseUrlOverride, setBaseUrlOverride] = useState(false);
   const [localModelPath, setLocalModelPath]   = useState('');
   const [scanningModels, setScanningModels]   = useState(false);
 
@@ -246,6 +277,7 @@ export function Katana() {
   const [apiSearch, setApiSearch]               = useState('');
   const [selectedApi, setSelectedApi]           = useState<PublicApi | null>(null);
   const [registerSaving, setRegisterSaving]     = useState(false);
+  const [quickApiKey, setQuickApiKey]           = useState('');
   const [newTool, setNewTool] = useState<{
     name: string;
     slug: string;
@@ -311,6 +343,75 @@ export function Katana() {
       console.error('Error fetching Katana data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // \u2500\u2500 Telegram handlers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  const fetchTgStatus = async () => {
+    try {
+      const res = await axios.get('/api/v1/channels/telegram/status');
+      const d = res.data.data;
+      setTgStatus(d);
+      if (d?.mode) setTgMode(d.mode);
+      if (d?.allowed_chat_ids?.length) setTgChatIds(d.allowed_chat_ids.join(', '));
+      if (d?.webhook_url) setTgWebhook(d.webhook_url || '');
+    } catch { /* ignore */ }
+  };
+
+  const handleTgConnect = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tgToken.trim()) return;
+    setTgSaving(true);
+    try {
+      const res = await axios.post('/api/v1/channels/telegram/connect', {
+        bot_token: tgToken.trim(),
+        mode: tgMode,
+        allowed_chat_ids: tgChatIds.split(',').map((s: string) => s.trim()).filter(Boolean),
+        webhook_url: tgMode === 'webhook' ? tgWebhook.trim() : null,
+      });
+      const d = res.data.data;
+      setTgStatus(d);
+      if (!d.connected) {
+        setStatusMessage({ type: 'error', text: d.error || 'Connection failed.' });
+      } else {
+        setStatusMessage({ type: 'success', text: `Connected as @${d.bot_username}` });
+        setTgToken('');
+      }
+    } catch {
+      setStatusMessage({ type: 'error', text: 'Failed to connect Telegram bot.' });
+    } finally {
+      setTgSaving(false);
+      setTimeout(() => setStatusMessage(null), 4000);
+    }
+  };
+
+  const handleTgTest = async () => {
+    if (!tgTestChat.trim()) return;
+    setTgTesting(true);
+    setTgTestResult(null);
+    try {
+      const res = await axios.post('/api/v1/channels/telegram/test', { chat_id: tgTestChat.trim() });
+      setTgTestResult(res.data.data);
+    } catch {
+      setTgTestResult({ ok: false, error: 'Request failed.' });
+    } finally {
+      setTgTesting(false);
+    }
+  };
+
+  const handleTgDisconnect = async () => {
+    if (!confirm('Disconnect Telegram bot? The stored token will be removed.')) return;
+    try {
+      await axios.delete('/api/v1/channels/telegram/disconnect');
+      setTgStatus(null);
+      setTgChatIds('');
+      setTgWebhook('');
+      setTgTestResult(null);
+      setStatusMessage({ type: 'success', text: 'Telegram bot disconnected.' });
+    } catch {
+      setStatusMessage({ type: 'error', text: 'Failed to disconnect.' });
+    } finally {
+      setTimeout(() => setStatusMessage(null), 3000);
     }
   };
 
@@ -414,21 +515,37 @@ export function Katana() {
     e.preventDefault();
     setSaving(true);
     try {
-      await axios.post('/api/v1/model-providers', newProvider);
+      const slug = toSlug(newProvider.name);
+      const payload: Record<string, any> = {
+        name:          newProvider.name,
+        provider_type: newProvider.provider_type,
+        slug,
+        base_url:      newProvider.base_url || null,
+        is_local:      isLocalProvider(newProvider.provider_type),
+        auth_type:     isLocalProvider(newProvider.provider_type) ? 'none' : 'api_key',
+        config:        newProvider.api_key ? { api_key: newProvider.api_key } : {},
+      };
+      await axios.post('/api/v1/model-providers', payload);
       setStatusMessage({ type: 'success', text: 'Model provider added successfully.' });
-      setNewProvider({ name: '', provider_type: 'openai', api_key: '', base_url: '', is_active: true });
+      setNewProvider({ name: '', provider_type: 'openai', api_key: '', base_url: PROVIDER_BASE_URLS['openai'], is_active: true });
+      setBaseUrlOverride(false);
       fetchData();
-    } catch {
-      setStatusMessage({ type: 'error', text: 'Failed to add provider.' });
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail
+        : Array.isArray(detail) ? detail.map((d: any) => `${d.loc?.slice(-1)[0]}: ${d.msg}`).join(', ')
+        : 'Failed to add provider.';
+      setStatusMessage({ type: 'error', text: msg });
     } finally {
       setSaving(false);
-      setTimeout(() => setStatusMessage(null), 3000);
+      setTimeout(() => setStatusMessage(null), 5000);
     }
   };
 
-  const handleToggleProvider = async (id: string, currentStatus: boolean) => {
+  const handleToggleProvider = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'connected' ? 'disabled' : 'connected';
     try {
-      await axios.patch(`/api/v1/model-providers/${id}`, { is_active: !currentStatus });
+      await axios.patch(`/api/v1/model-providers/${id}`, { status: newStatus });
       fetchData();
     } catch (error) {
       console.error('Error toggling provider:', error);
@@ -463,7 +580,7 @@ export function Katana() {
           base_url:       selectedApi.base_url,
           auth_type:      selectedApi.auth_type,
           risk_level:     selectedApi.risk_level,
-          config:         {},
+          config:         quickApiKey ? { api_key: quickApiKey } : {},
         }
       : {
           name:           newTool.name,
@@ -482,6 +599,7 @@ export function Katana() {
       setShowRegisterTool(false);
       setSelectedApi(null);
       setApiSearch('');
+      setQuickApiKey('');
       setNewTool({ name: '', slug: '', base_url: '', connector_type: 'api', auth_type: 'api_key', risk_level: 'low' });
       fetchData();
     } catch {
@@ -653,10 +771,13 @@ export function Katana() {
 
       {/* ── Tab bar ────────────────────────────────────────────── */}
       <div className="flex border-b border-shogun-border">
-        {(['providers', 'tools', 'routing'] as TabType[]).map((tab) => (
+        {(['providers', 'tools', 'routing', 'telegram'] as TabType[]).map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => {
+              setActiveTab(tab);
+              if (tab === 'telegram' && !tgStatus) fetchTgStatus();
+            }}
             className={cn(
               "px-6 py-3 text-sm font-bold uppercase tracking-widest transition-all relative",
               activeTab === tab ? "text-shogun-blue" : "text-shogun-subdued hover:text-shogun-text"
@@ -665,6 +786,15 @@ export function Katana() {
             {tab === 'providers' && 'Model Providers'}
             {tab === 'tools'     && 'Toolbox & APIs'}
             {tab === 'routing'   && 'Logic Routing'}
+            {tab === 'telegram'  && (
+              <span className="flex items-center gap-1.5">
+                <MessageCircle className="w-3.5 h-3.5" />
+                Telegram
+                {tgStatus?.connected && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
+                )}
+              </span>
+            )}
             {activeTab === tab && (
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-shogun-blue shadow-[0_0_10px_rgba(74,140,199,0.5)]" />
             )}
@@ -690,7 +820,16 @@ export function Katana() {
                     <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Provider</label>
                     <select
                       value={newProvider.provider_type}
-                      onChange={(e) => setNewProvider({...newProvider, provider_type: e.target.value, name: '', base_url: ''})}
+                      onChange={(e) => {
+                        const type = e.target.value;
+                        setNewProvider({
+                          ...newProvider,
+                          provider_type: type,
+                          name: '',
+                          base_url: PROVIDER_BASE_URLS[type] || '',
+                        });
+                        setBaseUrlOverride(false);
+                      }}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
                     >
                       <optgroup label="Cloud Providers">
@@ -775,22 +914,45 @@ export function Katana() {
                     </div>
                   )}
 
-                  {/* Base URL */}
+                  {/* Base URL — pre-filled, editable on override */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">
-                      Base URL {isLocal ? '' : '(Optional)'}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder={
-                        newProvider.provider_type === 'ollama'   ? 'http://localhost:11434' :
-                        newProvider.provider_type === 'lmstudio' ? 'http://localhost:1234'  :
-                        'https://api.openai.com/v1'
-                      }
-                      value={newProvider.base_url}
-                      onChange={(e) => setNewProvider({...newProvider, base_url: e.target.value})}
-                      className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
-                    />
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">
+                        Base URL {isLocal ? '' : '(Auto)'}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setBaseUrlOverride(v => !v)}
+                        className={cn(
+                          "text-[9px] font-bold uppercase tracking-widest transition-colors",
+                          baseUrlOverride ? "text-shogun-gold" : "text-shogun-blue hover:text-shogun-gold"
+                        )}
+                      >
+                        {baseUrlOverride ? '↩ Reset' : '✎ Override'}
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        readOnly={!baseUrlOverride}
+                        placeholder={PROVIDER_BASE_URLS[newProvider.provider_type] || 'https://...'}
+                        value={newProvider.base_url}
+                        onChange={(e) => setNewProvider({...newProvider, base_url: e.target.value})}
+                        className={cn(
+                          "w-full bg-[#050508] border rounded-lg p-3 text-sm outline-none font-mono text-xs transition-all",
+                          baseUrlOverride
+                            ? "border-shogun-gold text-shogun-gold focus:ring-1 focus:ring-shogun-gold/20 cursor-text"
+                            : "border-shogun-border text-shogun-subdued cursor-default select-none"
+                        )}
+                      />
+                      {!baseUrlOverride && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <span className="text-[8px] text-green-400 font-bold uppercase border border-green-400/20 bg-green-400/5 px-1.5 py-0.5 rounded">
+                            Default
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Model Location — local providers only */}
@@ -1007,6 +1169,7 @@ export function Katana() {
                   {providers.map((p) => {
                     const color   = getProviderColor(p.provider_type);
                     const docLink = PROVIDER_DOCS[p.provider_type];
+                    const isActive = p.status === 'connected';
                     return (
                       <div key={p.id} className="shogun-card group hover:border-shogun-blue/50 transition-all">
                         <div className="flex items-center justify-between">
@@ -1017,9 +1180,9 @@ export function Katana() {
                             <div>
                               <div className="flex items-center gap-2">
                                 <h4 className="font-bold text-shogun-text">{p.name}</h4>
-                                {p.is_active
-                                  ? <span className="text-[8px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded border border-green-500/20 font-bold uppercase">Online</span>
-                                  : <span className="text-[8px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded border border-red-500/20 font-bold uppercase">Offline</span>
+                                {isActive
+                                  ? <span className="text-[8px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded border border-green-500/20 font-bold uppercase">Active</span>
+                                  : <span className="text-[8px] bg-shogun-subdued/10 text-shogun-subdued px-1.5 py-0.5 rounded border border-shogun-border font-bold uppercase">{p.status ?? 'Not configured'}</span>
                                 }
                               </div>
                               <div className="flex items-center gap-2 mt-1">
@@ -1043,11 +1206,11 @@ export function Katana() {
                               </a>
                             )}
                             <button
-                              onClick={() => handleToggleProvider(p.id, p.is_active)}
+                              onClick={() => handleToggleProvider(p.id, p.status)}
                               className="p-2 hover:bg-shogun-card rounded-lg transition-colors text-shogun-subdued hover:text-shogun-text"
-                              title={p.is_active ? 'Disable' : 'Enable'}
+                              title={isActive ? 'Disable' : 'Enable'}
                             >
-                              {p.is_active ? <Zap className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                              {isActive ? <Zap className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
                             </button>
                             <button
                               onClick={() => handleDeleteProvider(p.id, p.name)}
@@ -1144,7 +1307,7 @@ export function Katana() {
                             <button
                               key={api.name}
                               type="button"
-                              onClick={() => setSelectedApi(api)}
+                              onClick={() => { setSelectedApi(api); setQuickApiKey(''); }}
                               className={cn(
                                 "w-full text-left px-3 py-2.5 rounded-lg border transition-all group flex items-center justify-between gap-2",
                                 selectedApi?.name === api.name
@@ -1198,6 +1361,27 @@ export function Katana() {
                                 Find documentation →
                               </a>
                             </div>
+
+                            {/* API Key field — shown only when auth is required */}
+                            {selectedApi.auth_type !== 'none' && (
+                              <div className="space-y-1.5 pt-1 border-t border-shogun-border/50">
+                                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest flex items-center gap-1.5">
+                                  <ShieldCheck className="w-3 h-3 text-shogun-gold" />
+                                  API Key
+                                  <span className="text-shogun-subdued/50 normal-case font-normal tracking-normal">({selectedApi.auth_type.replace('_', ' ')})</span>
+                                </label>
+                                <input
+                                  type="password"
+                                  placeholder="Paste your API key here…"
+                                  value={quickApiKey}
+                                  onChange={e => setQuickApiKey(e.target.value)}
+                                  className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-gold focus:ring-1 focus:ring-shogun-gold/20 outline-none font-mono text-xs transition-all"
+                                />
+                                <p className="text-[9px] text-shogun-subdued/60">
+                                  Stored locally in the connector config. Never sent to third parties.
+                                </p>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="flex-1 flex flex-col items-center justify-center text-center bg-[#050508] border border-dashed border-shogun-border rounded-xl p-8 gap-3">
@@ -1766,6 +1950,181 @@ export function Katana() {
             )}
           </div>
         )}
+
+        {/* ══ TELEGRAM TAB ══════════════════════════════════════════ */}
+        {activeTab === 'telegram' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
+                  <MessageCircle className="w-5 h-5 text-shogun-blue" /> Telegram Channel
+                </h3>
+                <p className="text-xs text-shogun-subdued mt-1">Connect a Telegram bot to chat with Shogun directly from your phone.</p>
+              </div>
+              {tgStatus?.connected && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-green-400/10 border border-green-400/30 rounded-lg">
+                  <Wifi className="w-3.5 h-3.5 text-green-400" />
+                  <span className="text-xs font-bold text-green-400">Connected</span>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+              {/* Left: form */}
+              <div className="lg:col-span-3 space-y-5">
+
+                {tgStatus?.connected && (
+                  <div className="shogun-card bg-green-400/5 border-green-400/20 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-green-400/10 border border-green-400/30 flex items-center justify-center">
+                        <MessageCircle className="w-6 h-6 text-green-400" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-shogun-text">@{tgStatus.bot_username}</p>
+                        <p className="text-[10px] text-shogun-subdued mt-0.5">Bot ID: {tgStatus.bot_id} · {tgStatus.first_name}</p>
+                        <p className="text-[10px] text-shogun-subdued">
+                          Mode: <span className="font-bold uppercase text-green-400">{tgStatus.mode}</span>
+                          {tgStatus.last_connected_at && <> · {new Date(tgStatus.last_connected_at).toLocaleDateString()}</>}
+                        </p>
+                      </div>
+                    </div>
+                    <button onClick={handleTgDisconnect}
+                      className="flex items-center gap-1.5 px-3 py-1.5 border border-red-400/30 text-red-400/70 hover:text-red-400 hover:border-red-400/50 rounded-lg text-xs font-bold transition-all">
+                      <WifiOff className="w-3.5 h-3.5" /> Disconnect
+                    </button>
+                  </div>
+                )}
+
+                <div className="shogun-card space-y-5">
+                  <h4 className="text-sm font-bold text-shogun-text">
+                    {tgStatus?.connected ? 'Update Configuration' : 'Connect a Bot'}
+                  </h4>
+                  <form onSubmit={handleTgConnect} className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest flex items-center gap-1.5">
+                        <ShieldCheck className="w-3 h-3 text-shogun-gold" /> Bot Token *
+                      </label>
+                      <div className="relative">
+                        <input type={tgShowToken ? 'text' : 'password'} required
+                          placeholder={tgStatus?.connected ? 'Enter new token to re-connect…' : '123456789:AAExxxxxxxx'}
+                          value={tgToken} onChange={e => setTgToken(e.target.value)}
+                          className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 pr-10 text-sm focus:border-shogun-blue outline-none font-mono" />
+                        <button type="button" onClick={() => setTgShowToken(v => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-shogun-subdued hover:text-shogun-text">
+                          {tgShowToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                      <p className="text-[9px] text-shogun-subdued/60">
+                        Get a token from <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-shogun-blue hover:underline">@BotFather</a>.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Update Mode</label>
+                      <div className="flex gap-2">
+                        {(['polling', 'webhook'] as const).map(m => (
+                          <button key={m} type="button" onClick={() => setTgMode(m)}
+                            className={cn('flex-1 py-2 rounded-lg border text-xs font-bold uppercase tracking-widest transition-all',
+                              tgMode === m ? 'bg-shogun-blue text-white border-shogun-blue' : 'border-shogun-border text-shogun-subdued hover:border-shogun-blue/40')}>
+                            {m === 'polling' ? '🔄 Polling' : '🌐 Webhook'}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[9px] text-shogun-subdued/60">
+                        {tgMode === 'polling' ? 'Shogun polls Telegram. Simple, no public URL needed.' : 'Telegram pushes to your server. Requires a public HTTPS URL.'}
+                      </p>
+                    </div>
+
+                    {tgMode === 'webhook' && (
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Webhook URL *</label>
+                        <input type="url" required placeholder="https://yourdomain.com/telegram/webhook"
+                          value={tgWebhook} onChange={e => setTgWebhook(e.target.value)}
+                          className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none font-mono" />
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest flex items-center gap-1.5">
+                        <Shield className="w-3 h-3 text-shogun-gold" /> Allowed Chat IDs
+                        <span className="font-normal normal-case tracking-normal text-shogun-subdued/50">(optional whitelist)</span>
+                      </label>
+                      <input type="text" placeholder="e.g. 123456789, -987654321"
+                        value={tgChatIds} onChange={e => setTgChatIds(e.target.value)}
+                        className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none font-mono" />
+                      <p className="text-[9px] text-shogun-subdued/60">Comma-separated IDs. Leave empty to allow all. Negative IDs = groups.</p>
+                    </div>
+
+                    <button type="submit" disabled={tgSaving || !tgToken.trim()}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-shogun-blue hover:bg-shogun-blue/90 disabled:opacity-40 text-white font-bold rounded-lg text-sm transition-all">
+                      {tgSaving
+                        ? <><RefreshCw className="w-4 h-4 animate-spin" /> Connecting…</>
+                        : <><MessageCircle className="w-4 h-4" /> {tgStatus?.connected ? 'Update Connection' : 'Connect Bot'}</>}
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              {/* Right: test + guide */}
+              <div className="lg:col-span-2 space-y-5">
+                <div className="shogun-card space-y-4">
+                  <h4 className="text-sm font-bold text-shogun-text flex items-center gap-2">
+                    <Send className="w-4 h-4 text-shogun-blue" /> Test Message
+                  </h4>
+                  {!tgStatus?.connected
+                    ? <p className="text-center py-6 text-shogun-subdued text-xs italic">Connect a bot first.</p>
+                    : (
+                      <div className="space-y-3">
+                        <input type="text" placeholder="Your chat ID, e.g. 123456789"
+                          value={tgTestChat} onChange={e => setTgTestChat(e.target.value)}
+                          className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-blue outline-none font-mono" />
+                        <button onClick={handleTgTest} disabled={tgTesting || !tgTestChat.trim()}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 border border-shogun-blue/40 bg-shogun-blue/10 hover:bg-shogun-blue/20 text-shogun-blue disabled:opacity-40 font-bold rounded-lg text-sm transition-all">
+                          {tgTesting ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sending…</> : <><Send className="w-3.5 h-3.5" /> Send Test</>}
+                        </button>
+                        {tgTestResult && (
+                          <div className={cn('p-3 rounded-lg text-xs flex items-start gap-2',
+                            tgTestResult.ok ? 'bg-green-400/10 border border-green-400/20 text-green-400' : 'bg-red-400/10 border border-red-400/20 text-red-400')}>
+                            {tgTestResult.ok ? <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
+                            {tgTestResult.message || tgTestResult.error}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+                </div>
+
+                <div className="shogun-card space-y-4">
+                  <h4 className="text-sm font-bold text-shogun-text flex items-center gap-2">
+                    <ChevronRight className="w-4 h-4 text-shogun-gold" /> Quick Setup
+                  </h4>
+                  <ol className="space-y-3">
+                    {[
+                      { n: '1', t: 'Message @BotFather on Telegram', href: 'https://t.me/BotFather' },
+                      { n: '2', t: 'Send /newbot — follow the prompts' },
+                      { n: '3', t: 'Copy the bot token BotFather gives you' },
+                      { n: '4', t: 'Paste above and click Connect Bot' },
+                      { n: '5', t: 'Add your chat ID to the whitelist' },
+                    ].map(({ n, t, href }) => (
+                      <li key={n} className="flex items-start gap-3">
+                        <span className="w-5 h-5 rounded-full bg-shogun-blue/20 border border-shogun-blue/40 text-shogun-blue text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">{n}</span>
+                        <span className="text-xs text-shogun-subdued leading-relaxed">
+                          {t}{href && <> — <a href={href} target="_blank" rel="noreferrer" className="text-shogun-blue hover:underline">{href.split('//')[1]}</a></>}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="pt-2 border-t border-shogun-border">
+                    <p className="text-[9px] text-shogun-subdued/60">
+                      Find your chat ID via <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" className="text-shogun-blue hover:underline">@userinfobot</a>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

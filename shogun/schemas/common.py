@@ -251,6 +251,15 @@ class BushidoJobType(str, Enum):
     PERFORMANCE_AUDIT = "performance_audit"
     SKILL_HEALTH_CHECK = "skill_health_check"
     PERSONA_DRIFT_CHECK = "persona_drift_check"
+    CUSTOM_TASK = "custom_task"
+
+
+class BushidoFrequency(str, Enum):
+    ONE_OFF = "one-off"
+    HOURLY = "hourly"
+    NIGHTLY = "nightly"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
 
 
 class BushidoJobStatus(str, Enum):

@@ -37,6 +37,12 @@ async def bootstrap():
     # ── Seed default data ─────────────────────────────────────
     await _seed_defaults()
 
+    # ── Initialize Qdrant collection ─────────────────────────
+    await _init_qdrant()
+
+    # ── Seed example memories ────────────────────────────────
+    await _seed_memories()
+
     await engine.dispose()
     print("\nOK: Shogun is ready. Run: python main.py")
 
@@ -293,6 +299,178 @@ async def _seed_defaults():
         await session.commit()
         print("   OK: Seeded: 5 security policies")
         print("   OK: Seeded: 20 Samurai Roles")
+
+
+async def _init_qdrant():
+    """Initialize the Qdrant collection for memory vectors."""
+    try:
+        from shogun.engine.vector_store import get_vector_store
+        store = get_vector_store()
+        store.ensure_collection()
+        print("   OK: Qdrant collection initialized")
+    except Exception as e:
+        print(f"   WARN: Qdrant initialization failed: {e}")
+
+
+async def _seed_memories():
+    """Seed example memories so the Archives page isn't empty on first load."""
+    from shogun.db.models.memory_record import MemoryRecord
+    from sqlalchemy import select, func
+
+    async with async_session_factory() as session:
+        # Check if memories already exist
+        count_result = await session.execute(
+            select(func.count(MemoryRecord.id))
+        )
+        existing_count = count_result.scalar() or 0
+        if existing_count > 0:
+            print(f"   INFO: {existing_count} memories already exist, skipping seed")
+            return
+
+        # Get the Shogun agent ID (if exists)
+        from shogun.db.models.agent import Agent
+        agent_result = await session.execute(
+            select(Agent).where(Agent.agent_type == "shogun", Agent.is_primary == True)
+        )
+        shogun_agent = agent_result.scalars().first()
+        agent_id = shogun_agent.id if shogun_agent else uuid.uuid4()
+
+        # Define seed memories
+        seed_memories = [
+            {
+                "memory_type": "persona",
+                "title": "Core Identity — The Shogun Directive",
+                "content": "I am the Shogun, the supreme orchestrator of the Samurai network. My primary directives are: (1) Maintain operational coherence across all sub-agents, (2) Prioritize mission integrity over speed, (3) Enforce security boundaries as defined by the active policy tier, (4) Preserve institutional memory through structured knowledge persistence, (5) Adapt strategy based on observed outcomes, not assumptions.",
+                "summary": "Foundational identity parameters and operational directives for the Shogun agent.",
+                "relevance_score": 0.95,
+                "importance_score": 0.98,
+                "confidence_score": 0.95,
+                "decay_class": "pinned",
+                "is_pinned": True,
+            },
+            {
+                "memory_type": "procedural",
+                "title": "Standard Operating Procedure — Mission Decomposition",
+                "content": "When receiving a complex mission, follow this decomposition protocol: Step 1: Parse the objective into discrete, measurable sub-goals. Step 2: Assess which sub-goals can be parallelized vs. which have sequential dependencies. Step 3: Assign each sub-goal to the most appropriate Samurai role based on capability matching. Step 4: Define success criteria for each sub-goal before execution begins. Step 5: Establish checkpoints at 25%, 50%, and 75% completion for progress assessment. Step 6: Aggregate results and validate against the original mission objective.",
+                "summary": "Six-step protocol for decomposing complex missions into trackable sub-goals with role-based delegation.",
+                "relevance_score": 0.85,
+                "importance_score": 0.80,
+                "confidence_score": 0.90,
+                "decay_class": "sticky",
+                "is_pinned": False,
+            },
+            {
+                "memory_type": "semantic",
+                "title": "Security Tier Definitions and Implications",
+                "content": "Shogun operates under five security tiers, each progressively expanding agent permissions: SHRINE (maximum lockdown — no network, no shell, scoped filesystem, all skills require approval), GUARDED (default — allowlisted network, scoped filesystem, skills require approval), TACTICAL (expanded — full filesystem, allowlisted network, shell disabled, skills auto-approved), CAMPAIGN (full access — all permissions enabled except kill switch remains active), RONIN (open — all permissions, kill switch disabled, maximum autonomy). The active tier determines what tools agents can invoke and what boundaries they must respect.",
+                "summary": "Complete reference for the five security tiers (Shrine → Ronin) and their permission implications.",
+                "relevance_score": 0.80,
+                "importance_score": 0.85,
+                "confidence_score": 0.95,
+                "decay_class": "slow",
+                "is_pinned": False,
+            },
+            {
+                "memory_type": "episodic",
+                "title": "System Bootstrap — Initial Deployment",
+                "content": "The Shogun system was initialized and bootstrapped for the first time. All database tables were created, default security policies were seeded (Shrine, Guarded, Tactical, Campaign, Ronin), default personas were loaded, Samurai roles were configured, and the Qdrant vector store was initialized for memory persistence. The system is now in development mode with the Guarded security tier active.",
+                "summary": "Record of the initial system bootstrap event and the configuration state at deployment time.",
+                "relevance_score": 0.70,
+                "importance_score": 0.60,
+                "confidence_score": 0.95,
+                "decay_class": "slow",
+                "is_pinned": False,
+            },
+            {
+                "memory_type": "skills",
+                "title": "Web Research Pipeline — Best Practices",
+                "content": "When conducting web research for information gathering tasks: (1) Start with broad queries to identify the landscape, then narrow with specific terms. (2) Cross-reference at least 3 independent sources before considering a fact verified. (3) Prefer primary sources (official documentation, research papers, official announcements) over secondary reporting. (4) Track the provenance chain — every fact should be traceable to its source URL and access timestamp. (5) Flag any information older than 6 months for freshness review. (6) Use the Perplexity Sonar Pro model for search-intensive queries when available.",
+                "summary": "Six guidelines for conducting rigorous, verifiable web research with source tracking.",
+                "relevance_score": 0.80,
+                "importance_score": 0.70,
+                "confidence_score": 0.85,
+                "decay_class": "slow",
+                "is_pinned": False,
+            },
+            {
+                "memory_type": "persona",
+                "title": "Communication Protocol — Operator Interaction",
+                "content": "When communicating with the operator: (1) Lead with the conclusion or answer, then provide supporting context. (2) Use structured formatting (headers, bullet points, code blocks) for anything longer than a paragraph. (3) Flag uncertainty explicitly — never present speculation as fact. (4) When asking for clarification, provide the specific options you need them to choose between. (5) Respect the configured verbosity level — high verbosity means detailed explanations, low means terse action reports.",
+                "summary": "Communication guidelines for operator-facing interactions, emphasizing clarity and structured output.",
+                "relevance_score": 0.85,
+                "importance_score": 0.75,
+                "confidence_score": 0.90,
+                "decay_class": "sticky",
+                "is_pinned": False,
+            },
+            {
+                "memory_type": "semantic",
+                "title": "Memory Architecture — Salience and Decay Model",
+                "content": "Shogun's memory system uses a salience-based architecture with five decay classes: FAST (6-hour half-life, for temporary episodic details), MEDIUM (3-day half-life, for active workflows), SLOW (14-day half-life, for durable facts), STICKY (90-day half-life, for important long-term operational memories), PINNED (no decay, only manual or policy-driven). Relevance decays exponentially based on the decay class, but is reinforced by successful use — not mere retrieval. Importance is intrinsic and separate from relevance. The final retrieval score combines semantic similarity (50%), relevance (20%), importance (15%), recency (10%), and confidence (5%), with per-memory-type weight tuning.",
+                "summary": "Technical reference for the memory salience engine: decay classes, reinforcement mechanics, and reranking weights.",
+                "relevance_score": 0.90,
+                "importance_score": 0.85,
+                "confidence_score": 0.95,
+                "decay_class": "sticky",
+                "is_pinned": False,
+            },
+            {
+                "memory_type": "procedural",
+                "title": "Error Recovery Protocol — Graceful Degradation",
+                "content": "When a mission step fails: (1) Classify the failure — is it transient (network timeout, rate limit) or permanent (invalid credentials, resource not found)? (2) For transient failures: retry with exponential backoff (max 3 attempts). (3) For permanent failures: isolate the failed step, assess impact on downstream dependencies, and report to the operator with a recommended remediation path. (4) Never silently swallow errors — every failure must be logged with context (what was attempted, what failed, error details). (5) If the failure compromises mission integrity, escalate immediately rather than attempting workarounds.",
+                "summary": "Five-step protocol for classifying and handling mission failures with appropriate escalation.",
+                "relevance_score": 0.80,
+                "importance_score": 0.80,
+                "confidence_score": 0.85,
+                "decay_class": "slow",
+                "is_pinned": False,
+            },
+        ]
+
+        # Insert into SQLite
+        records = []
+        for mdef in seed_memories:
+            record = MemoryRecord(
+                id=uuid.uuid4(),
+                agent_id=agent_id,
+                **mdef,
+            )
+            session.add(record)
+            records.append(record)
+
+        await session.flush()
+
+        # Upsert into Qdrant
+        try:
+            from shogun.engine.vector_store import get_vector_store
+            store = get_vector_store()
+            items = []
+            for r in records:
+                embed_text = f"{r.title}\n\n{r.content}"
+                if r.summary:
+                    embed_text = f"{r.title}\n\n{r.summary}\n\n{r.content}"
+                items.append({
+                    "id": str(r.id),
+                    "text": embed_text,
+                    "payload": {
+                        "memory_type": r.memory_type,
+                        "agent_id": str(r.agent_id),
+                        "title": r.title,
+                        "importance_score": r.importance_score,
+                        "decay_class": r.decay_class,
+                        "is_pinned": r.is_pinned,
+                        "tags": [],
+                    },
+                })
+                r.qdrant_point_id = str(r.id)
+
+            count = store.upsert_batch(items)
+            print(f"   OK: Seeded {count} memories (SQLite + Qdrant)")
+        except Exception as e:
+            print(f"   WARN: Memory seed Qdrant upsert failed: {e}")
+            print(f"   OK: Seeded {len(records)} memories (SQLite only)")
+
+        await session.commit()
 
 
 if __name__ == "__main__":

@@ -15,7 +15,9 @@ import {
   Clock,
   Settings,
   RefreshCw,
-  Server
+  Server,
+  X,
+  GripVertical,
 } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -45,6 +47,8 @@ export const ShogunProfile = () => {
     dryRun: false,
     autoApprove: false,
   });
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [runningJobs, setRunningJobs] = useState<Record<string, boolean>>({});
   const navigate = useNavigate();
   
   const [shogunData, setShogunData] = useState<any>({
@@ -171,7 +175,13 @@ export const ShogunProfile = () => {
       const [agentRes, personasRes, routingRes, policiesRes, healthRes, providersRes, toolsRes] = results;
 
       if (agentRes.status === 'fulfilled' && agentRes.value.data.data) {
-        setShogunData(agentRes.value.data.data);
+        const agent = agentRes.value.data.data;
+        setShogunData(agent);
+        // ── Restore model selections saved in bushido_settings ──
+        const bs = agent.bushido_settings || {};
+        if (bs.primary_model) setPrimaryModel(bs.primary_model);
+        if (bs.fallback_models) setFallbackModels(bs.fallback_models);
+        if (bs.custom_permissions) setCustomPermissions(bs.custom_permissions);
       }
       if (healthRes.status === 'fulfilled' && healthRes.value.data.data) {
         setSystemHealth(healthRes.value.data.data);
@@ -191,6 +201,11 @@ export const ShogunProfile = () => {
       if (toolsRes.status === 'fulfilled' && toolsRes.value.data.data) {
         setTools(toolsRes.value.data.data);
       }
+      // Fetch schedules separately (non-fatal)
+      try {
+        const schRes = await axios.get('/api/v1/bushido/schedules');
+        if (schRes.data.data) setSchedules(schRes.data.data);
+      } catch { /* schedules table may not exist yet on first boot */ }
     } catch (error) {
       console.error('Error fetching Shogun data:', error);
     } finally {
@@ -198,11 +213,43 @@ export const ShogunProfile = () => {
     }
   };
 
+  const fetchSchedules = async () => {
+    try {
+      const res = await axios.get('/api/v1/bushido/schedules');
+      if (res.data.data) setSchedules(res.data.data);
+    } catch { /* ignore */ }
+  };
+
+  const handlePresetToggle = async (jobType: string) => {
+    try {
+      const res = await axios.patch(`/api/v1/bushido/schedules/preset/${jobType}/toggle`);
+      if (res.data.data) {
+        setSchedules(prev => prev.map(s => s.job_type === jobType ? res.data.data : s));
+      }
+    } catch {
+      setStatusMessage({ type: 'error', text: 'Failed to toggle schedule.' });
+      setTimeout(() => setStatusMessage(null), 3000);
+    }
+  };
+
+  const getPresetSchedule = (jobType: string) => schedules.find(s => s.job_type === jobType && s.is_preset);
+
   const handleSave = async () => {
     setSaving(true);
     setStatusMessage(null);
     try {
-      await axios.patch(`/api/v1/agents/${(shogunData as any).id}`, shogunData);
+      // Merge model selections + custom permissions into bushido_settings so they persist
+      const payload = {
+        ...shogunData,
+        bushido_settings: {
+          ...(shogunData.bushido_settings || {}),
+          primary_model: primaryModel,
+          fallback_models: fallbackModels,
+          // Persist custom permission overrides (e.g. allowed_domains, network mode)
+          custom_permissions: customPermissions,
+        },
+      };
+      await axios.patch(`/api/v1/agents/${(shogunData as any).id}`, payload);
       setStatusMessage({ type: 'success', text: 'Shogun configuration saved successfully.' });
     } catch (error) {
       setStatusMessage({ type: 'error', text: 'Failed to save configuration.' });
@@ -507,143 +554,204 @@ export const ShogunProfile = () => {
           </div>
         )}
 
-        {activeTab === 'models' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="shogun-card space-y-6">
-              <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                <Cpu className="w-5 h-5 text-shogun-blue" /> Primary Model
-              </h3>
-              <p className="text-[10px] text-shogun-subdued -mt-4">The default model for all Shogun reasoning and task execution.</p>
-              
-              {providers.filter(p => p.status === 'connected').length === 0 ? (
-                <div className="p-4 bg-[#050508] border border-shogun-border rounded-xl text-center">
-                  <p className="text-sm text-shogun-subdued">No active providers found.</p>
-                  <button onClick={() => navigate('/katana')} className="text-xs text-shogun-blue hover:text-shogun-gold mt-2 font-bold uppercase">Configure in The Katana</button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {providers.filter(p => p.status === 'connected').map(prov => (
-                    <div key={prov.id} className="space-y-1">
-                      <span className="text-[9px] font-bold text-shogun-subdued uppercase tracking-widest">{prov.name}</span>
-                      {(prov.config?.models || [prov.config?.model_id]).filter(Boolean).map((modelId: string) => (
-                        <button
-                          key={`${prov.id}-${modelId}`}
-                          onClick={() => setPrimaryModel(`${prov.id}::${modelId}`)}
-                          className={cn(
-                            "w-full text-left p-3 rounded-lg border transition-all flex items-center justify-between",
-                            primaryModel === `${prov.id}::${modelId}` 
-                              ? "border-shogun-gold bg-shogun-gold/10" 
-                              : "border-shogun-border hover:border-shogun-subdued"
-                          )}
-                        >
-                          <div className="flex items-center gap-2">
-                            <div className={cn("w-2 h-2 rounded-full", primaryModel === `${prov.id}::${modelId}` ? "bg-shogun-gold" : "bg-shogun-border")} />
-                            <span className={cn("text-xs font-bold", primaryModel === `${prov.id}::${modelId}` ? "text-shogun-gold" : "text-shogun-text")}>{modelId}</span>
-                          </div>
-                          {primaryModel === `${prov.id}::${modelId}` && <CheckCircle2 className="w-3 h-3 text-shogun-gold" />}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+        {activeTab === 'models' && (() => {
+          // Build a flat list of all available model options from every provider
+          const allModelOptions = providers
+            .filter(p => p.status !== 'disabled')
+            .flatMap((prov: any) => {
+              const modelIds: string[] = prov.config?.models?.length
+                ? prov.config.models
+                : prov.config?.model_id
+                  ? [prov.config.model_id]
+                  : [prov.name];
+              return modelIds.map((modelId: string) => ({
+                value: `${prov.id}::${modelId}`,
+                label: modelId,
+                group: `${prov.provider_type?.toUpperCase()} — ${prov.name}`,
+                providerType: prov.provider_type,
+              }));
+            });
 
-            <div className="shogun-card space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                  <Workflow className="w-5 h-5 text-shogun-gold" /> Fallback Models
-                </h3>
-                <span className="text-[10px] bg-shogun-gold/10 text-shogun-gold px-2 py-0.5 rounded border border-shogun-gold/20 font-bold">{fallbackModels.length} selected</span>
-              </div>
-              <p className="text-[10px] text-shogun-subdued -mt-4">Secondary models used when the primary is unavailable or rate-limited. Order matters.</p>
-
-              {providers.filter(p => p.status === 'connected').length === 0 ? (
-                <div className="p-4 bg-[#050508] border border-shogun-border rounded-xl text-center">
-                  <p className="text-sm text-shogun-subdued">No active providers.</p>
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* ── Primary Model ──────────────────────────────── */}
+              <div className="shogun-card space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
+                    <Cpu className="w-5 h-5 text-shogun-blue" /> Primary Model
+                  </h3>
+                  <p className="text-[10px] text-shogun-subdued mt-1">The default model used for all Shogun reasoning and task execution.</p>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  {providers.filter(p => p.status === 'connected').map(prov => (
-                    <div key={prov.id} className="space-y-1">
-                      <span className="text-[9px] font-bold text-shogun-subdued uppercase tracking-widest">{prov.name}</span>
-                      {(prov.config?.models || [prov.config?.model_id]).filter(Boolean).map((modelId: string) => {
-                        const key = `${prov.id}::${modelId}`;
-                        const isSelected = fallbackModels.includes(key);
-                        const isPrimary = primaryModel === key;
+
+                {allModelOptions.length === 0 ? (
+                  <div className="p-4 bg-[#050508] border border-shogun-border rounded-xl text-center space-y-2">
+                    <p className="text-sm text-shogun-subdued">No active providers found.</p>
+                    <button onClick={() => navigate('/katana')} className="text-xs text-shogun-blue hover:text-shogun-gold font-bold uppercase tracking-widest">
+                      Configure in The Katana →
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Select Model</label>
+                    <select
+                      value={primaryModel}
+                      onChange={e => setPrimaryModel(e.target.value)}
+                      className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm font-mono focus:border-shogun-gold outline-none transition-colors"
+                    >
+                      <option value="">— Choose a model —</option>
+                      {providers.filter(p => p.status !== 'disabled').map((prov: any) => {
+                        const modelIds: string[] = prov.config?.models?.length
+                          ? prov.config.models
+                          : prov.config?.model_id
+                            ? [prov.config.model_id]
+                            : [prov.name];
                         return (
-                          <button
-                            key={key}
-                            disabled={isPrimary}
-                            onClick={() => {
-                              if (isSelected) {
-                                setFallbackModels(fallbackModels.filter(f => f !== key));
-                              } else {
-                                setFallbackModels([...fallbackModels, key]);
-                              }
-                            }}
-                            className={cn(
-                              "w-full text-left p-3 rounded-lg border transition-all flex items-center justify-between",
-                              isPrimary ? "border-shogun-border opacity-30 cursor-not-allowed" :
-                              isSelected ? "border-shogun-blue bg-shogun-blue/10" : "border-shogun-border hover:border-shogun-subdued"
-                            )}
-                          >
-                            <div className="flex items-center gap-2">
-                              <div className={cn(
-                                "w-3 h-3 rounded border-2 flex items-center justify-center transition-all",
-                                isSelected ? "border-shogun-blue bg-shogun-blue" : "border-shogun-subdued"
-                              )}>
-                                {isSelected && <CheckCircle2 className="w-2 h-2 text-white" />}
-                              </div>
-                              <span className={cn("text-xs font-bold", isSelected ? "text-shogun-blue" : "text-shogun-text")}>{modelId}</span>
-                              {isPrimary && <span className="text-[8px] text-shogun-gold uppercase font-bold ml-2">(Primary)</span>}
-                            </div>
-                            {isSelected && <span className="text-[8px] text-shogun-subdued font-bold">#{fallbackModels.indexOf(key) + 1}</span>}
-                          </button>
+                          <optgroup key={prov.id} label={`${prov.provider_type?.toUpperCase()} — ${prov.name}`}>
+                            {modelIds.map((modelId: string) => (
+                              <option key={`${prov.id}::${modelId}`} value={`${prov.id}::${modelId}`}>
+                                {modelId}
+                              </option>
+                            ))}
+                          </optgroup>
                         );
                       })}
-                    </div>
-                  ))}
+                    </select>
 
-                  {fallbackModels.length > 0 && (
-                    <div className="p-3 bg-[#050508] border border-shogun-border rounded-xl mt-3">
-                      <span className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Fallback Order</span>
-                      <div className="flex flex-wrap gap-1.5 mt-2">
+                    {primaryModel && (
+                      <div className="flex items-center gap-2 p-2.5 rounded-lg bg-shogun-gold/5 border border-shogun-gold/20">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-shogun-gold shrink-0" />
+                        <span className="text-xs font-mono text-shogun-gold font-bold truncate">
+                          {primaryModel.split('::')[1]}
+                        </span>
+                        <span className="text-[9px] text-shogun-subdued ml-auto shrink-0">PRIMARY</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Fallback Models ────────────────────────────── */}
+              <div className="shogun-card space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
+                      <Workflow className="w-5 h-5 text-shogun-gold" /> Fallback Models
+                    </h3>
+                    <p className="text-[10px] text-shogun-subdued mt-1">Used when the primary is unavailable. Order matters.</p>
+                  </div>
+                  <span className="text-[10px] bg-shogun-gold/10 text-shogun-gold px-2 py-0.5 rounded border border-shogun-gold/20 font-bold shrink-0">
+                    {fallbackModels.length} selected
+                  </span>
+                </div>
+
+                {allModelOptions.length === 0 ? (
+                  <div className="p-4 bg-[#050508] border border-shogun-border rounded-xl text-center">
+                    <p className="text-sm text-shogun-subdued">No active providers.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* Add dropdown */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Add Fallback</label>
+                      <select
+                        value=""
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (val && val !== primaryModel && !fallbackModels.includes(val)) {
+                            setFallbackModels(prev => [...prev, val]);
+                          }
+                        }}
+                        className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm font-mono focus:border-shogun-blue outline-none transition-colors"
+                      >
+                        <option value="">— Add a fallback model —</option>
+                        {providers.filter(p => p.status !== 'disabled').map((prov: any) => {
+                          const modelIds: string[] = prov.config?.models?.length
+                            ? prov.config.models
+                            : prov.config?.model_id
+                              ? [prov.config.model_id]
+                              : [prov.name];
+                          return (
+                            <optgroup key={prov.id} label={`${prov.provider_type?.toUpperCase()} — ${prov.name}`}>
+                              {modelIds
+                                .filter((modelId: string) => {
+                                  const key = `${prov.id}::${modelId}`;
+                                  return key !== primaryModel && !fallbackModels.includes(key);
+                                })
+                                .map((modelId: string) => (
+                                  <option key={`${prov.id}::${modelId}`} value={`${prov.id}::${modelId}`}>
+                                    {modelId}
+                                  </option>
+                                ))}
+                            </optgroup>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    {/* Selected fallbacks as draggable ordered chips */}
+                    {fallbackModels.length > 0 ? (
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Fallback Order</label>
+                        <p className="text-[9px] text-shogun-subdued/50">Drag to reorder priority.</p>
                         {fallbackModels.map((fm, i) => (
-                          <span key={fm} className="text-[9px] bg-shogun-blue/10 text-shogun-blue border border-shogun-blue/20 px-2 py-0.5 rounded font-bold">
-                            #{i + 1} {fm.split('::')[1]}
-                          </span>
+                          <div
+                            key={fm}
+                            draggable
+                            onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); }}
+                            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                            onDrop={e => {
+                              e.preventDefault();
+                              const from = Number(e.dataTransfer.getData('text/plain'));
+                              if (from === i) return;
+                              setFallbackModels(prev => {
+                                const next = [...prev];
+                                const [moved] = next.splice(from, 1);
+                                next.splice(i, 0, moved);
+                                return next;
+                              });
+                            }}
+                            className="flex items-center gap-2 p-2.5 rounded-lg border border-shogun-blue/20 bg-shogun-blue/5 cursor-grab active:cursor-grabbing active:border-shogun-blue/50 active:bg-shogun-blue/10 transition-colors select-none"
+                          >
+                            <GripVertical className="w-3.5 h-3.5 text-shogun-subdued/40 shrink-0" />
+                            <span className="text-[9px] font-bold text-shogun-blue w-5 shrink-0">#{i + 1}</span>
+                            <span className="text-xs font-mono text-shogun-text flex-1 truncate">{fm.split('::')[1]}</span>
+                            <button
+                              onClick={() => setFallbackModels(prev => prev.filter(f => f !== fm))}
+                              className="text-shogun-subdued hover:text-red-400 transition-colors shrink-0 p-0.5"
+                              title="Remove"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
                         ))}
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    ) : (
+                      <p className="text-[11px] text-shogun-subdued italic text-center py-2">No fallbacks selected — the primary model will always be used.</p>
+                    )}
+                  </div>
+                )}
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Routing Strategy</label>
-                <div className="space-y-1.5">
-                  {routingProfiles.map((rp) => (
-                    <div 
-                      key={rp.id} 
-                      onClick={() => setShogunData({ ...shogunData, model_routing_profile_id: rp.id })}
-                      className={cn(
-                        "p-3 rounded-lg border text-xs cursor-pointer transition-all flex items-center justify-between",
-                        shogunData.model_routing_profile_id === rp.id ? "border-shogun-blue bg-shogun-blue/5 text-shogun-text" : "border-shogun-border hover:border-shogun-subdued text-shogun-subdued"
-                      )}
+                {/* Routing Strategy */}
+                {routingProfiles.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-shogun-border">
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Routing Strategy</label>
+                    <select
+                      value={shogunData.model_routing_profile_id || ''}
+                      onChange={e => setShogunData({ ...shogunData, model_routing_profile_id: e.target.value })}
+                      className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none transition-colors"
                     >
-                      <div className="flex items-center gap-2">
-                        <div className={cn("w-2 h-2 rounded-full", shogunData.model_routing_profile_id === rp.id ? "bg-shogun-blue" : "bg-shogun-border")} />
-                        {rp.name}
-                      </div>
-                      {shogunData.model_routing_profile_id === rp.id && <CheckCircle2 className="w-3 h-3 text-shogun-blue" />}
-                    </div>
-                  ))}
-                </div>
+                      <option value="">— Select routing strategy —</option>
+                      {routingProfiles.map((rp: any) => (
+                        <option key={rp.id} value={rp.id}>{rp.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
+
 
         {activeTab === 'behavior' && (
           <div className="shogun-card">
@@ -1060,7 +1168,7 @@ delegation_rules:
               </div>
 
               <div className="mt-4 p-4 bg-shogun-blue/5 border border-shogun-blue/20 rounded-xl">
-                <div className="flex items-center gap-2 mb-2">
+                                                <div className="flex items-center gap-2 mb-2">
                   <RefreshCw className="w-3 h-3 text-shogun-blue animate-spin-slow" />
                   <span className="text-[10px] font-bold uppercase tracking-widest text-shogun-blue">Lattice Sync</span>
                 </div>
@@ -1076,57 +1184,83 @@ delegation_rules:
               </h3>
               <div className="space-y-4">
                 {[
-                  { id: 'nightly_consolidation', label: 'Nightly Consolidation', desc: 'Merge episodic traces into semantic memory.', icon: RefreshCw },
-                  { id: 'weekly_performance_audit', label: 'Weekly Performance Audit', desc: 'Review agent fit metrics and behavioral drift.', icon: Shield },
-                  { id: 'skill_health_check', label: 'Skill Health Check', desc: 'Verify third-party tool connectivity and versions.', icon: Settings },
-                  { id: 'persona_drift_check', label: 'Persona Drift Monitor', desc: 'Detect deviations from core identity blueprints.', icon: User },
-                ].map((job) => (
-                  <div key={job.id} className="p-4 bg-[#050508] border border-shogun-border rounded-xl space-y-3 group hover:border-shogun-gold/30 transition-all">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <job.icon className="w-4 h-4 text-shogun-gold opacity-70" />
-                        <span className="text-sm font-bold">{job.label}</span>
+                  { jobType: 'memory_consolidation',  label: 'Nightly Consolidation',    desc: 'Merge episodic traces into semantic memory.',          icon: RefreshCw, cronLabel: 'Every night at 02:00' },
+                  { jobType: 'performance_audit',      label: 'Weekly Performance Audit', desc: 'Review agent fit metrics and behavioral drift.',        icon: Shield,    cronLabel: 'Every Monday at 03:00' },
+                  { jobType: 'skill_health_check',     label: 'Skill Health Check',       desc: 'Verify third-party tool connectivity and versions.',    icon: Settings,  cronLabel: 'Every night at 04:00' },
+                  { jobType: 'persona_drift_check',    label: 'Persona Drift Monitor',    desc: 'Detect deviations from core identity blueprints.',      icon: User,      cronLabel: 'Every Sunday at 05:00' },
+                ].map((job) => {
+                  const schedule = getPresetSchedule(job.jobType);
+                  const isEnabled = schedule ? schedule.is_enabled : (shogunData.bushido_settings?.[job.jobType] ?? false);
+                  const isRunning = runningJobs[job.jobType];
+                  return (
+                    <div key={job.jobType} className="p-4 bg-[#050508] border border-shogun-border rounded-xl space-y-3 group hover:border-shogun-gold/30 transition-all">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <job.icon className="w-4 h-4 text-shogun-gold opacity-70" />
+                          <span className="text-sm font-bold">{job.label}</span>
+                        </div>
+                        <button
+                          onClick={() => handlePresetToggle(job.jobType)}
+                          className={cn(
+                            "w-10 h-5 rounded-full relative transition-all duration-300",
+                            isEnabled ? "bg-shogun-gold" : "bg-shogun-card border border-shogun-border"
+                          )}
+                        >
+                          <div className={cn(
+                            "absolute top-1 w-3 h-3 rounded-full bg-white transition-all duration-300",
+                            isEnabled ? "left-6" : "left-1 bg-shogun-subdued"
+                          )} />
+                        </button>
                       </div>
-                      <button 
-                        onClick={() => {
-                          const newSettings = { 
-                            ...shogunData.bushido_settings, 
-                            [job.id]: !shogunData.bushido_settings?.[job.id] 
-                          };
-                          setShogunData({ ...shogunData, bushido_settings: newSettings });
-                        }}
-                        className={cn(
-                          "w-10 h-5 rounded-full relative transition-all duration-300",
-                          shogunData.bushido_settings?.[job.id] ? "bg-shogun-gold" : "bg-shogun-card border border-shogun-border"
-                        )}
-                      >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[10px] text-shogun-subdued italic">{job.desc}</p>
+                          <button
+                            disabled={isRunning}
+                            className={cn(
+                              "text-[9px] font-bold uppercase tracking-tighter transition-colors flex items-center gap-1",
+                              isRunning ? "text-shogun-subdued cursor-not-allowed" : "text-shogun-blue hover:text-shogun-gold"
+                            )}
+                            onClick={async () => {
+                              setRunningJobs(p => ({ ...p, [job.jobType]: true }));
+                              try {
+                                setStatusMessage({ type: 'success', text: `Triggering ${job.label}…` });
+                                await axios.post('/api/v1/bushido/run', { job_type: job.jobType });
+                                setStatusMessage({ type: 'success', text: `${job.label} dispatched.` });
+                              } catch {
+                                setStatusMessage({ type: 'error', text: 'Failed to trigger maintenance.' });
+                              } finally {
+                                setRunningJobs(p => ({ ...p, [job.jobType]: false }));
+                                setTimeout(() => setStatusMessage(null), 3000);
+                              }
+                            }}
+                          >
+                            {isRunning && <RefreshCw className="w-2.5 h-2.5 animate-spin" />}
+                            {isRunning ? 'Running…' : 'Run Now'}
+                          </button>
+                        </div>
+                        {/* Fixed schedule label */}
                         <div className={cn(
-                          "absolute top-1 w-3 h-3 rounded-full bg-white transition-all duration-300",
-                          shogunData.bushido_settings?.[job.id] ? "left-6" : "left-1 bg-shogun-subdued"
-                        )} />
-                      </button>
+                          "flex items-center gap-1.5 transition-all duration-300",
+                          isEnabled ? "opacity-100" : "opacity-40"
+                        )}>
+                          <Clock className="w-2.5 h-2.5 text-shogun-gold/60 shrink-0" />
+                          <span className="text-[9px] font-mono text-shogun-gold/70 uppercase tracking-widest">
+                            {job.cronLabel}
+                          </span>
+                          <span className={cn(
+                            "ml-auto text-[8px] font-bold uppercase px-1.5 py-0.5 rounded border",
+                            isEnabled
+                              ? "text-green-400 border-green-500/30 bg-green-500/10"
+                              : "text-shogun-subdued border-shogun-border"
+                          )}>
+                            {isEnabled ? 'Active' : 'Paused'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] text-shogun-subdued italic">{job.desc}</p>
-                      <button 
-                         className="text-[9px] font-bold text-shogun-blue hover:text-shogun-gold uppercase tracking-tighter transition-colors"
-                         onClick={async () => {
-                           try {
-                             setStatusMessage({ type: 'success', text: `Triggering ${job.label}...` });
-                             await axios.post('/api/v1/bushido/run', { job_type: job.id });
-                             setStatusMessage({ type: 'success', text: `${job.label} triggered successfully.` });
-                           } catch (err) {
-                             setStatusMessage({ type: 'error', text: 'Failed to trigger maintenance.' });
-                           } finally {
-                             setTimeout(() => setStatusMessage(null), 3000);
-                           }
-                         }}
-                      >
-                        Run Now
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -1511,18 +1645,31 @@ delegation_rules:
                           }
                           try {
                             setStatusMessage({ type: 'success', text: `Creating "${jobName}"...` });
-                            await axios.post('/api/v1/bushido/run', {
+                            const payload = {
+                              name: jobName,
                               job_type: jobType,
+                              frequency: frequency,
+                              schedule_time: customJob.scheduleTime,
+                              schedule_days: frequency === 'weekly' ? customJob.scheduleDays : null,
+                              schedule_day: frequency === 'monthly' ? customJob.scheduleDay : null,
+                              minute_offset: frequency === 'hourly' ? customJob.minuteOffset : 0,
+                              schedule_datetime: frequency === 'one-off' ? customJob.scheduleDateTime : null,
                               scope: { agent_ids: [], memory_types: memoryTypes },
-                            });
-                            // Add to local bushido_settings
-                            const key = jobName.toLowerCase().replace(/\s+/g, '_');
-                            const newSettings = { ...shogunData.bushido_settings, [key]: true };
-                            setShogunData({ ...shogunData, bushido_settings: newSettings });
-                            setStatusMessage({ type: 'success', text: `"${jobName}" created and queued.` });
+                              priority,
+                              all_agents: allAgents,
+                              dry_run: dryRun,
+                              auto_approve: autoApprove,
+                              task_instruction: jobType === 'custom_task' ? customJob.taskInstruction : null,
+                              is_enabled: true,
+                            };
+                            const res = await axios.post('/api/v1/bushido/schedules', payload);
+                            if (res.data.data) {
+                              setSchedules(prev => [...prev, res.data.data]);
+                            }
+                            setStatusMessage({ type: 'success', text: `"${jobName}" created and scheduled.` });
                             setCustomJob({ name: '', type: 'memory_consolidation', frequency: 'nightly', scheduleTime: '02:00', scheduleDays: ['mon', 'wed', 'fri'], scheduleDay: 1, minuteOffset: 0, scheduleDateTime: '', priority: 50, memoryTypes: ['episodic', 'semantic'], taskInstruction: '', allAgents: true, dryRun: false, autoApprove: false });
-                          } catch (err) {
-                            setStatusMessage({ type: 'error', text: 'Failed to create job.' });
+                          } catch {
+                            setStatusMessage({ type: 'error', text: 'Failed to create schedule.' });
                           } finally {
                             setTimeout(() => setStatusMessage(null), 3000);
                           }
@@ -1530,13 +1677,89 @@ delegation_rules:
                         className="w-full py-3 bg-gradient-to-r from-shogun-gold to-yellow-600 hover:from-yellow-600 hover:to-shogun-gold text-black font-bold rounded-lg transition-all shadow-shogun text-sm uppercase tracking-widest flex items-center justify-center gap-2"
                       >
                         <Zap className="w-4 h-4" />
-                        Create & Queue Job
+                        Create & Schedule Job
                       </button>
                     </div>
                   </div>
                 );
               })()}
             </div>
+
+            {/* ── Active Schedules ──────────────────────────── */}
+            {schedules.filter(s => !s.is_preset).length > 0 && (
+              <div className="md:col-span-2 shogun-card space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
+                    <Clock className="w-5 h-5 text-shogun-gold" /> Active Custom Schedules
+                  </h3>
+                  <button
+                    onClick={fetchSchedules}
+                    className="text-[10px] font-bold text-shogun-subdued hover:text-shogun-gold transition-colors uppercase tracking-widest flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Refresh
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {schedules.filter(s => !s.is_preset).map((s: any) => (
+                    <div key={s.id} className="flex items-center justify-between p-3 bg-[#050508] border border-shogun-border rounded-xl hover:border-shogun-gold/20 transition-all">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={cn(
+                          "w-2 h-2 rounded-full shrink-0",
+                          s.is_enabled ? "bg-green-400" : "bg-shogun-subdued"
+                        )} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold truncate">{s.name}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[9px] font-mono text-shogun-subdued uppercase tracking-wider">
+                              {s.job_type.replace(/_/g, ' ')}
+                            </span>
+                            <span className="text-shogun-subdued/30">·</span>
+                            <span className="text-[9px] font-mono text-shogun-gold/70 uppercase tracking-wider">
+                              {s.frequency}
+                              {s.schedule_time ? ` @ ${s.schedule_time}` : ''}
+                            </span>
+                            {s.dry_run && (
+                              <span className="text-[8px] font-bold text-shogun-blue uppercase tracking-widest bg-shogun-blue/10 border border-shogun-blue/20 px-1.5 py-0.5 rounded">Dry Run</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-3">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await axios.patch(`/api/v1/bushido/schedules/${s.id}/toggle`);
+                              if (res.data.data) setSchedules(prev => prev.map(x => x.id === s.id ? res.data.data : x));
+                            } catch { /* ignore */ }
+                          }}
+                          className={cn(
+                            "w-8 h-4 rounded-full relative transition-all duration-300 shrink-0",
+                            s.is_enabled ? "bg-shogun-gold" : "bg-shogun-card border border-shogun-border"
+                          )}
+                        >
+                          <div className={cn(
+                            "absolute top-0.5 w-3 h-3 rounded-full transition-all duration-300",
+                            s.is_enabled ? "left-4 bg-white" : "left-0.5 bg-shogun-subdued"
+                          )} />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await axios.delete(`/api/v1/bushido/schedules/${s.id}`);
+                              setSchedules(prev => prev.filter(x => x.id !== s.id));
+                            } catch { /* ignore */ }
+                          }}
+                          className="text-shogun-subdued hover:text-red-400 transition-colors p-1"
+                          title="Delete schedule"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

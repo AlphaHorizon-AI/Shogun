@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, ForeignKey
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from shogun.db.base import AuditMixin, Base, GUID, UUIDMixin
@@ -20,6 +20,8 @@ class MemoryRecord(Base, UUIDMixin, AuditMixin):
     source_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     source_ref_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    summary: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     # Salience layer
     relevance_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.7)

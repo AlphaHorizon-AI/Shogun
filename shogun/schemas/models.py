@@ -31,6 +31,7 @@ class ModelProviderCreate(ShogunBase):
     base_url: str | None = None
     auth_type: AuthType = AuthType.API_KEY
     is_local: bool = False
+    status: ProviderStatus = ProviderStatus.CONNECTED
     config: dict[str, Any] = Field(default_factory=dict)
 
 

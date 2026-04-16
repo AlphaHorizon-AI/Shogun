@@ -17,7 +17,7 @@ from shogun.services.samurai_role_service import SamuraiRoleService
 from shogun.services.security_service import SecurityService
 from shogun.services.skill_service import SkillService, SkillSourceService
 from shogun.services.memory_service import MemoryService
-from shogun.services.bushido_service import BushidoJobService, BushidoRecommendationService
+from shogun.services.bushido_service import BushidoJobService, BushidoRecommendationService, BushidoScheduleService
 from shogun.services.mission_service import MissionService
 from shogun.services.audit_service import AuditService
 
@@ -73,6 +73,10 @@ def get_bushido_job_service(db: AsyncSession = Depends(get_db)) -> BushidoJobSer
 
 def get_bushido_recommendation_service(db: AsyncSession = Depends(get_db)) -> BushidoRecommendationService:
     return BushidoRecommendationService(db)
+
+
+def get_bushido_schedule_service(db: AsyncSession = Depends(get_db)) -> BushidoScheduleService:
+    return BushidoScheduleService(db)
 
 
 def get_mission_service(db: AsyncSession = Depends(get_db)) -> MissionService:

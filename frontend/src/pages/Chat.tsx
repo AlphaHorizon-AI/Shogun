@@ -1,21 +1,82 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Terminal, Bot, User, Trash2, Loader2 } from 'lucide-react';
-import axios from 'axios';
+import { Send, Terminal, Bot, User, Trash2, History, X, ChevronDown, ChevronRight, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface Message {
   role: 'user' | 'shogun';
   content: string;
   timestamp: string;
+  model?: string;
+  provider?: string;
+  search?: boolean;
+}
+
+interface Session {
+  id: string;
+  startedAt: string;
+  messages: Message[];
+}
+
+const STORAGE_KEY = 'shogun_comms_current';
+const HISTORY_KEY = 'shogun_comms_history';
+const MAX_HISTORY_SESSIONS = 50;
+
+const WELCOME: Message = {
+  role: 'shogun',
+  content: 'Systems stabilized. I am ready for directives, Shogun.',
+  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+};
+
+function loadCurrent(): Message[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [WELCOME];
+  } catch {
+    return [WELCOME];
+  }
+}
+
+function saveCurrent(msgs: Message[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs));
+}
+
+function loadHistory(): Session[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function archiveSession(msgs: Message[]) {
+  // Only archive if there was actual conversation (more than just the welcome)
+  const real = msgs.filter(m => !(m.role === 'shogun' && m.content === WELCOME.content));
+  if (real.length === 0) return;
+
+  const history = loadHistory();
+  const session: Session = {
+    id: Date.now().toString(),
+    startedAt: msgs[0]?.timestamp || new Date().toLocaleTimeString(),
+    messages: msgs,
+  };
+  const updated = [session, ...history].slice(0, MAX_HISTORY_SESSIONS);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
 }
 
 export const Chat = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'shogun', content: 'Systems stabilized. I am ready for directives, Shogun.', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
-  ]);
+  const [messages, setMessages] = useState<Message[]>(loadCurrent);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<Session[]>(loadHistory);
+  const [expandedSession, setExpandedSession] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Persist messages to localStorage on every change
+  useEffect(() => {
+    saveCurrent(messages);
+  }, [messages]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -26,60 +87,152 @@ export const Chat = () => {
 
   const handleSend = async () => {
     if (!input.trim() || isThinking) return;
-    
-    const userMsg: Message = { 
-      role: 'user', 
-      content: input, 
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+
+    const userMsg: Message = {
+      role: 'user',
+      content: input,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
-    
-    setMessages(prev => [...prev, userMsg]);
+
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
     setInput('');
     setIsThinking(true);
 
+    const hist = updatedMessages
+      .filter(m => m.role === 'user' || m.role === 'shogun')
+      .slice(-20)
+      .map(m => ({ role: m.role === 'shogun' ? 'assistant' : 'user', content: m.content }));
+
+    // Placeholder message that we'll fill in as tokens arrive
+    const placeholder: Message = {
+      role: 'shogun',
+      content: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setMessages(prev => [...prev, placeholder]);
+    // Keep isThinking=true until first token so input stays locked
+
     try {
-      const response = await axios.post('/api/v1/agents/shogun/chat', { message: input });
-      const data = response.data.data;
-      
-      const shogunMsg: Message = { 
-        role: 'shogun', 
-        content: data.response, 
-        timestamp: data.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-      };
-      setMessages(prev => [...prev, shogunMsg]);
+      const resp = await fetch('/api/v1/agents/shogun/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: input, history: hist.slice(0, -1) }),
+      });
+
+      if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let assembled = '';
+      let meta: { model?: string; provider?: string; timestamp?: string; search?: boolean } = {};
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') break;
+
+          try {
+            const evt = JSON.parse(raw);
+
+            if (evt.type === 'meta') {
+              meta = { 
+                model: evt.model, 
+                provider: evt.provider, 
+                timestamp: evt.timestamp,
+                search: evt.search 
+              };
+              setIsThinking(false); // first event received — hide the typing indication
+              setMessages(prev => {
+                const copy = [...prev];
+                copy[copy.length - 1] = { ...copy[copy.length - 1], ...meta };
+                return copy;
+              });
+            } else if (evt.type === 'token') {
+              setIsThinking(false); // first token — stop animation
+              assembled += evt.content;
+              const snap = assembled;
+              setMessages(prev => {
+                const copy = [...prev];
+                copy[copy.length - 1] = { ...copy[copy.length - 1], content: snap };
+                return copy;
+              });
+            } else if (evt.type === 'error') {
+              setMessages(prev => {
+                const copy = [...prev];
+                copy[copy.length - 1] = { ...copy[copy.length - 1], content: evt.content };
+                return copy;
+              });
+            }
+          } catch { /* malformed event */ }
+        }
+      }
     } catch (err) {
-      console.error("Failed to send directive:", err);
-      const errorMsg: Message = {
-        role: 'shogun',
-        content: "Error: Terminal bridge interrupted. Please verify backend connectivity.",
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setMessages(prev => [...prev, errorMsg]);
-    } finally {
-      setIsThinking(false);
+      console.error('Streaming failed:', err);
+      setMessages(prev => {
+        const copy = [...prev];
+        copy[copy.length - 1] = {
+          ...copy[copy.length - 1],
+          content: '⚠️ Terminal bridge interrupted. Check backend connectivity.',
+        };
+        return copy;
+      });
     }
+  };
+
+  const handleClear = () => {
+    archiveSession(messages);
+    const fresh = [{ ...WELCOME, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }];
+    setMessages(fresh);
+    setHistory(loadHistory());
+  };
+
+  const openHistory = () => {
+    setHistory(loadHistory());
+    setShowHistory(true);
+  };
+
+  const restoreSession = (session: Session) => {
+    // Archive current first
+    archiveSession(messages);
+    setMessages(session.messages);
+    setShowHistory(false);
   };
 
   return (
     <div className="flex flex-col h-[calc(100vh-140px)] space-y-4">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
-            Comms <span className="text-xs font-normal text-shogun-subdued bg-shogun-card px-2 py-1 rounded border border-shogun-border tracking-[0.2em] uppercase">Interface</span>
+            Comms{' '}
+            <span className="text-xs font-normal text-shogun-subdued bg-shogun-card px-2 py-1 rounded border border-shogun-border tracking-[0.2em] uppercase">
+              Interface
+            </span>
           </h2>
           <p className="text-shogun-subdued text-sm mt-1">Direct encrypted link to primary Shogun agent.</p>
         </div>
-        <button 
-          onClick={() => setMessages([])}
+        <button
+          onClick={handleClear}
           className="p-2 text-shogun-subdued hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-          title="Clear Terminal"
+          title="Clear Terminal (saves to history)"
         >
           <Trash2 className="w-5 h-5" />
         </button>
       </div>
 
+      {/* Chat area */}
       <div className="flex-1 shogun-card overflow-hidden flex flex-col p-0">
-        <div 
+        <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide scroll-smooth"
         >
@@ -89,78 +242,214 @@ export const Chat = () => {
               <p className="text-sm italic tracking-wide">Terminal empty. Waiting for input...</p>
             </div>
           )}
-          
+
           {messages.map((msg, i) => (
-            <div key={i} className={cn(
-              "flex gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300",
-              msg.role === 'user' ? "flex-row-reverse" : "flex-row"
-            )}>
-              <div className={cn(
-                "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border",
-                msg.role === 'user' ? "bg-shogun-blue/10 border-shogun-blue/30 text-shogun-blue" : "bg-shogun-gold/10 border-shogun-gold/30 text-shogun-gold"
-              )}>
+            <div
+              key={i}
+              className={cn(
+                'flex gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300',
+                msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'
+              )}
+            >
+              <div
+                className={cn(
+                  'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border',
+                  msg.role === 'user'
+                    ? 'bg-shogun-blue/10 border-shogun-blue/30 text-shogun-blue'
+                    : 'bg-shogun-gold/10 border-shogun-gold/30 text-shogun-gold'
+                )}
+              >
                 {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
               </div>
-              
-              <div className={cn(
-                "max-w-[70%] space-y-1 flex flex-col",
-                msg.role === 'user' ? "items-end" : "items-start"
-              )}>
-                <div className={cn(
-                  "p-4 rounded-2xl text-sm leading-relaxed",
-                  msg.role === 'user' 
-                    ? "bg-shogun-card border border-shogun-border text-shogun-text rounded-tr-none" 
-                    : "bg-[#050508] border border-shogun-border text-shogun-gold rounded-tl-none font-mono"
-                )}>
-                  {msg.content}
+
+              <div
+                className={cn(
+                  'max-w-[70%] space-y-1 flex flex-col',
+                  msg.role === 'user' ? 'items-end' : 'items-start'
+                )}
+              >
+                <div
+                  className={cn(
+                    'p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap',
+                    msg.role === 'user'
+                      ? 'bg-shogun-card border border-shogun-border text-shogun-text rounded-tr-none'
+                      : 'bg-[#050508] border border-shogun-border text-shogun-gold rounded-tl-none font-mono'
+                  )}
+                >
+                  {msg.role === 'shogun' && msg.content === '' ? (
+                    /* Typing animation — shown while waiting for first token */
+                    <div className="flex items-center gap-1.5 py-1">
+                      <span className="w-2 h-2 rounded-full bg-shogun-gold/70 animate-bounce [animation-delay:0ms]" />
+                      <span className="w-2 h-2 rounded-full bg-shogun-gold/70 animate-bounce [animation-delay:150ms]" />
+                      <span className="w-2 h-2 rounded-full bg-shogun-gold/70 animate-bounce [animation-delay:300ms]" />
+                    </div>
+                  ) : msg.content}
                 </div>
-                <span className="text-[10px] text-shogun-subdued px-1">{msg.timestamp}</span>
+                <div className="flex items-center gap-2 px-1">
+                  <span className="text-[10px] text-shogun-subdued">{msg.timestamp}</span>
+                  {msg.role === 'shogun' && (msg.model || msg.search) && (
+                    <div className={cn(
+                      "flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
+                      msg.search 
+                        ? "bg-shogun-blue/10 border border-shogun-blue/30 text-shogun-blue"
+                        : "bg-shogun-card border border-shogun-border text-shogun-subdued"
+                    )}>
+                      {msg.search ? <Globe className="w-2.5 h-2.5" /> : <Bot className="w-2.5 h-2.5" />}
+                      {msg.search ? "Web Search" : msg.model}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ))}
-
-          {isThinking && (
-            <div className="flex gap-4 animate-in fade-in duration-300">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border bg-shogun-gold/10 border-shogun-gold/30 text-shogun-gold">
-                <Bot className="w-4 h-4" />
-              </div>
-              <div className="flex items-center gap-2 text-shogun-subdued text-xs italic font-mono p-4">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Shogun is processing directive...
-              </div>
-            </div>
-          )}
         </div>
 
+        {/* Input bar */}
         <div className="p-4 bg-[#050508]/50 border-t border-shogun-border">
           <div className="relative flex items-center">
             <input
               type="text"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
               disabled={isThinking}
-              placeholder={isThinking ? "Awaiting agent response..." : "Enter directive..."}
-              className="w-full bg-shogun-card border border-shogun-border rounded-xl py-4 pl-6 pr-14 text-shogun-text placeholder:text-shogun-subdued focus:outline-none focus:border-shogun-blue focus:ring-1 focus:ring-shogun-blue/20 transition-all font-mono text-sm disabled:opacity-50"
+              placeholder={isThinking ? 'Transmitting directive...' : 'Enter directive...'}
+              className="w-full bg-shogun-card border border-shogun-border rounded-xl py-4 pl-6 pr-14 text-shogun-text placeholder:text-shogun-subdued focus:outline-none focus:border-shogun-blue focus:ring-1 focus:ring-shogun-blue/20 transition-all font-mono text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             />
-            <button 
+            <button
               onClick={handleSend}
               disabled={isThinking || !input.trim()}
               className="absolute right-2 p-2 bg-shogun-blue text-white rounded-lg hover:bg-shogun-blue/80 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isThinking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              <Send className="w-5 h-5" />
             </button>
           </div>
           <div className="flex justify-between mt-3 px-2">
-             <div className="flex gap-4">
-                <span className="text-[10px] text-shogun-subdued flex items-center gap-1"><Terminal className="w-3 h-3" /> UTF-8</span>
-                <span className="text-[10px] text-shogun-subdued flex items-center gap-1 underline cursor-pointer hover:text-shogun-blue">View History</span>
-             </div>
-             <span className="text-[10px] text-shogun-subdued italic">Shift + Enter for new line</span>
+            <div className="flex gap-4">
+              <span className="text-[10px] text-shogun-subdued flex items-center gap-1">
+                <Terminal className="w-3 h-3" /> UTF-8
+              </span>
+              <button
+                onClick={openHistory}
+                className="text-[10px] text-shogun-subdued flex items-center gap-1 underline cursor-pointer hover:text-shogun-blue transition-colors"
+              >
+                <History className="w-3 h-3" />
+                View History ({history.length} sessions)
+              </button>
+            </div>
+            <span className="text-[10px] text-shogun-subdued italic">Enter to send</span>
           </div>
         </div>
       </div>
+
+      {/* ── History Drawer ─────────────────────────────────────── */}
+      {showHistory && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowHistory(false)}
+          />
+
+          {/* Panel */}
+          <div className="absolute right-0 top-0 h-full w-full max-w-xl bg-shogun-bg border-l border-shogun-border flex flex-col shadow-2xl">
+            {/* Panel header */}
+            <div className="flex items-center justify-between p-5 border-b border-shogun-border shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-shogun-text flex items-center gap-2">
+                  <History className="w-5 h-5 text-shogun-gold" />
+                  Comms History
+                </h3>
+                <p className="text-[11px] text-shogun-subdued mt-0.5">
+                  {history.length} archived session{history.length !== 1 ? 's' : ''} — stored locally
+                </p>
+              </div>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="p-2 text-shogun-subdued hover:text-shogun-text hover:bg-shogun-card rounded-lg transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Sessions list */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {history.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-shogun-subdued space-y-3 opacity-50">
+                  <History className="w-10 h-10" />
+                  <p className="text-sm italic">No history yet. Clear a session to archive it.</p>
+                </div>
+              ) : (
+                history.map(session => {
+                  const isExpanded = expandedSession === session.id;
+                  const preview = session.messages.find(m => m.role === 'user')?.content || '(empty)';
+                  const msgCount = session.messages.filter(m => m.role === 'user').length;
+                  return (
+                    <div key={session.id} className="border border-shogun-border rounded-xl overflow-hidden">
+                      {/* Session row */}
+                      <div
+                        className="flex items-center gap-3 p-3 cursor-pointer hover:bg-shogun-card/50 transition-colors"
+                        onClick={() => setExpandedSession(isExpanded ? null : session.id)}
+                      >
+                        {isExpanded
+                          ? <ChevronDown className="w-4 h-4 text-shogun-subdued shrink-0" />
+                          : <ChevronRight className="w-4 h-4 text-shogun-subdued shrink-0" />
+                        }
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-mono text-shogun-text truncate">{preview}</p>
+                          <p className="text-[10px] text-shogun-subdued mt-0.5">
+                            {session.startedAt} · {msgCount} message{msgCount !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                        <button
+                          onClick={e => { e.stopPropagation(); restoreSession(session); }}
+                          className="text-[10px] text-shogun-blue hover:text-shogun-gold font-bold uppercase tracking-wider shrink-0 px-2 py-1 border border-shogun-blue/30 rounded-lg transition-colors"
+                        >
+                          Restore
+                        </button>
+                      </div>
+
+                      {/* Expanded messages */}
+                      {isExpanded && (
+                        <div className="border-t border-shogun-border bg-[#050508] p-3 space-y-2 max-h-64 overflow-y-auto">
+                          {session.messages.map((m, i) => (
+                            <div key={i} className={cn('text-xs', m.role === 'user' ? 'text-right' : 'text-left')}>
+                              <span className={cn(
+                                'inline-block px-3 py-1.5 rounded-lg max-w-[85%] text-left',
+                                m.role === 'user'
+                                  ? 'bg-shogun-blue/10 text-shogun-text border border-shogun-blue/20'
+                                  : 'bg-shogun-gold/5 text-shogun-gold border border-shogun-gold/10 font-mono'
+                              )}>
+                                {m.content.length > 120 ? m.content.slice(0, 120) + '…' : m.content}
+                              </span>
+                              <div className="text-[9px] text-shogun-subdued mt-0.5 px-1">{m.timestamp}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Clear all history */}
+            {history.length > 0 && (
+              <div className="p-4 border-t border-shogun-border shrink-0">
+                <button
+                  onClick={() => {
+                    localStorage.removeItem(HISTORY_KEY);
+                    setHistory([]);
+                  }}
+                  className="w-full text-xs text-red-400/60 hover:text-red-400 transition-colors py-2 border border-red-400/10 hover:border-red-400/30 rounded-lg"
+                >
+                  Clear All History
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-

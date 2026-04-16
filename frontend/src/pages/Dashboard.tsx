@@ -1,25 +1,28 @@
 import { useEffect, useState } from 'react';
-import { 
-  Activity, 
-  Shield, 
-  Users, 
-  RefreshCw, 
-  Cpu, 
-  Server, 
-  Lock, 
-  Clock, 
-  ChevronRight, 
-  Plus, 
-  Settings, 
+import {
+  Activity,
+  Shield,
+  Users,
+  RefreshCw,
+  Cpu,
+  Server,
+  Lock,
+  Clock,
+  ChevronRight,
+  Plus,
+  Settings,
   Power,
   Zap,
   LayoutGrid,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  ShieldAlert,
+  X,
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
+import { HarakiriModal } from '../components/HarakiriModal';
 
 const StatCard = ({ title, value, status, icon: Icon, colorClass, trend, to }: any) => {
   const content = (
@@ -53,25 +56,74 @@ const StatCard = ({ title, value, status, icon: Icon, colorClass, trend, to }: a
 export const Dashboard = () => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [posture, setPosture] = useState<any>(null);
+  const [killWorking, setKillWorking] = useState(false);
+  const [showHarakiri, setShowHarakiri] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const resp = await axios.get('/api/v1/system/overview');
-      setData(resp.data.data);
+      const [overviewRes, postureRes] = await Promise.all([
+        axios.get('/api/v1/system/overview'),
+        axios.get('/api/v1/security/posture'),
+      ]);
+      setData(overviewRes.data.data);
+      setPosture(postureRes.data.data);
     } catch (err) {
-      console.error("Failed to fetch dashboard data:", err);
+      console.error('Failed to fetch dashboard data:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const handleKillSwitch = async () => {
+    if (posture?.kill_switch_active) {
+      if (!confirm('Reset Harakiri? Posture will be restored to TACTICAL.')) return;
+      setKillWorking(true);
+      try {
+        const res = await axios.delete('/api/v1/security/kill-switch');
+        setPosture(res.data.data);
+      } catch { /* ignore */ } finally { setKillWorking(false); }
+      return;
+    }
+    // Activate — show two-step modal
+    setShowHarakiri(true);
+  };
+
+  const confirmHarakiri = async () => {
+    setShowHarakiri(false);
+    setKillWorking(true);
+    try {
+      const res = await axios.post('/api/v1/security/kill-switch');
+      setPosture(res.data.data);
+    } catch { /* ignore */ } finally { setKillWorking(false); }
+  };
+
+  useEffect(() => { fetchData(); }, []);
 
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-700">
+
+      {/* ── Kill switch banner ── */}
+      {posture?.kill_switch_active && (
+        <div className="flex items-center justify-between gap-4 p-4 bg-red-500/10 border border-red-500/40 rounded-xl animate-pulse shadow-[0_0_30px_rgba(239,68,68,0.15)]">
+          <div className="flex items-center gap-3">
+            <ShieldAlert className="w-5 h-5 text-red-500 shrink-0" />
+            <div>
+              <span className="text-sm font-bold text-red-400 uppercase tracking-wider">⛔ GLOBAL KILL-SWITCH ACTIVE</span>
+              <p className="text-[10px] text-red-400/70 mt-0.5">All autonomous agent activity is suspended. Posture locked to SHRINE.</p>
+            </div>
+          </div>
+          <button
+            onClick={handleKillSwitch}
+            disabled={killWorking}
+            className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-lg transition-all shrink-0 disabled:opacity-50"
+          >
+            <X className="w-3.5 h-3.5" /> Reset Kill Switch
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-4xl font-bold shogun-title flex items-center gap-3">
@@ -80,7 +132,7 @@ export const Dashboard = () => {
           <p className="text-shogun-subdued text-sm mt-2 font-medium">Monitoring the Samurai lattice and autonomous behavioral loops.</p>
         </div>
         <div className="flex items-center gap-3">
-          <button 
+          <button
             onClick={fetchData}
             disabled={loading}
             className="p-2.5 bg-shogun-card border border-shogun-border rounded-lg text-shogun-subdued hover:text-shogun-gold transition-colors"
@@ -203,18 +255,44 @@ export const Dashboard = () => {
                 </div>
              </div>
 
-             <div className="shogun-card flex flex-col justify-center items-center text-center space-y-3 bg-red-500/5 border-red-500/20">
-                <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center text-red-500">
-                   <Power className="w-5 h-5" />
-                </div>
-                <div>
-                   <h4 className="text-sm font-bold text-shogun-text">Emergency Stop</h4>
-                   <p className="text-[10px] text-shogun-subdued mt-1 px-4">Immediately suspend all active autonomous engagement.</p>
-                </div>
-                <button className="px-4 py-1.5 bg-red-500 hover:bg-red-600 text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-lg transition-all shadow-lg">
-                   Launch Killswitch
-                </button>
-             </div>
+              <div className="shogun-card flex flex-col justify-center items-center text-center space-y-3 bg-red-500/5 border-red-500/20">
+                 <div className={cn(
+                   'w-10 h-10 rounded-full flex items-center justify-center',
+                   posture?.kill_switch_active ? 'bg-red-500 text-white animate-pulse' : 'bg-red-500/20 text-red-500'
+                 )}>
+                    <Power className="w-5 h-5" />
+                 </div>
+                 <div>
+                    <h4 className="text-sm font-bold text-shogun-text">
+                      {posture?.kill_switch_active ? 'Harakiri Active' : 'Emergency Stop'}
+                    </h4>
+                    <p className="text-[10px] text-shogun-subdued mt-1 px-4">
+                      {posture?.kill_switch_active
+                        ? 'All agents suspended. Posture: SHRINE.'
+                        : 'Immediately suspend all active autonomous engagement.'}
+                    </p>
+                 </div>
+                 <button
+                   onClick={handleKillSwitch}
+                   disabled={killWorking}
+                   className={cn(
+                     'flex items-center gap-3 text-white rounded-lg transition-all shadow-lg disabled:opacity-50 active:scale-95 px-5 py-2',
+                     posture?.kill_switch_active
+                       ? 'bg-green-600 hover:bg-green-700'
+                       : 'bg-red-500 hover:bg-red-600'
+                   )}
+                 >
+                   <Power className="w-4 h-4 shrink-0" />
+                   <div className="flex flex-col items-start">
+                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] leading-tight">
+                       {killWorking ? 'Working...' : posture?.kill_switch_active ? 'Reset Harakiri' : 'Harakiri'}
+                     </span>
+                     {!killWorking && (
+                       <span className="text-[8px] font-normal opacity-70 tracking-widest leading-tight">[Kill Switch]</span>
+                     )}
+                   </div>
+                 </button>
+              </div>
           </div>
         </div>
 
@@ -265,6 +343,14 @@ export const Dashboard = () => {
            </div>
         </div>
       </div>
+
+      {/* Harakiri two-step confirmation modal */}
+      {showHarakiri && (
+        <HarakiriModal
+          onConfirm={confirmHarakiri}
+          onCancel={() => setShowHarakiri(false)}
+        />
+      )}
     </div>
   );
 };

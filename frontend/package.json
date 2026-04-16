@@ -10,9 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/react-router-dom": "^5.3.3",
     "axios": "^1.15.0",
     "clsx": "^2.1.1",
+    "js-yaml": "^4.1.1",
     "lucide-react": "^1.8.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

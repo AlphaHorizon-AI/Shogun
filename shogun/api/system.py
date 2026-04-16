@@ -1,7 +1,6 @@
 import uuid
 from typing import Any
-from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import UnexpectedResponse
+from shogun.engine.vector_store import get_vector_store
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -23,16 +22,11 @@ router = APIRouter(prefix="/system", tags=["System"])
 
 
 async def _check_qdrant() -> str:
-    """Helper to check Qdrant connectivity."""
+    """Helper to check Qdrant connectivity via the global VectorStore."""
     try:
-        if settings.qdrant_url:
-            client = QdrantClient(url=settings.qdrant_url, timeout=1.0)
-        else:
-            # Embedded mode check
-            client = QdrantClient(path=str(settings.qdrant_path), timeout=1.0)
-        
-        # Simple collection list check to verify reachability
-        client.get_collections()
+        store = get_vector_store()
+        # Just check if we can get collections from the existing client
+        store.client.get_collections()
         return "healthy"
     except Exception:
         return "offline"
