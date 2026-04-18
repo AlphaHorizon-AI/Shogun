@@ -576,19 +576,29 @@ export function Archives() {
                                 <div className="space-y-1.5">
                                    <div className="flex justify-between text-[8px] uppercase font-bold text-shogun-subdued">
                                       <span>Salience</span>
-                                      <span className="text-shogun-blue font-mono">{(memory.relevance_score * 100).toFixed(0)}%</span>
+                                      <span className="text-shogun-blue font-mono">
+                                         {((isScored ? memory.scores.relevance_score : memory.relevance_score) * 100).toFixed(0)}%
+                                      </span>
                                    </div>
                                    <div className="h-1 bg-shogun-bg rounded-full overflow-hidden">
-                                      <div className="h-full bg-shogun-blue" style={{ width: `${memory.relevance_score * 100}%` }} />
+                                      <div 
+                                         className="h-full bg-shogun-blue" 
+                                         style={{ width: `${(isScored ? memory.scores.relevance_score : memory.relevance_score) * 100}%` }} 
+                                      />
                                    </div>
                                 </div>
                                 <div className="space-y-1.5">
                                    <div className="flex justify-between text-[8px] uppercase font-bold text-shogun-subdued">
                                       <span>Importance</span>
-                                      <span className="text-shogun-gold font-mono">{(memory.importance_score * 100).toFixed(0)}%</span>
+                                      <span className="text-shogun-gold font-mono">
+                                         {((isScored ? memory.scores.importance_score : memory.importance_score) * 100).toFixed(0)}%
+                                      </span>
                                    </div>
                                    <div className="h-1 bg-shogun-bg rounded-full overflow-hidden">
-                                      <div className="h-full bg-shogun-gold" style={{ width: `${memory.importance_score * 100}%` }} />
+                                      <div 
+                                         className="h-full bg-shogun-gold" 
+                                         style={{ width: `${(isScored ? memory.scores.importance_score : memory.importance_score) * 100}%` }} 
+                                      />
                                    </div>
                                 </div>
                                 <div className="flex flex-col items-end">
@@ -835,7 +845,9 @@ export function Archives() {
                              <Clock className="w-4 h-4 text-shogun-blue" />
                              <div>
                                 <p className="text-shogun-subdued text-[9px] uppercase font-bold">Inscribed At</p>
-                                <p className="text-shogun-text font-bold">{new Date(selectedMemory.created_at).toLocaleString()}</p>
+                                <p className="text-shogun-text font-bold">
+                                   {selectedMemory.created_at ? new Date(selectedMemory.created_at).toLocaleString() : 'Just now'}
+                                </p>
                              </div>
                           </div>
                           <div className="flex items-center gap-3 text-xs">
