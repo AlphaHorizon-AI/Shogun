@@ -149,6 +149,15 @@ class OpenClawClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def get_subcategories(self) -> list[dict[str, Any]]:
+        """Get all subcategories grouped by faculty.
+
+        Returns the full subcategory list matching the College UI dropdown.
+        """
+        resp = await self.client.get(f"{self.base_url}/subcategories")
+        resp.raise_for_status()
+        return resp.json()
+
     # ── Skills ────────────────────────────────────────────────
 
     async def get_skills(

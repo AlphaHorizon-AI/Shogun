@@ -86,10 +86,10 @@ export function Dojo() {
 
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await axios.get('/api/v1/dojo/openclaw/categories');
+      const res = await axios.get('/api/v1/dojo/openclaw/subcategories');
       setCategories(res.data.data || []);
     } catch (error) {
-      console.error('Error fetching categories:', error);
+      console.error('Error fetching subcategories:', error);
     }
   }, []);
 
@@ -316,44 +316,99 @@ export function Dojo() {
             </p>
           </div>
 
-          {/* Dynamic Categories */}
-          <div className="shogun-card space-y-4">
-             <h3 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest border-b border-shogun-border pb-2 mb-4">
-               {categories.length > 0 ? 'Categories' : 'Loading...'}
+          {/* Dynamic Categories (Faculty-grouped subcategories) */}
+          <div className="shogun-card space-y-3">
+             <h3 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest border-b border-shogun-border pb-2">
+               All Categories
              </h3>
-             <div className="flex flex-wrap gap-2">
-                {categories.length > 0 ? (
-                  <>
-                    <span 
-                      onClick={() => setCategoryFilter(null)}
-                      className={cn(
-                        "text-[10px] px-2 py-1 bg-[#050508] border rounded cursor-pointer transition-colors",
-                        !categoryFilter ? "border-shogun-gold text-shogun-gold" : "border-shogun-border hover:border-shogun-gold hover:text-shogun-gold"
-                      )}
-                    >
-                      All
-                    </span>
-                    {categories.slice(0, 12).map((cat: any) => (
-                      <span 
-                        key={cat.id || cat.name}
-                        onClick={() => setCategoryFilter(cat.id || cat.name)}
-                        className={cn(
-                          "text-[10px] px-2 py-1 bg-[#050508] border rounded cursor-pointer transition-colors",
-                          categoryFilter === (cat.id || cat.name) 
-                            ? "border-shogun-gold text-shogun-gold" 
-                            : "border-shogun-border hover:border-shogun-gold hover:text-shogun-gold"
-                        )}
-                      >
-                        {cat.name || cat.label || cat}
-                      </span>
-                    ))}
-                  </>
-                ) : (
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <span key={i} className="text-[10px] px-4 py-1 bg-shogun-bg border border-shogun-border rounded animate-pulse">&nbsp;</span>
-                  ))
-                )}
+             <div 
+               onClick={() => setCategoryFilter(null)}
+               className={cn(
+                 "text-[10px] px-3 py-1.5 rounded cursor-pointer transition-colors font-bold",
+                 !categoryFilter ? "bg-shogun-gold/10 text-shogun-gold" : "text-shogun-subdued hover:text-shogun-gold"
+               )}
+             >
+               All Categories
              </div>
+             {categories.length > 0 ? (
+               <>
+                 {/* Technical Faculty */}
+                 {categories.filter((c: any) => c.facultyId === 'technical').length > 0 && (
+                   <div className="space-y-1">
+                     <p className="text-[8px] font-bold text-shogun-blue uppercase tracking-[0.2em] flex items-center gap-1.5 mt-2 px-1">
+                       <span className="w-1.5 h-1.5 rounded-full bg-shogun-blue inline-block" />
+                       faculties.technical
+                     </p>
+                     {categories.filter((c: any) => c.facultyId === 'technical').map((cat: any) => (
+                       <div
+                         key={cat.id}
+                         onClick={() => setCategoryFilter(cat.id)}
+                         className={cn(
+                           "text-[10px] px-3 py-1 rounded cursor-pointer transition-colors truncate",
+                           categoryFilter === cat.id
+                             ? "bg-shogun-gold/10 text-shogun-gold font-bold"
+                             : "text-shogun-subdued hover:text-shogun-text hover:bg-[#050508]"
+                         )}
+                       >
+                         {cat.name}
+                       </div>
+                     ))}
+                   </div>
+                 )}
+
+                 {/* Human & Wellbeing Faculty */}
+                 {categories.filter((c: any) => c.facultyId === 'human_wellbeing').length > 0 && (
+                   <div className="space-y-1">
+                     <p className="text-[8px] font-bold text-orange-400 uppercase tracking-[0.2em] flex items-center gap-1.5 mt-3 px-1">
+                       <span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block" />
+                       faculties.human_wellbeing
+                     </p>
+                     {categories.filter((c: any) => c.facultyId === 'human_wellbeing').map((cat: any) => (
+                       <div
+                         key={cat.id}
+                         onClick={() => setCategoryFilter(cat.id)}
+                         className={cn(
+                           "text-[10px] px-3 py-1 rounded cursor-pointer transition-colors truncate",
+                           categoryFilter === cat.id
+                             ? "bg-shogun-gold/10 text-shogun-gold font-bold"
+                             : "text-shogun-subdued hover:text-shogun-text hover:bg-[#050508]"
+                         )}
+                       >
+                         {cat.name}
+                       </div>
+                     ))}
+                   </div>
+                 )}
+
+                 {/* Business & Professional Faculty */}
+                 {categories.filter((c: any) => c.facultyId === 'business_professional').length > 0 && (
+                   <div className="space-y-1">
+                     <p className="text-[8px] font-bold text-green-400 uppercase tracking-[0.2em] flex items-center gap-1.5 mt-3 px-1">
+                       <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
+                       faculties.business_professional
+                     </p>
+                     {categories.filter((c: any) => c.facultyId === 'business_professional').map((cat: any) => (
+                       <div
+                         key={cat.id}
+                         onClick={() => setCategoryFilter(cat.id)}
+                         className={cn(
+                           "text-[10px] px-3 py-1 rounded cursor-pointer transition-colors truncate",
+                           categoryFilter === cat.id
+                             ? "bg-shogun-gold/10 text-shogun-gold font-bold"
+                             : "text-shogun-subdued hover:text-shogun-text hover:bg-[#050508]"
+                         )}
+                       >
+                         {cat.name}
+                       </div>
+                     ))}
+                   </div>
+                 )}
+               </>
+             ) : (
+               Array.from({ length: 8 }).map((_, i) => (
+                 <div key={i} className="h-4 bg-shogun-bg border border-shogun-border rounded animate-pulse" />
+               ))
+             )}
           </div>
 
           {/* OpenClaw Registration Card */}

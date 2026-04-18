@@ -92,6 +92,17 @@ async def openclaw_categories():
     return ApiResponse(data=cats)
 
 
+@router.get("/openclaw/subcategories", response_model=ApiResponse)
+async def openclaw_subcategories():
+    """List all subcategories grouped by faculty from OpenClaw College.
+
+    This matches the category dropdown on the College website.
+    """
+    async with get_openclaw_client() as client:
+        subcats = await client.get_subcategories()
+    return ApiResponse(data=subcats)
+
+
 # ── Skills ────────────────────────────────────────────────────
 
 @router.get("/openclaw/skills", response_model=ApiResponse)
