@@ -186,21 +186,19 @@ async def openclaw_skill_detail(skill_id: str):
 
 @router.get("/openclaw/bundles", response_model=ApiResponse)
 async def openclaw_bundles(faculty: str | None = None):
-    """Browse skill bundles from OpenClaw College."""
+    """Browse skill bundles from OpenClaw College.
+
+    Returns the full bundle objects including skill IDs for the UI.
+    """
     async with get_openclaw_client() as client:
-        bundles = await client.get_bundles(faculty=faculty)
+        url = f"{client.base_url}/bundles"
+        if faculty:
+            url += f"?facultyId={faculty}"
+        resp = await client.client.get(url)
+        resp.raise_for_status()
+        bundles = resp.json()
     return ApiResponse(
-        data=[
-            {
-                "id": b.id,
-                "name": b.name,
-                "slug": b.slug,
-                "description": b.description,
-                "faculty": b.faculty_id,
-                "skill_count": b.skill_count,
-            }
-            for b in bundles
-        ],
+        data=bundles,
         meta={"total": len(bundles), "source": OPENCLAW_SOURCE_SLUG},
     )
 

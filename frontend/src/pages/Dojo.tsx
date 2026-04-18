@@ -20,6 +20,7 @@ import {
   UserPlus,
   Star,
   ChevronRight,
+  ChevronDown,
   Layers,
   BadgeCheck,
   Loader2,
@@ -69,6 +70,8 @@ export function Dojo() {
   const [urlMessage, setUrlMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [expandedSpec, setExpandedSpec] = useState<string | null>(null);
+  const [expandedBundle, setExpandedBundle] = useState<string | null>(null);
+  const [collapsedFaculties, setCollapsedFaculties] = useState<Record<string, boolean>>({});
 
   // ── Data Fetching ──────────────────────────────────────────
 
@@ -336,11 +339,15 @@ export function Dojo() {
                  {/* Technical Faculty */}
                  {categories.filter((c: any) => c.facultyId === 'technical').length > 0 && (
                    <div className="space-y-1">
-                     <p className="text-[8px] font-bold text-shogun-blue uppercase tracking-[0.2em] flex items-center gap-1.5 mt-2 px-1">
+                     <p
+                       className="text-[8px] font-bold text-shogun-blue uppercase tracking-[0.2em] flex items-center gap-1.5 mt-2 px-1 cursor-pointer select-none hover:opacity-80 transition-opacity"
+                       onClick={() => setCollapsedFaculties(prev => ({ ...prev, technical: !prev.technical }))}
+                     >
                        <span className="w-1.5 h-1.5 rounded-full bg-shogun-blue inline-block" />
                        faculties.technical
+                       {collapsedFaculties.technical ? <ChevronRight className="w-2.5 h-2.5 ml-auto" /> : <ChevronDown className="w-2.5 h-2.5 ml-auto" />}
                      </p>
-                     {categories.filter((c: any) => c.facultyId === 'technical').map((cat: any) => (
+                     {!collapsedFaculties.technical && categories.filter((c: any) => c.facultyId === 'technical').map((cat: any) => (
                        <div
                          key={cat.id}
                          onClick={() => setCategoryFilter(cat.id)}
@@ -360,11 +367,15 @@ export function Dojo() {
                  {/* Human & Wellbeing Faculty */}
                  {categories.filter((c: any) => c.facultyId === 'human_wellbeing').length > 0 && (
                    <div className="space-y-1">
-                     <p className="text-[8px] font-bold text-orange-400 uppercase tracking-[0.2em] flex items-center gap-1.5 mt-3 px-1">
+                     <p
+                       className="text-[8px] font-bold text-orange-400 uppercase tracking-[0.2em] flex items-center gap-1.5 mt-3 px-1 cursor-pointer select-none hover:opacity-80 transition-opacity"
+                       onClick={() => setCollapsedFaculties(prev => ({ ...prev, human_wellbeing: !prev.human_wellbeing }))}
+                     >
                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block" />
                        faculties.human_wellbeing
+                       {collapsedFaculties.human_wellbeing ? <ChevronRight className="w-2.5 h-2.5 ml-auto" /> : <ChevronDown className="w-2.5 h-2.5 ml-auto" />}
                      </p>
-                     {categories.filter((c: any) => c.facultyId === 'human_wellbeing').map((cat: any) => (
+                     {!collapsedFaculties.human_wellbeing && categories.filter((c: any) => c.facultyId === 'human_wellbeing').map((cat: any) => (
                        <div
                          key={cat.id}
                          onClick={() => setCategoryFilter(cat.id)}
@@ -384,11 +395,15 @@ export function Dojo() {
                  {/* Business & Professional Faculty */}
                  {categories.filter((c: any) => c.facultyId === 'business_professional').length > 0 && (
                    <div className="space-y-1">
-                     <p className="text-[8px] font-bold text-green-400 uppercase tracking-[0.2em] flex items-center gap-1.5 mt-3 px-1">
+                     <p
+                       className="text-[8px] font-bold text-green-400 uppercase tracking-[0.2em] flex items-center gap-1.5 mt-3 px-1 cursor-pointer select-none hover:opacity-80 transition-opacity"
+                       onClick={() => setCollapsedFaculties(prev => ({ ...prev, business_professional: !prev.business_professional }))}
+                     >
                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
                        faculties.business_professional
+                       {collapsedFaculties.business_professional ? <ChevronRight className="w-2.5 h-2.5 ml-auto" /> : <ChevronDown className="w-2.5 h-2.5 ml-auto" />}
                      </p>
-                     {categories.filter((c: any) => c.facultyId === 'business_professional').map((cat: any) => (
+                     {!collapsedFaculties.business_professional && categories.filter((c: any) => c.facultyId === 'business_professional').map((cat: any) => (
                        <div
                          key={cat.id}
                          onClick={() => setCategoryFilter(cat.id)}
@@ -539,30 +554,85 @@ export function Dojo() {
                    ) : (
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                        {filteredBundles.map((bundle) => (
-                         <div key={bundle.id} className="shogun-card group hover:border-shogun-blue/50 cursor-pointer transition-all">
-                           <div className="flex items-start gap-4 mb-4">
-                             <div className="w-12 h-12 bg-shogun-blue/10 border border-shogun-blue/20 rounded-xl flex items-center justify-center text-shogun-blue flex-shrink-0">
-                               <Package className="w-6 h-6" />
+                         <div key={bundle.id} className={cn("shogun-card group cursor-pointer transition-all", expandedBundle === bundle.id ? "border-shogun-blue/50" : "hover:border-shogun-blue/50")} onClick={() => setExpandedBundle(expandedBundle === bundle.id ? null : bundle.id)}>
+                           <div className="flex items-start gap-4 mb-3">
+                             <div className="w-12 h-12 bg-shogun-blue/10 border border-shogun-blue/20 rounded-xl flex items-center justify-center flex-shrink-0 text-xl">
+                               {bundle.icon || '📦'}
                              </div>
                              <div className="flex-1 min-w-0">
-                               <h4 className="text-lg font-bold text-shogun-text group-hover:text-shogun-blue transition-colors">{bundle.name}</h4>
+                               <div className="flex items-center gap-3">
+                                 <h4 className="text-lg font-bold text-shogun-text group-hover:text-shogun-blue transition-colors">{bundle.name}</h4>
+                                 {bundle.currentVersion?.riskTier && (
+                                   <span className={cn("text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-widest",
+                                     bundle.currentVersion.riskTier === 'low' ? "bg-green-500/10 text-green-400" :
+                                     bundle.currentVersion.riskTier === 'medium' ? "bg-yellow-500/10 text-yellow-400" :
+                                     "bg-red-500/10 text-red-400"
+                                   )}>
+                                     {bundle.currentVersion.riskTier}
+                                   </span>
+                                 )}
+                               </div>
                                <p className="text-[10px] text-shogun-subdued uppercase tracking-widest font-bold mt-0.5">
-                                 {bundle.skill_count} skills · {bundle.faculty || 'General'}
+                                 {bundle.skillIds?.length || 0} skills · {bundle.facultyId || 'General'}
+                                 {bundle.currentVersion?.versionLabel && <> · v{bundle.currentVersion.versionLabel}</>}
                                </p>
                              </div>
+                             <ChevronRight className={cn("w-4 h-4 text-shogun-subdued transition-transform mt-1", expandedBundle === bundle.id && "rotate-90")} />
                            </div>
                            <p className="text-xs text-shogun-subdued leading-relaxed line-clamp-3">
-                             {bundle.description}
+                             {bundle.shortDescription || bundle.description}
                            </p>
-                           <div className="mt-4 pt-4 border-t border-shogun-border flex items-center justify-between">
-                             <div className="flex items-center gap-2">
-                               <Layers className="w-3 h-3 text-shogun-blue" />
-                               <span className="text-[10px] font-mono text-shogun-subdued">{bundle.skill_count} skills included</span>
+                           {/* ── Expanded Bundle Details ── */}
+                           {expandedBundle === bundle.id && (
+                             <div className="mt-4 pt-4 border-t border-shogun-border space-y-3" onClick={(e) => e.stopPropagation()}>
+                               {bundle.currentVersion?.skills && bundle.currentVersion.skills.length > 0 ? (
+                                 <div className="space-y-2">
+                                   <div className="flex items-center gap-2">
+                                     <Zap className="w-3.5 h-3.5 text-shogun-blue" />
+                                     <span className="text-[10px] font-bold text-shogun-text uppercase tracking-widest">Included Skills</span>
+                                     <span className="text-[9px] px-1.5 py-0.5 bg-shogun-card border border-shogun-border rounded text-shogun-subdued font-mono">{bundle.currentVersion.skills.length}</span>
+                                   </div>
+                                   <div className="space-y-1 pl-5">
+                                     {bundle.currentVersion.skills.map((skill: any) => (
+                                       <div key={skill.id} className="flex items-center gap-2">
+                                         <span className="text-[8px] px-2 py-0.5 bg-[#050508] border border-shogun-border rounded font-mono text-shogun-subdued">{skill.id}</span>
+                                         <span className="text-[10px] text-shogun-text">{skill.name}</span>
+                                       </div>
+                                     ))}
+                                   </div>
+                                 </div>
+                               ) : bundle.skillIds && bundle.skillIds.length > 0 ? (
+                                 <div className="space-y-2">
+                                   <div className="flex items-center gap-2">
+                                     <Zap className="w-3.5 h-3.5 text-shogun-blue" />
+                                     <span className="text-[10px] font-bold text-shogun-text uppercase tracking-widest">Included Skills</span>
+                                     <span className="text-[9px] px-1.5 py-0.5 bg-shogun-card border border-shogun-border rounded text-shogun-subdued font-mono">{bundle.skillIds.length}</span>
+                                   </div>
+                                   <div className="flex flex-wrap gap-1.5 pl-5">
+                                     {bundle.skillIds.map((id: string) => (
+                                       <span key={id} className="text-[8px] px-2 py-0.5 bg-[#050508] border border-shogun-border rounded font-mono text-shogun-subdued">{id}</span>
+                                     ))}
+                                   </div>
+                                 </div>
+                               ) : null}
+                               <div className="mt-3 pt-3 border-t border-shogun-border">
+                                 <div className="flex items-center gap-1 text-[10px] font-mono text-shogun-blue cursor-pointer hover:text-shogun-blue/80 transition-colors">
+                                   <Plus className="w-3 h-3" /> Install Bundle
+                                 </div>
+                               </div>
                              </div>
-                             <div className="flex items-center gap-1 text-[10px] font-mono text-shogun-subdued group-hover:text-shogun-blue transition-colors">
-                               <Plus className="w-3 h-3" /> Install Bundle
+                           )}
+                           {expandedBundle !== bundle.id && (
+                             <div className="mt-4 pt-4 border-t border-shogun-border flex items-center justify-between">
+                               <div className="flex items-center gap-2">
+                                 <Layers className="w-3 h-3 text-shogun-blue" />
+                                 <span className="text-[10px] font-mono text-shogun-subdued">{bundle.skillIds?.length || 0} skills included</span>
+                               </div>
+                               <div className="flex items-center gap-1 text-[10px] font-mono text-shogun-subdued group-hover:text-shogun-blue transition-colors">
+                                 <Plus className="w-3 h-3" /> Install Bundle
+                               </div>
                              </div>
-                           </div>
+                           )}
                          </div>
                        ))}
                      </div>
