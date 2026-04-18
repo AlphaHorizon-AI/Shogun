@@ -209,21 +209,17 @@ async def openclaw_bundles(faculty: str | None = None):
 
 @router.get("/openclaw/specializations", response_model=ApiResponse)
 async def openclaw_specializations():
-    """Browse certification pathways from OpenClaw College."""
+    """Browse certification pathways from OpenClaw College.
+
+    Returns the full specialization objects including requirements,
+    badge IDs, icons, and degree types for the UI.
+    """
     async with get_openclaw_client() as client:
-        specs = await client.get_specializations()
+        resp = await client.client.get(f"{client.base_url}/specializations")
+        resp.raise_for_status()
+        specs = resp.json()
     return ApiResponse(
-        data=[
-            {
-                "id": s.id,
-                "name": s.name,
-                "slug": s.slug,
-                "description": s.description,
-                "faculty": s.faculty_id,
-                "badge_count": s.badge_count,
-            }
-            for s in specs
-        ],
+        data=specs,
         meta={"total": len(specs), "source": OPENCLAW_SOURCE_SLUG},
     )
 

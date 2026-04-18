@@ -68,6 +68,7 @@ export function Dojo() {
   const [addingUrl, setAddingUrl] = useState(false);
   const [urlMessage, setUrlMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [expandedSpec, setExpandedSpec] = useState<string | null>(null);
 
   // ── Data Fetching ──────────────────────────────────────────
 
@@ -217,8 +218,8 @@ export function Dojo() {
                  <span className="text-xl font-bold text-shogun-gold">{stats?.skills ?? <Loader2 className="w-4 h-4 animate-spin inline" />} <span className="text-[10px] font-normal">Skills</span></span>
               </div>
               <div className="flex flex-col">
-                 <span className="text-[10px] text-shogun-subdued uppercase font-bold tracking-widest leading-none">Community</span>
-                 <span className="text-xl font-bold text-shogun-blue">{stats?.agents ?? <Loader2 className="w-4 h-4 animate-spin inline" />} <span className="text-[10px] font-normal">Labs</span></span>
+                 <span className="text-[10px] text-shogun-subdued uppercase font-bold tracking-widest leading-none">Subcategories</span>
+                 <span className="text-xl font-bold text-shogun-blue">{stats?.subcategories ?? <Loader2 className="w-4 h-4 animate-spin inline" />} <span className="text-[10px] font-normal">Fields</span></span>
               </div>
               <div className="flex flex-col">
                  <span className="text-[10px] text-shogun-subdued uppercase font-bold tracking-widest leading-none">Badges</span>
@@ -580,29 +581,59 @@ export function Dojo() {
                    ) : (
                      <div className="grid grid-cols-1 gap-6">
                        {filteredSpecs.map((spec) => (
-                         <div key={spec.id} className="shogun-card group hover:border-purple-400/50 cursor-pointer transition-all">
+                         <div key={spec.id} className={cn("shogun-card group cursor-pointer transition-all", expandedSpec === spec.id ? "border-purple-400/50" : "hover:border-purple-400/50")} onClick={() => setExpandedSpec(expandedSpec === spec.id ? null : spec.id)}>
                            <div className="flex items-start gap-4">
-                             <div className="w-14 h-14 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-center justify-center text-purple-400 flex-shrink-0">
-                               <GraduationCap className="w-7 h-7" />
+                             <div className="w-14 h-14 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-center justify-center flex-shrink-0 text-2xl">
+                               {spec.icon || '🎓'}
                              </div>
                              <div className="flex-1 min-w-0">
                                <div className="flex items-center gap-3 mb-2">
                                  <h4 className="text-lg font-bold text-shogun-text group-hover:text-purple-400 transition-colors">{spec.name}</h4>
                                  <span className="text-[9px] px-2 py-0.5 bg-purple-500/10 text-purple-400 rounded font-bold uppercase tracking-widest">
-                                   {spec.badge_count} badges
+                                   {spec.degreeType || 'Specialization'}
                                  </span>
                                </div>
                                <p className="text-xs text-shogun-subdued leading-relaxed line-clamp-2">
-                                 {spec.description}
+                                 {spec.title || spec.description}
                                </p>
                                <div className="flex items-center gap-4 mt-3">
                                  <span className="text-[10px] text-shogun-subdued uppercase font-bold tracking-widest">
-                                   Faculty: {spec.faculty || 'General'}
+                                   Faculty: {spec.facultyId || spec.faculty || 'General'}
                                  </span>
-                                 <ChevronRight className="w-3 h-3 text-shogun-subdued" />
+                                 <span className="text-[10px] text-shogun-subdued/60">•</span>
+                                 <span className="text-[10px] text-shogun-subdued uppercase font-bold tracking-widest">
+                                   Category: {spec.categoryId || '—'}
+                                 </span>
+                                 <ChevronRight className={cn("w-3 h-3 text-shogun-subdued transition-transform ml-auto", expandedSpec === spec.id && "rotate-90")} />
                                </div>
                              </div>
                            </div>
+                           {/* ── Expanded Requirements ── */}
+                           {expandedSpec === spec.id && (
+                             <div className="mt-4 pt-4 border-t border-shogun-border space-y-4" onClick={(e) => e.stopPropagation()}>
+                               {spec.requirements?.map((req: any, idx: number) => (
+                                 <div key={idx} className="space-y-2">
+                                   <div className="flex items-center gap-2">
+                                     {req.type === 'bundle_count' ? <Package className="w-3.5 h-3.5 text-shogun-gold" /> : <Zap className="w-3.5 h-3.5 text-shogun-blue" />}
+                                     <span className="text-[10px] font-bold text-shogun-text uppercase tracking-widest">{req.label}</span>
+                                     <span className="text-[9px] px-1.5 py-0.5 bg-shogun-card border border-shogun-border rounded text-shogun-subdued font-mono">{req.count}</span>
+                                   </div>
+                                   <div className="flex flex-wrap gap-1.5 pl-5">
+                                     {(req.bundleIds || req.skillIds || []).map((id: string) => (
+                                       <span key={id} className="text-[8px] px-2 py-0.5 bg-[#050508] border border-shogun-border rounded font-mono text-shogun-subdued truncate max-w-[160px]">{id}</span>
+                                     ))}
+                                   </div>
+                                 </div>
+                               ))}
+                               {spec.badgeId && (
+                                 <div className="flex items-center gap-2 pt-2">
+                                   <Award className="w-3.5 h-3.5 text-purple-400" />
+                                   <span className="text-[10px] font-bold text-shogun-text uppercase tracking-widest">Badge Reward</span>
+                                   <span className="text-[9px] px-2 py-0.5 bg-purple-500/10 text-purple-400 rounded font-mono">{spec.badgeId}</span>
+                                 </div>
+                               )}
+                             </div>
+                           )}
                          </div>
                        ))}
                      </div>
