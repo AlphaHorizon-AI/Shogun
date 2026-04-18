@@ -31,6 +31,7 @@ class Agent(Base, UUIDMixin, AuditMixin, SoftDeleteMixin):
     bushido_settings: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=lambda: {"nightly_consolidation": True, "weekly_performance_audit": True, "skill_health_check": True, "persona_drift_check": False})
     tags: Mapped[list] = mapped_column(JSONType(), nullable=False, default=list)
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    openclaw_agent_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     persona = relationship("Persona", lazy="joined", foreign_keys=[persona_id])
     samurai_profile = relationship("SamuraiProfile", back_populates="agent", uselist=False, lazy="joined")

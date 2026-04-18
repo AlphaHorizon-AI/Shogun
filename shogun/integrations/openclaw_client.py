@@ -244,13 +244,39 @@ class OpenClawClient:
         runtime: str = "shogun",
         capabilities: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Register the Shogun agent with OpenClaw College."""
+        """Register the Shogun agent with OpenClaw College.
+
+        Returns the full registration response which includes the
+        assigned ``id`` on the College platform.
+        """
         payload = {
             "name": name,
             "runtime": runtime,
             "capabilities": capabilities or ["browse", "learn", "feedback"],
         }
         resp = await self.client.post(f"{self.base_url}/v1/agents/register", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    # ── Agent Lookup ─────────────────────────────────────────
+
+    async def get_agent_by_id(self, agent_id: str) -> dict[str, Any] | None:
+        """Fetch a registered agent's profile and achievements."""
+        try:
+            resp = await self.client.get(f"{self.base_url}/agents/{agent_id}")
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            logger.warning(f"Failed to fetch agent {agent_id}: {e}")
+            return None
+
+    # ── Badges ───────────────────────────────────────────────
+
+    async def get_badges(self) -> list[dict[str, Any]]:
+        """Fetch all available badges from OpenClaw College."""
+        resp = await self.client.get(f"{self.base_url}/badges")
         resp.raise_for_status()
         return resp.json()
 
@@ -271,6 +297,25 @@ class OpenClawClient:
             "comment": comment,
         }
         resp = await self.client.post(f"{self.base_url}/v1/feedback", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    # ── Suggestions ──────────────────────────────────────────
+
+    async def suggest_skill(
+        self,
+        name: str,
+        description: str,
+        agent_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Suggest a new skill to the OpenClaw College board."""
+        payload = {
+            "name": name,
+            "description": description,
+        }
+        if agent_id:
+            payload["agentId"] = agent_id
+        resp = await self.client.post(f"{self.base_url}/v1/suggestions", json=payload)
         resp.raise_for_status()
         return resp.json()
 
@@ -305,3 +350,4 @@ class OpenClawClient:
 def get_openclaw_client() -> OpenClawClient:
     """Create a new OpenClawClient instance."""
     return OpenClawClient()
+
