@@ -8,34 +8,17 @@ No cloud account needed. Everything runs locally on your machine.
 
 ## 🚀 Install Shogun (One Click)
 
-Getting started takes **two steps**: install the prerequisites, then run the installer.
-
-### Step 1: Install Prerequisites
-
-You need two things installed on your computer (if you don't have them already):
-
-| Prerequisite | Download | How to check |
-|--------------|----------|-------------|
-| **Python 3.10+** | [python.org/downloads](https://python.org/downloads) | Open a terminal, type `python --version` |
-| **Node.js 18+** | [nodejs.org](https://nodejs.org) | Open a terminal, type `node --version` |
-
-> 💡 **Windows users:** When installing Python, make sure to check ✅ **"Add Python to PATH"** during installation.
->
-> 💡 **macOS users:** You can install both via Homebrew: `brew install python node`
-
-### Step 2: Download & Run the Installer
-
-Download **one file** for your platform, then double-click it:
+Download **one file** for your platform, double-click it, and you're done. The installer handles **everything** — including installing Python and Node.js if you don't have them.
 
 | Platform | Download | Instructions |
 |----------|----------|-------------|
 | **🪟 Windows** | [⬇️ **Shogun-Install.bat**](https://raw.githubusercontent.com/AlphaHorizon-AI/Shogun/main/Shogun-Install.bat) | **Right-click the link → "Save link as..."** → Double-click the downloaded file |
 | **🍎 macOS** | [⬇️ **Shogun-Install.command**](https://raw.githubusercontent.com/AlphaHorizon-AI/Shogun/main/Shogun-Install.command) | **Click to download** → Double-click the file → If prompted, click "Open" |
 
-**That's it.** The installer will:
-- ✅ Download Shogun automatically (no git needed)
-- ✅ Set up a Python environment
-- ✅ Install all dependencies
+**The installer will automatically:**
+- ✅ Install Python & Node.js if missing (via winget on Windows, Homebrew on macOS)
+- ✅ Download Shogun from GitHub (no git needed)
+- ✅ Set up the Python environment and install all dependencies
 - ✅ Build the interface
 - ✅ Create a **desktop shortcut** (⚔️ Shogun — The Tenshu)
 - ✅ Open the **Setup Wizard** in your browser
