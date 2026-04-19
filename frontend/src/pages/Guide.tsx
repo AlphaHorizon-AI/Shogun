@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   BookOpen, 
   Terminal, 
@@ -29,49 +29,13 @@ import {
   Star,
   Layers,
   Sparkles,
-  ChevronRight,
-  HelpCircle
 } from "lucide-react";
-import axios from 'axios';
 import { cn } from '../lib/utils';
 
-type DocTab = 'onboarding' | 'architecture' | 'reference' | 'safety' | 'backup';
+type DocTab = 'onboarding' | 'architecture' | 'reference' | 'safety';
 
 export function Guide() {
   const [activeTab, setActiveTab] = useState<DocTab>('onboarding');
-  const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [exportPath, setExportPath] = useState('C:\\Shogun_Backups');
-  const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-
-  useEffect(() => {
-    if (activeTab === 'backup') fetchBackupStats();
-  }, [activeTab]);
-
-  const fetchBackupStats = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get('/api/v1/system/backup/info');
-      setStats(res.data.data);
-    } catch { /* silent */ }
-    finally { setLoading(false); }
-  };
-
-  const handleExport = async (strategy: 'json' | 'raw') => {
-    setLoading(true);
-    try {
-      const include_db = strategy === 'raw';
-      const res = await axios.get('/api/v1/system/backup/export', {
-        params: { save_path: exportPath, include_db },
-      });
-      const saved = res.data?.data?.saved_to || exportPath;
-      setStatusMsg({ type: 'success', text: `Backup saved to ${saved}` });
-      fetchBackupStats();
-    } catch (err: any) {
-      const msg = err.response?.data?.meta?.error || err.response?.data?.detail || 'Export failed';
-      setStatusMsg({ type: 'error', text: msg });
-    } finally { setLoading(false); }
-  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
@@ -93,7 +57,6 @@ export function Guide() {
           { id: 'reference', label: 'Reference Manual', icon: BookOpen },
           { id: 'architecture', label: 'Architecture', icon: Cpu },
           { id: 'safety', label: 'Safety Protocols', icon: ShieldCheck },
-          { id: 'backup', label: 'Data Management', icon: HardDrive },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -1241,137 +1204,8 @@ export function Guide() {
           </div>
         )}
 
-        {/* Data Management (Backups) */}
-        {activeTab === 'backup' && (
-          <div className="space-y-8 animate-in slide-in-from-bottom-4">
-             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                
-                {/* Statistics */}
-                <div className="lg:col-span-4 space-y-6">
-                   <section className="shogun-card">
-                      <h3 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest mb-4 flex items-center gap-2">
-                         <Activity className="w-3 h-3" /> System Snapshot
-                      </h3>
-                      {loading ? (
-                         <div className="flex items-center gap-3 py-6 text-shogun-subdued animate-pulse">
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                            <span className="text-xs uppercase font-bold tracking-widest">Scanning DB...</span>
-                         </div>
-                       ) : stats ? (
-                         <div className="space-y-4">
-                            {stats.tables && Object.entries(stats.tables).map(([table, count]: [string, any]) => (
-                              <div key={table} className="flex justify-between items-center bg-shogun-bg p-3 rounded-lg border border-shogun-border">
-                                 <span className="text-[10px] text-shogun-subdued uppercase font-bold">{table.replace(/_/g, ' ')}</span>
-                                 <span className="text-sm font-bold text-shogun-text">{count}</span>
-                              </div>
-                            ))}
-                            <div className="pt-4 border-t border-shogun-border text-center">
-                               <p className="text-[9px] text-shogun-subdued uppercase font-bold">Total Rows</p>
-                               <p className="text-lg font-bold text-shogun-blue">{stats.total_rows ?? '—'}</p>
-                            </div>
-                            <div className="text-center">
-                               <p className="text-[9px] text-shogun-subdued uppercase font-bold">Database Size</p>
-                               <p className="text-2xl font-bold text-shogun-text">~{((stats.db_size_bytes || 0) / 1024 / 1024).toFixed(2)} MB</p>
-                            </div>
-                         </div>
-                      ) : (
-                         <div className="py-6 text-center italic text-shogun-subdued text-xs">Could not retrieve stats.</div>
-                      )}
-                      <button 
-                        onClick={fetchBackupStats}
-                        className="w-full mt-4 py-2 border border-shogun-border rounded-lg text-[9px] font-bold uppercase tracking-widest hover:text-shogun-blue transition-colors"
-                      >
-                        Refresh Snapshot
-                      </button>
-                   </section>
 
-                   <div className="shogun-card bg-indigo-500/5 border-indigo-500/20">
-                      <div className="flex items-center gap-2 text-indigo-400 mb-2">
-                         <HelpCircle className="w-4 h-4" />
-                         <span className="text-[10px] font-bold uppercase tracking-widest">Why Backup?</span>
-                      </div>
-                      <p className="text-[10px] text-shogun-subdued leading-relaxed">
-                        Your Shogun stores months of custom knowledge, trained skills, and secure identities. 
-                        Exporting a backup allows you to migrate your entire mind-state to a new server or recover from hardware failure.
-                      </p>
-                   </div>
-                </div>
 
-                {/* Export/Import Actions */}
-                <div className="lg:col-span-8 space-y-6">
-                   <section className="shogun-card space-y-6">
-                      <div>
-                        <h3 className="text-lg font-bold text-shogun-text mb-1">Export Library</h3>
-                        <p className="text-xs text-shogun-subdued">Pack your entire intelligence store into a portable ZIP bundle.</p>
-                      </div>
-
-                      <div className="space-y-4">
-                         <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Target Backup Directory</label>
-                            <div className="flex gap-2">
-                               <input 
-                                 type="text"
-                                 value={exportPath}
-                                 onChange={e => setExportPath(e.target.value)}
-                                 className="flex-1 bg-shogun-bg border border-shogun-border rounded-lg px-4 py-2.5 text-xs font-mono outline-none focus:border-shogun-blue"
-                               />
-                            </div>
-                         </div>
-
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <button 
-                              onClick={() => handleExport('json')}
-                              disabled={loading}
-                              className="p-6 bg-shogun-bg border border-shogun-border rounded-2xl text-left hover:border-shogun-blue transition-all group"
-                            >
-                               <div className="flex items-center justify-between mb-2">
-                                  <FileText className="w-6 h-6 text-shogun-blue" />
-                                  <ChevronRight className="w-4 h-4 text-shogun-subdued group-hover:translate-x-1 transition-transform" />
-                               </div>
-                               <div className="font-bold text-shogun-text">Safe JSON Bundle</div>
-                               <p className="text-[10px] text-shogun-subdued mt-1">Exports every table individually. Safest for moving between different Shogun versions or cleaning up data.</p>
-                            </button>
-                            
-                            <button 
-                               onClick={() => handleExport('raw')}
-                               disabled={loading}
-                               className="p-6 bg-shogun-bg border border-shogun-border rounded-2xl text-left hover:border-shogun-gold transition-all group"
-                            >
-                               <div className="flex items-center justify-between mb-2">
-                                  <Database className="w-6 h-6 text-shogun-gold" />
-                                  <ChevronRight className="w-4 h-4 text-shogun-subdued group-hover:translate-x-1 transition-transform" />
-                               </div>
-                               <div className="font-bold text-shogun-text">Raw Database Swap</div>
-                               <p className="text-[10px] text-shogun-subdued mt-1">Copies the actual Shogun.db file directly. Fast, but requires both systems to be on the same version.</p>
-                            </button>
-                         </div>
-                      </div>
-
-                      {statusMsg && (
-                        <div className={cn(
-                          "p-3 rounded-lg flex items-center gap-3 text-xs font-bold uppercase",
-                          statusMsg.type === 'success' ? "bg-green-500/10 text-green-500 border border-green-500/20" : "bg-red-500/10 text-red-500 border border-red-500/20"
-                        )}>
-                          {statusMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                          {statusMsg.text}
-                        </div>
-                      )}
-                   </section>
-
-                   <section className="shogun-card border-dashed flex flex-col items-center justify-center p-12 text-center group cursor-pointer hover:bg-shogun-blue/[0.02] hover:border-shogun-blue/40 transition-all">
-                      <div className="w-16 h-16 rounded-full bg-shogun-card border border-shogun-border flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                         <Download className="w-8 h-8 text-shogun-subdued group-hover:text-shogun-blue transition-colors" />
-                      </div>
-                      <h4 className="text-lg font-bold text-shogun-text mb-1">Import Shogun State</h4>
-                      <p className="text-xs text-shogun-subdued max-w-sm">
-                        Drag and drop a previously exported <strong>.zip</strong> bundle here to restore your agents, memories, and settings.
-                      </p>
-                      <input type="file" className="hidden" accept=".zip" />
-                   </section>
-                </div>
-             </div>
-          </div>
-        )}
 
       </div>
     </div>
