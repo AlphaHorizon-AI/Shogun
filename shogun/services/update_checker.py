@@ -43,17 +43,53 @@ def _get_local_version() -> dict:
 
 
 async def _fetch_remote_version() -> Optional[dict]:
-    """Fetch the remote version.json from GitHub."""
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(REMOTE_URL)
-            if resp.status_code == 200:
-                return resp.json()
-            logger.warning("Remote version check returned %d", resp.status_code)
-            return None
-    except Exception as e:
-        logger.debug("Remote version check failed (offline?): %s", e)
-        return None
+    """
+    Fetch the remote version.json from GitHub.
+
+    Tries three strategies:
+    1. GitHub Contents API (works for private repos if GITHUB_TOKEN is set)
+    2. Raw githubusercontent (works for public repos)
+    3. GitHub API without auth (works for public repos, rate-limited)
+    """
+    import base64
+    from shogun.config import settings
+
+    github_token = settings.github_token or ""
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if github_token:
+        headers["Authorization"] = f"token {github_token}"
+
+    strategies = []
+
+    # Strategy 1: GitHub Contents API (best for private repos)
+    api_url = f"https://api.github.com/repos/{REPO}/contents/version.json?ref={BRANCH}"
+    strategies.append(("GitHub API", api_url, True))
+
+    # Strategy 2: Raw file (public repos only)
+    raw_url = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/version.json"
+    strategies.append(("Raw GitHub", raw_url, False))
+
+    for name, url, is_api in strategies:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                req_headers = dict(headers) if is_api else {}
+                resp = await client.get(url, headers=req_headers)
+
+                if resp.status_code == 200:
+                    if is_api:
+                        # GitHub API returns base64-encoded content
+                        data = resp.json()
+                        content = base64.b64decode(data["content"]).decode("utf-8")
+                        return json.loads(content)
+                    else:
+                        return resp.json()
+
+                logger.debug("%s returned %d", name, resp.status_code)
+        except Exception as e:
+            logger.debug("%s failed: %s", name, e)
+
+    logger.warning("All update check strategies failed for %s", REPO)
+    return None
 
 
 async def check_for_updates(force: bool = False) -> dict:

@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None
     telegram_allowed_chat_ids: str | None = None
 
+    # ── GitHub (for update checker on private repos) ─────────
+    github_token: str | None = None
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
