@@ -46,7 +46,7 @@ export function Guide() {
             Framework Guide
             <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-1 rounded border border-shogun-border tracking-[0.3em] uppercase">Knowledge Base</span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-1">Master the Shogun architecture, operations, and data management.</p>
+          <p className="text-shogun-subdued text-sm mt-1">Master the Shogun architecture, operations, and system maintenance.</p>
         </div>
       </div>
 
@@ -227,6 +227,8 @@ export function Guide() {
                      { name: 'Bushido (Reflection)', purpose: 'Calibrate self-improvement behavior. Tune reflection intensity, consolidation rate, and exploration variance. View AI-generated insights.', icon: RefreshCw, color: 'text-shogun-blue' },
                      { name: 'Torii (Security)', purpose: 'Set the system\'s security posture (5 tiers from SHRINE to RONIN). Create and manage security policies. Access the Harakiri kill switch.', icon: Lock, color: 'text-red-400' },
                      { name: 'Nexus (Collaboration)', purpose: 'Create Joint Workspaces. Invite other Shogun instances over the network. Exchange typed messages and co-edit a shared whiteboard.', icon: Globe, color: 'text-indigo-400' },
+                     { name: 'Backups & Data', purpose: 'Scheduled and manual backups with configurable retention. Export/import your entire database. Manage backup settings and restore from any point.', icon: HardDrive, color: 'text-shogun-gold' },
+                     { name: 'Updates', purpose: 'Auto-checks for new Shogun versions every 6 hours. One-click install to download and apply updates. Preserves your data, configs, and environment.', icon: Download, color: 'text-emerald-400' },
                      { name: 'Logs (Audit Trail)', purpose: 'Timestamped record of every action. Filter by severity. Download as JSON for compliance. Clear when log volume grows too large.', icon: Terminal, color: 'text-shogun-subdued' },
                    ].map((item) => (
                      <div key={item.name} className="shogun-card flex gap-4 items-start">
@@ -265,8 +267,8 @@ export function Guide() {
                       <p className="text-xs text-shogun-subdued leading-relaxed">If there's a fact the AI must never forget — a company policy, a key contact, a critical instruction — create it as a memory in Archives and pin it. Pinned memories always have maximum salience and are always loaded into context.</p>
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-green-500/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-green-500" /> Export Backups Regularly</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Your Shogun accumulates valuable knowledge over time. Use the Data Management tab (right here in the Guide) to export a "Safe JSON Bundle" at least weekly. This protects you from data loss due to hardware failure or accidental deletion.</p>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-green-500" /> Enable Automatic Backups</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Your Shogun accumulates valuable knowledge over time. Go to <strong>Backups</strong> in the sidebar → enable automatic backups on a schedule. You can also manually export a "Safe JSON Bundle" from the Data Management tab. This protects you from data loss due to hardware failure.</p>
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-green-500/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-green-500" /> Write a Clear Mandate</div>
