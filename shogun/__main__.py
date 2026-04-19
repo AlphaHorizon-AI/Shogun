@@ -28,7 +28,7 @@ def _ensure_env_file() -> None:
     for example in candidates:
         if example.exists():
             shutil.copy(example, env_path)
-            print("📋 Created .env from .env.example — edit it to configure API keys.")
+            print("[INFO] Created .env from .env.example - edit it to configure API keys.")
             return
 
     # No example found — write sensible defaults inline
@@ -47,7 +47,7 @@ def _ensure_env_file() -> None:
         f"CONFIG_PATH={project_root}/configs\n",
         encoding="utf-8",
     )
-    print(f"📋 Created {env_path} with defaults.")
+    print(f"[INFO] Created {env_path} with defaults.")
 
 
 def _auto_bootstrap() -> None:
@@ -62,7 +62,7 @@ def _auto_bootstrap() -> None:
         # Format: sqlite+aiosqlite:///./data/shogun.db
         db_file = db_url.split("///", 1)[-1] if "///" in db_url else None
         if db_file and not Path(db_file).exists():
-            print("🏗  First run detected — bootstrapping database...")
+            print("[INIT] First run detected - bootstrapping database...")
             from shogun.bootstrap import bootstrap
             asyncio.run(bootstrap())
             print()
