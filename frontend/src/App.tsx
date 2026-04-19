@@ -13,6 +13,8 @@ import { Dojo } from './pages/Dojo'
 import { Logs } from './pages/Logs'
 import { Guide } from './pages/Guide'
 import { Nexus } from './pages/Nexus'
+import { Updates } from './pages/Updates'
+import { Backups } from './pages/Backups'
 import { SetupWizard } from './pages/SetupWizard'
 import { useState, useEffect } from 'react'
 import { I18nProvider } from './i18n'
@@ -88,6 +90,8 @@ function AppContent() {
           <Route path="/logs" element={<Shell><Logs /></Shell>} />
           <Route path="/guide" element={<Shell><Guide /></Shell>} />
           <Route path="/nexus" element={<Shell><Nexus /></Shell>} />
+          <Route path="/updates" element={<Shell><Updates /></Shell>} />
+          <Route path="/backups" element={<Shell><Backups /></Shell>} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

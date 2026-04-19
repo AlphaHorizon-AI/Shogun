@@ -53,6 +53,14 @@ async def lifespan(app: FastAPI):
         import logging
         logging.getLogger(__name__).warning("Bushido scheduler startup failed: %s", exc)
 
+    # ── Start backup scheduler if enabled
+    try:
+        from shogun.services.backup_scheduler import sync_backup_schedule
+        await sync_backup_schedule()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Backup scheduler startup failed: %s", exc)
+
     yield
 
     # Shutdown
@@ -105,6 +113,8 @@ def create_app() -> FastAPI:
     from shogun.api.a2a import a2a_router, workspace_router
     from shogun.api.i18n import router as i18n_router
     from shogun.api.setup import router as setup_router
+    from shogun.api.updates import router as updates_router
+    from shogun.api.backups import router as backups_router
 
     prefix = "/api/v1"
     app.include_router(system_router, prefix=prefix)
@@ -126,6 +136,8 @@ def create_app() -> FastAPI:
     app.include_router(workspace_router, prefix=prefix)
     app.include_router(i18n_router, prefix=prefix)
     app.include_router(setup_router, prefix=prefix)
+    app.include_router(updates_router, prefix=prefix)
+    app.include_router(backups_router, prefix=prefix)
 
     # Static serving for user uploads
     uploads_path = Path(settings.uploads_path)

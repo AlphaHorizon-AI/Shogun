@@ -1,0 +1,7 @@
+{
+  "version": "1.0.0",
+  "build": 1,
+  "channel": "stable",
+  "released": "2026-04-19T12:00:00Z",
+  "changelog": "Initial release — Setup Wizard, 14-language i18n, one-click installers, desktop shortcuts."
+}

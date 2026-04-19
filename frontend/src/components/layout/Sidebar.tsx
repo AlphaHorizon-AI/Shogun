@@ -12,23 +12,27 @@ import {
   Sword,
   BookOpen,
   Network,
+  Download,
+  HardDrive,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '../../lib/utils';
+import { useState, useEffect } from 'react';
 
 interface NavItemProps {
   icon: React.ElementType;
   label: string;
   subLabel?: string;
   active?: boolean;
+  badge?: string | null;
   onClick?: () => void;
 }
 
-const NavItem = ({ icon: Icon, label, subLabel, active, onClick }: NavItemProps) => (
+const NavItem = ({ icon: Icon, label, subLabel, active, badge, onClick }: NavItemProps) => (
   <button
     onClick={onClick}
     className={cn(
-      "w-full flex items-start gap-3 p-2.5 rounded-lg transition-all duration-200 group",
+      "w-full flex items-start gap-3 p-2.5 rounded-lg transition-all duration-200 group relative",
       active 
         ? "bg-shogun-card border border-shogun-border text-shogun-gold shadow-shogun" 
         : "text-shogun-subdued hover:bg-shogun-card/50 hover:text-shogun-text"
@@ -39,12 +43,28 @@ const NavItem = ({ icon: Icon, label, subLabel, active, onClick }: NavItemProps)
       <span className="font-semibold text-[12px]">{label}</span>
       {subLabel && <span className="text-[9px] text-shogun-subdued uppercase tracking-wider">{subLabel}</span>}
     </div>
+    {badge && (
+      <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-emerald-500 text-[8px] text-white font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+        {badge}
+      </span>
+    )}
   </button>
 );
 
 export const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  // Check for updates on mount (non-blocking)
+  useEffect(() => {
+    fetch('/api/v1/updates/check')
+      .then(r => r.json())
+      .then(data => {
+        if (data.update_available) setUpdateAvailable(true);
+      })
+      .catch(() => {}); // Silently fail if offline
+  }, []);
 
   return (
     <aside className="w-64 h-full bg-[#050508] border-r border-shogun-border p-4 flex flex-col gap-6 overflow-y-auto scrollbar-hide relative z-20">
@@ -162,7 +182,28 @@ export const Sidebar = () => {
           />
         </nav>
       </div>
+
+      {/* ── System Maintenance ──────────────────────── */}
+      <div className="mt-auto pt-4 border-t border-shogun-border/40">
+        <h3 className="text-[10px] font-bold text-shogun-subdued/60 tracking-[0.2em] mb-3 pl-3 uppercase">Maintenance</h3>
+        <nav className="flex flex-col gap-1">
+          <NavItem 
+            icon={HardDrive} 
+            label="Backups" 
+            subLabel="Data Protection" 
+            active={location.pathname === '/backups'}
+            onClick={() => navigate('/backups')}
+          />
+          <NavItem 
+            icon={Download} 
+            label="Updates" 
+            subLabel="Version Control" 
+            badge={updateAvailable ? "NEW" : null}
+            active={location.pathname === '/updates'}
+            onClick={() => navigate('/updates')}
+          />
+        </nav>
+      </div>
     </aside>
   );
 };
-
