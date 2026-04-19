@@ -63,9 +63,26 @@ Use the desktop shortcut that was created during installation:
 
 Shogun opens at **http://localhost:8888** in your default browser.
 
-### 14 Supported Languages
+### 🌍 14 Supported Languages
 
-🇬🇧 English • 🇩🇪 Deutsch • 🇮🇹 Italiano • 🇫🇷 Français • 🇪🇸 Español • 🇵🇹 Português • 🇵🇱 Polski • 🇩🇰 Dansk • 🇳🇴 Norsk • 🇸🇪 Svenska • 🇺🇦 Українська • 🇨🇳 中文 • 🇯🇵 日本語 • 🇰🇷 한국어
+The entire interface — menus, labels, explainers, and system messages — is fully translated. Select your language during setup or switch anytime from the Dashboard.
+
+| | Language | Native Name | Code |
+|---|----------|-------------|------|
+| 🇬🇧 | English | English | `en` |
+| 🇩🇪 | German | Deutsch | `de` |
+| 🇮🇹 | Italian | Italiano | `it` |
+| 🇫🇷 | French | Français | `fr` |
+| 🇪🇸 | Spanish | Español | `es` |
+| 🇵🇹 | Portuguese | Português | `pt` |
+| 🇵🇱 | Polish | Polski | `pl` |
+| 🇩🇰 | Danish | Dansk | `da` |
+| 🇳🇴 | Norwegian | Norsk | `no` |
+| 🇸🇪 | Swedish | Svenska | `sv` |
+| 🇺🇦 | Ukrainian | Українська | `uk` |
+| 🇨🇳 | Chinese | 中文 | `zh` |
+| 🇯🇵 | Japanese | 日本語 | `ja` |
+| 🇰🇷 | Korean | 한국어 | `ko` |
 
 ---
 
