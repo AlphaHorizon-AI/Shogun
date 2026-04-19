@@ -12,8 +12,8 @@ Download **one file** for your platform, double-click it, and you're done. The i
 
 | Platform | Download | Instructions |
 |----------|----------|-------------|
-| **🪟 Windows** | [⬇️ **Shogun-Install.bat**](https://raw.githubusercontent.com/AlphaHorizon-AI/Shogun/main/Shogun-Install.bat) | **Right-click the link → "Save link as..."** → Double-click the downloaded file |
-| **🍎 macOS** | [⬇️ **Shogun-Install.command**](https://raw.githubusercontent.com/AlphaHorizon-AI/Shogun/main/Shogun-Install.command) | **Click to download** → Double-click the file → If prompted, click "Open" |
+| **🪟 Windows** | [⬇️ **Shogun-Install.bat**](https://github.com/AlphaHorizon-AI/Shogun/releases/latest/download/Shogun-Install.bat) | **Click to download** → Double-click the file |
+| **🍎 macOS** | [⬇️ **Shogun-Install.command**](https://github.com/AlphaHorizon-AI/Shogun/releases/latest/download/Shogun-Install.command) | **Click to download** → Double-click the file |
 
 **The installer will automatically:**
 - ✅ Install Python & Node.js if missing (via winget on Windows, Homebrew on macOS)
