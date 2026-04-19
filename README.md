@@ -44,7 +44,7 @@ Use the desktop shortcut that was created during installation:
 | **macOS** | Double-click **Shogun.app** on your Desktop |
 | **Linux** | Double-click **shogun.desktop** on your Desktop |
 
-Shogun opens at **http://localhost:8888** in your default browser.
+Shogun opens at **http://localhost:8888** in your default browser. *(Note: If your operating system blocks the automatic popup, simply type that address into your browser manually.)*
 
 ### 🌍 14 Supported Languages
 
