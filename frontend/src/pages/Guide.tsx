@@ -736,33 +736,31 @@ export function Guide() {
                 </div>
              </section>
 
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             {/* 13. DATA MANAGEMENT (BACKUPS) */}
-             {/* ═══════════════════════════════════════════════════════════════ */}
+             {/* 13. MAINTENANCE — BACKUPS, DATA & UPDATES */}
              <section className="space-y-6">
                 <div className="flex items-center gap-3 border-b-2 border-shogun-subdued/40 pb-3">
                    <HardDrive className="w-6 h-6 text-shogun-subdued" />
                    <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">Data Management — Backup & Restore</h4>
-                      <p className="text-xs text-shogun-subdued">Found under the "Data Management" tab right here in the Guide. Export or import your entire Shogun.</p>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Maintenance — Backups, Data & Updates</h4>
+                      <p className="text-xs text-shogun-subdued">Found under the <strong>Maintenance</strong> section at the bottom of the sidebar.</p>
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-subdued" /> System Snapshot (Left)</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Shows a live breakdown of everything in your database — how many rows are in each table, the total row count, and the estimated database file size in megabytes. Click "Refresh Snapshot" to re-scan.</p>
+                   <div className="shogun-card space-y-2 border-l-2 border-shogun-gold/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-gold" /> Scheduled Backups</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Navigate to <strong>Backups</strong> in the sidebar. Enable automatic backups with a configurable schedule (hourly to weekly). Set how many old backups to keep — older ones are automatically deleted. Backups include your database, configs, governance documents, and environment settings.</p>
                    </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-shogun-blue" /> Safe JSON Bundle</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">A backup strategy that exports every database table individually as JSON files inside a ZIP. <strong>Best for:</strong> moving data between different Shogun versions, cleaning up corrupted data, or selectively restoring specific tables. Slightly slower but much safer.</p>
+                   <div className="shogun-card space-y-2 border-l-2 border-shogun-blue/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-shogun-blue" /> Data Management Tab</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">On the <strong>Backups</strong> page, switch to the <strong>Data Management</strong> tab. Here you'll find a live System Snapshot (row counts per table, DB size), one-click export as a <strong>Safe JSON Bundle</strong> or <strong>Raw Database Swap</strong>, and an Import area to restore from a previous export.</p>
                    </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-shogun-gold" /> Raw Database Swap</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Copies the actual SQLite database file directly into the ZIP. <strong>Best for:</strong> creating exact clones of your system or migrating to another machine running the exact same Shogun version. Very fast but only works if both systems are on the same version.</p>
+                   <div className="shogun-card space-y-2 border-l-2 border-emerald-500/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-emerald-400" /> System Updates</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Navigate to <strong>Updates</strong> in the sidebar. The system automatically checks for new versions every 6 hours. When an update is available, a green <strong>NEW</strong> badge appears on the sidebar. Click <strong>Install Update</strong> to download, extract, and rebuild — your data, configs, and environment are always preserved.</p>
                    </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-shogun-subdued" /> Import Shogun State</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The dashed-border area at the bottom. Drag and drop a previously exported <strong>.zip</strong> file here to restore your agents, memories, settings, and all other data from a backup. The system can either cleanly replace everything (wipe + restore) or merge new data into what already exists.</p>
+                   <div className="shogun-card space-y-2 border-l-2 border-amber-500/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-amber-400" /> Restore & Recovery</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Every backup in the list has a <strong>Restore</strong> button. Clicking it overwrites your current database and config files with the backup's contents. A restart is required afterwards. Use this to roll back after a bad config change, recover from corruption, or migrate to a new machine.</p>
                    </div>
                 </div>
              </section>
