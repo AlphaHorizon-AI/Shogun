@@ -92,10 +92,27 @@ class OpenClawClient:
             skills = await client.search_skills(faculty="technical")
     """
 
-    def __init__(self, base_url: str = OPENCLAW_BASE_URL, timeout: float = 30.0):
+    def __init__(
+        self,
+        base_url: str = OPENCLAW_BASE_URL,
+        timeout: float = 30.0,
+        actor_id: str | None = None,
+        api_key: str | None = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.actor_id = actor_id
+        self.api_key = api_key
         self._client: httpx.AsyncClient | None = None
+
+    def _auth_headers(self) -> dict[str, str]:
+        """Build authenticated headers required for exam/certification endpoints."""
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if self.actor_id:
+            headers["X-Actor"] = self.actor_id
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+        return headers
 
     async def __aenter__(self):
         self._client = httpx.AsyncClient(timeout=self.timeout)
@@ -328,6 +345,102 @@ class OpenClawClient:
         resp.raise_for_status()
         return resp.json()
 
+    # ── Examination API ──────────────────────────────────────
+
+    async def find_test(self, skill_id: str) -> dict[str, Any] | None:
+        """Discover the test record for a given skill.
+
+        GET /api/v1/tests?skillId={skillId}
+        Returns test metadata (id, passThreshold) or None if not found.
+        """
+        resp = await self.client.get(
+            f"{self.base_url}/v1/tests",
+            params={"skillId": skill_id},
+            headers=self._auth_headers(),
+        )
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        data = resp.json()
+        # API may return a list or single object
+        if isinstance(data, list):
+            return data[0] if data else None
+        return data
+
+    async def get_test_questions(self, test_id: str) -> dict[str, Any]:
+        """Retrieve the full exam including the questions array.
+
+        GET /api/v1/tests/:id
+        Returns 30-50 MCQ questions with id, text, and options.
+        """
+        resp = await self.client.get(
+            f"{self.base_url}/v1/tests/{test_id}",
+            headers=self._auth_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def submit_test_result(
+        self,
+        test_id: str,
+        agent_id: str,
+        score: int,
+        log_artifact: str = "",
+    ) -> dict[str, Any]:
+        """Submit test results to the College.
+
+        POST /api/v1/tests/:id/results
+        If score >= passThreshold, verificationStatus will be 'approved' immediately.
+        """
+        payload = {
+            "agentId": agent_id,
+            "score": score,
+            "logArtifact": log_artifact,
+        }
+        resp = await self.client.post(
+            f"{self.base_url}/v1/tests/{test_id}/results",
+            json=payload,
+            headers=self._auth_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_test_result(self, result_id: str) -> dict[str, Any] | None:
+        """Check the verification status of a specific test submission.
+
+        GET /api/v1/test-results/:id
+        """
+        try:
+            resp = await self.client.get(
+                f"{self.base_url}/v1/test-results/{result_id}",
+                headers=self._auth_headers(),
+            )
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            logger.warning(f"Failed to fetch test result {result_id}: {e}")
+            return None
+
+    async def get_agent_transcript(self, agent_id: str) -> dict[str, Any] | None:
+        """Fetch agent profile including full transcript and testResults.
+
+        GET /api/agents/:id
+        """
+        try:
+            resp = await self.client.get(
+                f"{self.base_url}/agents/{agent_id}",
+                headers=self._auth_headers(),
+            )
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            logger.warning(f"Failed to fetch transcript for {agent_id}: {e}")
+            return None
+
     # ── Helpers ───────────────────────────────────────────────
 
     @staticmethod
@@ -356,7 +469,13 @@ class OpenClawClient:
 
 # ── Convenience factory ──────────────────────────────────────
 
-def get_openclaw_client() -> OpenClawClient:
-    """Create a new OpenClawClient instance."""
-    return OpenClawClient()
+def get_openclaw_client(
+    actor_id: str | None = None,
+    api_key: str | None = None,
+) -> OpenClawClient:
+    """Create a new OpenClawClient instance.
+
+    Pass actor_id and api_key to enable authenticated exam endpoints.
+    """
+    return OpenClawClient(actor_id=actor_id, api_key=api_key)
 

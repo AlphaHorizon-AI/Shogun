@@ -50,3 +50,7 @@ configs/
 Blueprints and Requirement specs/
 Assets/
 docker-compose.yml
+
+scratch/
+fix_provider_status.py
+seed_memories.py

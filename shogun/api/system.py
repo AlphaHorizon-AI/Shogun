@@ -5,7 +5,7 @@ from shogun.engine.vector_store import get_vector_store
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 
-from shogun.config import settings
+from shogun.config import settings, PROJECT_ROOT
 from shogun.schemas.common import ApiResponse
 from shogun.api.deps import (
     get_agent_service, 
@@ -209,5 +209,270 @@ async def pull_model_stream(
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",   # disable nginx buffering if present
+        },
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EXPORT / IMPORT BACKUP
+# ─────────────────────────────────────────────────────────────────────────────
+
+import io
+import json
+import shutil
+import zipfile
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from fastapi import File, Form, UploadFile
+from fastapi.responses import Response, StreamingResponse as _StreamingResponse
+from sqlalchemy import inspect, text
+from shogun.db.engine import engine as _engine, async_session_factory
+
+
+# Tables to include in the JSON export (all of them)
+_EXPORT_TABLES: list[str] = [
+    "agents", "personas", "samurai_profiles", "samurai_roles",
+    "model_providers", "model_definitions", "model_routing_profiles",
+    "tool_connectors", "secret_refs", "security_policies",
+    "skill_sources", "skills", "skill_installations",
+    "bushido_jobs", "bushido_recommendations", "bushido_schedules",
+    "missions", "execution_events",
+    "memory_records", "memory_provenance_links",
+    "snapshots", "runtime_sessions",
+    "operators", "kaizen_profiles", "kaizen_revisions",
+    "workspaces", "workspace_peers", "workspace_messages",
+    "alembic_version",
+]
+
+_SHOGUN_VERSION = "1.0.0"
+_DB_PATH = PROJECT_ROOT / "data" / "shogun.db"
+
+
+async def _dump_all_tables() -> dict[str, list[dict]]:
+    """Return a {table_name: [row_dict, ...]} dump of every known table."""
+    dump: dict[str, list[dict]] = {}
+    async with async_session_factory() as session:
+        for table in _EXPORT_TABLES:
+            try:
+                result = await session.execute(text(f"SELECT * FROM {table}"))
+                rows = [dict(row._mapping) for row in result]
+                # Coerce non-JSON-serialisable types to str
+                clean = []
+                for row in rows:
+                    clean.append({
+                        k: str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v
+                        for k, v in row.items()
+                    })
+                dump[table] = clean
+            except Exception:
+                dump[table] = []   # table may not exist yet
+    return dump
+
+
+def _build_zip(table_dump: dict, include_db: bool = True) -> bytes:
+    """Bundle manifest + per-table JSON + optional raw .db into a ZIP in memory."""
+    buf = io.BytesIO()
+    now = datetime.now(timezone.utc)
+
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        # Manifest
+        manifest = {
+            "shogun_version": _SHOGUN_VERSION,
+            "backup_format": "1.0",
+            "created_at": now.isoformat(),
+            "tables": {t: len(rows) for t, rows in table_dump.items()},
+            "total_rows": sum(len(r) for r in table_dump.values()),
+            "includes_raw_db": include_db and _DB_PATH.exists(),
+        }
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+
+        # Per-table JSON files
+        for table, rows in table_dump.items():
+            zf.writestr(f"tables/{table}.json", json.dumps(rows, indent=2, default=str))
+
+        # Raw SQLite file (most portable for a full restore)
+        if include_db and _DB_PATH.exists():
+            zf.write(_DB_PATH, "shogun.db")
+
+    buf.seek(0)
+    return buf.read()
+
+
+@router.get("/backup/export")
+async def export_backup(
+    save_path: Optional[str] = None,
+    include_db: bool = True,
+):
+    """Export a full Shogun backup as a ZIP file.
+
+    - **Browser download** (default): returns the ZIP as an attachment.
+    - **Server-side save**: pass `save_path` (absolute directory path) to write
+      the file directly to that folder (e.g. ``C:/Users/you/Desktop``).
+
+    The ZIP contains:
+    - ``manifest.json`` — version, timestamp, row counts
+    - ``tables/<name>.json`` — one JSON array per database table
+    - ``shogun.db`` — raw SQLite file (when ``include_db=true``)
+    """
+    table_dump = await _dump_all_tables()
+    zip_bytes = _build_zip(table_dump, include_db=include_db)
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
+    filename = f"shogun_backup_{ts}.zip"
+
+    if save_path:
+        # ── Server-side save ──────────────────────────────────────────
+        dest_dir = Path(save_path)
+        try:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest_file = dest_dir / filename
+            dest_file.write_bytes(zip_bytes)
+        except Exception as exc:
+            return ApiResponse(
+                success=False,
+                data={},
+                meta={"error": f"Failed to write to path: {exc}"},
+            )
+        return ApiResponse(
+            success=True,
+            data={
+                "saved_to": str(dest_file),
+                "filename": filename,
+                "size_bytes": len(zip_bytes),
+                "tables": len(table_dump),
+                "rows": sum(len(r) for r in table_dump.values()),
+            },
+        )
+
+    # ── Browser download ──────────────────────────────────────────────
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(zip_bytes)),
+        },
+    )
+
+
+@router.get("/backup/info")
+async def backup_info():
+    """Return a preview of what would be included in a backup (row counts per table)."""
+    table_dump = await _dump_all_tables()
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
+    return ApiResponse(
+        success=True,
+        data={
+            "filename_preview": f"shogun_backup_{ts}.zip",
+            "shogun_version": _SHOGUN_VERSION,
+            "db_exists": _DB_PATH.exists(),
+            "db_size_bytes": _DB_PATH.stat().st_size if _DB_PATH.exists() else 0,
+            "tables": {t: len(rows) for t, rows in table_dump.items()},
+            "total_rows": sum(len(r) for r in table_dump.values()),
+        },
+    )
+
+
+@router.post("/backup/import")
+async def import_backup(
+    file: UploadFile = File(...),
+    restore_mode: str = Form(default="json"),   # "json" | "db"
+    wipe_first: bool = Form(default=True),
+):
+    """Restore a Shogun backup from an uploaded ZIP file.
+
+    - **restore_mode=json** (recommended): reads each ``tables/<name>.json``
+      file, truncates the table, and inserts all rows. Safe across schema versions.
+    - **restore_mode=db**: replaces the raw ``shogun.db`` file directly
+      (only works when the schema version matches exactly; requires restart).
+    - **wipe_first**: when True, truncates each table before inserting (clean restore).
+      Set to False for a merge/additive restore.
+    """
+    raw = await file.read()
+
+    # Validate it's a valid zip
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(raw))
+    except zipfile.BadZipFile:
+        return ApiResponse(success=False, data={}, meta={"error": "Invalid ZIP file"})
+
+    names = zf.namelist()
+
+    # Load and validate manifest
+    if "manifest.json" not in names:
+        return ApiResponse(success=False, data={}, meta={"error": "Missing manifest.json — not a valid Shogun backup"})
+
+    manifest = json.loads(zf.read("manifest.json"))
+    backup_version = manifest.get("backup_format", "unknown")
+
+    if restore_mode == "db":
+        # ── Raw DB restore ────────────────────────────────────────────
+        if "shogun.db" not in names:
+            return ApiResponse(success=False, data={}, meta={"error": "Backup does not include shogun.db (use restore_mode=json)"})
+
+        db_bytes = zf.read("shogun.db")
+        # Write to a temp file first, then atomically move
+        tmp = _DB_PATH.with_suffix(".restore_tmp")
+        tmp.write_bytes(db_bytes)
+        # Keep the old DB as a safety backup
+        bak = _DB_PATH.with_name(f"shogun.pre_restore.db")
+        if _DB_PATH.exists():
+            shutil.copy2(_DB_PATH, bak)
+        shutil.move(str(tmp), str(_DB_PATH))
+
+        return ApiResponse(
+            success=True,
+            data={
+                "mode": "db",
+                "restored_bytes": len(db_bytes),
+                "previous_db_backed_up_to": str(bak),
+                "message": "Raw database restored. Restart Shogun for changes to take effect.",
+            },
+        )
+
+    # ── JSON table-by-table restore ───────────────────────────────────
+    table_files = [n for n in names if n.startswith("tables/") and n.endswith(".json")]
+    restored_tables: dict[str, int] = {}
+    errors: list[str] = {}
+
+    async with async_session_factory() as session:
+        for tf in table_files:
+            table_name = tf.removeprefix("tables/").removesuffix(".json")
+            rows = json.loads(zf.read(tf))
+
+            # Skip empty tables and the alembic_version table
+            if not rows or table_name == "alembic_version":
+                continue
+
+            try:
+                if wipe_first:
+                    await session.execute(text(f"DELETE FROM {table_name}"))
+
+                if rows:
+                    # Build parameterised insert
+                    cols = list(rows[0].keys())
+                    placeholders = ", ".join(f":{c}" for c in cols)
+                    col_list = ", ".join(cols)
+                    stmt = text(f"INSERT OR IGNORE INTO {table_name} ({col_list}) VALUES ({placeholders})")
+                    for row in rows:
+                        await session.execute(stmt, row)
+
+                restored_tables[table_name] = len(rows)
+            except Exception as exc:
+                errors[table_name] = str(exc)
+
+        await session.commit()
+
+    return ApiResponse(
+        success=True,
+        data={
+            "mode": "json",
+            "backup_format": backup_version,
+            "backup_created_at": manifest.get("created_at"),
+            "restored_tables": restored_tables,
+            "total_rows_restored": sum(restored_tables.values()),
+            "errors": errors,
         },
     )

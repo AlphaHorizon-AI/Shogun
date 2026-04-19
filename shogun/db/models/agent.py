@@ -32,6 +32,7 @@ class Agent(Base, UUIDMixin, AuditMixin, SoftDeleteMixin):
     tags: Mapped[list] = mapped_column(JSONType(), nullable=False, default=list)
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     openclaw_agent_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    openclaw_api_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     persona = relationship("Persona", lazy="joined", foreign_keys=[persona_id])
     samurai_profile = relationship("SamuraiProfile", back_populates="agent", uselist=False, lazy="joined")

@@ -102,6 +102,9 @@ def create_app() -> FastAPI:
     from shogun.api.dojo import router as dojo_router
     from shogun.api.samurai_roles import router as samurai_roles_router
     from shogun.api.kaizen import router as kaizen_router
+    from shogun.api.a2a import a2a_router, workspace_router
+    from shogun.api.i18n import router as i18n_router
+    from shogun.api.setup import router as setup_router
 
     prefix = "/api/v1"
     app.include_router(system_router, prefix=prefix)
@@ -119,6 +122,10 @@ def create_app() -> FastAPI:
     app.include_router(dojo_router, prefix=prefix)
     app.include_router(samurai_roles_router, prefix=prefix)
     app.include_router(kaizen_router, prefix=prefix)
+    app.include_router(a2a_router, prefix=prefix)
+    app.include_router(workspace_router, prefix=prefix)
+    app.include_router(i18n_router, prefix=prefix)
+    app.include_router(setup_router, prefix=prefix)
 
     # Static serving for user uploads
     uploads_path = Path(settings.uploads_path)

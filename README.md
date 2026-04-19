@@ -1,120 +1,142 @@
 # 🏯 Shogun — AI Agent Framework
 
-A GUI-first AI agent framework with structured memory, governed autonomy, and OpenClaw compatibility.
+**Your personal AI command center.** Shogun is a GUI-first AI agent framework that gives you full control over autonomous AI agents — their identity, memory, behavior, governance, and model routing — all from a beautiful mission control interface called **The Tenshu**.
 
-Built with Python, FastAPI, Gradio, and SQLAlchemy. Ships with [OpenClaw College](https://github.com/AlphaHorizon-AI/OpenClawCollege.com) as the default skill learning source.
+No cloud account needed. Everything runs locally on your machine.
 
 ---
 
-## Install from GitHub
+## 🚀 Install Shogun (One Click)
+
+Getting started takes **two steps**: install the prerequisites, then run the installer.
+
+### Step 1: Install Prerequisites
+
+You need two things installed on your computer (if you don't have them already):
+
+| Prerequisite | Download | How to check |
+|--------------|----------|-------------|
+| **Python 3.10+** | [python.org/downloads](https://python.org/downloads) | Open a terminal, type `python --version` |
+| **Node.js 18+** | [nodejs.org](https://nodejs.org) | Open a terminal, type `node --version` |
+
+> 💡 **Windows users:** When installing Python, make sure to check ✅ **"Add Python to PATH"** during installation.
+>
+> 💡 **macOS users:** You can install both via Homebrew: `brew install python node`
+
+### Step 2: Download & Run the Installer
+
+Download **one file** for your platform, then double-click it:
+
+| Platform | Download | Instructions |
+|----------|----------|-------------|
+| **🪟 Windows** | [⬇️ **Shogun-Install.bat**](https://raw.githubusercontent.com/AlphaHorizon-AI/Shogun/main/Shogun-Install.bat) | **Right-click the link → "Save link as..."** → Double-click the downloaded file |
+| **🍎 macOS** | [⬇️ **Shogun-Install.command**](https://raw.githubusercontent.com/AlphaHorizon-AI/Shogun/main/Shogun-Install.command) | **Click to download** → Double-click the file → If prompted, click "Open" |
+
+**That's it.** The installer will:
+- ✅ Download Shogun automatically (no git needed)
+- ✅ Set up a Python environment
+- ✅ Install all dependencies
+- ✅ Build the interface
+- ✅ Create a **desktop shortcut** (⚔️ Shogun — The Tenshu)
+- ✅ Open the **Setup Wizard** in your browser
+
+### What Happens Next
+
+1. **Your browser opens** to the Setup Wizard
+2. Walk through **8 guided steps**: pick your language (14 available), name your AI agent, connect a model provider (OpenAI, Anthropic, Google, etc.), and configure governance rules
+3. **Done** — you're taken to The Tenshu, your mission control dashboard
+4. **Next time**, just click the ⚔️ **Shogun** shortcut on your Desktop
+
+---
+
+## 🖥️ After Installation
+
+### Launching Shogun
+
+Use the desktop shortcut that was created during installation:
+
+| Platform | How to launch |
+|----------|--------------|
+| **Windows** | Double-click **"Shogun — The Tenshu"** on your Desktop |
+| **macOS** | Double-click **Shogun.app** on your Desktop |
+| **Linux** | Double-click **shogun.desktop** on your Desktop |
+
+Shogun opens at **http://localhost:8888** in your default browser.
+
+### 14 Supported Languages
+
+🇬🇧 English • 🇩🇪 Deutsch • 🇮🇹 Italiano • 🇫🇷 Français • 🇪🇸 Español • 🇵🇹 Português • 🇵🇱 Polski • 🇩🇰 Dansk • 🇳🇴 Norsk • 🇸🇪 Svenska • 🇺🇦 Українська • 🇨🇳 中文 • 🇯🇵 日本語 • 🇰🇷 한국어
+
+---
+
+## 🧑‍💻 Developer Install (With Git)
+
+<details>
+<summary>Click to expand developer instructions</summary>
 
 ```bash
-# Clone
 git clone https://github.com/AlphaHorizon-AI/Shogun.git
 cd Shogun
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate        # Linux / Mac
-# .venv\Scripts\activate         # Windows
-
-# Install (all dependencies included — no Docker needed)
-pip install -e ".[dev]"
-
-# Copy environment config
-cp .env.example .env
-
-# Create database + seed defaults
-python -m shogun.bootstrap
-
-# Launch
-python main.py
 ```
 
-- **Tenshu UI**: http://localhost:8000/
-- **API Docs**: http://localhost:8000/docs
+| Platform | Command |
+|----------|---------|
+| **Windows** | Double-click `install.bat` |
+| **macOS/Linux** | `chmod +x install.sh && ./install.sh` |
 
-That's it. **No Docker, no external services.** SQLite + Qdrant embedded handles everything locally.
-
----
-
-## One-Liner Install (pip from GitHub)
+Or install manually:
 
 ```bash
-pip install git+https://github.com/AlphaHorizon-AI/Shogun.git
+python -m venv venv
+source venv/bin/activate        # Linux / Mac
+# venv\Scripts\activate         # Windows
+
+pip install -r requirements.txt
+cd frontend && npm install && npm run build && cd ..
+python -m shogun
 ```
 
-Then in your code:
+**Endpoints:**
+- **Tenshu UI**: http://localhost:8888/
+- **Setup Wizard**: http://localhost:8888/setup
+- **API Docs**: http://localhost:8888/docs
+- **Reset Setup**: `POST /api/v1/setup/reset`
 
-```python
-from shogun.app import create_app
-from shogun.bootstrap import bootstrap
+No Docker, no external services. SQLite + Qdrant embedded handles everything locally.
 
-import asyncio
-asyncio.run(bootstrap())  # Creates DB + seeds
-app = create_app()        # FastAPI app ready to serve
-```
+</details>
 
 ---
 
-## Architecture
+## 🏗️ What Is Shogun?
 
-```
-shogun/
-├── api/             # 13 FastAPI REST routers (/api/v1/*)
-├── db/              # SQLAlchemy ORM models (SQLite or PostgreSQL)
-├── engine/          # Agent runtime + memory salience engine
-├── integrations/    # OpenClaw College client
-├── schemas/         # Pydantic request/response contracts
-├── services/        # Business logic layer
-└── ui/              # Gradio "Tenshu" mission control UI
+Shogun is built around a clear hierarchy of AI concepts:
 
-main.py              # Entrypoint — mounts Gradio on FastAPI
-```
+| Name | What It Does |
+|------|-------------|
+| ⚔️ **Shogun** | Your primary AI orchestrator — the brain |
+| 🥷 **Samurai** | Specialized sub-agents for specific tasks |
+| 🏯 **The Tenshu** | Mission control dashboard (the UI you see) |
+| 📚 **Archives** | Structured long-term memory with semantic search |
+| 📜 **Kaizen** | Constitutional governance — hard rules the AI can't break |
+| 🔄 **Bushido** | Self-improvement engine with scheduled health checks |
+| ⚔️ **The Katana** | Model providers, tools, and intelligent routing |
+| ⛩️ **The Torii** | Security gateway and permissions |
+| 🥋 **The Dojo** | Skills system — powered by [OpenClaw College](https://www.openclawcollege.com) |
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|------------|
-| API | FastAPI |
-| Validation | Pydantic v2 |
+| Backend | Python, FastAPI, SQLAlchemy 2.0 |
+| Frontend | React, TypeScript, Vite |
 | Database | SQLite (default) / PostgreSQL (optional) |
-| ORM | SQLAlchemy 2.0 (async) |
 | Vector Memory | Qdrant (embedded) |
-| UI | Gradio |
-| HTTP Client | httpx |
+| Validation | Pydantic v2 |
 | Scheduling | APScheduler |
-| Skill Source | [OpenClawCollege.com](https://www.openclawcollege.com) |
 
-## Key Concepts
-
-| Name | Purpose |
-|------|---------|
-| **Shogun** | Primary orchestrator agent |
-| **Samurai** | Specialized subagents |
-| **The Tenshu** | Mission control UI |
-| **Archives** | Structured long-term memory |
-| **Kaizen** | Constitutional governance layer |
-| **Bushido** | Reflection & self-improvement engine |
-| **The Katana** | Tools, APIs, model routing |
-| **The Torii** | Security & permissions gateway |
-| **The Dojo** | Skills system — powered by OpenClaw College |
-
-## Optional: PostgreSQL Mode
-
-For production, switch to PostgreSQL:
-
-```bash
-# Install the postgres driver
-pip install -e ".[postgres]"
-
-# Update .env
-DATABASE_URL=postgresql+asyncpg://shogun:pass@localhost:5432/shogun
-
-# Use docker-compose for PostgreSQL + standalone Qdrant
-docker compose up -d
-```
+---
 
 ## License
 
-Proprietary
+Proprietary — [AlphaHorizon AI](https://github.com/AlphaHorizon-AI)

@@ -10,7 +10,8 @@ import {
   ScrollText,
   History,
   Sword,
-  BookOpen
+  BookOpen,
+  Network,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '../../lib/utils';
@@ -145,6 +146,19 @@ export const Sidebar = () => {
             subLabel="Documentation" 
             active={location.pathname === '/guide'}
             onClick={() => navigate('/guide')}
+          />
+        </nav>
+      </div>
+
+      <div>
+        <h3 className="text-[10px] font-bold tracking-[0.2em] mb-3 pl-3 uppercase" style={{color: 'rgb(129,140,248)'}}>Alliance</h3>
+        <nav className="flex flex-col gap-1">
+          <NavItem 
+            icon={Network} 
+            label="Nexus" 
+            subLabel="A2A Workspaces" 
+            active={location.pathname === '/nexus'}
+            onClick={() => navigate('/nexus')}
           />
         </nav>
       </div>

@@ -22,6 +22,7 @@ from shogun.db.models.snapshot import Snapshot
 from shogun.db.models.runtime_session import RuntimeSession
 from shogun.db.models.samurai_role import SamuraiRole
 from shogun.db.models.kaizen_revision import KaizenRevision
+from shogun.db.models.workspace import Workspace, WorkspacePeer, WorkspaceMessage
 
 __all__ = [
     "Operator",
@@ -49,4 +50,7 @@ __all__ = [
     "RuntimeSession",
     "SamuraiRole",
     "KaizenRevision",
+    "Workspace",
+    "WorkspacePeer",
+    "WorkspaceMessage",
 ]

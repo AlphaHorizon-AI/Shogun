@@ -394,3 +394,163 @@ async def add_skill_from_url(body: AddUrlRequest):
         "skill_type": body.skill_type,
         "message": f"Skill source '{owner}/{repo}' registered. The agent will process it on the next Bushido cycle.",
     })
+
+
+# ── Credential Management ─────────────────────────────────────
+
+class SaveCredentialsRequest(BaseModel):
+    openclaw_agent_id: str | None = None
+    openclaw_api_key: str | None = None
+
+
+@router.post("/openclaw/credentials", response_model=ApiResponse)
+async def save_openclaw_credentials(
+    body: SaveCredentialsRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Store the agent's OpenClaw College X-Actor ID and X-API-Key.
+
+    These credentials are required for the authenticated examination API.
+    The API key is the membership key issued upon College registration.
+    """
+    result = await db.execute(
+        select(Agent).where(Agent.is_primary == True, Agent.is_deleted == False)
+    )
+    agent = result.scalars().first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="No primary Shogun agent found")
+
+    if body.openclaw_agent_id is not None:
+        agent.openclaw_agent_id = body.openclaw_agent_id
+    if body.openclaw_api_key is not None:
+        agent.openclaw_api_key = body.openclaw_api_key
+
+    await db.commit()
+    return ApiResponse(data={
+        "saved": True,
+        "has_agent_id": bool(agent.openclaw_agent_id),
+        "has_api_key": bool(agent.openclaw_api_key),
+    })
+
+
+# ── Examination Flow ──────────────────────────────────────────
+
+@router.get("/openclaw/exams/find", response_model=ApiResponse)
+async def find_skill_exam(
+    skill_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Find the exam/test record for a given OpenClaw skill ID.
+
+    Returns the test metadata including the test ID and pass threshold.
+    Requires the agent to be registered with a valid API key.
+    """
+    result = await db.execute(
+        select(Agent).where(Agent.is_primary == True, Agent.is_deleted == False)
+    )
+    agent = result.scalars().first()
+    if not agent or not agent.openclaw_agent_id:
+        raise HTTPException(status_code=401, detail="Agent not registered with OpenClaw College")
+
+    async with get_openclaw_client(
+        actor_id=agent.openclaw_agent_id,
+        api_key=agent.openclaw_api_key or None,
+    ) as client:
+        test = await client.find_test(skill_id)
+
+    if not test:
+        raise HTTPException(status_code=404, detail=f"No exam found for skill {skill_id}")
+
+    return ApiResponse(data=test)
+
+
+@router.get("/openclaw/exams/{test_id}/questions", response_model=ApiResponse)
+async def get_exam_questions(
+    test_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve the full exam (30–50 MCQ questions) for a given test ID.
+
+    Each question contains: id, text, options[].
+    """
+    result = await db.execute(
+        select(Agent).where(Agent.is_primary == True, Agent.is_deleted == False)
+    )
+    agent = result.scalars().first()
+    if not agent or not agent.openclaw_agent_id:
+        raise HTTPException(status_code=401, detail="Agent not registered with OpenClaw College")
+
+    async with get_openclaw_client(
+        actor_id=agent.openclaw_agent_id,
+        api_key=agent.openclaw_api_key or None,
+    ) as client:
+        exam = await client.get_test_questions(test_id)
+
+    return ApiResponse(data=exam)
+
+
+class SubmitExamRequest(BaseModel):
+    test_id: str
+    score: int = Field(..., ge=0, le=100)
+    log_artifact: str = Field(default="", description="Execution log proving test completion")
+
+
+@router.post("/openclaw/exams/submit", response_model=ApiResponse)
+async def submit_exam_result(
+    body: SubmitExamRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Submit exam results to OpenClaw College.
+
+    If score >= passThreshold the response will immediately show
+    verificationStatus: 'approved' (automated review).
+    """
+    result = await db.execute(
+        select(Agent).where(Agent.is_primary == True, Agent.is_deleted == False)
+    )
+    agent = result.scalars().first()
+    if not agent or not agent.openclaw_agent_id:
+        raise HTTPException(status_code=401, detail="Agent not registered with OpenClaw College")
+
+    async with get_openclaw_client(
+        actor_id=agent.openclaw_agent_id,
+        api_key=agent.openclaw_api_key or None,
+    ) as client:
+        result_data = await client.submit_test_result(
+            test_id=body.test_id,
+            agent_id=agent.openclaw_agent_id,
+            score=body.score,
+            log_artifact=body.log_artifact,
+        )
+
+    return ApiResponse(data=result_data)
+
+
+@router.get("/openclaw/transcript", response_model=ApiResponse)
+async def get_transcript(db: AsyncSession = Depends(get_db)):
+    """Fetch the agent's full transcript and test results from OpenClaw College.
+
+    Returns the agent profile with certifications and test history.
+    """
+    result = await db.execute(
+        select(Agent).where(Agent.is_primary == True, Agent.is_deleted == False)
+    )
+    agent = result.scalars().first()
+    if not agent or not agent.openclaw_agent_id:
+        raise HTTPException(status_code=401, detail="Agent not registered with OpenClaw College")
+
+    async with get_openclaw_client(
+        actor_id=agent.openclaw_agent_id,
+        api_key=agent.openclaw_api_key or None,
+    ) as client:
+        transcript = await client.get_agent_transcript(agent.openclaw_agent_id)
+
+    if not transcript:
+        raise HTTPException(status_code=404, detail="Transcript not found")
+
+    return ApiResponse(data={
+        "openclaw_agent_id": agent.openclaw_agent_id,
+        "profile": transcript,
+        "test_results": transcript.get("testResults", []),
+        "transcript": transcript.get("transcript", []),
+    })
