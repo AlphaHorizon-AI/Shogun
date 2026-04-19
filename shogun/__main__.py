@@ -91,7 +91,7 @@ def main() -> None:
     app_env = os.getenv("APP_ENV", "development")
     if app_env == "development":
         print("  [DEVELOPMENT MODE]")
-        print("  - Backend: http://localhost:8888")
+        print(f"  - Backend: http://{settings.api_host}:{settings.api_port}")
         print("  - Frontend: http://localhost:3000 (run: npm run dev in /frontend)")
         print("-" * 60)
         
