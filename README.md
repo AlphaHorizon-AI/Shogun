@@ -46,6 +46,16 @@ Use the desktop shortcut that was created during installation:
 
 Shogun opens at **http://localhost:8888** in your default browser. *(Note: If your operating system blocks the automatic popup, simply type that address into your browser manually.)*
 
+### 🧹 Uninstalling Shogun
+
+To cleanly remove Shogun and all your local data, you do not need to hunt down files manually. Simply open your `Shogun` installation folder and run the uninstaller:
+
+| Platform | How to uninstall |
+|----------|--------------|
+| **Windows** | Double-click **`uninstall.bat`** |
+| **macOS/Linux** | Run **`./uninstall.sh`** |
+
+*This will cleanly remove the virtual environment, all databases and memories, delete the desktop shortcut, and remove the folder itself.*
 ### 🌍 14 Supported Languages
 
 The entire interface — menus, labels, explainers, and system messages — is fully translated. Select your language during setup or switch anytime from the Dashboard.
