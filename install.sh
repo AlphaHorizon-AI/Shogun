@@ -94,7 +94,7 @@ source venv/bin/activate
 
 # ── Step 4: Install Python dependencies ────────────────────────
 echo -e "${GOLD}[4/8]${NC} Installing Python dependencies..."
-pip install -r requirements.txt --quiet --disable-pip-version-check
+pip install . --quiet --disable-pip-version-check
 echo -e "       ${GREEN}Python dependencies installed.${NC}"
 
 # ── Step 5: Bootstrap database ─────────────────────────────────

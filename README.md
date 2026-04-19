@@ -91,7 +91,7 @@ python -m venv venv
 source venv/bin/activate        # Linux / Mac
 # venv\Scripts\activate         # Windows
 
-pip install -r requirements.txt
+pip install -e .
 cd frontend && npm install && npm run build && cd ..
 python -m shogun
 ```

@@ -62,7 +62,7 @@ if not exist "venv" (
 :: -- Step 4: Install Python dependencies ------------------------
 echo [4/8] Installing Python dependencies...
 call venv\Scripts\activate.bat
-pip install -r requirements.txt --quiet --disable-pip-version-check
+pip install . --quiet --disable-pip-version-check
 if %ERRORLEVEL% neq 0 (
     echo  ERROR: Failed to install Python dependencies.
     pause
