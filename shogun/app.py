@@ -61,9 +61,21 @@ async def lifespan(app: FastAPI):
         import logging
         logging.getLogger(__name__).warning("Backup scheduler startup failed: %s", exc)
 
+    # ── Start Telegram Autonomous Poller
+    telegram_task = None
+    try:
+        from shogun.services.telegram_poller import telegram_poller_task
+        import asyncio
+        telegram_task = asyncio.create_task(telegram_poller_task())
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error("Telegram poller startup failed: %s", exc)
+
     yield
 
     # Shutdown
+    if telegram_task:
+        telegram_task.cancel()
     try:
         from shogun.scheduler import stop_scheduler
         await stop_scheduler()
