@@ -17,7 +17,7 @@ import { Updates } from './pages/Updates'
 import { Backups } from './pages/Backups'
 import { SetupWizard } from './pages/SetupWizard'
 import { useState, useEffect } from 'react'
-import { I18nProvider } from './i18n'
+import { useTranslation, I18nProvider } from './i18n'
 import { Loader2 } from 'lucide-react'
 
 /**
@@ -27,6 +27,7 @@ import { Loader2 } from 'lucide-react'
 function FirstRunGate({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<'loading' | 'first_run' | 'ready'>('loading')
   const location = useLocation()
+  const { setLanguage } = useTranslation()
 
   useEffect(() => {
     // Only check once, only on initial page load
@@ -34,10 +35,13 @@ function FirstRunGate({ children }: { children: React.ReactNode }) {
       .then(r => r.json())
       .then(d => {
         const complete = d.data?.setup_complete ?? true
+        if (d.data?.language) {
+          setLanguage(d.data.language)
+        }
         setStatus(complete ? 'ready' : 'first_run')
       })
       .catch(() => setStatus('ready'))
-  }, [])
+  }, [setLanguage])
 
   if (status === 'loading') {
     return (
