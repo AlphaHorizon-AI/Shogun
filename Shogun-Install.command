@@ -60,32 +60,7 @@ echo -e "  ${GOLD}  Checking & installing prerequisites...${NC}"
 echo -e "  ${GOLD}══════════════════════════════════════════════════${NC}"
 echo ""
 
-# ── Helper: install Homebrew (macOS) ───────────────────────────
-install_homebrew() {
-    if command -v brew &>/dev/null; then
-        return 0
-    fi
-    echo -e "  ${BLUE}📥  Installing Homebrew (macOS package manager)...${NC}"
-    echo -e "  ${GRAY}     This is required to install Python and Node.js.${NC}"
-    echo -e "  ${GRAY}     You may be asked for your password.${NC}"
-    echo ""
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    
-    # Add brew to PATH for this session (Apple Silicon vs Intel)
-    if [ -f "/opt/homebrew/bin/brew" ]; then
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-    elif [ -f "/usr/local/bin/brew" ]; then
-        eval "$(/usr/local/bin/brew shellenv)"
-    fi
-    
-    if command -v brew &>/dev/null; then
-        echo -e "  ${GREEN}✅  Homebrew installed.${NC}"
-    else
-        echo -e "  ${RED}❌  Homebrew installation failed.${NC}"
-        echo "     Please install manually: https://brew.sh"
-        exit 1
-    fi
-}
+
 
 # ── Check Python ───────────────────────────────────────────────
 PYTHON_CMD=""
@@ -98,20 +73,10 @@ fi
 if [ -z "$PYTHON_CMD" ]; then
     echo -e "  ${RED}❌  Python is not installed.${NC}"
     echo ""
-
-    if [ "$PLATFORM" = "macOS" ]; then
-        install_homebrew
-        echo -e "  ${BLUE}📥  Installing Python via Homebrew...${NC}"
-        brew install python
-        PYTHON_CMD="python3"
-        echo -e "  ${GREEN}✅  Python installed.${NC}"
-    else
-        echo -e "  ${BLUE}📥  Installing Python via apt...${NC}"
-        sudo apt update -qq && sudo apt install -y python3 python3-venv python3-pip
-        PYTHON_CMD="python3"
-        echo -e "  ${GREEN}✅  Python installed.${NC}"
-    fi
+    echo -e "  ${GRAY}Shogun requires Python 3.10+ to run.${NC}"
+    echo -e "  ${GRAY}Please install it from https://www.python.org/downloads/ or via your package manager.${NC}"
     echo ""
+    exit 1
 fi
 
 PY_VER=$($PYTHON_CMD --version 2>&1)
@@ -121,23 +86,10 @@ echo -e "  ${GREEN}✅  $PY_VER${NC}"
 if ! command -v node &>/dev/null; then
     echo -e "  ${RED}❌  Node.js is not installed.${NC}"
     echo ""
-
-    if [ "$PLATFORM" = "macOS" ]; then
-        install_homebrew
-        echo -e "  ${BLUE}📥  Installing Node.js via Homebrew...${NC}"
-        brew install node
-        echo -e "  ${GREEN}✅  Node.js installed.${NC}"
-    else
-        echo -e "  ${BLUE}📥  Installing Node.js via apt...${NC}"
-        # Use NodeSource for latest LTS
-        if ! command -v curl &>/dev/null; then
-            sudo apt install -y curl
-        fi
-        curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-        sudo apt install -y nodejs
-        echo -e "  ${GREEN}✅  Node.js installed.${NC}"
-    fi
+    echo -e "  ${GRAY}Shogun requires Node.js v18+ to build the interface.${NC}"
+    echo -e "  ${GRAY}Please install it from https://nodejs.org/ or via your package manager.${NC}"
     echo ""
+    exit 1
 fi
 
 NODE_VER=$(node --version 2>&1)

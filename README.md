@@ -8,7 +8,9 @@ No cloud account needed. Everything runs locally on your machine.
 
 ## 🚀 Install Shogun (One Click)
 
-Download **one file** for your platform, double-click it, and you're done. The installer handles **everything** — including installing Python and Node.js if you don't have them.
+**Prerequisites:** You must have [Python 3.10+](https://www.python.org/downloads/) and [Node.js v18+](https://nodejs.org/en/download) installed before running the installer.
+
+Download **one file** for your platform, double-click it, and you're done. The installer will handle fetching the framework and configuring it for your environment.
 
 | Platform | Download | Instructions |
 |----------|----------|-------------|
@@ -16,7 +18,6 @@ Download **one file** for your platform, double-click it, and you're done. The i
 | **🍎 macOS** | [⬇️ **Shogun-Install.command**](https://github.com/AlphaHorizon-AI/Shogun/releases/latest/download/Shogun-Install.command) | **Click to download** → Double-click the file |
 
 **The installer will automatically:**
-- ✅ Install Python & Node.js if missing (via winget on Windows, Homebrew on macOS)
 - ✅ Download Shogun from GitHub (no git needed)
 - ✅ Set up the Python environment and install all dependencies
 - ✅ Build the interface
