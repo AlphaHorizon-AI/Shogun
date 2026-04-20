@@ -286,6 +286,15 @@ async def _shogun_chat_internal(user_msg: str, history: list, svc: AgentService)
     res_reason = "primary_agent_model"
 
     async for db in get_db():
+        # ── Step 0: Build Authorized Inventory ──
+        authorized_keys = set()
+        prov_res = await db.execute(select(ModelProvider).where(ModelProvider.status == "connected"))
+        for p in prov_res.scalars().all():
+            authorized_keys.add(p.name)
+            m_id = p.config.get("model_id") or p.config.get("model")
+            if m_id:
+                authorized_keys.add(m_id)
+
         # Get active (default) routing profile
         res = await db.execute(
             select(ModelRoutingProfile).where(ModelRoutingProfile.is_default == True).limit(1)
@@ -304,12 +313,17 @@ async def _shogun_chat_internal(user_msg: str, history: list, svc: AgentService)
                     )
                     mdef = res.scalar_one_or_none()
                     if mdef and mdef.provider and mdef.provider.status == "connected":
-                        # Success! Override provider and model
-                        provider = mdef.provider
-                        model_name = mdef.model_key
-                        provider_name = mdef.display_name
-                        _search_model = model_name
-                        res_reason = f"logic_routing_override ({task_type})"
+                        # Check if this specific model is authorized in Katana
+                        if mdef.model_key in authorized_keys or mdef.display_name in authorized_keys:
+                            # Success! Override provider and model
+                            provider = mdef.provider
+                            model_name = mdef.model_key
+                            provider_name = mdef.display_name
+                            _search_model = model_name
+                            res_reason = f"logic_routing_authorized ({task_type})"
+                        else:
+                            logger.warning(f"[Routing] Unauthorized model '{mdef.model_key}' blocked. Fallback to primary.")
+                            res_reason = f"routing_blocked_unauthorized ({task_type})"
                     else:
                         logger.debug(f"Routing rule skipped: Provider {mdef.provider.name if mdef and mdef.provider else 'unknown'} is NOT connected.")
                 except Exception:

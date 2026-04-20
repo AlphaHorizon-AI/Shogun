@@ -50,7 +50,7 @@ class JSONType(TypeDecorator):
 
     def process_bind_param(self, value, dialect):
         if value is not None:
-            return json.dumps(value)
+            return json.dumps(value, default=lambda x: str(x) if isinstance(x, uuid.UUID) else x)
         return value
 
     def process_result_value(self, value, dialect):
