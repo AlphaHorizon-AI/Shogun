@@ -35,6 +35,8 @@ import {
   Check,
   Eye,
   EyeOff,
+  Edit2,
+  Ban,
 } from "lucide-react";
 import axios from 'axios';
 import { cn } from '../lib/utils';
@@ -252,6 +254,7 @@ export function Katana() {
   const [tools, setTools]           = useState<any[]>([]);
   const [localModels, setLocalModels] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
 
   // ── New Provider form state ──────────────────────────────────
   const [newProvider, setNewProvider] = useState({
@@ -551,21 +554,56 @@ export function Katana() {
         auth_type:     isLocalProvider(newProvider.provider_type) ? 'none' : newProvider.auth_type,
         config:        newProvider.api_key ? { api_key: newProvider.api_key } : {},
       };
-      await axios.post('/api/v1/model-providers', payload);
-      setStatusMessage({ type: 'success', text: 'Model provider added successfully.' });
+
+      if (editingProviderId) {
+        await axios.patch(`/api/v1/model-providers/${editingProviderId}`, payload);
+        setStatusMessage({ type: 'success', text: 'Model provider updated successfully.' });
+      } else {
+        await axios.post('/api/v1/model-providers', payload);
+        setStatusMessage({ type: 'success', text: 'Model provider added successfully.' });
+      }
+
       setNewProvider({ name: '', provider_type: 'openai', auth_type: 'api_key', api_key: '', base_url: PROVIDER_BASE_URLS['openai'], is_active: true });
+      setEditingProviderId(null);
       setBaseUrlOverride(false);
       fetchData();
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       const msg = typeof detail === 'string' ? detail
         : Array.isArray(detail) ? detail.map((d: any) => `${d.loc?.slice(-1)[0]}: ${d.msg}`).join(', ')
-        : 'Failed to add provider.';
+        : 'Failed to save provider.';
       setStatusMessage({ type: 'error', text: msg });
     } finally {
       setSaving(false);
       setTimeout(() => setStatusMessage(null), 5000);
     }
+  };
+
+  const handleStartEdit = (p: any) => {
+    setEditingProviderId(p.id);
+    setNewProvider({
+      name: p.name,
+      provider_type: p.provider_type,
+      auth_type: p.auth_type || 'api_key',
+      api_key: p.config?.api_key || '',
+      base_url: p.base_url || PROVIDER_BASE_URLS[p.provider_type] || '',
+      is_active: p.status === 'connected'
+    });
+    setBaseUrlOverride(!!p.base_url);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingProviderId(null);
+    setNewProvider({
+      name: '',
+      provider_type: 'openai',
+      auth_type: 'api_key',
+      api_key: '',
+      base_url: PROVIDER_BASE_URLS['openai'],
+      is_active: true
+    });
+    setBaseUrlOverride(false);
   };
 
   const handleToggleProvider = async (id: string, currentStatus: string) => {
@@ -838,7 +876,11 @@ export function Katana() {
             <div className="lg:col-span-1">
               <div className="shogun-card space-y-6 sticky top-6">
                 <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                  <Plus className="w-5 h-5 text-shogun-blue" /> Add Provider
+                  {editingProviderId ? (
+                    <><Edit2 className="w-5 h-5 text-shogun-gold" /> Edit Provider</>
+                  ) : (
+                    <><Plus className="w-5 h-5 text-shogun-blue" /> Add Provider</>
+                  )}
                 </h3>
                 <form onSubmit={handleCreateProvider} className="space-y-4">
                   {/* Provider selector */}
@@ -1178,14 +1220,29 @@ export function Katana() {
                     </div>
                   )}
 
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="w-full py-3 bg-shogun-blue hover:bg-shogun-blue/90 text-white font-bold rounded-lg shadow-shogun transition-all flex items-center justify-center gap-2"
-                  >
-                    {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    INITIATE PROVIDER
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={saving || !newProvider.name}
+                      className="flex-1 py-3 bg-shogun-blue hover:bg-shogun-blue/90 text-white font-bold rounded-lg shadow-shogun transition-all flex items-center justify-center gap-2"
+                    >
+                      {saving ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        editingProviderId ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />
+                      )}
+                      {editingProviderId ? 'UPDATE PROVIDER' : 'INITIATE PROVIDER'}
+                    </button>
+                    {editingProviderId && (
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        className="px-4 py-2 bg-shogun-subdued/10 hover:bg-shogun-subdued/20 border border-shogun-border rounded-lg text-shogun-subdued text-xs font-bold uppercase transition-all"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </form>
               </div>
             </div>
@@ -1246,6 +1303,13 @@ export function Katana() {
                                 <ExternalLink className="w-4 h-4" />
                               </a>
                             )}
+                            <button
+                              onClick={() => handleStartEdit(p)}
+                              className="p-2 hover:bg-shogun-card rounded-lg transition-colors text-shogun-subdued hover:text-shogun-gold"
+                              title="Edit Provider"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
                             <button
                               onClick={() => handleToggleProvider(p.id, p.status)}
                               className="p-2 hover:bg-shogun-card rounded-lg transition-colors text-shogun-subdued hover:text-shogun-text"
