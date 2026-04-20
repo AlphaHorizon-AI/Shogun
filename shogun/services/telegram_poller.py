@@ -72,34 +72,39 @@ async def process_telegram_message(bot_token: str, chat_id: str, user_msg: str):
             full_reply = ""
             last_update_text = ""
             last_update_time = datetime.now(timezone.utc)
+            buffer = ""
             
             try:
                 generator = getattr(response_stream, "body_iterator", response_stream)
                 
                 async for chunk in generator:
                     chunk_str = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
-                    lines = chunk_str.strip().split("\n")
+                    buffer += chunk_str
                     
-                    for line in lines:
-                        if line.startswith("data: "):
-                            payload = line[6:].strip()
-                            if payload == "[DONE]":
-                                break
-                            try:
-                                data = json.loads(payload)
-                                if data.get("type") == "token":
-                                    full_reply += data.get("content", "")
-                                elif data.get("type") == "error":
-                                    logger.error(f"[Telegram] AI Engine Error: {data.get('content')}")
-                                    full_reply += f"\n⚠️ {data.get('content')}"
-                            except json.JSONDecodeError:
-                                pass
+                    while "\n\n" in buffer:
+                        event_block, buffer = buffer.split("\n\n", 1)
+                        for line in event_block.split("\n"):
+                            if line.startswith("data: "):
+                                payload = line[6:].strip()
+                                if payload == "[DONE]":
+                                    break
+                                try:
+                                    data = json.loads(payload)
+                                    if data.get("type") == "token":
+                                        full_reply += data.get("content", "")
+                                    elif data.get("type") == "error":
+                                        logger.error(f"[Telegram] AI Engine Error: {data.get('content')}")
+                                        full_reply += f"\n⚠️ {data.get('content')}"
+                                except json.JSONDecodeError:
+                                    pass
                     
-                    # Periodic update every ~2 seconds if content changed
+                    # High-frequency update every 0.8 seconds for smooth UI
                     now = datetime.now(timezone.utc)
-                    if (now - last_update_time).total_seconds() > 2.5:
+                    if (now - last_update_time).total_seconds() > 0.8:
                         display_text = full_reply.strip()
                         if display_text and display_text != last_update_text:
+                            # Note: We use NO parse_mode for intermediate edits
+                            # This prevents Telegram from rejecting messages with unclosed markdown
                             await edit_telegram_message(bot_token, chat_id, msg_id, display_text + " ▮")
                             last_update_text = display_text
                             last_update_time = now
@@ -113,7 +118,7 @@ async def process_telegram_message(bot_token: str, chat_id: str, user_msg: str):
                 logger.warning("[Telegram] AI Engine returned empty response.")
                 full_reply = "I apologize, but I couldn't generate a response to that message."
                 
-            # 3. Final update to the same message
+            # 3. Final update to the same message — HERE we enable Markdown for the finished text
             await edit_telegram_message(bot_token, chat_id, msg_id, full_reply)
             logger.info(f"[Telegram] Response finalized for {chat_id}")
 

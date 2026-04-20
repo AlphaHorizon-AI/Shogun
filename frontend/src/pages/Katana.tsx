@@ -311,6 +311,7 @@ export function Katana() {
     latency_bias: '' as string,
     cost_bias: '' as string,
   });
+  const [editingRuleIdx, setEditingRuleIdx]     = useState<number | null>(null);
 
   useEffect(() => { fetchData(); }, []);
 
@@ -736,6 +737,17 @@ export function Katana() {
     }
   };
 
+  const handleStartEditRule = (idx: number, rule: any) => {
+    setEditingRuleIdx(idx);
+    setNewRule({
+      task_type: rule.task_type,
+      primary_model_id: rule.primary_model_id,
+      latency_bias: rule.latency_bias || '',
+      cost_bias: rule.cost_bias || '',
+    });
+    setShowAddRule(true);
+  };
+
   const handleAddRule = async (profileId: string, existingRules: any[]) => {
     if (!newRule.primary_model_id) return;
     const rule = {
@@ -745,18 +757,32 @@ export function Katana() {
       latency_bias: newRule.latency_bias || null,
       cost_bias: newRule.cost_bias || null,
     };
+
+    let updatedRules: any[];
+    if (editingRuleIdx !== null) {
+      updatedRules = [...existingRules];
+      updatedRules[editingRuleIdx] = rule;
+    } else {
+      updatedRules = [...existingRules, rule];
+    }
+
     try {
       await axios.patch(`/api/v1/model-routing-profiles/${profileId}`, {
-        rules: [...existingRules, rule],
+        rules: updatedRules,
       });
-      setStatusMessage({ type: 'success', text: 'Routing rule added.' });
+      setStatusMessage({ type: 'success', text: editingRuleIdx !== null ? 'Routing rule updated.' : 'Routing rule added.' });
       setShowAddRule(false);
+      setEditingRuleIdx(null);
       setNewRule({ task_type: '*', primary_model_id: '', latency_bias: '', cost_bias: '' });
       fetchData();
-    } catch {
-      setStatusMessage({ type: 'error', text: 'Failed to add rule.' });
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      setStatusMessage({ 
+        type: 'error', 
+        text: detail ? `Save failed: ${detail}` : 'Failed to save rule. Please try a hard refresh (Ctrl+F5).' 
+      });
     } finally {
-      setTimeout(() => setStatusMessage(null), 3000);
+      setTimeout(() => setStatusMessage(null), 5000);
     }
   };
 
@@ -764,12 +790,16 @@ export function Katana() {
     const updated = existingRules.filter((_, i) => i !== ruleIdx);
     try {
       await axios.patch(`/api/v1/model-routing-profiles/${profileId}`, { rules: updated });
-      setStatusMessage({ type: 'success', text: 'Rule removed.' });
+      setStatusMessage({ type: 'success', text: 'Rule removed successfully.' });
       fetchData();
-    } catch {
-      setStatusMessage({ type: 'error', text: 'Failed to remove rule.' });
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      setStatusMessage({ 
+        type: 'error', 
+        text: detail ? `Delete failed: ${detail}` : 'Failed to remove rule. Check backend logs or try a hard refresh.' 
+      });
     } finally {
-      setTimeout(() => setStatusMessage(null), 3000);
+      setTimeout(() => setStatusMessage(null), 5000);
     }
   };
 
@@ -1917,13 +1947,25 @@ export function Katana() {
                                         <p className="text-xs text-shogun-text">{rule.cost_bias || <span className="text-shogun-subdued">—</span>}</p>
                                       </div>
                                     </div>
-                                    <button
-                                      onClick={() => handleDeleteRule(profile.id, rules, idx)}
-                                      className="p-1.5 opacity-0 group-hover:opacity-100 rounded-lg hover:bg-red-500/10 text-red-500/50 hover:text-red-500 transition-all shrink-0"
-                                      title="Remove rule"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
+                                    {/* Actions */}
+                                    <div className="flex items-center gap-2 flex-none pl-4 border-l border-shogun-border/30">
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleStartEditRule(idx, rule); }}
+                                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-shogun-blue/10 border border-shogun-blue/20 hover:bg-shogun-blue/20 text-shogun-blue transition-all"
+                                        title="Edit rule"
+                                      >
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                        <span className="text-[10px] font-bold uppercase tracking-wider">Edit</span>
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteRule(profile.id, rules, idx); }}
+                                        className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-red-500/5 border border-red-500/10 hover:bg-red-500/10 text-red-500 transition-all"
+                                        title="Remove rule"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <span className="text-[10px] font-bold uppercase tracking-wider">Delete</span>
+                                      </button>
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -1934,7 +1976,11 @@ export function Katana() {
                           {showAddRule && (
                             <div className="bg-shogun-blue/5 border border-shogun-blue/20 rounded-xl p-4 space-y-4 animate-in slide-in-from-top-2 duration-200">
                               <p className="text-[10px] font-bold text-shogun-blue uppercase tracking-widest flex items-center gap-1.5">
-                                <Plus className="w-3 h-3" /> New Routing Rule
+                                {editingRuleIdx !== null ? (
+                                  <><Edit2 className="w-3 h-3" /> Edit Routing Rule</>
+                                ) : (
+                                  <><Plus className="w-3 h-3" /> New Routing Rule</>
+                                )}
                               </p>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {/* Task Type */}
@@ -2015,21 +2061,21 @@ export function Katana() {
                               </div>
 
                               <div className="flex items-center gap-3 pt-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleAddRule(profile.id, rules)}
-                                  disabled={!newRule.primary_model_id}
-                                  className="flex items-center gap-2 px-5 py-2 bg-shogun-blue hover:bg-shogun-blue/90 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-lg text-sm transition-all"
-                                >
-                                  <Save className="w-3.5 h-3.5" /> Save Rule
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => { setShowAddRule(false); setNewRule({ task_type: '*', primary_model_id: '', latency_bias: '', cost_bias: '' }); }}
-                                  className="px-4 py-2 text-sm text-shogun-subdued hover:text-shogun-text transition-colors font-bold"
-                                >
-                                  Cancel
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddRule(profile.id, rules)}
+                                    disabled={!newRule.primary_model_id}
+                                    className="flex items-center gap-2 px-5 py-2 bg-shogun-blue hover:bg-shogun-blue/90 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-lg text-sm transition-all"
+                                  >
+                                    <Save className="w-3.5 h-3.5" /> {editingRuleIdx !== null ? 'Update Rule' : 'Save Rule'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setShowAddRule(false); setEditingRuleIdx(null); setNewRule({ task_type: '*', primary_model_id: '', latency_bias: '', cost_bias: '' }); }}
+                                    className="px-4 py-2 text-sm text-shogun-subdued hover:text-shogun-text transition-colors font-bold"
+                                  >
+                                    Cancel
+                                  </button>
                                 {!newRule.primary_model_id && (
                                   <span className="text-[10px] text-shogun-subdued ml-auto">← Select a provider to continue</span>
                                 )}

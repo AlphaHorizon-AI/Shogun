@@ -93,8 +93,8 @@ class RoutingRule(ShogunBase):
     """A single task-to-model routing rule."""
 
     task_type: str
-    primary_model_id: uuid.UUID
-    fallback_model_ids: list[uuid.UUID] = Field(default_factory=list)
+    primary_model_id: uuid.UUID | str
+    fallback_model_ids: list[uuid.UUID | str] = Field(default_factory=list)
     latency_bias: str | None = None
     cost_bias: str | None = None
 
