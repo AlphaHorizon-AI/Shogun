@@ -38,6 +38,12 @@ async def test_telegram(body: dict):
     return ApiResponse(data=result)
 
 
+@router.post("/telegram/detect", response_model=ApiResponse)
+async def detect_chat_id():
+    result = await channel_svc.detect_chat_id()
+    return ApiResponse(data=result)
+
+
 @router.delete("/telegram/disconnect", response_model=ApiResponse)
 async def disconnect_telegram():
     result = await channel_svc.disconnect_telegram()

@@ -137,6 +137,49 @@ class ChannelService:
         data = resp.json()
         return {"ok": False, "error": data.get("description", f"HTTP {resp.status_code}")}
 
+    # ── Auto-Detect Chat ID ──────────────────────────────────────────
+
+    async def detect_chat_id(self) -> dict:
+        """Poll the getUpdates endpoint to automatically detect the user's Chat ID."""
+        bushido = await _get_agent_bushido()
+        cfg = bushido.get(_TELEGRAM_KEY, {})
+        bot_token = cfg.get("bot_token")
+        if not bot_token:
+            return {"ok": False, "error": "No bot token configured. Connect your bot first!"}
+
+        url = f"https://api.telegram.org/bot{bot_token}/getUpdates?offset=-1"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(url)
+        except Exception as e:
+            return {"ok": False, "error": f"Network error: {str(e)}"}
+
+        if not resp.is_success:
+            data = resp.json()
+            return {"ok": False, "error": data.get("description", f"HTTP {resp.status_code}")}
+
+        result_arr = resp.json().get("result", [])
+        if not result_arr:
+            return {
+                "ok": False, 
+                "error": "No messages found. Please send a message (like 'Hello') to your bot on Telegram first, then try again."
+            }
+
+        # Extract the most recent message
+        latest_update = result_arr[-1]
+        msg = latest_update.get("message") or latest_update.get("my_chat_member")
+        if not msg:
+             return {"ok": False, "error": "Could not parse message data from Telegram."}
+             
+        chat = msg.get("chat", {})
+        chat_id = chat.get("id")
+        title_or_name = chat.get("first_name") or chat.get("title") or "Unknown"
+
+        if not chat_id:
+             return {"ok": False, "error": "Could not extract Chat ID from update."}
+
+        return {"ok": True, "chat_id": str(chat_id), "name": title_or_name}
+
     # ── Disconnect ────────────────────────────────────────────────────
 
     async def disconnect_telegram(self) -> dict:

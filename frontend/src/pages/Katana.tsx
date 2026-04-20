@@ -243,6 +243,7 @@ export function Katana() {
   const [tgSaving, setTgSaving]         = useState(false);
   const [tgTesting, setTgTesting]       = useState(false);
   const [tgTestResult, setTgTestResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
+  const [tgDetecting, setTgDetecting]   = useState(false);
   const [tgShowToken, setTgShowToken]   = useState(false);
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
@@ -347,7 +348,7 @@ export function Katana() {
     }
   };
 
-  // \u2500\u2500 Telegram handlers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── Telegram handlers ────────────────────────────────────────
   const fetchTgStatus = async () => {
     try {
       const res = await axios.get('/api/v1/channels/telegram/status');
@@ -393,10 +394,34 @@ export function Katana() {
     try {
       const res = await axios.post('/api/v1/channels/telegram/test', { chat_id: tgTestChat.trim() });
       setTgTestResult(res.data.data);
-    } catch {
-      setTgTestResult({ ok: false, error: 'Request failed.' });
+    } catch (e: any) {
+      setTgTestResult({ ok: false, error: e.message || 'Request failed' });
     } finally {
       setTgTesting(false);
+    }
+  };
+
+  const handleTgDetect = async () => {
+    setTgDetecting(true);
+    setTgTestResult(null);
+    try {
+      const res = await axios.post('/api/v1/channels/telegram/detect');
+      const data = res.data.data;
+      if (data.ok && data.chat_id) {
+        setTgTestChat(data.chat_id);
+        const currentWhitelisted = tgChatIds.split(',').map(s => s.trim()).filter(Boolean);
+        if (!currentWhitelisted.includes(data.chat_id)) {
+          currentWhitelisted.push(data.chat_id);
+          setTgChatIds(currentWhitelisted.join(', '));
+        }
+        setTgTestResult({ ok: true, message: `Auto-detected ID ${data.chat_id} from ${data.name}!` });
+      } else {
+        setTgTestResult({ ok: false, error: data.error || 'Could not detect ID.' });
+      }
+    } catch (e: any) {
+      setTgTestResult({ ok: false, error: e.message || 'Request failed' });
+    } finally {
+      setTgDetecting(false);
     }
   };
 
@@ -2119,8 +2144,8 @@ export function Katana() {
                       { n: '1', t: 'Message @BotFather on Telegram', href: 'https://t.me/BotFather' },
                       { n: '2', t: 'Send /newbot — follow the prompts' },
                       { n: '3', t: 'Copy the bot token BotFather gives you' },
-                      { n: '4', t: 'Paste above and click Connect Bot' },
-                      { n: '5', t: 'Add your chat ID to the whitelist' },
+                      { n: '4', t: 'Paste it above and Connect' },
+                      { n: '5', t: 'Send "Hello" directly to your new Shogun bot!' },
                     ].map(({ n, t, href }) => (
                       <li key={n} className="flex items-start gap-3">
                         <span className="w-5 h-5 rounded-full bg-shogun-blue/20 border border-shogun-blue/40 text-shogun-blue text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">{n}</span>
@@ -2130,10 +2155,13 @@ export function Katana() {
                       </li>
                     ))}
                   </ol>
-                  <div className="pt-2 border-t border-shogun-border">
-                    <p className="text-[9px] text-shogun-subdued/60">
-                      Find your chat ID via <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" className="text-shogun-blue hover:underline">@userinfobot</a>.
-                    </p>
+                  <div className="pt-2 border-t border-shogun-border mt-3">
+                    <button onClick={handleTgDetect} disabled={tgDetecting}
+                      className="w-full flex items-center justify-center gap-2 py-2 border border-shogun-gold/30 bg-shogun-gold/10 hover:bg-shogun-gold/20 text-shogun-gold disabled:opacity-40 font-bold rounded-lg text-xs transition-all">
+                      {tgDetecting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                      Auto-Detect My Chat ID
+                    </button>
+                    <p className="text-[10px] text-shogun-subdued text-center mt-2 leading-tight">Must complete Step 5 before clicking. <br/>It will automatically test and whitelist your ID.</p>
                   </div>
                 </div>
               </div>
