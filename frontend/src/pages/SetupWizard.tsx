@@ -18,6 +18,7 @@ interface ProviderConfig {
   base_url: string;
   models: string[];
   status: 'pending' | 'testing' | 'connected' | 'failed';
+  auth_type: string;
 }
 
 interface SetupWizardProps {
@@ -217,6 +218,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
       base_url: isLocal ? 'http://localhost:11434' : '',
       models: [],
       status: 'pending' as const,
+      auth_type: isLocal ? 'none' : 'api_key',
     }]);
     setActiveProviderType(type);
   };
@@ -276,6 +278,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
         providers: providers.filter(p => p.status === 'connected').map(p => ({
           provider_type: p.provider_type,
           name: p.name,
+          auth_type: p.auth_type,
           api_key: p.api_key || null,
           base_url: p.base_url || null,
           models: p.models,
@@ -669,16 +672,30 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                     />
                   </div>
                 ) : (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">API Key</label>
-                    <input
-                      type="password"
-                      value={activeProv.api_key}
-                      onChange={e => updateProvider(activeProv.id, { api_key: e.target.value })}
-                      placeholder="sk-..."
-                      className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none transition-colors"
-                    />
-                  </div>
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Auth Type</label>
+                      <Select
+                        value={activeProv.auth_type}
+                        onChange={(val: string) => updateProvider(activeProv.id, { auth_type: val })}
+                      >
+                        <option value="api_key">API Key</option>
+                        <option value="oauth">OAuth</option>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">
+                        {activeProv.auth_type === 'oauth' ? 'OAuth Token' : 'API Key'}
+                      </label>
+                      <input
+                        type="password"
+                        value={activeProv.api_key}
+                        onChange={e => updateProvider(activeProv.id, { api_key: e.target.value })}
+                        placeholder={activeProv.auth_type === 'oauth' ? 'Bearer ...' : 'sk-...'}
+                        className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none transition-colors"
+                      />
+                    </div>
+                  </>
                 )}
 
                 <div className="space-y-1.5">

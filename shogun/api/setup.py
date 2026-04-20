@@ -63,6 +63,7 @@ async def reset_setup():
 class ProviderSetup(BaseModel):
     provider_type: str
     name: str
+    auth_type: str = "api_key"
     api_key: str | None = None
     base_url: str | None = None
     models: list[str] = Field(default_factory=list)
@@ -124,7 +125,7 @@ async def complete_setup(payload: SetupCompletePayload):
                     name=prov.name,
                     slug=slug,
                     base_url=prov.base_url,
-                    auth_type="api_key" if prov.api_key else "none",
+                    auth_type=prov.auth_type,
                     is_local=prov.provider_type in ("ollama", "lmstudio", "local"),
                     status="connected",
                     health_status="unknown",

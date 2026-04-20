@@ -256,6 +256,7 @@ export function Katana() {
   const [newProvider, setNewProvider] = useState({
     name: '',
     provider_type: 'openai',
+    auth_type: 'api_key',
     api_key: '',
     base_url: PROVIDER_BASE_URLS['openai'],
     is_active: true
@@ -522,12 +523,12 @@ export function Katana() {
         slug,
         base_url:      newProvider.base_url || null,
         is_local:      isLocalProvider(newProvider.provider_type),
-        auth_type:     isLocalProvider(newProvider.provider_type) ? 'none' : 'api_key',
+        auth_type:     isLocalProvider(newProvider.provider_type) ? 'none' : newProvider.auth_type,
         config:        newProvider.api_key ? { api_key: newProvider.api_key } : {},
       };
       await axios.post('/api/v1/model-providers', payload);
       setStatusMessage({ type: 'success', text: 'Model provider added successfully.' });
-      setNewProvider({ name: '', provider_type: 'openai', api_key: '', base_url: PROVIDER_BASE_URLS['openai'], is_active: true });
+      setNewProvider({ name: '', provider_type: 'openai', auth_type: 'api_key', api_key: '', base_url: PROVIDER_BASE_URLS['openai'], is_active: true });
       setBaseUrlOverride(false);
       fetchData();
     } catch (err: any) {
@@ -900,18 +901,33 @@ export function Katana() {
                     )}
                   </div>
 
-                  {/* API Key (cloud only) */}
+                  {/* Auth Configuration (cloud only) */}
                   {!isLocal && (
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">API Key</label>
-                      <input
-                        type="password"
-                        placeholder="sk-..."
-                        value={newProvider.api_key}
-                        onChange={(e) => setNewProvider({...newProvider, api_key: e.target.value})}
-                        className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
-                      />
-                    </div>
+                    <>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Auth Type</label>
+                        <select
+                          value={newProvider.auth_type}
+                          onChange={(e) => setNewProvider({...newProvider, auth_type: e.target.value})}
+                          className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
+                        >
+                          <option value="api_key">API Key</option>
+                          <option value="oauth">OAuth</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1.5 mt-3">
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">
+                          {newProvider.auth_type === 'oauth' ? 'OAuth Token' : 'API Key'}
+                        </label>
+                        <input
+                          type="password"
+                          placeholder={newProvider.auth_type === 'oauth' ? 'Bearer ...' : 'sk-...'}
+                          value={newProvider.api_key}
+                          onChange={(e) => setNewProvider({...newProvider, api_key: e.target.value})}
+                          className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
+                        />
+                      </div>
+                    </>
                   )}
 
                   {/* Base URL — pre-filled, editable on override */}
