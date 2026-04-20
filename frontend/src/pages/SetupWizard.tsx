@@ -256,6 +256,31 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
       }));
     });
 
+  // ── Sync Active Persona traits ────────────────────────────────
+  const handlePersonaChange = (val: string) => {
+    setPersonaId(val);
+    const p = personas.find(x => x.id === val);
+    if (p) {
+      if (p.tone) setTone(p.tone);
+      if (p.risk_tolerance) setRiskTolerance(p.risk_tolerance);
+      if (p.verbosity) setVerbosity(p.verbosity);
+      if (p.planning_depth) setPlanningDepth(p.planning_depth);
+      if (p.tool_usage_style) setToolUsage(p.tool_usage_style);
+      if (p.security_bias) setSecurityBias(p.security_bias);
+      if (p.memory_style) setMemoryStyle(p.memory_style);
+      if (p.autonomy) {
+        if (p.autonomy === 'low' || p.autonomy === 'guarded') setAutonomy(25);
+        else if (p.autonomy === 'medium' || p.autonomy === 'tactical') setAutonomy(50);
+        else if (p.autonomy === 'high' || p.autonomy === 'campaign') setAutonomy(75);
+        else if (p.autonomy === 'critical' || p.autonomy === 'ronin') setAutonomy(100);
+        else {
+           const num = parseInt(p.autonomy);
+           if (!isNaN(num)) setAutonomy(num);
+        }
+      }
+    }
+  };
+
   // ── Complete setup ───────────────────────────────────────────
   const handleComplete = async () => {
     setCompleting(true);
@@ -474,7 +499,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                 {personas.length > 0 && (
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Active Persona</label>
-                    <Select value={personaId} onChange={setPersonaId}>
+                    <Select value={personaId} onChange={handlePersonaChange}>
                       <option value="">Select a persona...</option>
                       {personas.map((p: any) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
