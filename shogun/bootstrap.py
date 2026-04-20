@@ -387,9 +387,18 @@ async def _seed_defaults():
                     updated_by="bootstrap",
                 )
                 session.add(persona)
-            elif not existing.description or existing.description.startswith("Built-in"):
-                # Update generic descriptions on existing personas
+            elif existing.is_builtin:
+                # Force sync all attributes for built-in personas to heal any outdated schema configurations
+                existing.name = pdef["name"]
                 existing.description = pdef["description"]
+                existing.tone = pdef["tone"]
+                existing.risk_tolerance = pdef["risk_tolerance"]
+                existing.autonomy = pdef["autonomy"]
+                existing.verbosity = pdef["verbosity"]
+                existing.planning_depth = pdef["planning_depth"]
+                existing.tool_usage_style = pdef["tool_usage_style"]
+                existing.security_bias = pdef["security_bias"]
+                existing.memory_style = pdef["memory_style"]
 
         # ── Default model routing profiles ───────────────────
         for name in ["Balanced (Default)", "Quality First", "Cost Optimized"]:
