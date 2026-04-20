@@ -1,7 +1,7 @@
 {
-  "version": "1.0.1",
-  "build": 2,
+  "version": "1.0.2",
+  "build": 3,
   "channel": "stable",
   "released": "2026-04-20T10:00:00Z",
-  "changelog": "System personalization overhaul. Operator name binding securely attached to LLM instructional prompts. Persona database seeding algorithm heavily expanded and self-healing. Added zero-config Telegram Chat ID reverse-detection via auto-pinging."
+  "changelog": "Autonomous Telegram integration completed. Background polling daemon ensures your designated bot actively responds instantly to your text messages by bridging to Shogun."
 }
