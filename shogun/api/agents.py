@@ -283,6 +283,7 @@ async def _shogun_chat_internal(user_msg: str, history: list, svc: AgentService)
     task_type = _detect_task_type(user_msg)
     _search_model: str | None = None
     provider_name: str | None = None
+    res_reason = "primary_agent_model"
 
     async for db in get_db():
         # Get active (default) routing profile
@@ -302,12 +303,15 @@ async def _shogun_chat_internal(user_msg: str, history: list, svc: AgentService)
                         select(ModelDefinition).where(ModelDefinition.id == mid)
                     )
                     mdef = res.scalar_one_or_none()
-                    if mdef and mdef.provider:
+                    if mdef and mdef.provider and mdef.provider.status == "connected":
                         # Success! Override provider and model
                         provider = mdef.provider
                         model_name = mdef.model_key
                         provider_name = mdef.display_name
                         _search_model = model_name
+                        res_reason = f"logic_routing_override ({task_type})"
+                    else:
+                        logger.debug(f"Routing rule skipped: Provider {mdef.provider.name if mdef and mdef.provider else 'unknown'} is NOT connected.")
                 except Exception:
                     pass # Fallback to default if anything goes wrong
 
@@ -330,6 +334,8 @@ async def _shogun_chat_internal(user_msg: str, history: list, svc: AgentService)
                     .limit(1)
                 )
                 provider = res.scalar_one_or_none()
+                if provider:
+                    res_reason = "auto_fallback_to_connected"
         break
 
     if not provider:
@@ -417,7 +423,7 @@ YOUR MANDATE:
 
 CURRENT SYSTEM STATE:
 - Active model providers: {ctx['provider_summary']}
-- Your current model: {model_name}
+- Your current model: {model_name} (Selection logic: {res_reason})
 - Samurai agents deployed: {ctx['samurai_count']}
 - Registered tools/API connectors: {ctx['tool_count']}
 
@@ -452,7 +458,7 @@ BEHAVIOUR:
 
     async def generate():
         # Metadata event: lets frontend show model badge immediately
-        yield f"data: {json.dumps({'type': 'meta', 'model': model_name, 'provider': provider_name, 'timestamp': timestamp, 'search': bool(_search_model)})}\n\n"
+        yield f"data: {json.dumps({'type': 'meta', 'model': model_name, 'provider': provider_name, 'timestamp': timestamp, 'reason': res_reason, 'search': bool(_search_model)})}\n\n"
 
         assistant_tokens: list[str] = []
 

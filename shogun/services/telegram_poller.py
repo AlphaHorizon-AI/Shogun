@@ -15,8 +15,8 @@ from shogun.services.channel_service import _TELEGRAM_KEY, _get_agent_bushido
 
 logger = logging.getLogger("shogun.telegram_poller")
 
-async def send_telegram_message(bot_token: str, chat_id: str, text: str):
-    """Push a textual response back to the Telegram client."""
+async def send_telegram_message(bot_token: str, chat_id: str, text: str) -> int | None:
+    """Push a textual response back to the Telegram client. Returns message_id if successful."""
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -26,10 +26,31 @@ async def send_telegram_message(bot_token: str, chat_id: str, text: str):
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(url, json=payload)
-            if not resp.is_success:
-                logger.error(f"Failed to send Telegram message: {resp.text}")
+            if resp.is_success:
+                return resp.json().get("result", {}).get("message_id")
+            logger.error(f"Failed to send Telegram message: {resp.text}")
     except Exception as e:
         logger.error(f"Network error sending to Telegram: {e}")
+    return None
+
+async def edit_telegram_message(bot_token: str, chat_id: str, message_id: int, text: str):
+    """Update an existing Telegram message with new content."""
+    url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
+    payload = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(url, json=payload)
+            if not resp.is_success:
+                # Often occurs if content is identical, skip error logging for that
+                if "message is not modified" not in resp.text:
+                    logger.debug(f"Note: Failed to edit Telegram message: {resp.text}")
+    except Exception as e:
+        logger.error(f"Network error editing Telegram message: {e}")
 
 async def process_telegram_message(bot_token: str, chat_id: str, user_msg: str):
     """Pipe an incoming message into the Shogun AI engine, capturing its SSE streaming output."""
@@ -40,23 +61,25 @@ async def process_telegram_message(bot_token: str, chat_id: str, user_msg: str):
         async with async_session_factory() as session:
             svc = AgentService(session)
             
-            logger.info(f"[Telegram] Routing to Shogun engine...")
+            # 1. Send initial thinking message
+            msg_id = await send_telegram_message(bot_token, chat_id, "_Shogun is thinking..._")
+            
             # Invoke the core engine internal router
+            logger.info(f"[Telegram] Routing to Shogun engine...")
             response_stream = await _shogun_chat_internal(user_msg=user_msg, history=[], svc=svc)
             
-            # Aggregate the SSE chunks into a single response
+            # 2. Aggregate the SSE chunks and update Telegram periodically
             full_reply = ""
+            last_update_text = ""
+            last_update_time = datetime.now(timezone.utc)
+            
             try:
-                # We must iterate the stream. Depending on FastAPI return type, we either iterate an AsyncGenerator or StreamingResponse.body_iterator
                 generator = getattr(response_stream, "body_iterator", response_stream)
                 
                 async for chunk in generator:
-                    if type(chunk) == bytes:
-                        chunk_str = chunk.decode("utf-8")
-                    else:
-                        chunk_str = str(chunk)
-                        
+                    chunk_str = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
                     lines = chunk_str.strip().split("\n")
+                    
                     for line in lines:
                         if line.startswith("data: "):
                             payload = line[6:].strip()
@@ -68,11 +91,20 @@ async def process_telegram_message(bot_token: str, chat_id: str, user_msg: str):
                                     full_reply += data.get("content", "")
                                 elif data.get("type") == "error":
                                     logger.error(f"[Telegram] AI Engine Error: {data.get('content')}")
-                                    full_reply += f"⚠️ {data.get('content')}"
+                                    full_reply += f"\n⚠️ {data.get('content')}"
                             except json.JSONDecodeError:
                                 pass
+                    
+                    # Periodic update every ~2 seconds if content changed
+                    now = datetime.now(timezone.utc)
+                    if (now - last_update_time).total_seconds() > 2.5:
+                        display_text = full_reply.strip()
+                        if display_text and display_text != last_update_text:
+                            await edit_telegram_message(bot_token, chat_id, msg_id, display_text + " ▮")
+                            last_update_text = display_text
+                            last_update_time = now
                 
-                logger.info(f"[Telegram] AI response generated ({len(full_reply)} chars)")
+                logger.info(f"[Telegram] AI response complete ({len(full_reply)} chars)")
             except Exception as e:
                 logger.error(f"[Telegram] Error reading SSE response stream: {e}\n{traceback.format_exc()}")
                 full_reply = "⚠️ Sorry, I encountered an internal error while processing your request."
@@ -81,9 +113,9 @@ async def process_telegram_message(bot_token: str, chat_id: str, user_msg: str):
                 logger.warning("[Telegram] AI Engine returned empty response.")
                 full_reply = "I apologize, but I couldn't generate a response to that message."
                 
-            # Send the joined string response back to Telegram
-            await send_telegram_message(bot_token, chat_id, full_reply)
-            logger.info(f"[Telegram] Response sent to {chat_id}")
+            # 3. Final update to the same message
+            await edit_telegram_message(bot_token, chat_id, msg_id, full_reply)
+            logger.info(f"[Telegram] Response finalized for {chat_id}")
 
     except Exception as e:
         logger.error(f"[Telegram] Critical failure in process_telegram_message: {e}\n{traceback.format_exc()}")
