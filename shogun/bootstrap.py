@@ -255,7 +255,7 @@ async def _seed_defaults():
                 "planning_depth": "low",
                 "tool_usage_style": "aggressive",
                 "security_bias": "open",
-                "memory_style": "casual",
+                "memory_style": "expansive",
             },
             {
                 "slug": "compliance-sentinel",
@@ -281,7 +281,7 @@ async def _seed_defaults():
                 "planning_depth": "low",
                 "tool_usage_style": "conservative",
                 "security_bias": "balanced",
-                "memory_style": "casual",
+                "memory_style": "expansive",
             },
             {
                 "slug": "growth-hacker",
