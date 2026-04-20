@@ -97,6 +97,8 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
             from shogun.api.agents import _CTX_CACHE
             _CTX_CACHE["ts"] = 0 
             
+            await db_session.commit()
+            
             return json.dumps({
                 "status": "success", 
                 "message": f"Samurai '{args['name']}' successfully spawned at tier '{args['security_tier']}'."

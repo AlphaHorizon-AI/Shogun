@@ -1,7 +1,7 @@
 {
-  "version": "1.0.5",
-  "build": 6,
+  "version": "1.0.6",
+  "build": 7,
   "channel": "stable",
-  "released": "2026-04-20T15:55:00Z",
-  "changelog": "Added Native Skills infrastructure. The Shogun can now autonomously spawn Samurai agents and update model configuration if permitted by the active Security Policy. Added 'action' UI streaming state to the Telegram poller."
+  "released": "2026-04-20T16:05:00Z",
+  "changelog": "Added Native Skills infrastructure. Hotfix: Added missing database commits to background tool execution routines and fixed custom permission merging in the execution loop."
 }
