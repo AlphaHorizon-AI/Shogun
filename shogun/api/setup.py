@@ -43,8 +43,9 @@ async def get_setup_status():
     setup = _read_setup()
     return ApiResponse(
         data={
-            "setup_complete": setup.get("setup_complete", False),
+        "setup_complete": setup.get("setup_complete", False),
             "language": setup.get("language", "en"),
+            "operator_name": setup.get("operator_name", "Daimyo"),
             "data_path": setup.get("data_path", str(PROJECT_ROOT / "data")),
             "config_path": str(settings.config_path),
         }
@@ -71,6 +72,7 @@ class ProviderSetup(BaseModel):
 
 class SetupCompletePayload(BaseModel):
     language: str = "en"
+    operator_name: str = "Daimyo"
     data_path: str = ""
     agent_name: str = "Shogun Prime"
     description: str = "Master orchestrator of the Samurai Network."
@@ -101,6 +103,16 @@ async def complete_setup(payload: SetupCompletePayload):
     created_provider_ids: list[str] = []
 
     async with async_session_factory() as session:
+        from shogun.db.models.operator import Operator
+        # ── 0. Create/update Operator ────────────────────────────────
+        op_result = await session.execute(select(Operator).limit(1))
+        op = op_result.scalar_one_or_none()
+        if op:
+            op.display_name = payload.operator_name
+        else:
+            op = Operator(username="admin", display_name=payload.operator_name, role="owner", preferences={})
+            session.add(op)
+
         # ── 1. Create model providers ────────────────────────────────
         for prov in payload.providers:
             slug = f"{prov.provider_type}-{prov.name}".lower().replace(" ", "-")
@@ -200,6 +212,7 @@ async def complete_setup(payload: SetupCompletePayload):
     setup_data = {
         "setup_complete": True,
         "language": payload.language,
+        "operator_name": payload.operator_name,
         "data_path": payload.data_path or str(PROJECT_ROOT / "data"),
         "completed_at": datetime.now(timezone.utc).isoformat(),
         "agent_name": payload.agent_name,

@@ -66,6 +66,7 @@ function archiveSession(msgs: Message[]) {
 
 export const Chat = () => {
   const [messages, setMessages] = useState<Message[]>(loadCurrent);
+  const operatorName = localStorage.getItem('shogun_operator_name') || 'Daimyo';
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -285,8 +286,9 @@ export const Chat = () => {
                     </div>
                   ) : msg.content}
                 </div>
-                <div className="flex items-center gap-2 px-1">
-                  <span className="text-[10px] text-shogun-subdued">{msg.timestamp}</span>
+                <div className="flex items-center gap-2 px-1 mt-1">
+                  <span className="text-[10px] text-shogun-subdued font-bold tracking-wider">{msg.role === 'user' ? operatorName : 'SHOGUN'}</span>
+                  <span className="text-[10px] text-shogun-subdued opacity-50">{msg.timestamp}</span>
                   {msg.role === 'shogun' && (msg.model || msg.search) && (
                     <div className={cn(
                       "flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",

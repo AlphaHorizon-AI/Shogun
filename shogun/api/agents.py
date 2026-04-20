@@ -259,6 +259,7 @@ async def _shogun_chat_internal(user_msg: str, history: list, svc: AgentService)
     from shogun.db.models.model_provider import ModelProvider
     from shogun.db.models.model_definition import ModelDefinition
     from shogun.db.models.model_routing import ModelRoutingProfile
+    from shogun.db.models.operator import Operator
     from shogun.api.deps import get_db
     from sqlalchemy import select
     import uuid as _uuid
@@ -380,9 +381,22 @@ async def _shogun_chat_internal(user_msg: str, history: list, svc: AgentService)
     except Exception:
         gov = {"rules_text": "  (not loaded)", "mandate_summary": ""}
 
+    # ── 4c. Fetch Operator Identity ───────────────────────────────
+    operator_name = "Daimyo"
+    async for db in get_db():
+        op_res = await db.execute(select(Operator).limit(1))
+        op = op_res.scalar_one_or_none()
+        if op and op.display_name:
+            operator_name = op.display_name
+        break
+
     # ── 5. Build system prompt ────────────────────────────────────
     persona_name = agent.name or "Shogun"
     system_prompt = f"""You are {persona_name}, the primary AI orchestrator of the Shogun platform.
+
+YOUR OPERATOR:
+You report exclusively to your Operator, whose preferred name is '{operator_name}'.
+Address them respectfully by this name in your responses.
 
 ABOUT THE SHOGUN PLATFORM:
 Shogun is an AI agent orchestration framework. You are the master agent that coordinates everything.

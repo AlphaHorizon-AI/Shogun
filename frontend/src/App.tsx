@@ -38,6 +38,9 @@ function FirstRunGate({ children }: { children: React.ReactNode }) {
         if (d.data?.language) {
           setLanguage(d.data.language)
         }
+        if (d.data?.operator_name) {
+          localStorage.setItem('shogun_operator_name', d.data.operator_name)
+        }
         setStatus(complete ? 'ready' : 'first_run')
       })
       .catch(() => setStatus('ready'))

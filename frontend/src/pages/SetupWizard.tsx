@@ -121,8 +121,9 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
   const [step, setStep] = useState(1);
   const [animDir, setAnimDir] = useState<'left' | 'right'>('left');
 
-  // Step 1: Language
+  // Step 1: Language & Identity
   const [language, setLanguage] = useState('en');
+  const [operatorName, setOperatorName] = useState('Daimyo');
 
   // Sync wizard language choice → global i18n context
   const handleLanguageSelect = (code: string) => {
@@ -287,6 +288,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
     try {
       await axios.post('/api/v1/setup/complete', {
         language,
+        operator_name: operatorName,
         data_path: dataPath,
         agent_name: agentName,
         description,
@@ -314,8 +316,9 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
         fallback_models: fallbackModels,
       });
 
-      // Store language in localStorage
+      // Store language & operator in localStorage
       localStorage.setItem('shogun_language', language);
+      localStorage.setItem('shogun_operator_name', operatorName);
 
       setCompleted(true);
       setTimeout(() => {
@@ -404,6 +407,18 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                   )}
                 </button>
               ))}
+            </div>
+
+            <div className="max-w-md mx-auto pt-4 border-t border-[#1a1f2e]">
+              <label className="text-[10px] text-[#888] uppercase tracking-widest font-bold block mb-1.5 text-center">Your Calling Name</label>
+              <input
+                type="text"
+                value={operatorName}
+                onChange={e => setOperatorName(e.target.value)}
+                placeholder="Daimyo"
+                className="w-full bg-[#050508] border border-[#2a2f3e] text-center rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#d4a017] outline-none transition-colors"
+              />
+              <p className="text-[10px] text-[#666] text-center mt-2">Shogun will address you by this title.</p>
             </div>
           </div>
         );
