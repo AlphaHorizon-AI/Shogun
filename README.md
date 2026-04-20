@@ -45,7 +45,7 @@ Use the desktop shortcut that was created during installation:
 | **macOS** | Double-click **Shogun.app** on your Desktop |
 | **Linux** | Double-click **shogun.desktop** on your Desktop |
 
-Shogun opens at **http://localhost:8888** in your default browser. *(Note: If your operating system blocks the automatic popup, simply type that address into your browser manually.)*
+Shogun opens at **http://localhost:8000** in your default browser. *(Note: If your operating system blocks the automatic popup, simply type that address into your browser manually.)*
 
 ### 🧹 Uninstalling Shogun
 
@@ -108,9 +108,9 @@ python -m shogun
 ```
 
 **Endpoints:**
-- **Tenshu UI**: http://localhost:8888/
-- **Setup Wizard**: http://localhost:8888/setup
-- **API Docs**: http://localhost:8888/docs
+- **Tenshu UI**: http://localhost:8000/
+- **Setup Wizard**: http://localhost:8000/setup
+- **API Docs**: http://localhost:8000/docs
 - **Reset Setup**: `POST /api/v1/setup/reset`
 
 No Docker, no external services. SQLite + Qdrant embedded handles everything locally.

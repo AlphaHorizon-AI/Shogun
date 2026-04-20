@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from '../lib/utils';
 
-const API = 'http://localhost:8888/api/v1/bushido';
+const API = 'http://localhost:8000/api/v1/bushido';
 
 interface BushidoStats {
   fit_quality: number;

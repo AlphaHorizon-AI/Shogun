@@ -36,14 +36,14 @@ if not exist "frontend\dist\index.html" (
     echo   ✅  Frontend built.
 )
 
-echo   🌐  Shogun is starting at http://localhost:8888
+echo   🌐  Shogun is starting at http://localhost:8000
 echo   📖  Your browser will open automatically.
 echo.
 echo   Press Ctrl+C to stop the server.
 echo.
 
 :: Open browser after a short delay (background)
-start "" cmd /c "timeout /t 3 /nobreak >nul & start http://localhost:8888"
+start "" cmd /c "timeout /t 3 /nobreak >nul & start http://localhost:8000"
 
 :: Start the server (blocking — keeps the window open)
 python -m shogun

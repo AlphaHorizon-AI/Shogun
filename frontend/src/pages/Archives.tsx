@@ -29,8 +29,8 @@ import {
 import axios from 'axios';
 import { cn } from '../lib/utils';
 
-const API = 'http://localhost:8888/api/v1/memory';
-const AGENTS_API = 'http://localhost:8888/api/v1/agents';
+const API = 'http://localhost:8000/api/v1/memory';
+const AGENTS_API = 'http://localhost:8000/api/v1/agents';
 
 type MemoryCategory = 'all' | 'episodic' | 'semantic' | 'procedural' | 'persona' | 'skills';
 

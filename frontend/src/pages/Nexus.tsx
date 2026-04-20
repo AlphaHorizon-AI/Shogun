@@ -815,7 +815,7 @@ export function Nexus() {
                   autoFocus
                   value={inviteUrl}
                   onChange={e => setInviteUrl(e.target.value)}
-                  placeholder="http://remote-shogun:8888/api/v1/a2a/inbound"
+                  placeholder="http://remote-shogun:8000/api/v1/a2a/inbound"
                   className="w-full bg-[#050508] border border-shogun-border rounded-xl px-4 py-3 text-sm focus:border-indigo-500 outline-none transition-all font-mono"
                 />
               </div>

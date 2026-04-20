@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     app_env: Literal["development", "staging", "production"] = "development"
     debug: bool = True
     api_host: str = "0.0.0.0"
-    api_port: int = 8888
+    api_port: int = 8000
     ui_port: int = 7860
 
     # ── Database (SQLite by default) ────────────

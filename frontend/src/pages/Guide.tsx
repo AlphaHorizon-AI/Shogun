@@ -132,7 +132,7 @@ export function Guide() {
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Terminal className="w-4 h-4 text-shogun-blue" /> Shogun Backend Running</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The backend server must be running on <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">localhost:8888</code>. If you installed via Docker, it starts automatically. Otherwise, run <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">python main.py</code> from the project root.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The backend server must be running on <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">localhost:8000</code>. If you installed via Docker, it starts automatically. Otherwise, run <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">python main.py</code> from the project root.</p>
                    </div>
                 </div>
              </section>
@@ -692,7 +692,7 @@ export function Guide() {
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Users className="w-4 h-4 text-indigo-400" /> Invite Peers</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Inside a workspace detail view, click <strong>"Invite Peer"</strong>. Enter the <strong>endpoint URL</strong> of the other Shogun (e.g., http://192.168.1.50:8888) and optionally a display name. The system will contact the remote agent, exchange identity information, and add it to the workspace.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Inside a workspace detail view, click <strong>"Invite Peer"</strong>. Enter the <strong>endpoint URL</strong> of the other Shogun (e.g., http://192.168.1.50:8000) and optionally a display name. The system will contact the remote agent, exchange identity information, and add it to the workspace.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><MessageSquare className="w-4 h-4 text-indigo-400" /> A2A Message Thread</div>
@@ -802,7 +802,7 @@ export function Guide() {
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Cpu className="w-4 h-4 text-shogun-blue" /> Single-Server Deployment</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The entire Shogun stack runs on a single machine. The backend serves on port 8888, the frontend is a Vite-powered React SPA proxied or served separately, and SQLite/Qdrant run locally. No cloud infrastructure is required — everything stays on your hardware.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The entire Shogun stack runs on a single machine. The backend serves on port 8000, the frontend is a Vite-powered React SPA proxied or served separately, and SQLite/Qdrant run locally. No cloud infrastructure is required — everything stays on your hardware.</p>
                    </div>
                 </div>
              </section>

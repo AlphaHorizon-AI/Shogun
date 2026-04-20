@@ -44,7 +44,7 @@ fi
 # Detect OS for browser open
 OS="$(uname -s)"
 
-echo -e "  ${GREEN}🌐  Shogun is starting at http://localhost:8888${NC}"
+echo -e "  ${GREEN}🌐  Shogun is starting at http://localhost:8000${NC}"
 echo "  📖  Your browser will open automatically."
 echo ""
 echo "  Press Ctrl+C to stop the server."
@@ -54,9 +54,9 @@ echo ""
 (
     sleep 3
     if [ "$OS" = "Darwin" ]; then
-        open "http://localhost:8888" 2>/dev/null || true
+        open "http://localhost:8000" 2>/dev/null || true
     else
-        xdg-open "http://localhost:8888" 2>/dev/null || true
+        xdg-open "http://localhost:8000" 2>/dev/null || true
     fi
 ) &
 

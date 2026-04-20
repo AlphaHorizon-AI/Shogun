@@ -37,7 +37,7 @@ def _ensure_env_file() -> None:
         f"APP_ENV=development\n"
         f"DEBUG=true\n"
         f"API_HOST=0.0.0.0\n"
-        f"API_PORT=8888\n"
+        f"API_PORT=8000\n"
         f"DATABASE_URL=sqlite+aiosqlite:///{project_root}/data/shogun.db\n"
         f"QDRANT_PATH={project_root}/data/qdrant\n"
         f"SECRET_KEY={uuid.uuid4().hex}\n"

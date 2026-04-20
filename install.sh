@@ -123,7 +123,7 @@ echo -e "${GREEN}  ╔═══════════════════�
 echo -e "${GREEN}  ║                                                          ║${NC}"
 echo -e "${GREEN}  ║   ✅ Installation complete!                              ║${NC}"
 echo -e "${GREEN}  ║                                                          ║${NC}"
-echo -e "${GREEN}  ║   Shogun is starting at http://localhost:8888            ║${NC}"
+echo -e "${GREEN}  ║   Shogun is starting at http://localhost:8000            ║${NC}"
 echo -e "${GREEN}  ║   Your browser will open automatically in 5 seconds.    ║${NC}"
 echo -e "${GREEN}  ║                                                          ║${NC}"
 echo -e "${GREEN}  ║   A desktop shortcut has been created.                   ║${NC}"
@@ -138,9 +138,9 @@ echo ""
 (
     sleep 5
     if [ "$PLATFORM" = "macOS" ]; then
-        open "http://localhost:8888" 2>/dev/null || true
+        open "http://localhost:8000" 2>/dev/null || true
     else
-        xdg-open "http://localhost:8888" 2>/dev/null || true
+        xdg-open "http://localhost:8000" 2>/dev/null || true
     fi
 ) &
 

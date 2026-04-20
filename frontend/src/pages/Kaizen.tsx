@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from '../lib/utils';
 
-const API = 'http://localhost:8888/api/v1/kaizen';
+const API = 'http://localhost:8000/api/v1/kaizen';
 
 // ── Simple markdown-to-HTML renderer (no deps) ───────────────
 function renderMarkdown(md: string): string {
