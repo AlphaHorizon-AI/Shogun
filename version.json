@@ -1,7 +1,7 @@
 {
-  "version": "1.0.2",
-  "build": 3,
+  "version": "1.0.3",
+  "build": 4,
   "channel": "stable",
-  "released": "2026-04-20T10:00:00Z",
-  "changelog": "Autonomous Telegram integration completed. Background polling daemon ensures your designated bot actively responds instantly to your text messages by bridging to Shogun."
+  "released": "2026-04-20T10:40:00Z",
+  "changelog": "Added custom Samurai Operator Logo permanently to the desktop executable. Fixed start.bat encoding bug that occasionally prevented Shogun from starting cleanly. Autonomous Telegram daemon is live."
 }
