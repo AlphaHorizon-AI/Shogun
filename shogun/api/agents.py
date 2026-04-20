@@ -261,6 +261,7 @@ async def _shogun_chat_internal(user_msg: str, history: list, svc: AgentService)
     from shogun.db.models.model_routing import ModelRoutingProfile
     from shogun.db.models.operator import Operator
     from shogun.api.deps import get_db
+    from shogun.services.native_skills import NATIVE_TOOLS, execute_native_tool
     from sqlalchemy import select
     import uuid as _uuid
 
@@ -429,6 +430,8 @@ The platform uses Japanese-themed naming:
 - **Kaizen**: The continuous improvement and optimization system.
 - **Torii**: The mission and task management system.
 
+Note: You now have Native Skills (Tools) injected into your capabilities. If the user asks you to spawn a samurai, update models, etc. use the provided tools directly instead of redirecting them, IF the tools are available to you.
+
 CONSTITUTIONAL DIRECTIVES (from Kaizen — you must follow these):
 {gov['rules_text']}
 
@@ -444,7 +447,6 @@ CURRENT SYSTEM STATE:
 YOUR CAPABILITIES:
 - Answer questions and have natural conversations on any topic
 - Help the user understand and configure their Shogun system
-- When asked to "spawn a samurai", explain that this is done via the Dojo section of the UI, and ask what kind of specialist they need
 - Reason about tasks, suggest which Samurai agents would be best for a given workflow
 - Help with code, analysis, writing, and general knowledge
 
@@ -465,64 +467,141 @@ BEHAVIOUR:
 
     provider_name = provider_name or provider.name
 
-    # ── 7. Stream SSE ─────────────────────────────────────────────
+    # ── 7. Native Skills Setup ────────────────────────────────────
+    active_tools = []
+    async for db in get_db():
+        if agent.security_policy_id:
+            from shogun.db.models.security_policy import SecurityPolicy
+            pol = await db.execute(select(SecurityPolicy).where(SecurityPolicy.id == agent.security_policy_id))
+            policy = pol.scalar_one_or_none()
+            if policy:
+                perms = policy.permissions
+                # Shogun can override the base Torii policy with custom permissions
+                if agent.bushido_settings and agent.bushido_settings.get("custom_permissions"):
+                    perms = agent.bushido_settings["custom_permissions"]
+                
+                # Determine which native skills are allowed based on policy limits
+                allow_skills = not perms.get("skills", {}).get("require_approval", True)
+                allow_auto_spawn = perms.get("subagents", {}).get("allow_auto_spawn", False)
+                for tool in NATIVE_TOOLS:
+                    if tool["function"]["name"] == "spawn_samurai" and not allow_auto_spawn:
+                        continue
+                    if tool["function"]["name"] in ["list_available_models", "update_model_settings"] and not allow_skills:
+                        continue
+                    active_tools.append(tool)
+        break
+
     # Log user message for drift monitor
     _append_chat_log("user", user_msg)
     timestamp = datetime.now().isoformat()
 
     async def generate():
+        nonlocal messages
         # Metadata event: lets frontend show model badge immediately
         yield f"data: {json.dumps({'type': 'meta', 'model': model_name, 'provider': provider_name, 'timestamp': timestamp, 'reason': res_reason, 'search': bool(_search_model)})}\n\n"
 
-        assistant_tokens: list[str] = []
+        while True:
+            assistant_tokens: list[str] = []
+            tool_calls_buffer: dict = {}
 
-        try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                async with client.stream(
-                    "POST",
-                    f"{base_url.rstrip('/')}/chat/completions",
-                    headers=req_headers,
-                    json={
-                        "model": model_name,
-                        "messages": messages,
-                        "stream": True,
-                        "temperature": 0.7,
-                    },
-                ) as resp:
-                    if resp.status_code >= 400:
-                        body_bytes = await resp.aread()
-                        err = body_bytes.decode(errors="replace")[:300]
-                        yield f"data: {json.dumps({'type': 'error', 'content': f'⚠️ LLM error ({resp.status_code}): {err}'})}\n\n"
-                        yield "data: [DONE]\n\n"
-                        return
+            req_json = {
+                "model": model_name,
+                "messages": messages,
+                "stream": True,
+                "temperature": 0.7,
+            }
+            if active_tools:
+                req_json["tools"] = active_tools
 
-                    async for line in resp.aiter_lines():
-                        if not line.startswith("data: "):
-                            continue
-                        data_str = line[6:].strip()
-                        if data_str == "[DONE]":
-                            # Log assistant response for drift monitor
-                            if assistant_tokens:
-                                _append_chat_log("assistant", "".join(assistant_tokens))
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{base_url.rstrip('/')}/chat/completions",
+                        headers=req_headers,
+                        json=req_json,
+                    ) as resp:
+                        if resp.status_code >= 400:
+                            body_bytes = await resp.aread()
+                            err = body_bytes.decode(errors="replace")[:300]
+                            yield f"data: {json.dumps({'type': 'error', 'content': f'⚠️ LLM error ({resp.status_code}): {err}'})}\n\n"
                             yield "data: [DONE]\n\n"
                             return
+
+                        async for line in resp.aiter_lines():
+                            if not line.startswith("data: "):
+                                continue
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                                
+                            try:
+                                chunk = json.loads(data_str)
+                                delta = chunk["choices"][0]["delta"]
+                                
+                                # Process tool calls from streaming
+                                if "tool_calls" in delta:
+                                    for tcall in delta["tool_calls"]:
+                                        idx = tcall["index"]
+                                        if idx not in tool_calls_buffer:
+                                            tool_calls_buffer[idx] = {"id": tcall.get("id"), "type": "function", "function": {"name": tcall["function"].get("name", ""), "arguments": ""}}
+                                        else:
+                                            tool_calls_buffer[idx]["function"]["arguments"] += tcall["function"].get("arguments", "")
+                                        
+                                        # Yield action notice initially
+                                        if tcall.get("id"):
+                                            func_name = tool_calls_buffer[idx]["function"]["name"]
+                                            yield f"data: {json.dumps({'type': 'action', 'content': f'Executing {func_name}...'})}\n\n"
+                                
+                                content = delta.get("content") or ""
+                                if content:
+                                    assistant_tokens.append(content)
+                                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                            except Exception:
+                                pass  # skip malformed chunks
+
+            except httpx.ConnectError:
+                yield f"data: {json.dumps({'type': 'error', 'content': f'⚠️ Cannot connect to {base_url}. Is {provider.provider_type} running?'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'content': f'⚠️ Unexpected error: {str(e)[:200]}'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            if assistant_tokens:
+                _append_chat_log("assistant", "".join(assistant_tokens))
+                messages.append({"role": "assistant", "content": "".join(assistant_tokens)})
+
+            # Tool execution cycle
+            if tool_calls_buffer:
+                tool_calls_array = list(tool_calls_buffer.values())
+                
+                # We must append the assistant's tool_call intention
+                if "content" not in messages[-1]:
+                    messages.append({"role": "assistant", "content": None, "tool_calls": tool_calls_array})
+                else: 
+                     messages[-1]["tool_calls"] = tool_calls_array
+
+                # Execute all tools
+                async for db in get_db():
+                    for tcall in tool_calls_array:
+                        func_name = tcall["function"]["name"]
                         try:
-                            chunk = json.loads(data_str)
-                            content = chunk["choices"][0]["delta"].get("content") or ""
-                            if content:
-                                assistant_tokens.append(content)
-                                yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
-                        except Exception:
-                            pass  # skip malformed chunks
+                            args = json.loads(tcall["function"]["arguments"])
+                        except json.JSONDecodeError:
+                            args = {}
+                            
+                        # Execute
+                        res_str = await execute_native_tool(func_name, args, db)
+                        messages.append({"role": "tool", "tool_call_id": tcall["id"], "name": func_name, "content": res_str})
+                    break # Only one DB session needed
 
-        except httpx.ConnectError:
-            yield f"data: {json.dumps({'type': 'error', 'content': f'⚠️ Cannot connect to {base_url}. Is {provider.provider_type} running?'})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'content': f'⚠️ Unexpected error: {str(e)[:200]}'})}\n\n"
-
-        # Final log if stream ended without [DONE]
-        if assistant_tokens:
-            _append_chat_log("assistant", "".join(assistant_tokens))
+                # Continue the loop to hit LLM again with the tool results
+                continue
+            
+            # If no tool calls occurred or we are done, terminate loop
+            break
 
         yield "data: [DONE]\n\n"
 

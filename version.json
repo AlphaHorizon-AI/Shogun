@@ -1,7 +1,7 @@
 {
-  "version": "1.0.4",
-  "build": 5,
+  "version": "1.0.5",
+  "build": 6,
   "channel": "stable",
-  "released": "2026-04-20T11:30:00Z",
-  "changelog": "Released 'Model Edit Mode' in Katana UI. Resolved multiple core AI engine bugs including 'StreamingResponse' shadowing and missing 'timestamp' variable. Stabilized Telegram autonomous poller with detailed diagnostics."
+  "released": "2026-04-20T15:55:00Z",
+  "changelog": "Added Native Skills infrastructure. The Shogun can now autonomously spawn Samurai agents and update model configuration if permitted by the active Security Policy. Added 'action' UI streaming state to the Telegram poller."
 }

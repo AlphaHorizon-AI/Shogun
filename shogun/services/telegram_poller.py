@@ -70,6 +70,7 @@ async def process_telegram_message(bot_token: str, chat_id: str, user_msg: str):
             
             # 2. Aggregate the SSE chunks and update Telegram periodically
             full_reply = ""
+            current_action = ""
             last_update_text = ""
             last_update_time = datetime.now(timezone.utc)
             buffer = ""
@@ -92,20 +93,30 @@ async def process_telegram_message(bot_token: str, chat_id: str, user_msg: str):
                                     data = json.loads(payload)
                                     if data.get("type") == "token":
                                         full_reply += data.get("content", "")
+                                        current_action = "" # Clear action when text resumes
+                                    elif data.get("type") == "action":
+                                        current_action = data.get("content", "")
                                     elif data.get("type") == "error":
                                         logger.error(f"[Telegram] AI Engine Error: {data.get('content')}")
                                         full_reply += f"\n⚠️ {data.get('content')}"
+                                        current_action = ""
                                 except json.JSONDecodeError:
                                     pass
                     
                     # High-frequency update every 0.8 seconds for smooth UI
                     now = datetime.now(timezone.utc)
-                    if (now - last_update_time).total_seconds() > 0.8:
+                    if (now - last_update_time).total_seconds() > 0.8 or current_action:
                         display_text = full_reply.strip()
+                        if current_action:
+                            if display_text:
+                                display_text += f"\n\n⚙️ _{current_action}_"
+                            else:
+                                display_text = f"⚙️ _{current_action}_"
+                                
                         if display_text and display_text != last_update_text:
                             # Note: We use NO parse_mode for intermediate edits
                             # This prevents Telegram from rejecting messages with unclosed markdown
-                            await edit_telegram_message(bot_token, chat_id, msg_id, display_text + " ▮")
+                            await edit_telegram_message(bot_token, chat_id, msg_id, display_text + (" ▮" if not current_action else ""))
                             last_update_text = display_text
                             last_update_time = now
                 
