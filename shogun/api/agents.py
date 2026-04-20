@@ -448,6 +448,7 @@ BEHAVIOUR:
     # ── 7. Stream SSE ─────────────────────────────────────────────
     # Log user message for drift monitor
     _append_chat_log("user", user_msg)
+    timestamp = datetime.now().isoformat()
 
     async def generate():
         # Metadata event: lets frontend show model badge immediately
