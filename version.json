@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0",
-  "build": 1,
+  "version": "1.0.1",
+  "build": 2,
   "channel": "stable",
-  "released": "2026-04-19T12:00:00Z",
-  "changelog": "Initial release — Setup Wizard, 14-language i18n, one-click installers, desktop shortcuts."
+  "released": "2026-04-20T10:00:00Z",
+  "changelog": "System personalization overhaul. Operator name binding securely attached to LLM instructional prompts. Persona database seeding algorithm heavily expanded and self-healing. Added zero-config Telegram Chat ID reverse-detection via auto-pinging."
 }
