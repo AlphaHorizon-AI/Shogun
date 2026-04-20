@@ -336,7 +336,6 @@ async def _shogun_chat_internal(user_msg: str, history: list, svc: AgentService)
         async def _no_provider():
             yield f"data: {json.dumps({'type': 'error', 'content': '⚠️ No active model provider found. Go to The Katana → Model Providers and add one.'})}\n\n"
             yield "data: [DONE]\n\n"
-        from fastapi.responses import StreamingResponse
         return StreamingResponse(_no_provider(), media_type="text/event-stream")
 
     # Endpoint resolve
