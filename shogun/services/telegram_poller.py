@@ -64,7 +64,7 @@ async def process_telegram_message(bot_token: str, chat_id: str, user_msg: str):
                                 break
                             try:
                                 data = json.loads(payload)
-                                if data.get("type") == "content":
+                                if data.get("type") == "token":
                                     full_reply += data.get("content", "")
                                 elif data.get("type") == "error":
                                     logger.error(f"[Telegram] AI Engine Error: {data.get('content')}")
