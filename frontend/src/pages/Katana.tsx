@@ -2085,7 +2085,7 @@ export function Katana() {
               <div className="lg:col-span-2 space-y-5">
                 <div className="shogun-card space-y-4">
                   <h4 className="text-sm font-bold text-shogun-text flex items-center gap-2">
-                    <Send className="w-4 h-4 text-shogun-blue" /> Test Message
+                    <Send className="w-4 h-4 text-shogun-blue" /> Test Connection
                   </h4>
                   {!tgStatus?.connected
                     ? <p className="text-center py-6 text-shogun-subdued text-xs italic">Connect a bot first.</p>
