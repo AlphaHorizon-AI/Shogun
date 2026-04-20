@@ -36,7 +36,6 @@ import {
   Eye,
   EyeOff,
   Edit2,
-  Ban,
 } from "lucide-react";
 import axios from 'axios';
 import { cn } from '../lib/utils';
