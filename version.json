@@ -1,7 +1,7 @@
 {
-  "version": "1.0.3",
-  "build": 4,
+  "version": "1.0.4",
+  "build": 5,
   "channel": "stable",
-  "released": "2026-04-20T10:40:00Z",
-  "changelog": "Added custom Samurai Operator Logo permanently to the desktop executable. Fixed start.bat encoding bug that occasionally prevented Shogun from starting cleanly. Autonomous Telegram daemon is live."
+  "released": "2026-04-20T11:30:00Z",
+  "changelog": "Released 'Model Edit Mode' in Katana UI. Resolved multiple core AI engine bugs including 'StreamingResponse' shadowing and missing 'timestamp' variable. Stabilized Telegram autonomous poller with detailed diagnostics."
 }
