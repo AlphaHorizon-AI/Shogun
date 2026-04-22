@@ -472,7 +472,7 @@ export function Torii() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Policy Name *</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("torii.policy_name", "Policy Name *")}</label>
                     <input
                       required
                       type="text"
@@ -484,7 +484,7 @@ export function Torii() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Security Tier *</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("torii.security_tier", "Security Tier *")}</label>
                     <select
                       value={newPolicy.tier}
                       onChange={e => setNewPolicy({ ...newPolicy, tier: e.target.value as TierType })}
@@ -499,7 +499,7 @@ export function Torii() {
                   </div>
 
                   <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Description</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("torii.description", "Description")}</label>
                     <textarea
                       rows={2}
                       placeholder="What does this policy govern?"

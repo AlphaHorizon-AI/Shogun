@@ -70,12 +70,12 @@
     "harakiri_reset": "切腹已重置。系统已恢复。",
     "title_command_center": "Command Center",
     "title_desc": "Monitoring the Samurai lattice and autonomous behavioral loops.",
-    "active_deployment": "Active Deployment Registry",
-    "full_fleet": "Full Fleet",
-    "designation": "Designation",
-    "current_task": "Current Task",
-    "engagement": "Engagement",
-    "status": "Status",
+    "active_deployment": "活动部署注册表",
+    "full_fleet": "整个机队",
+    "designation": "名称",
+    "current_task": "当前任务",
+    "engagement": "参与度",
+    "status": "状态",
     "new_samurai": "New Samurai",
     "model_setup": "Model Setup",
     "system_load": "System Load",
@@ -254,10 +254,27 @@
     "add_provider": "添加提供商",
     "provider_type": "提供商类型",
     "provider_name": "提供商名称",
-    "api_key": "API密钥",
+    "api_key": "API 密钥",
     "models": "模型",
     "status": "状态",
-    "actions": "操作"
+    "actions": "操作",
+    "provider": "提供商",
+    "auth_type": "身份验证类型",
+    "display_name": "显示名称",
+    "custom_model_tag": "自定义模型标签",
+    "tool_name": "工具名称 *",
+    "slug": "Slug *",
+    "base_url": "基础 URL",
+    "connector_type": "连接器类型",
+    "risk_level": "风险级别",
+    "profile_name": "配置名称 *",
+    "description": "描述",
+    "task_type": "任务类型",
+    "primary_model_provider": "主要模型提供商 *",
+    "latency_bias": "延迟偏好",
+    "cost_bias": "成本偏好",
+    "update_mode": "更新模式",
+    "webhook_url": "Webhook URL *"
   },
   "kaizen": {
     "title": "改善治理",
@@ -276,7 +293,10 @@
     "subtitle": "安全网关和访问控制。",
     "security_posture": "安全态势",
     "active_tier": "活跃层级",
-    "kill_switch": "紧急开关"
+    "kill_switch": "紧急开关",
+    "policy_name": "策略名称 *",
+    "security_tier": "安全层 *",
+    "description": "描述"
   },
   "archives": {
     "title": "档案",
@@ -286,7 +306,11 @@
     "salience": "显著性",
     "pinned": "已固定",
     "inscribe": "铭刻记忆",
-    "total_memories": "总记忆数"
+    "total_memories": "总记忆数",
+    "agent_attribution": "代理归属",
+    "memory_title": "记忆标题",
+    "content_payload": "内容负载",
+    "decay_class": "衰减等级"
   },
   "shogun_profile": {
     "title": "将军档案",
@@ -325,5 +349,31 @@
     "active": "Active",
     "suspended": "Suspended",
     "signal_range": "Signal Range"
+  },
+  "samurai": {
+    "table_designation": "名称",
+    "table_status": "状态",
+    "table_task": "当前任务",
+    "table_role": "角色 / Slug",
+    "table_routing": "路由",
+    "table_deployed": "部署于"
+  },
+  "profile": {
+    "agent_name": "代理名称",
+    "active_persona": "活动角色",
+    "description": "描述",
+    "autonomy_level": "自治级别",
+    "select_model": "选择模型",
+    "add_fallback": "添加回退",
+    "fallback_order": "回退顺序",
+    "routing_strategy": "路由策略",
+    "base_policy": "基本政策",
+    "custom_policy_name": "自定义策略名称",
+    "job_name": "任务名称",
+    "job_type": "任务类型",
+    "frequency": "频率",
+    "priority": "优先级",
+    "task_instruction": "任务说明",
+    "options": "选项"
   }
 }

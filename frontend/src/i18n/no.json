@@ -70,11 +70,11 @@
     "harakiri_reset": "Harakiri tilbakestilt. Systemer gjenopprettet.",
     "title_command_center": "Command Center",
     "title_desc": "Monitoring the Samurai lattice and autonomous behavioral loops.",
-    "active_deployment": "Active Deployment Registry",
-    "full_fleet": "Full Fleet",
-    "designation": "Designation",
-    "current_task": "Current Task",
-    "engagement": "Engagement",
+    "active_deployment": "Aktivt Implementeringsregister",
+    "full_fleet": "Full Flåte",
+    "designation": "Betegnelse",
+    "current_task": "Nåværende Oppgave",
+    "engagement": "Engasjement",
     "status": "Status",
     "new_samurai": "New Samurai",
     "model_setup": "Model Setup",
@@ -257,7 +257,24 @@
     "api_key": "API-Nøkkel",
     "models": "Modeller",
     "status": "Status",
-    "actions": "Handlinger"
+    "actions": "Handlinger",
+    "provider": "Leverandør",
+    "auth_type": "Autentiseringstype",
+    "display_name": "Visningsnavn",
+    "custom_model_tag": "Egendefinert modell-tag",
+    "tool_name": "Verktøynavn *",
+    "slug": "Slug *",
+    "base_url": "Basis URL",
+    "connector_type": "Konnektortype",
+    "risk_level": "Risikonivå",
+    "profile_name": "Profilnavn *",
+    "description": "Beskrivelse",
+    "task_type": "Oppgavetype",
+    "primary_model_provider": "Primær modellleverandør *",
+    "latency_bias": "Latensbias",
+    "cost_bias": "Kostnadsbias",
+    "update_mode": "Oppdateringsmodus",
+    "webhook_url": "Webhook URL *"
   },
   "kaizen": {
     "title": "Kaizen-Styring",
@@ -276,17 +293,24 @@
     "subtitle": "Sikkerhetsportal og tilgangskontroll.",
     "security_posture": "Sikkerhetsnivå",
     "active_tier": "Aktivt Nivå",
-    "kill_switch": "Nødstopp"
+    "kill_switch": "Nødstopp",
+    "policy_name": "Politiknavn *",
+    "security_tier": "Sikkerhetsnivå *",
+    "description": "Beskrivelse"
   },
   "archives": {
     "title": "Arkiv",
     "subtitle": "Agent-hukommelse og kunnskapsbase.",
     "search_placeholder": "Søk i minner...",
-    "memory_type": "Minnetype",
+    "memory_type": "Hukommelsestype",
     "salience": "Relevans",
     "pinned": "Festet",
     "inscribe": "Skriv inn Minne",
-    "total_memories": "Totale Minner"
+    "total_memories": "Totale Minner",
+    "agent_attribution": "Agent-attribusjon",
+    "memory_title": "Minnetittel",
+    "content_payload": "Innholdspayload",
+    "decay_class": "Nedbrytningsklasse"
   },
   "shogun_profile": {
     "title": "Shogun-Profil",
@@ -325,5 +349,31 @@
     "active": "Active",
     "suspended": "Suspended",
     "signal_range": "Signal Range"
+  },
+  "samurai": {
+    "table_designation": "Betegnelse",
+    "table_status": "Status",
+    "table_task": "Nåværende Oppgave",
+    "table_role": "Rolle / Slug",
+    "table_routing": "Ruting",
+    "table_deployed": "Distribuert den"
+  },
+  "profile": {
+    "agent_name": "Agentnavn",
+    "active_persona": "Aktiv Persona",
+    "description": "Beskrivelse",
+    "autonomy_level": "Autonominivå",
+    "select_model": "Velg Modell",
+    "add_fallback": "Legg til Fallback",
+    "fallback_order": "Fallback-rekkefølge",
+    "routing_strategy": "Routingstrategi",
+    "base_policy": "Grunnpolitikk",
+    "custom_policy_name": "Egendefinert Politiknavn",
+    "job_name": "Jobbnavn",
+    "job_type": "Jobbtype",
+    "frequency": "Frekvens",
+    "priority": "Prioritet",
+    "task_instruction": "Oppgaveinstruksjon",
+    "options": "Alternativer"
   }
 }

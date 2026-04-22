@@ -384,7 +384,7 @@ export const ShogunProfile = () => {
               </h3>
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Agent Name</label>
+                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.agent_name", "Agent Name")}</label>
                   <input 
                     type="text" 
                     value={shogunData.name}
@@ -393,7 +393,7 @@ export const ShogunProfile = () => {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Active Persona</label>
+                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.active_persona", "Active Persona")}</label>
                   <select 
                     value={shogunData.persona_id || ''}
                     onChange={(e) => {
@@ -432,7 +432,7 @@ export const ShogunProfile = () => {
                   })()}
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Description</label>
+                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.description", "Description")}</label>
                   <textarea 
                     value={shogunData.description || ''}
                     onChange={(e) => setShogunData({ ...shogunData, description: e.target.value })}
@@ -449,7 +449,7 @@ export const ShogunProfile = () => {
               <div className="space-y-5 pt-2">
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Autonomy Level</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.autonomy_level", "Autonomy Level")}</label>
                     <span className="text-shogun-blue font-mono font-bold">{shogunData.autonomy}%</span>
                   </div>
                   <input 
@@ -594,7 +594,7 @@ export const ShogunProfile = () => {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Select Model</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.select_model", "Select Model")}</label>
                     <select
                       value={primaryModel}
                       onChange={e => setPrimaryModel(e.target.value)}
@@ -654,7 +654,7 @@ export const ShogunProfile = () => {
                   <div className="space-y-3">
                     {/* Add dropdown */}
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Add Fallback</label>
+                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.add_fallback", "Add Fallback")}</label>
                       <select
                         value=""
                         onChange={e => {
@@ -693,7 +693,7 @@ export const ShogunProfile = () => {
                     {/* Selected fallbacks as draggable ordered chips */}
                     {fallbackModels.length > 0 ? (
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Fallback Order</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.fallback_order", "Fallback Order")}</label>
                         <p className="text-[9px] text-shogun-subdued/50">Drag to reorder priority.</p>
                         {fallbackModels.map((fm, i) => (
                           <div
@@ -736,7 +736,7 @@ export const ShogunProfile = () => {
                 {/* Routing Strategy */}
                 {routingProfiles.length > 0 && (
                   <div className="space-y-2 pt-2 border-t border-shogun-border">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Routing Strategy</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.routing_strategy", "Routing Strategy")}</label>
                     <select
                       value={shogunData.model_routing_profile_id || ''}
                       onChange={e => setShogunData({ ...shogunData, model_routing_profile_id: e.target.value })}
@@ -835,7 +835,7 @@ delegation_rules:
 
               <div className="space-y-3">
                  <div className="space-y-1.5">
-                   <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Base Policy</label>
+                   <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.base_policy", "Base Policy")}</label>
                    <select 
                      value={shogunData.security_policy_id || ''}
                      onChange={(e) => {
@@ -853,7 +853,7 @@ delegation_rules:
                 {/* Custom policy name (shown when modified) */}
                 {isCustomPolicy && (
                   <div className="space-y-1.5 p-3 bg-shogun-blue/5 border border-shogun-blue/20 rounded-xl">
-                    <label className="text-[10px] font-bold text-shogun-blue uppercase tracking-widest">Custom Policy Name</label>
+                    <label className="text-[10px] font-bold text-shogun-blue uppercase tracking-widest">{t("profile.custom_policy_name", "Custom Policy Name")}</label>
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -1294,7 +1294,7 @@ delegation_rules:
                     {/* Column 1: Identity */}
                     <div className="space-y-5">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Job Name</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.job_name", "Job Name")}</label>
                         <input
                           type="text"
                           placeholder="e.g. Weekly Context Prune"
@@ -1304,7 +1304,7 @@ delegation_rules:
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Job Type</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.job_type", "Job Type")}</label>
                         <div className="space-y-2">
                           {[
                             { value: 'memory_consolidation', label: 'Memory Consolidation', desc: 'Merge & prune memory traces' },
@@ -1330,7 +1330,7 @@ delegation_rules:
                         </div>
                       </div>
                       <div className="space-y-3">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Frequency</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.frequency", "Frequency")}</label>
                         <div className="grid grid-cols-5 gap-1.5">
                           {['one-off', 'hourly', 'nightly', 'weekly', 'monthly'].map(f => (
                             <button 
@@ -1484,7 +1484,7 @@ delegation_rules:
                     <div className="space-y-5">
                       <div className="space-y-3">
                         <div className="flex justify-between items-center">
-                          <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Priority</label>
+                          <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.priority", "Priority")}</label>
                           <span className="text-shogun-gold font-mono font-bold text-xs">
                             {priority <= 25 ? 'Low' : priority <= 50 ? 'Normal' : priority <= 75 ? 'High' : 'Critical'}
                           </span>
@@ -1548,7 +1548,7 @@ delegation_rules:
 
                       {jobType === 'custom_task' && (
                         <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Task Instruction</label>
+                          <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.task_instruction", "Task Instruction")}</label>
                           <textarea
                             value={customJob.taskInstruction}
                             onChange={(e) => setCustomJob({...customJob, taskInstruction: e.target.value})}
@@ -1566,7 +1566,7 @@ delegation_rules:
                     {/* Column 3: Options + Submit */}
                     <div className="space-y-5">
                       <div className="space-y-3">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Options</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.options", "Options")}</label>
 
                         <div 
                           onClick={() => setAllAgents(!allAgents)}

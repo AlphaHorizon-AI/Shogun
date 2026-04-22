@@ -70,11 +70,11 @@
     "harakiri_reset": "Harakiri reposto. Sistemas restaurados.",
     "title_command_center": "Command Center",
     "title_desc": "Monitoring the Samurai lattice and autonomous behavioral loops.",
-    "active_deployment": "Active Deployment Registry",
-    "full_fleet": "Full Fleet",
-    "designation": "Designation",
-    "current_task": "Current Task",
-    "engagement": "Engagement",
+    "active_deployment": "Registro de Implantação Ativo",
+    "full_fleet": "Frota Completa",
+    "designation": "Designação",
+    "current_task": "Tarefa Atual",
+    "engagement": "Engajamento",
     "status": "Status",
     "new_samurai": "New Samurai",
     "model_setup": "Model Setup",
@@ -257,7 +257,24 @@
     "api_key": "Chave API",
     "models": "Modelos",
     "status": "Estado",
-    "actions": "Ações"
+    "actions": "Ações",
+    "provider": "Provedor",
+    "auth_type": "Tipo de Autenticação",
+    "display_name": "Nome de Exibição",
+    "custom_model_tag": "Tag de Modelo Personalizada",
+    "tool_name": "Nome da Ferramenta *",
+    "slug": "Slug *",
+    "base_url": "URL Base",
+    "connector_type": "Tipo de Conector",
+    "risk_level": "Nível de risco",
+    "profile_name": "Nome do Perfil *",
+    "description": "Descrição",
+    "task_type": "Tipo de Tarefa",
+    "primary_model_provider": "Provedor de Modelo Principal *",
+    "latency_bias": "Viés de Latência",
+    "cost_bias": "Viés de Custo",
+    "update_mode": "Modo de Atualização",
+    "webhook_url": "URL do Webhook *"
   },
   "kaizen": {
     "title": "Governança Kaizen",
@@ -276,7 +293,10 @@
     "subtitle": "Portal de segurança e controlo de acesso.",
     "security_posture": "Postura de Segurança",
     "active_tier": "Nível Ativo",
-    "kill_switch": "Interruptor de Emergência"
+    "kill_switch": "Interruptor de Emergência",
+    "policy_name": "Nome da Política *",
+    "security_tier": "Nível de Segurança *",
+    "description": "Descrição"
   },
   "archives": {
     "title": "Arquivos",
@@ -286,7 +306,11 @@
     "salience": "Relevância",
     "pinned": "Fixado",
     "inscribe": "Inscrever Memória",
-    "total_memories": "Total de Memórias"
+    "total_memories": "Total de Memórias",
+    "agent_attribution": "Atribuição de Agente",
+    "memory_title": "Título de Memória",
+    "content_payload": "Carga de Conteúdo",
+    "decay_class": "Classe de Decaimento"
   },
   "shogun_profile": {
     "title": "Perfil do Shogun",
@@ -325,5 +349,31 @@
     "active": "Active",
     "suspended": "Suspended",
     "signal_range": "Signal Range"
+  },
+  "samurai": {
+    "table_designation": "Designação",
+    "table_status": "Status",
+    "table_task": "Tarefa Atual",
+    "table_role": "Papel / Slug",
+    "table_routing": "Roteamento",
+    "table_deployed": "Implantado em"
+  },
+  "profile": {
+    "agent_name": "Nome do Agente",
+    "active_persona": "Persona Ativa",
+    "description": "Descrição",
+    "autonomy_level": "Nível de Autonomia",
+    "select_model": "Selecionar Modelo",
+    "add_fallback": "Adicionar Fallback",
+    "fallback_order": "Ordem de Fallback",
+    "routing_strategy": "Estratégia de Roteamento",
+    "base_policy": "Política Base",
+    "custom_policy_name": "Nome de Política Personalizado",
+    "job_name": "Nome do Trabalho",
+    "job_type": "Tipo do Trabalho",
+    "frequency": "Frequência",
+    "priority": "Prioridade",
+    "task_instruction": "Instrução de Tarefa",
+    "options": "Opções"
   }
 }

@@ -221,13 +221,13 @@ export const SamuraiNetwork = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-shogun-border bg-[#050508]/30">
-                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Designation</th>
-                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Status</th>
-                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Current Task</th>
-                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Role / Slug</th>
-                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Routing</th>
-                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Deployed At</th>
-                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest text-right">Actions</th>
+                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai.table_designation', 'Designation')}</th>
+                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai.table_status', 'Status')}</th>
+                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai.table_task', 'Current Task')}</th>
+                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai.table_role', 'Role / Slug')}</th>
+                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai.table_routing', 'Routing')}</th>
+                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai.table_deployed', 'Deployed At')}</th>
+                <th className="p-4 text-[10px] font-bold text-shogun-subdued uppercase tracking-widest text-right">{t('common.actions', 'Actions')}</th>
               </tr>
             </thead>
             <tbody>

@@ -70,10 +70,10 @@
     "harakiri_reset": "Harakiri nulstillet. Systemer genoprettet.",
     "title_command_center": "Command Center",
     "title_desc": "Monitoring the Samurai lattice and autonomous behavioral loops.",
-    "active_deployment": "Active Deployment Registry",
-    "full_fleet": "Full Fleet",
-    "designation": "Designation",
-    "current_task": "Current Task",
+    "active_deployment": "Aktivt Implementeringsregister",
+    "full_fleet": "Fuld Flåde",
+    "designation": "Betegnelse",
+    "current_task": "Nuværende Opgave",
     "engagement": "Engagement",
     "status": "Status",
     "new_samurai": "New Samurai",
@@ -257,7 +257,24 @@
     "api_key": "API-Nøgle",
     "models": "Modeller",
     "status": "Status",
-    "actions": "Handlinger"
+    "actions": "Handlinger",
+    "provider": "Udbyder",
+    "auth_type": "Godkendelsestype",
+    "display_name": "Visningsnavn",
+    "custom_model_tag": "Brugerdefineret Model-Tag",
+    "tool_name": "Værktøjsnavn *",
+    "slug": "Slug *",
+    "base_url": "Basis URL",
+    "connector_type": "Konnektortype",
+    "risk_level": "Risikoniveau",
+    "profile_name": "Profilnavn *",
+    "description": "Beskrivelse",
+    "task_type": "Opgavetype",
+    "primary_model_provider": "Primær Modeludbyder *",
+    "latency_bias": "Latensbias",
+    "cost_bias": "Omkostningsbias",
+    "update_mode": "Opdateringstilstand",
+    "webhook_url": "Webhook URL *"
   },
   "kaizen": {
     "title": "Kaizen-Styring",
@@ -276,7 +293,10 @@
     "subtitle": "Sikkerhedsportal og adgangskontrol.",
     "security_posture": "Sikkerhedsniveau",
     "active_tier": "Aktivt Niveau",
-    "kill_switch": "Nødstop"
+    "kill_switch": "Nødstop",
+    "policy_name": "Politiknavn *",
+    "security_tier": "Sikkerhedsniveau *",
+    "description": "Beskrivelse"
   },
   "archives": {
     "title": "Arkiv",
@@ -286,7 +306,11 @@
     "salience": "Relevans",
     "pinned": "Fastgjort",
     "inscribe": "Inskriber Minde",
-    "total_memories": "Samlede Minder"
+    "total_memories": "Samlede Minder",
+    "agent_attribution": "Agent-tilskrivning",
+    "memory_title": "Hukommelsestitel",
+    "content_payload": "Indholdsnyttelast",
+    "decay_class": "Nedbrydningsklasse"
   },
   "shogun_profile": {
     "title": "Shogun-Profil",
@@ -325,5 +349,31 @@
     "active": "Active",
     "suspended": "Suspended",
     "signal_range": "Signal Range"
+  },
+  "samurai": {
+    "table_designation": "Betegnelse",
+    "table_status": "Status",
+    "table_task": "Nuværende Opgave",
+    "table_role": "Rolle / Slug",
+    "table_routing": "Routing",
+    "table_deployed": "Implementeret Den"
+  },
+  "profile": {
+    "agent_name": "Agentnavn",
+    "active_persona": "Aktiv Persona",
+    "description": "Beskrivelse",
+    "autonomy_level": "Autonomieniveau",
+    "select_model": "Vælg Model",
+    "add_fallback": "Tilføj Fallback",
+    "fallback_order": "Fallback-rækkefølge",
+    "routing_strategy": "Routing-strategi",
+    "base_policy": "Grundpolitik",
+    "custom_policy_name": "Brugerdefineret Politiknavn",
+    "job_name": "Jobnavn",
+    "job_type": "Jobtype",
+    "frequency": "Frekvens",
+    "priority": "Prioritet",
+    "task_instruction": "Opgaveinstruktion",
+    "options": "Valgmuligheder"
   }
 }

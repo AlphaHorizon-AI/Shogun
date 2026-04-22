@@ -916,7 +916,7 @@ export function Katana() {
                 <form onSubmit={handleCreateProvider} className="space-y-4">
                   {/* Provider selector */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Provider</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.provider', 'Provider')}</label>
                     <select
                       value={newProvider.provider_type}
                       onChange={(e) => {
@@ -1003,7 +1003,7 @@ export function Katana() {
                   {!isLocal && (
                     <>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Auth Type</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.auth_type', 'Auth Type')}</label>
                         <select
                           value={newProvider.auth_type}
                           onChange={(e) => setNewProvider({...newProvider, auth_type: e.target.value})}
@@ -1225,7 +1225,7 @@ export function Katana() {
 
                           {/* Custom model tag */}
                           <div className="pt-2 border-t border-shogun-border/50 space-y-1.5">
-                            <label className="text-[9px] font-bold text-shogun-subdued uppercase tracking-widest">Custom Model Tag</label>
+                            <label className="text-[9px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.custom_model_tag', 'Custom Model Tag')}</label>
                             <div className="flex gap-2">
                               <input
                                 type="text"
@@ -1533,7 +1533,7 @@ export function Katana() {
                   {registerMode === 'manual' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Tool Name *</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.tool_name', 'Tool Name *')}</label>
                         <input
                           required
                           type="text"
@@ -1544,7 +1544,7 @@ export function Katana() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Slug *</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.slug', 'Slug *')}</label>
                         <input
                           required
                           type="text"
@@ -1555,7 +1555,7 @@ export function Katana() {
                         />
                       </div>
                       <div className="space-y-1.5 md:col-span-2">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Base URL</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.base_url', 'Base URL')}</label>
                         <input
                           type="text"
                           placeholder="https://api.example.com/v1"
@@ -1565,7 +1565,7 @@ export function Katana() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Connector Type</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.connector_type', 'Connector Type')}</label>
                         <select
                           value={newTool.connector_type}
                           onChange={(e) => setNewTool({ ...newTool, connector_type: e.target.value as ConnectorTypeVal })}
@@ -1577,7 +1577,7 @@ export function Katana() {
                         </select>
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Auth Type</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.auth_type', 'Auth Type')}</label>
                         <select
                           value={newTool.auth_type}
                           onChange={(e) => setNewTool({ ...newTool, auth_type: e.target.value as AuthTypeVal })}
@@ -1589,7 +1589,7 @@ export function Katana() {
                         </select>
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Risk Level</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.risk_level', 'Risk Level')}</label>
                         <div className="flex gap-2">
                           {RISK_LEVELS.map((r) => (
                             <button
@@ -1747,7 +1747,7 @@ export function Katana() {
                 <form onSubmit={handleCreateProfile}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Profile Name *</label>
+                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.profile_name', 'Profile Name *')}</label>
                       <input
                         required
                         type="text"
@@ -1758,7 +1758,7 @@ export function Katana() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Description</label>
+                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.description', 'Description')}</label>
                       <input
                         type="text"
                         placeholder="Optional short description"
@@ -1987,7 +1987,7 @@ export function Katana() {
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {/* Task Type */}
                                 <div className="space-y-1.5">
-                                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Task Type</label>
+                                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.task_type', 'Task Type')}</label>
                                   <select
                                     value={newRule.task_type}
                                     onChange={e => setNewRule({ ...newRule, task_type: e.target.value })}
@@ -2010,7 +2010,7 @@ export function Katana() {
 
                                 {/* Primary Model */}
                                 <div className="space-y-1.5">
-                                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Primary Model Provider *</label>
+                                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.primary_model_provider', 'Primary Model Provider *')}</label>
                                   <select
                                     value={newRule.primary_model_id}
                                     onChange={e => setNewRule({ ...newRule, primary_model_id: e.target.value })}
@@ -2033,7 +2033,7 @@ export function Katana() {
 
                                 {/* Latency Bias */}
                                 <div className="space-y-1.5">
-                                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Latency Bias</label>
+                                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.latency_bias', 'Latency Bias')}</label>
                                   <select
                                     value={newRule.latency_bias}
                                     onChange={e => setNewRule({ ...newRule, latency_bias: e.target.value })}
@@ -2048,7 +2048,7 @@ export function Katana() {
 
                                 {/* Cost Bias */}
                                 <div className="space-y-1.5">
-                                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Cost Bias</label>
+                                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.cost_bias', 'Cost Bias')}</label>
                                   <select
                                     value={newRule.cost_bias}
                                     onChange={e => setNewRule({ ...newRule, cost_bias: e.target.value })}
@@ -2172,7 +2172,7 @@ export function Katana() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Update Mode</label>
+                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.update_mode', 'Update Mode')}</label>
                       <div className="flex gap-2">
                         {(['polling', 'webhook'] as const).map(m => (
                           <button key={m} type="button" onClick={() => setTgMode(m)}
@@ -2189,7 +2189,7 @@ export function Katana() {
 
                     {tgMode === 'webhook' && (
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Webhook URL *</label>
+                        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.webhook_url', 'Webhook URL *')}</label>
                         <input type="url" required placeholder="https://yourdomain.com/telegram/webhook"
                           value={tgWebhook} onChange={e => setTgWebhook(e.target.value)}
                           className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none font-mono" />

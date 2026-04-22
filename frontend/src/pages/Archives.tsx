@@ -648,7 +648,7 @@ export function Archives() {
               <div className="p-8 space-y-6">
                  <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2">
-                       <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest block">Memory Type</label>
+                       <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest block">{t("archives.memory_type", "Memory Type")}</label>
                        <select 
                          value={newMemory.memory_type}
                          onChange={(e) => setNewMemory({...newMemory, memory_type: e.target.value})}
@@ -660,7 +660,7 @@ export function Archives() {
                        </select>
                     </div>
                     <div className="space-y-2">
-                       <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest block">Agent Attribution</label>
+                       <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest block">{t("archives.agent_attribution", "Agent Attribution")}</label>
                        <select 
                          value={newMemory.agent_id}
                          onChange={(e) => setNewMemory({...newMemory, agent_id: e.target.value})}
@@ -675,7 +675,7 @@ export function Archives() {
                  </div>
 
                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest block">Memory Title</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest block">{t("archives.memory_title", "Memory Title")}</label>
                     <input 
                       type="text"
                       placeholder="E.g. Operational Guidelines for Project Alpha"
@@ -686,7 +686,7 @@ export function Archives() {
                  </div>
 
                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest block">Content Payload</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest block">{t("archives.content_payload", "Content Payload")}</label>
                     <textarea 
                       rows={5}
                       placeholder="Paste fragment content here..."
@@ -710,7 +710,7 @@ export function Archives() {
                        />
                     </div>
                     <div className="space-y-2">
-                       <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest block">Decay Class</label>
+                       <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest block">{t("archives.decay_class", "Decay Class")}</label>
                        <div className="flex gap-2">
                          {['fast', 'medium', 'slow', 'sticky', 'pinned'].map(d => (
                            <button 

@@ -70,12 +70,12 @@
     "harakiri_reset": "하라키리 재설정. 시스템 복구.",
     "title_command_center": "Command Center",
     "title_desc": "Monitoring the Samurai lattice and autonomous behavioral loops.",
-    "active_deployment": "Active Deployment Registry",
-    "full_fleet": "Full Fleet",
-    "designation": "Designation",
-    "current_task": "Current Task",
-    "engagement": "Engagement",
-    "status": "Status",
+    "active_deployment": "활성 배포 레지스트리",
+    "full_fleet": "전체 함대",
+    "designation": "지정",
+    "current_task": "현재 작업",
+    "engagement": "참여",
+    "status": "상태",
     "new_samurai": "New Samurai",
     "model_setup": "Model Setup",
     "system_load": "System Load",
@@ -257,7 +257,24 @@
     "api_key": "API 키",
     "models": "모델",
     "status": "상태",
-    "actions": "작업"
+    "actions": "작업",
+    "provider": "공급자",
+    "auth_type": "인증 유형",
+    "display_name": "표시 이름",
+    "custom_model_tag": "사용자 지정 모델 태그",
+    "tool_name": "도구 이름 *",
+    "slug": "슬러그 *",
+    "base_url": "기본 URL",
+    "connector_type": "커넥터 유형",
+    "risk_level": "위험 수준",
+    "profile_name": "프로필 이름 *",
+    "description": "설명",
+    "task_type": "작업 유형",
+    "primary_model_provider": "주요 모델 제공자 *",
+    "latency_bias": "대기 시간 편향",
+    "cost_bias": "비용 편향",
+    "update_mode": "업데이트 모드",
+    "webhook_url": "Webhook URL *"
   },
   "kaizen": {
     "title": "카이젠 거버넌스",
@@ -276,7 +293,10 @@
     "subtitle": "보안 게이트웨이 및 접근 제어.",
     "security_posture": "보안 태세",
     "active_tier": "활성 티어",
-    "kill_switch": "비상 스위치"
+    "kill_switch": "비상 스위치",
+    "policy_name": "정책 이름 *",
+    "security_tier": "보안 계층 *",
+    "description": "설명"
   },
   "archives": {
     "title": "아카이브",
@@ -286,7 +306,11 @@
     "salience": "현저성",
     "pinned": "고정됨",
     "inscribe": "메모리 기록",
-    "total_memories": "총 메모리"
+    "total_memories": "총 메모리",
+    "agent_attribution": "에이전트 속성",
+    "memory_title": "메모리 제목",
+    "content_payload": "콘텐츠 페이로드",
+    "decay_class": "감쇠 등급"
   },
   "shogun_profile": {
     "title": "쇼군 프로필",
@@ -325,5 +349,31 @@
     "active": "Active",
     "suspended": "Suspended",
     "signal_range": "Signal Range"
+  },
+  "samurai": {
+    "table_designation": "지정",
+    "table_status": "상태",
+    "table_task": "현재 작업",
+    "table_role": "역할 / 슬러그",
+    "table_routing": "라우팅",
+    "table_deployed": "배포 날짜"
+  },
+  "profile": {
+    "agent_name": "에이전트 이름",
+    "active_persona": "활성 페르소나",
+    "description": "설명",
+    "autonomy_level": "자율성 수준",
+    "select_model": "모델 선택",
+    "add_fallback": "대체 추가",
+    "fallback_order": "대체 순서",
+    "routing_strategy": "라우팅 전략",
+    "base_policy": "기본 정책",
+    "custom_policy_name": "사용자 지정 정책 이름",
+    "job_name": "작업 이름",
+    "job_type": "작업 유형",
+    "frequency": "빈도",
+    "priority": "우선순위",
+    "task_instruction": "작업 지시",
+    "options": "옵션"
   }
 }
