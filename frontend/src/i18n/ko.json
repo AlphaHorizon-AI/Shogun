@@ -243,7 +243,7 @@
   "katana": {
     "title": "카타나",
     "subtitle": "AI 모델 제공자, 로컬 모델 및 시스템 도구 관리.",
-    "tab_cloud": "클라우드 제공자",
+    "tab_cloud": "AI 모델 제공자",
     "tab_local": "로컬 모델",
     "tab_routing": "라우팅 프로필",
     "tab_tools": "도구 커넥터",

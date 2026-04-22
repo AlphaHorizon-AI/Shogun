@@ -243,7 +243,7 @@
   "katana": {
     "title": "刀",
     "subtitle": "AIモデルプロバイダー、ローカルモデル、システムツールを管理。",
-    "tab_cloud": "クラウドプロバイダー",
+    "tab_cloud": "AIモデルプロバイダー",
     "tab_local": "ローカルモデル",
     "tab_routing": "ルーティングプロファイル",
     "tab_tools": "ツールコネクター",

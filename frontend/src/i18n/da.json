@@ -243,7 +243,7 @@
   "katana": {
     "title": "Katanaen",
     "subtitle": "Administrer AI-modeludbydere, lokale modeller og systemværktøjer.",
-    "tab_cloud": "Cloud-Udbydere",
+    "tab_cloud": "AI-modeludbyder",
     "tab_local": "Lokale Modeller",
     "tab_routing": "Routing-Profiler",
     "tab_tools": "Værktøjskonnektorer",

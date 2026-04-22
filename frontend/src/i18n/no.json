@@ -243,7 +243,7 @@
   "katana": {
     "title": "Katanaen",
     "subtitle": "Administrer AI-modelltilbydere, lokale modeller og systemverktøy.",
-    "tab_cloud": "Sky-Tilbydere",
+    "tab_cloud": "AI-modellleverandør",
     "tab_local": "Lokale Modeller",
     "tab_routing": "Rutingprofiler",
     "tab_tools": "Verktøykoblinger",

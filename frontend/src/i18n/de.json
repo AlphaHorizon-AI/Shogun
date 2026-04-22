@@ -243,7 +243,7 @@
   "katana": {
     "title": "Die Katana",
     "subtitle": "KI-Modellanbieter, lokale Modelle und Systemwerkzeuge verwalten.",
-    "tab_cloud": "Cloud-Anbieter",
+    "tab_cloud": "KI-Modellanbieter",
     "tab_local": "Lokale Modelle",
     "tab_routing": "Routing-Profile",
     "tab_tools": "Werkzeug-Konnektoren",

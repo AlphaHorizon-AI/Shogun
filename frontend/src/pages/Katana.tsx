@@ -878,7 +878,7 @@ export function Katana() {
               activeTab === tab ? "text-shogun-blue" : "text-shogun-subdued hover:text-shogun-text"
             )}
           >
-            {tab === 'providers' && t('katana.tab_cloud', 'Model Providers')}
+            {tab === 'providers' && t('katana.tab_cloud', 'AI Model Provider')}
             {tab === 'tools'     && t('katana.tab_tools', 'Toolbox & APIs')}
             {tab === 'routing'   && t('katana.tab_routing', 'Logic Routing')}
             {tab === 'telegram'  && (
@@ -931,7 +931,7 @@ export function Katana() {
                       }}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
                     >
-                      <optgroup label="Cloud Providers">
+                      <optgroup label="AI Model Providers">
                         <option value="openai">OpenAI</option>
                         <option value="google">Google (Gemini)</option>
                         <option value="anthropic">Anthropic</option>

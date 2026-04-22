@@ -243,7 +243,7 @@
   "katana": {
     "title": "Katana",
     "subtitle": "Zarządzaj dostawcami modeli AI, modelami lokalnymi i narzędziami systemowymi.",
-    "tab_cloud": "Dostawcy Chmurowi",
+    "tab_cloud": "Dostawca Modeli AI",
     "tab_local": "Modele Lokalne",
     "tab_routing": "Profile Routingu",
     "tab_tools": "Konektory Narzędzi",

@@ -287,7 +287,7 @@
   "katana": {
     "title": "The Katana",
     "subtitle": "Manage AI model providers, local models, and system tools.",
-    "tab_cloud": "Cloud Providers",
+    "tab_cloud": "AI Model Provider",
     "tab_local": "Local Models",
     "tab_routing": "Routing Profiles",
     "tab_tools": "Tool Connectors",

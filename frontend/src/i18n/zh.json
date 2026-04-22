@@ -243,7 +243,7 @@
   "katana": {
     "title": "刀",
     "subtitle": "管理AI模型提供商、本地模型和系统工具。",
-    "tab_cloud": "云提供商",
+    "tab_cloud": "AI模型提供商",
     "tab_local": "本地模型",
     "tab_routing": "路由配置",
     "tab_tools": "工具连接器",

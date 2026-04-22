@@ -243,7 +243,7 @@
   "katana": {
     "title": "A Katana",
     "subtitle": "Gerir fornecedores de modelos IA, modelos locais e ferramentas do sistema.",
-    "tab_cloud": "Fornecedores Cloud",
+    "tab_cloud": "Provedor de Modelos de IA",
     "tab_local": "Modelos Locais",
     "tab_routing": "Perfis de Encaminhamento",
     "tab_tools": "Conectores de Ferramentas",
