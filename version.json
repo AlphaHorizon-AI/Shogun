@@ -1,7 +1,7 @@
 {
-  "version": "1.1.4",
-  "build": 15,
+  "version": "1.1.5",
+  "build": 16,
   "channel": "stable",
-  "released": "2026-04-22T10:50:00Z",
-  "changelog": "Added the legal disclaimer to the final setup step and updated the global footer branding with localized strings."
+  "released": "2026-04-22T10:55:00Z",
+  "changelog": "Finalized platform branding and onboarding legal disclosures."
 }
