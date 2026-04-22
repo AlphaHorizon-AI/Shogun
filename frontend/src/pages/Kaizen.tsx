@@ -19,6 +19,7 @@ import {
   Eye
 } from "lucide-react";
 import { cn } from '../lib/utils';
+import { useTranslation } from '../i18n';
 
 const API = 'http://localhost:8000/api/v1/kaizen';
 
@@ -70,6 +71,7 @@ interface Directive {
 
 export function Kaizen() {
   const [activeTab, setActiveTab] = useState<Tab>('constitution');
+  const { t } = useTranslation();
 
   // ── Constitution state ─────────────────────────────
   const [constitution, setConstitution] = useState('');
@@ -235,9 +237,9 @@ export function Kaizen() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
-            Kaizen <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Constitutional Layer</span>
+            {t('kaizen.title', 'Kaizen')} <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Constitutional Layer</span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-1">Define the fundamental laws and behavioral constraints for the entire Samurai Network.</p>
+          <p className="text-shogun-subdued text-sm mt-1">{t('kaizen.subtitle', 'Define the fundamental laws and behavioral constraints for the entire Samurai Network.')}</p>
         </div>
 
         <button
@@ -246,7 +248,7 @@ export function Kaizen() {
           className="flex items-center gap-2 bg-shogun-gold hover:bg-shogun-gold/90 text-black font-bold py-2.5 px-6 rounded-lg transition-all shadow-shogun disabled:opacity-50"
         >
           {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {isConstitutionTab ? 'PUBLISH EDICTS' : 'SEAL MANDATE'}
+          {saving ? t('kaizen.publishing', 'PUBLISHING...') : isConstitutionTab ? t('kaizen.publish', 'PUBLISH EDICTS') : t('kaizen.publish_mandate', 'SEAL MANDATE')}
         </button>
       </div>
 
@@ -272,7 +274,7 @@ export function Kaizen() {
               : "text-shogun-subdued hover:text-shogun-text"
           )}
         >
-          <FileCode className="w-3.5 h-3.5" /> Constitution
+          <FileCode className="w-3.5 h-3.5" /> {t('kaizen.tab_constitution', 'Constitution')}
         </button>
         <button
           onClick={() => setActiveTab('mandate')}
@@ -283,7 +285,7 @@ export function Kaizen() {
               : "text-shogun-subdued hover:text-shogun-text"
           )}
         >
-          <ScrollText className="w-3.5 h-3.5" /> The Mandate
+          <ScrollText className="w-3.5 h-3.5" /> {t('kaizen.tab_mandate', 'The Mandate')}
         </button>
       </div>
 
@@ -428,7 +430,7 @@ export function Kaizen() {
           {/* Revision History */}
           <div className="shogun-card bg-shogun-gold/5 border-shogun-gold/20">
             <h4 className="text-xs font-bold text-shogun-gold flex items-center gap-2 mb-3">
-              <History className="w-4 h-4" /> REVISION HISTORY
+              <History className="w-4 h-4" /> {t('kaizen.tab_revisions', 'REVISION HISTORY')}
             </h4>
             <div className="space-y-3 max-h-[300px] overflow-y-auto">
               {revisions.length === 0 && (

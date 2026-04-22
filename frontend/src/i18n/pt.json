@@ -29,14 +29,21 @@
     "guide_sub": "Documentação",
     "alliance": "Aliança",
     "nexus": "Nexus",
-    "nexus_sub": "Espaços de Trabalho A2A"
+    "nexus_sub": "Espaços de Trabalho A2A",
+    "maintenance": "Maintenance",
+    "backups": "Backups",
+    "backups_sub": "Data Protection",
+    "updates": "Updates",
+    "updates_sub": "Platform Version",
+    "update_available": "UPDATE"
   },
   "topbar": {
     "system_ready": "Sistema Pronto",
     "healthy": "Operacional",
     "offline": "Offline",
     "harakiri_active": "HARAKIRI ATIVO — TODOS OS SISTEMAS CONGELADOS",
-    "reset_harakiri": "Repor Harakiri"
+    "reset_harakiri": "Repor Harakiri",
+    "guarded": "Guarded"
   },
   "dashboard": {
     "title": "O Tenshu — Centro de Comando",
@@ -60,7 +67,19 @@
     "harakiri_desc": "Interruptor de emergência — congela toda atividade de agentes",
     "harakiri_confirm": "Tem certeza? Isto congelará TODA a atividade dos agentes e bloqueará o sistema no nível SHRINE.",
     "harakiri_activated": "Harakiri ativado. Todos os sistemas congelados.",
-    "harakiri_reset": "Harakiri reposto. Sistemas restaurados."
+    "harakiri_reset": "Harakiri reposto. Sistemas restaurados.",
+    "title_command_center": "Command Center",
+    "title_desc": "Monitoring the Samurai lattice and autonomous behavioral loops.",
+    "active_deployment": "Active Deployment Registry",
+    "full_fleet": "Full Fleet",
+    "designation": "Designation",
+    "current_task": "Current Task",
+    "engagement": "Engagement",
+    "status": "Status",
+    "new_samurai": "New Samurai",
+    "model_setup": "Model Setup",
+    "system_load": "System Load",
+    "cpu_affinity": "CPU Affinity"
   },
   "setup": {
     "progress": "Passo {current} de {total}",
@@ -245,7 +264,8 @@
     "publish": "Publicar",
     "publishing": "A publicar...",
     "published": "Publicado com sucesso",
-    "revision": "Revisão"
+    "revision": "Revisão",
+    "publish_mandate": "SEAL MANDATE"
   },
   "torii": {
     "title": "O Torii",
@@ -276,5 +296,30 @@
     "autonomy_logic": "Autonomia e Lógica",
     "behavioral_directives": "Diretivas Comportamentais",
     "authority_metrics": "Métricas de Autoridade"
+  },
+  "dojo": {
+    "tab_explore": "Skill Catalog",
+    "tab_bundles": "Ready Bundles",
+    "tab_specializations": "Specializations",
+    "tab_achieved": "Achieved",
+    "title": "The Dojo",
+    "subtitle": "Discover and install specialized skills from the global OpenClaw College registry.",
+    "take_exam": "Take Certification Exam",
+    "passed": "Certified!",
+    "failed": "Not Passed"
+  },
+  "nexus": {
+    "title": "Nexus",
+    "subtitle": "Agent-to-Agent workspaces — plan, communicate, and collaborate with remote Shogun instances.",
+    "new_workspace": "New Workspace"
+  },
+  "samurai_network": {
+    "title": "Samurai Network",
+    "subtitle": "Orchestrate specialized sub-agents across the mission grid.",
+    "deploy_samurai": "DEPLOY SAMURAI",
+    "total_fleet": "Total Fleet",
+    "active": "Active",
+    "suspended": "Suspended",
+    "signal_range": "Signal Range"
   }
 }

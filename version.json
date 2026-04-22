@@ -1,7 +1,7 @@
 {
-  "version": "1.0.7",
-  "build": 8,
+  "version": "1.0.8",
+  "build": 9,
   "channel": "stable",
-  "released": "2026-04-22T06:46:00Z",
-  "changelog": "Fixed internationalization logic in core Tenshu UI components missing i18n translation hooks, ensuring language selection properly translates the Dashboard, Sidebar, and TopBar interfaces."
+  "released": "2026-04-22T07:05:00Z",
+  "changelog": "Completed internationalization in all core Tenshu UI components including Guide, SamuraiNetwork, Dojo, Nexus, and TopBar/Sidebar. Generated and populated language packs."
 }

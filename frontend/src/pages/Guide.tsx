@@ -31,10 +31,12 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from '../lib/utils';
+import { useTranslation } from '../i18n';
 
 type DocTab = 'onboarding' | 'architecture' | 'reference' | 'safety';
 
 export function Guide() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<DocTab>('onboarding');
 
   return (
@@ -43,20 +45,20 @@ export function Guide() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h2 className="text-4xl font-bold shogun-title flex items-center gap-4">
-            Framework Guide
-            <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-1 rounded border border-shogun-border tracking-[0.3em] uppercase">Knowledge Base</span>
+            {t('guide.title', 'Framework Guide')}
+            <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-1 rounded border border-shogun-border tracking-[0.3em] uppercase">{t('guide.badge', 'Knowledge Base')}</span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-1">Master the Shogun architecture, operations, and system maintenance.</p>
+          <p className="text-shogun-subdued text-sm mt-1">{t('guide.subtitle', 'Master the Shogun architecture, operations, and system maintenance.')}</p>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex flex-wrap items-center gap-2 p-1 bg-shogun-card border border-shogun-border rounded-xl w-fit">
         {[
-          { id: 'onboarding', label: 'Onboarding', icon: Compass },
-          { id: 'reference', label: 'Reference Manual', icon: BookOpen },
-          { id: 'architecture', label: 'Architecture', icon: Cpu },
-          { id: 'safety', label: 'Safety Protocols', icon: ShieldCheck },
+          { id: 'onboarding', label: t('guide.tab_onboarding', 'Onboarding'), icon: Compass },
+          { id: 'reference', label: t('guide.tab_reference', 'Reference Manual'), icon: BookOpen },
+          { id: 'architecture', label: t('guide.tab_architecture', 'Architecture'), icon: Cpu },
+          { id: 'safety', label: t('guide.tab_safety', 'Safety Protocols'), icon: ShieldCheck },
         ].map((tab) => (
           <button
             key={tab.id}

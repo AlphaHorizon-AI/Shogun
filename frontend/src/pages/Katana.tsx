@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import axios from 'axios';
 import { cn } from '../lib/utils';
+import { useTranslation } from '../i18n';
 
 type TabType = 'providers' | 'tools' | 'routing' | 'telegram';
 type RegisterMode = 'quick' | 'manual';
@@ -233,6 +234,7 @@ const riskColor = (r: RiskLevelVal) => {
 
 export function Katana() {
   const [activeTab, setActiveTab] = useState<TabType>('providers');
+  const { t } = useTranslation();
 
   // ── Telegram state ──────────────────────────────────────────────
   const [tgStatus, setTgStatus]         = useState<any>(null);
@@ -843,9 +845,9 @@ export function Katana() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
-            The Katana <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Orchestration</span>
+            {t('katana.title', 'The Katana')} <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Orchestration</span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-1">Manage the cutting-edge models and tools that empower your agents.</p>
+          <p className="text-shogun-subdued text-sm mt-1">{t('katana.subtitle', 'Manage the cutting-edge models and tools that empower your agents.')}</p>
         </div>
       </div>
 
@@ -876,9 +878,9 @@ export function Katana() {
               activeTab === tab ? "text-shogun-blue" : "text-shogun-subdued hover:text-shogun-text"
             )}
           >
-            {tab === 'providers' && 'Model Providers'}
-            {tab === 'tools'     && 'Toolbox & APIs'}
-            {tab === 'routing'   && 'Logic Routing'}
+            {tab === 'providers' && t('katana.tab_cloud', 'Model Providers')}
+            {tab === 'tools'     && t('katana.tab_tools', 'Toolbox & APIs')}
+            {tab === 'routing'   && t('katana.tab_routing', 'Logic Routing')}
             {tab === 'telegram'  && (
               <span className="flex items-center gap-1.5">
                 <MessageCircle className="w-3.5 h-3.5" />
@@ -906,9 +908,9 @@ export function Katana() {
               <div className="shogun-card space-y-6 sticky top-6">
                 <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
                   {editingProviderId ? (
-                    <><Edit2 className="w-5 h-5 text-shogun-gold" /> Edit Provider</>
+                    <><Edit2 className="w-5 h-5 text-shogun-gold" /> {t('common.edit', 'Edit Provider')}</>
                   ) : (
-                    <><Plus className="w-5 h-5 text-shogun-blue" /> Add Provider</>
+                    <><Plus className="w-5 h-5 text-shogun-blue" /> {t('katana.add_provider', 'Add Provider')}</>
                   )}
                 </h3>
                 <form onSubmit={handleCreateProvider} className="space-y-4">

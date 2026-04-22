@@ -16,8 +16,10 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from '../lib/utils';
+import { useTranslation } from '../i18n';
 
 export const SamuraiNetwork = () => {
+  const { t } = useTranslation();
   const [agents, setAgents] = useState<any[]>([]);
   const [missions, setMissions] = useState<any[]>([]);
   const [samuraiRoles, setSamuraiRoles] = useState<any[]>([]);
@@ -161,17 +163,17 @@ export const SamuraiNetwork = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
-            Samurai Network
+            {t('samurai_network.title', 'Samurai Network')}
             <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Fleet Status</span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-1">Orchestrate specialized sub-agents across the mission grid.</p>
+          <p className="text-shogun-subdued text-sm mt-1">{t('samurai_network.subtitle', 'Orchestrate specialized sub-agents across the mission grid.')}</p>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={fetchAll} className="p-2.5 bg-shogun-card border border-shogun-border rounded-lg text-shogun-subdued hover:text-shogun-gold transition-colors">
             <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
           </button>
           <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 bg-shogun-blue hover:bg-shogun-blue/90 text-white font-bold py-2.5 px-6 rounded-lg transition-all shadow-shogun">
-            <Plus className="w-4 h-4" /> DEPLOY SAMURAI
+            <Plus className="w-4 h-4" /> {t('samurai_network.deploy_samurai', 'DEPLOY SAMURAI')}
           </button>
         </div>
       </div>
@@ -179,10 +181,10 @@ export const SamuraiNetwork = () => {
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
-          { label: 'Total Fleet',  value: agents.length.toString(),                                       icon: Users,  color: 'text-shogun-gold'    },
-          { label: 'Active',       value: agents.filter(a => a.status === 'active').length.toString(),    icon: Play,   color: 'text-green-500'      },
-          { label: 'Suspended',    value: agents.filter(a => a.status === 'suspended').length.toString(), icon: Pause,  color: 'text-shogun-blue'    },
-          { label: 'Signal Range', value: '100%',                                                         icon: Radio,  color: 'text-shogun-subdued' },
+          { label: t('samurai_network.total_fleet', 'Total Fleet'),  value: agents.length.toString(),                                       icon: Users,  color: 'text-shogun-gold'    },
+          { label: t('samurai_network.active', 'Active'),       value: agents.filter(a => a.status === 'active').length.toString(),    icon: Play,   color: 'text-green-500'      },
+          { label: t('samurai_network.suspended', 'Suspended'),    value: agents.filter(a => a.status === 'suspended').length.toString(), icon: Pause,  color: 'text-shogun-blue'    },
+          { label: t('samurai_network.signal_range', 'Signal Range'), value: '100%',                                                         icon: Radio,  color: 'text-shogun-subdued' },
         ].map((item, i) => (
           <div key={i} className="shogun-card flex flex-col gap-1 border-l-2" style={{ borderLeftColor: i === 0 ? '#d4a017' : i === 1 ? '#22c55e' : i === 2 ? '#4a8cc7' : '#1a2040' }}>
             <div className="flex items-center gap-2 text-shogun-subdued mb-1">

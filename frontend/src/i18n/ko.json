@@ -29,14 +29,21 @@
     "guide_sub": "문서",
     "alliance": "동맹",
     "nexus": "넥서스",
-    "nexus_sub": "A2A 워크스페이스"
+    "nexus_sub": "A2A 워크스페이스",
+    "maintenance": "Maintenance",
+    "backups": "Backups",
+    "backups_sub": "Data Protection",
+    "updates": "Updates",
+    "updates_sub": "Platform Version",
+    "update_available": "UPDATE"
   },
   "topbar": {
     "system_ready": "시스템 준비 완료",
     "healthy": "정상",
     "offline": "오프라인",
     "harakiri_active": "하라키리 활성화 — 모든 시스템 동결",
-    "reset_harakiri": "하라키리 재설정"
+    "reset_harakiri": "하라키리 재설정",
+    "guarded": "Guarded"
   },
   "dashboard": {
     "title": "텐슈 — 사령부",
@@ -60,7 +67,19 @@
     "harakiri_desc": "비상 스위치 — 모든 에이전트 활동 동결",
     "harakiri_confirm": "확실합니까? 모든 에이전트 활동이 동결되고 시스템이 SHRINE 수준으로 잠깁니다.",
     "harakiri_activated": "하라키리 활성화. 모든 시스템 동결.",
-    "harakiri_reset": "하라키리 재설정. 시스템 복구."
+    "harakiri_reset": "하라키리 재설정. 시스템 복구.",
+    "title_command_center": "Command Center",
+    "title_desc": "Monitoring the Samurai lattice and autonomous behavioral loops.",
+    "active_deployment": "Active Deployment Registry",
+    "full_fleet": "Full Fleet",
+    "designation": "Designation",
+    "current_task": "Current Task",
+    "engagement": "Engagement",
+    "status": "Status",
+    "new_samurai": "New Samurai",
+    "model_setup": "Model Setup",
+    "system_load": "System Load",
+    "cpu_affinity": "CPU Affinity"
   },
   "setup": {
     "progress": "{total}단계 중 {current}단계",
@@ -245,7 +264,8 @@
     "publish": "게시",
     "publishing": "게시 중...",
     "published": "게시 완료",
-    "revision": "개정"
+    "revision": "개정",
+    "publish_mandate": "SEAL MANDATE"
   },
   "torii": {
     "title": "토리이",
@@ -276,5 +296,30 @@
     "autonomy_logic": "자율 및 로직",
     "behavioral_directives": "행동 지침",
     "authority_metrics": "권한 메트릭"
+  },
+  "dojo": {
+    "tab_explore": "Skill Catalog",
+    "tab_bundles": "Ready Bundles",
+    "tab_specializations": "Specializations",
+    "tab_achieved": "Achieved",
+    "title": "The Dojo",
+    "subtitle": "Discover and install specialized skills from the global OpenClaw College registry.",
+    "take_exam": "Take Certification Exam",
+    "passed": "Certified!",
+    "failed": "Not Passed"
+  },
+  "nexus": {
+    "title": "Nexus",
+    "subtitle": "Agent-to-Agent workspaces — plan, communicate, and collaborate with remote Shogun instances.",
+    "new_workspace": "New Workspace"
+  },
+  "samurai_network": {
+    "title": "Samurai Network",
+    "subtitle": "Orchestrate specialized sub-agents across the mission grid.",
+    "deploy_samurai": "DEPLOY SAMURAI",
+    "total_fleet": "Total Fleet",
+    "active": "Active",
+    "suspended": "Suspended",
+    "signal_range": "Signal Range"
   }
 }

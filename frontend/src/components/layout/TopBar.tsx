@@ -44,7 +44,7 @@ export const TopBar = () => {
           </div>
           <div className="flex items-center gap-1.5 group cursor-default">
             <ShieldCheck className="w-4 h-4 group-hover:text-shogun-blue transition-colors" />
-            <span className="text-xs">Guarded</span>
+            <span className="text-xs">{t('topbar.guarded', 'Guarded')}</span>
           </div>
         </div>
       </div>

@@ -129,9 +129,9 @@ export const Dashboard = () => {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-4xl font-bold shogun-title flex items-center gap-3">
-            Tenshu <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-3 py-1 rounded border border-shogun-border uppercase tracking-[0.3em] ml-2">{t('nav.overview_sub', 'Command Center')}</span>
+            Tenshu <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-3 py-1 rounded border border-shogun-border uppercase tracking-[0.3em] ml-2">{t('dashboard.title_command_center', 'Command Center')}</span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-2 font-medium">Monitoring the Samurai lattice and autonomous behavioral loops.</p>
+          <p className="text-shogun-subdued text-sm mt-2 font-medium">{t('dashboard.title_desc', 'Monitoring the Samurai lattice and autonomous behavioral loops.')}</p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -192,20 +192,20 @@ export const Dashboard = () => {
              <div className="p-5 border-b border-shogun-border bg-[#050508]/50 flex items-center justify-between">
                 <h3 className="font-bold text-shogun-text flex items-center gap-3">
                   <LayoutGrid className="w-4 h-4 text-shogun-blue" />
-                  Active Deployment Registry
+                  {t('dashboard.active_deployment', 'Active Deployment Registry')}
                 </h3>
                 <Link to="/samurai" className="text-[10px] font-bold text-shogun-blue hover:text-shogun-gold uppercase tracking-widest transition-colors flex items-center gap-1">
-                   Full Fleet <ChevronRight className="w-3 h-3" />
+                   {t('dashboard.full_fleet', 'Full Fleet')} <ChevronRight className="w-3 h-3" />
                 </Link>
              </div>
              <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-shogun-border text-shogun-subdued uppercase text-[9px] tracking-widest bg-[#050508]/30">
-                      <th className="p-5 font-bold">Designation</th>
-                      <th className="p-5 font-bold">Current Task</th>
-                      <th className="p-5 font-bold">Engagement</th>
-                      <th className="p-5 font-bold text-right">Status</th>
+                      <th className="p-5 font-bold">{t('dashboard.designation', 'Designation')}</th>
+                      <th className="p-5 font-bold">{t('dashboard.current_task', 'Current Task')}</th>
+                      <th className="p-5 font-bold">{t('dashboard.engagement', 'Engagement')}</th>
+                      <th className="p-5 font-bold text-right">{t('dashboard.status', 'Status')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-shogun-border">
@@ -248,11 +248,11 @@ export const Dashboard = () => {
                 <div className="grid grid-cols-2 gap-3">
                    <Link to="/samurai" className="flex flex-col items-center justify-center p-4 bg-[#050508] border border-shogun-border rounded-xl hover:border-shogun-gold transition-all group">
                       <Plus className="w-5 h-5 text-shogun-subdued group-hover:text-shogun-gold mb-2" />
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-shogun-subdued group-hover:text-shogun-text">New Samurai</span>
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-shogun-subdued group-hover:text-shogun-text">{t('dashboard.new_samurai', 'New Samurai')}</span>
                    </Link>
                    <Link to="/katana" className="flex flex-col items-center justify-center p-4 bg-[#050508] border border-shogun-border rounded-xl hover:border-shogun-blue transition-all group">
                       <Settings className="w-5 h-5 text-shogun-subdued group-hover:text-shogun-blue mb-2" />
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-shogun-subdued group-hover:text-shogun-text">Model Setup</span>
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-shogun-subdued group-hover:text-shogun-text">{t('dashboard.model_setup', 'Model Setup')}</span>
                    </Link>
                 </div>
              </div>
@@ -330,11 +330,11 @@ export const Dashboard = () => {
               <div className="mt-8 p-4 bg-[#050508] border border-shogun-border rounded-xl">
                  <div className="flex items-center gap-3 mb-3">
                     <AlertCircle className="w-4 h-4 text-shogun-gold" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-shogun-text">System Load</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-shogun-text">{t('dashboard.system_load', 'System Load')}</span>
                  </div>
                  <div className="space-y-2">
                     <div className="flex justify-between text-[10px] text-shogun-subdued font-bold uppercase">
-                       <span>CPU Affinity</span>
+                       <span>{t('dashboard.cpu_affinity', 'CPU Affinity')}</span>
                        <span>12%</span>
                     </div>
                     <div className="w-full h-1 bg-shogun-card rounded-full overflow-hidden">

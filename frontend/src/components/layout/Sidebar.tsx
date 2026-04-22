@@ -187,21 +187,21 @@ export const Sidebar = () => {
 
       {/* ── System Maintenance ──────────────────────── */}
       <div className="mt-auto pt-4 border-t border-shogun-border/40">
-        <h3 className="text-[10px] font-bold text-shogun-subdued/60 tracking-[0.2em] mb-3 pl-3 uppercase">Maintenance</h3>
+        <h3 className="text-[10px] font-bold text-shogun-subdued/60 tracking-[0.2em] mb-3 pl-3 uppercase">{t('nav.maintenance', 'Maintenance')}</h3>
         <nav className="flex flex-col gap-1">
           <NavItem 
             icon={HardDrive} 
-            label="Backups" 
-            subLabel="Data Protection" 
+            label={t('nav.backups', 'Backups')} 
+            subLabel={t('nav.backups_sub', 'Data Protection')} 
             active={location.pathname === '/backups'}
             onClick={() => navigate('/backups')}
           />
           <NavItem 
             icon={Download} 
-            label="Updates" 
-            subLabel="Version Control" 
-            badge={updateAvailable ? "NEW" : null}
+            label={t('nav.updates', 'Updates')} 
+            subLabel={t('nav.updates_sub', 'Platform Version')} 
             active={location.pathname === '/updates'}
+            badge={updateAvailable ? t('nav.update_available', 'UPDATE') : null}
             onClick={() => navigate('/updates')}
           />
         </nav>

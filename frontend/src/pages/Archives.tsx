@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import axios from 'axios';
 import { cn } from '../lib/utils';
+import { useTranslation } from '../i18n';
 
 const API = 'http://localhost:8000/api/v1/memory';
 const AGENTS_API = 'http://localhost:8000/api/v1/agents';
@@ -89,6 +90,7 @@ interface Agent {
 }
 
 export function Archives() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
@@ -282,9 +284,9 @@ export function Archives() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
-            Archives <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Memory Core</span>
+            {t('archives.title', 'Archives')} <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Memory Core</span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-1">SOTA semantic retrieval and salience-weighted persistent knowledge store.</p>
+          <p className="text-shogun-subdued text-sm mt-1">{t('archives.subtitle', 'SOTA semantic retrieval and salience-weighted persistent knowledge store.')}</p>
         </div>
         
         <div className="flex items-center gap-3">
@@ -292,7 +294,7 @@ export function Archives() {
             onClick={() => setIsCreateModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-shogun-gold/10 text-shogun-gold border border-shogun-gold/20 rounded-lg text-sm font-bold uppercase tracking-widest hover:bg-shogun-gold/20 transition-all"
           >
-            <Plus className="w-4 h-4" /> Inscribe Memory
+            <Plus className="w-4 h-4" /> {t('archives.inscribe', 'Inscribe Memory')}
           </button>
           <button 
             onClick={reindexVectors}
@@ -402,7 +404,7 @@ export function Archives() {
                     <span className="text-sm font-bold text-green-500">{stats?.retention_rate}%</span>
                   </div>
                   <div className="p-3 bg-shogun-bg/50 border border-shogun-border rounded-xl">
-                    <span className="text-[9px] text-shogun-subdued uppercase block mb-1">Pinned</span>
+                    <span className="text-[9px] text-shogun-subdued uppercase block mb-1">{t('archives.pinned', 'Pinned')}</span>
                     <span className="text-sm font-bold text-shogun-gold">{stats?.pinned_count}</span>
                   </div>
                 </div>
@@ -452,7 +454,7 @@ export function Archives() {
                   )} />
                   <input 
                     type="text"
-                    placeholder="Enter semantic query or keyword segment..."
+                    placeholder={t('archives.search_placeholder', 'Enter semantic query or keyword segment...')}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full bg-shogun-bg border border-shogun-border rounded-xl pl-12 pr-4 py-3 text-sm focus:border-shogun-blue outline-none transition-all shadow-inner placeholder:text-shogun-subdued/50"

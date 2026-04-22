@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from '../lib/utils';
+import { useTranslation } from '../i18n';
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -116,6 +117,7 @@ function formatDate(iso: string) {
 // ── Main Component ─────────────────────────────────────────────
 
 export function Nexus() {
+  const { t } = useTranslation();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selected, setSelected] = useState<Workspace | null>(null);
   const [identity, setIdentity] = useState<Identity | null>(null);
@@ -298,10 +300,10 @@ export function Nexus() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
-              Nexus
+              {t('nexus.title', 'Nexus')}
               <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">A2A Protocol</span>
             </h2>
-            <p className="text-shogun-subdued text-sm mt-1">Agent-to-Agent workspaces — plan, communicate, and collaborate with remote Shogun instances.</p>
+            <p className="text-shogun-subdued text-sm mt-1">{t('nexus.subtitle', 'Agent-to-Agent workspaces — plan, communicate, and collaborate with remote Shogun instances.')}</p>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={fetchAll} className="p-2.5 bg-shogun-card border border-shogun-border rounded-lg text-shogun-subdued hover:text-shogun-gold transition-colors">
@@ -311,7 +313,7 @@ export function Nexus() {
               onClick={() => setShowCreate(true)}
               className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-[0.15em] rounded-xl shadow-lg transition-all flex items-center gap-2"
             >
-              <Plus className="w-4 h-4" /> New Workspace
+              <Plus className="w-4 h-4" /> {t('nexus.new_workspace', 'New Workspace')}
             </button>
           </div>
         </div>

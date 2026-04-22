@@ -29,14 +29,21 @@
     "guide_sub": "文档",
     "alliance": "联盟",
     "nexus": "Nexus",
-    "nexus_sub": "A2A工作空间"
+    "nexus_sub": "A2A工作空间",
+    "maintenance": "Maintenance",
+    "backups": "Backups",
+    "backups_sub": "Data Protection",
+    "updates": "Updates",
+    "updates_sub": "Platform Version",
+    "update_available": "UPDATE"
   },
   "topbar": {
     "system_ready": "系统就绪",
     "healthy": "健康",
     "offline": "离线",
     "harakiri_active": "切腹已激活 — 所有系统已冻结",
-    "reset_harakiri": "重置切腹"
+    "reset_harakiri": "重置切腹",
+    "guarded": "Guarded"
   },
   "dashboard": {
     "title": "天守 — 指挥中心",
@@ -60,7 +67,19 @@
     "harakiri_desc": "紧急开关 — 冻结所有代理活动",
     "harakiri_confirm": "确定吗？这将冻结所有代理活动并将系统锁定到SHRINE级别。",
     "harakiri_activated": "切腹已激活。所有系统已冻结。",
-    "harakiri_reset": "切腹已重置。系统已恢复。"
+    "harakiri_reset": "切腹已重置。系统已恢复。",
+    "title_command_center": "Command Center",
+    "title_desc": "Monitoring the Samurai lattice and autonomous behavioral loops.",
+    "active_deployment": "Active Deployment Registry",
+    "full_fleet": "Full Fleet",
+    "designation": "Designation",
+    "current_task": "Current Task",
+    "engagement": "Engagement",
+    "status": "Status",
+    "new_samurai": "New Samurai",
+    "model_setup": "Model Setup",
+    "system_load": "System Load",
+    "cpu_affinity": "CPU Affinity"
   },
   "setup": {
     "progress": "第 {current} 步，共 {total} 步",
@@ -245,7 +264,8 @@
     "publish": "发布",
     "publishing": "发布中...",
     "published": "发布成功",
-    "revision": "修订"
+    "revision": "修订",
+    "publish_mandate": "SEAL MANDATE"
   },
   "torii": {
     "title": "鸟居",
@@ -276,5 +296,30 @@
     "autonomy_logic": "自主与逻辑",
     "behavioral_directives": "行为指令",
     "authority_metrics": "权威指标"
+  },
+  "dojo": {
+    "tab_explore": "Skill Catalog",
+    "tab_bundles": "Ready Bundles",
+    "tab_specializations": "Specializations",
+    "tab_achieved": "Achieved",
+    "title": "The Dojo",
+    "subtitle": "Discover and install specialized skills from the global OpenClaw College registry.",
+    "take_exam": "Take Certification Exam",
+    "passed": "Certified!",
+    "failed": "Not Passed"
+  },
+  "nexus": {
+    "title": "Nexus",
+    "subtitle": "Agent-to-Agent workspaces — plan, communicate, and collaborate with remote Shogun instances.",
+    "new_workspace": "New Workspace"
+  },
+  "samurai_network": {
+    "title": "Samurai Network",
+    "subtitle": "Orchestrate specialized sub-agents across the mission grid.",
+    "deploy_samurai": "DEPLOY SAMURAI",
+    "total_fleet": "Total Fleet",
+    "active": "Active",
+    "suspended": "Suspended",
+    "signal_range": "Signal Range"
   }
 }

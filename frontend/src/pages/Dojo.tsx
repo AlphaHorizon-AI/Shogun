@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import axios from 'axios';
 import { cn } from '../lib/utils';
+import { useTranslation } from '../i18n';
 
 type DojoTab = 'catalog' | 'bundles' | 'specializations' | 'achieved';
 
@@ -50,6 +51,7 @@ interface RegistrationStatus {
 }
 
 export function Dojo() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<DojoTab>('catalog');
   const [loading, setLoading] = useState(true);
   const [skills, setSkills] = useState<any[]>([]);
@@ -289,10 +291,10 @@ export function Dojo() {
   // ── Tab Config ─────────────────────────────────────────────
 
   const tabs: { key: DojoTab; label: string; icon: any; count?: number }[] = [
-    { key: 'catalog', label: 'Skill Catalog', icon: Book, count: stats?.skills },
-    { key: 'bundles', label: 'Ready Bundles', icon: Package, count: stats?.bundles },
-    { key: 'specializations', label: 'Specializations', icon: GraduationCap, count: stats?.specializations },
-    { key: 'achieved', label: 'Achieved', icon: Trophy },
+    { key: 'catalog', label: t('dojo.tab_explore', 'Skill Catalog'), icon: Book, count: stats?.skills },
+    { key: 'bundles', label: t('dojo.tab_bundles', 'Ready Bundles'), icon: Package, count: stats?.bundles },
+    { key: 'specializations', label: t('dojo.tab_specializations', 'Specializations'), icon: GraduationCap, count: stats?.specializations },
+    { key: 'achieved', label: t('dojo.tab_achieved', 'Achieved'), icon: Trophy },
   ];
 
   // ── Render ─────────────────────────────────────────────────
@@ -303,9 +305,9 @@ export function Dojo() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
-            The Dojo <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">OpenClaw Hub</span>
+            {t('dojo.title', 'The Dojo')} <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">OpenClaw Hub</span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-1">Discover and install specialized skills from the global OpenClaw College registry.</p>
+          <p className="text-shogun-subdued text-sm mt-1">{t('dojo.subtitle', 'Discover and install specialized skills from the global OpenClaw College registry.')}</p>
         </div>
         
         <div className="flex items-center gap-3">
@@ -1043,7 +1045,7 @@ export function Dojo() {
                           onClick={() => handleStartExam(selectedSkill.id)}
                           className="w-full py-4 bg-shogun-gold hover:bg-shogun-gold/90 text-black font-bold text-xs uppercase tracking-[0.2em] rounded-xl shadow-shogun transition-all flex items-center justify-center gap-3"
                         >
-                          <GraduationCap className="w-5 h-5" /> Take Certification Exam
+                          <GraduationCap className="w-5 h-5" /> {t('dojo.take_exam', 'Take Certification Exam')}
                         </button>
                         <button className="w-full py-3 bg-shogun-card border border-shogun-border text-shogun-subdued hover:text-shogun-text font-bold text-xs uppercase tracking-[0.2em] rounded-xl transition-all flex items-center justify-center gap-3">
                           <Plus className="w-5 h-5" /> Install to Shogun Prime
@@ -1157,7 +1159,7 @@ export function Dojo() {
                       "text-2xl font-bold",
                       examResult.verificationStatus === 'approved' ? 'text-green-400' : 'text-orange-400'
                     )}>
-                      {examResult.verificationStatus === 'approved' ? 'Certified!' : 'Not Passed'}
+                      {examResult.verificationStatus === 'approved' ? t('dojo.passed', 'Certified!') : t('dojo.failed', 'Not Passed')}
                     </h3>
                     <p className="text-shogun-subdued text-sm">
                       {examResult.verificationStatus === 'approved'

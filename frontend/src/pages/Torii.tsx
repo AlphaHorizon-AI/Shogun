@@ -8,6 +8,7 @@ import {
 import axios from 'axios';
 import { cn } from '../lib/utils';
 import { HarakiriModal } from '../components/HarakiriModal';
+import { useTranslation } from '../i18n';
 
 type TierType = 'shrine' | 'guarded' | 'tactical' | 'campaign' | 'ronin';
 
@@ -51,6 +52,7 @@ const TIERS: { id: TierType; label: string; badge: string; color: string; bg: st
 
 
 export function Torii() {
+  const { t } = useTranslation();
   const [loading, setLoading]       = useState(true);
   const [posture, setPosture]       = useState<Posture | null>(null);
   const [policies, setPolicies]     = useState<Policy[]>([]);
@@ -210,13 +212,13 @@ export function Torii() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
-            The Torii{' '}
+            {t('torii.title', 'The Torii')}{' '}
             <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">
               Security Portal
             </span>
           </h2>
           <p className="text-shogun-subdued text-sm mt-1">
-            Define the moral and technical boundaries of the Samurai Network.
+            {t('torii.subtitle', 'Define the moral and technical boundaries of the Samurai Network.')}
           </p>
         </div>
 
@@ -234,7 +236,7 @@ export function Torii() {
             <span className="text-sm leading-tight">
               {posture?.kill_switch_active ? 'Reset Harakiri' : 'Harakiri'}
             </span>
-            <span className="text-[9px] font-normal opacity-70 tracking-widest leading-tight">[Kill Switch]</span>
+            <span className="text-[9px] font-normal opacity-70 tracking-widest leading-tight">[{t('torii.kill_switch', 'Kill Switch')}]</span>
           </div>
         </button>
       </div>
@@ -260,7 +262,7 @@ export function Torii() {
         <div className="lg:col-span-1 space-y-5">
           <div className="shogun-card">
             <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text mb-1">
-              <Shield className="w-5 h-5 text-shogun-gold" /> Security Posture
+              <Shield className="w-5 h-5 text-shogun-gold" /> {t('torii.security_posture', 'Security Posture')}
             </h3>
             <p className="text-[10px] text-shogun-subdued mb-5 uppercase tracking-widest">
               {posture ? `Active: ${posture.active_tier.toUpperCase()}` : 'Loading...'}

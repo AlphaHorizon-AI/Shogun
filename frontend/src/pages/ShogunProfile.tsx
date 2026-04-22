@@ -22,6 +22,7 @@ import {
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
+import { useTranslation } from '../i18n';
 
 type TabType = 'general' | 'models' | 'behavior' | 'permissions' | 'operations';
 
@@ -50,6 +51,7 @@ export const ShogunProfile = () => {
   const [schedules, setSchedules] = useState<any[]>([]);
   const [runningJobs, setRunningJobs] = useState<Record<string, boolean>>({});
   const navigate = useNavigate();
+  const { t } = useTranslation();
   
   const [shogunData, setShogunData] = useState<any>({
     name: 'Shogun Prime',
@@ -325,7 +327,7 @@ export const ShogunProfile = () => {
             <h2 className="text-3xl font-bold shogun-title">{shogunData.name}</h2>
             <div className="flex items-center gap-3 mt-1">
               <span className="text-[10px] bg-shogun-gold/10 text-shogun-gold px-2 py-0.5 rounded border border-shogun-gold/20 font-bold tracking-widest uppercase">
-                Primary Agent
+                {t('shogun_profile.primary_agent', 'Primary Agent')}
               </span>
               <span className="text-xs text-shogun-subdued flex items-center gap-1">
                 <Workflow className="w-3 h-3" /> System Orchestrator
@@ -340,7 +342,7 @@ export const ShogunProfile = () => {
           className="flex items-center justify-center gap-2 bg-shogun-gold hover:bg-shogun-gold/90 text-black font-bold py-2 px-6 rounded-lg transition-all shadow-shogun disabled:opacity-50"
         >
           {saving ? <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
-          SAVE CHANGES
+          {t('common.save_changes', 'SAVE CHANGES')}
         </button>
       </div>
 
@@ -365,7 +367,7 @@ export const ShogunProfile = () => {
               activeTab === tab ? "text-shogun-gold" : "text-shogun-subdued hover:text-shogun-text"
             )}
           >
-            {tab}
+            {t(`shogun_profile.tab_${tab}`, tab)}
             {activeTab === tab && (
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-shogun-gold shadow-[0_0_10px_rgba(212,160,23,0.5)]" />
             )}
@@ -378,7 +380,7 @@ export const ShogunProfile = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="shogun-card space-y-4">
               <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                <User className="w-5 h-5 text-shogun-gold" /> Identity & Persona
+                <User className="w-5 h-5 text-shogun-gold" /> {t('shogun_profile.identity', 'Identity & Persona')}
               </h3>
               <div className="space-y-4">
                 <div className="space-y-1.5">
@@ -442,7 +444,7 @@ export const ShogunProfile = () => {
 
             <div className="shogun-card space-y-4">
               <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                <Zap className="w-5 h-5 text-shogun-blue" /> Autonomy & Logic
+                <Zap className="w-5 h-5 text-shogun-blue" /> {t('shogun_profile.autonomy_logic', 'Autonomy & Logic')}
               </h3>
               <div className="space-y-5 pt-2">
                 <div className="space-y-3">
@@ -464,88 +466,88 @@ export const ShogunProfile = () => {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Tone</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('setup.step3_tone', 'Tone')}</label>
                     <select 
                       value={shogunData.tone || 'analytical'}
                       onChange={(e) => setShogunData({ ...shogunData, tone: e.target.value })}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2 text-xs focus:border-shogun-blue transition-colors"
                     >
-                      <option value="analytical">Analytical</option>
-                      <option value="direct">Direct</option>
-                      <option value="supportive">Supportive</option>
-                      <option value="strategic">Strategic</option>
+                      <option value="analytical">{t('setup.step3_tone_analytical', 'Analytical')}</option>
+                      <option value="direct">{t('setup.step3_tone_direct', 'Direct')}</option>
+                      <option value="supportive">{t('setup.step3_tone_supportive', 'Supportive')}</option>
+                      <option value="strategic">{t('setup.step3_tone_strategic', 'Strategic')}</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Risk Tolerance</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('setup.step3_risk', 'Risk Tolerance')}</label>
                     <select 
                       value={shogunData.risk_tolerance}
                       onChange={(e) => setShogunData({ ...shogunData, risk_tolerance: e.target.value })}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2 text-xs focus:border-shogun-blue transition-colors"
                     >
-                      <option value="low">Low (Cautious)</option>
-                      <option value="medium">Medium (Balanced)</option>
-                      <option value="high">High (Aggressive)</option>
+                      <option value="low">{t('setup.step3_risk_low', 'Low (Cautious)')}</option>
+                      <option value="medium">{t('setup.step3_risk_medium', 'Medium (Balanced)')}</option>
+                      <option value="high">{t('setup.step3_risk_high', 'High (Aggressive)')}</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Verbosity</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('setup.step3_verbosity', 'Verbosity')}</label>
                     <select 
                       value={shogunData.verbosity}
                       onChange={(e) => setShogunData({ ...shogunData, verbosity: e.target.value })}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2 text-xs focus:border-shogun-blue transition-colors"
                     >
-                      <option value="low">Concise</option>
-                      <option value="medium">Moderate</option>
-                      <option value="high">Detailed</option>
+                      <option value="low">{t('setup.step3_verbosity_low', 'Concise')}</option>
+                      <option value="medium">{t('setup.step3_verbosity_medium', 'Moderate')}</option>
+                      <option value="high">{t('setup.step3_verbosity_high', 'Detailed')}</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Planning Depth</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('setup.step3_planning', 'Planning Depth')}</label>
                     <select 
                       value={shogunData.planning_depth || 'medium'}
                       onChange={(e) => setShogunData({ ...shogunData, planning_depth: e.target.value })}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2 text-xs focus:border-shogun-blue transition-colors"
                     >
-                      <option value="low">Shallow (Act fast)</option>
-                      <option value="medium">Standard (Plan then act)</option>
-                      <option value="high">Deep (Exhaustive planning)</option>
+                      <option value="low">{t('setup.step3_planning_low', 'Shallow (Act fast)')}</option>
+                      <option value="medium">{t('setup.step3_planning_medium', 'Standard (Plan then act)')}</option>
+                      <option value="high">{t('setup.step3_planning_high', 'Deep (Exhaustive planning)')}</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Tool Usage</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('setup.step3_tool_usage', 'Tool Usage')}</label>
                     <select 
                       value={shogunData.tool_usage_style || 'balanced'}
                       onChange={(e) => setShogunData({ ...shogunData, tool_usage_style: e.target.value })}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2 text-xs focus:border-shogun-blue transition-colors"
                     >
-                      <option value="conservative">Conservative (Minimal)</option>
-                      <option value="balanced">Balanced</option>
-                      <option value="aggressive">Aggressive (Chain freely)</option>
+                      <option value="conservative">{t('setup.step3_tool_conservative', 'Conservative (Minimal)')}</option>
+                      <option value="balanced">{t('setup.step3_tool_balanced', 'Balanced')}</option>
+                      <option value="aggressive">{t('setup.step3_tool_aggressive', 'Aggressive (Chain freely)')}</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Security Bias</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('setup.step3_security_bias', 'Security Bias')}</label>
                     <select 
                       value={shogunData.security_bias || 'balanced'}
                       onChange={(e) => setShogunData({ ...shogunData, security_bias: e.target.value })}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2 text-xs focus:border-shogun-blue transition-colors"
                     >
-                      <option value="strict">Strict (Least privilege)</option>
-                      <option value="balanced">Balanced</option>
-                      <option value="open">Open (Trust-first)</option>
+                      <option value="strict">{t('setup.step3_security_strict', 'Strict (Least privilege)')}</option>
+                      <option value="balanced">{t('setup.step3_security_balanced', 'Balanced')}</option>
+                      <option value="open">{t('setup.step3_security_open', 'Open (Trust-first)')}</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Memory Style</label>
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('setup.step3_memory', 'Memory Style')}</label>
                     <select 
                       value={shogunData.memory_style || 'focused'}
                       onChange={(e) => setShogunData({ ...shogunData, memory_style: e.target.value })}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2 text-xs focus:border-shogun-blue transition-colors"
                     >
-                      <option value="conservative">Conservative (Minimal retention)</option>
-                      <option value="focused">Focused (Task-relevant)</option>
-                      <option value="expansive">Expansive (Broad context)</option>
+                      <option value="conservative">{t('setup.step3_memory_conservative', 'Conservative (Minimal retention)')}</option>
+                      <option value="focused">{t('setup.step3_memory_focused', 'Focused (Task-relevant)')}</option>
+                      <option value="expansive">{t('setup.step3_memory_expansive', 'Expansive (Broad context)')}</option>
                     </select>
                   </div>
                 </div>
@@ -757,7 +759,7 @@ export const ShogunProfile = () => {
           <div className="shogun-card">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                <Code className="w-5 h-5 text-shogun-gold" /> Behavioral Directives (Kaizen Excerpt)
+                <Code className="w-5 h-5 text-shogun-gold" /> {t('shogun_profile.behavioral_directives', 'Behavioral Directives')}
               </h3>
               <span className="text-[10px] font-mono text-shogun-subdued">v1.0.4-LTS</span>
             </div>
@@ -796,7 +798,7 @@ delegation_rules:
             <div className="shogun-card space-y-5">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                  <Shield className="w-5 h-5 text-shogun-gold" /> Authority Metrics
+                  <Shield className="w-5 h-5 text-shogun-gold" /> {t('shogun_profile.authority_metrics', 'Authority Metrics')}
                 </h3>
                 {isCustomPolicy && (
                   <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border border-shogun-blue/30 bg-shogun-blue/10 text-shogun-blue">Custom</span>
