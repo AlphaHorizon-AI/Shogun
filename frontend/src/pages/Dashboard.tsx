@@ -23,6 +23,7 @@ import axios from 'axios';
 import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
 import { HarakiriModal } from '../components/HarakiriModal';
+import { useTranslation } from '../i18n';
 
 const StatCard = ({ title, value, status, icon: Icon, colorClass, trend, to }: any) => {
   const content = (
@@ -59,6 +60,7 @@ export const Dashboard = () => {
   const [posture, setPosture] = useState<any>(null);
   const [killWorking, setKillWorking] = useState(false);
   const [showHarakiri, setShowHarakiri] = useState(false);
+  const { t } = useTranslation();
 
   const fetchData = async () => {
     setLoading(true);
@@ -110,7 +112,7 @@ export const Dashboard = () => {
           <div className="flex items-center gap-3">
             <ShieldAlert className="w-5 h-5 text-red-500 shrink-0" />
             <div>
-              <span className="text-sm font-bold text-red-400 uppercase tracking-wider">⛔ GLOBAL KILL-SWITCH ACTIVE</span>
+              <span className="text-sm font-bold text-red-400 uppercase tracking-wider">{t('topbar.harakiri_active', '⛔ GLOBAL KILL-SWITCH ACTIVE')}</span>
               <p className="text-[10px] text-red-400/70 mt-0.5">All autonomous agent activity is suspended. Posture locked to SHRINE.</p>
             </div>
           </div>
@@ -119,7 +121,7 @@ export const Dashboard = () => {
             disabled={killWorking}
             className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-lg transition-all shrink-0 disabled:opacity-50"
           >
-            <X className="w-3.5 h-3.5" /> Reset Kill Switch
+            <X className="w-3.5 h-3.5" /> {t('topbar.reset_harakiri', 'Reset Kill Switch')}
           </button>
         </div>
       )}
@@ -127,7 +129,7 @@ export const Dashboard = () => {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-4xl font-bold shogun-title flex items-center gap-3">
-            Tenshu <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-3 py-1 rounded border border-shogun-border uppercase tracking-[0.3em] ml-2">Command Center</span>
+            Tenshu <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-3 py-1 rounded border border-shogun-border uppercase tracking-[0.3em] ml-2">{t('nav.overview_sub', 'Command Center')}</span>
           </h2>
           <p className="text-shogun-subdued text-sm mt-2 font-medium">Monitoring the Samurai lattice and autonomous behavioral loops.</p>
         </div>
@@ -147,7 +149,7 @@ export const Dashboard = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
-          title="Neural Engine" 
+          title={t('dashboard.system_health', 'Neural Engine')} 
           value={data?.shogun_profile?.name || "Shogun Prime"} 
           status={data?.system_health?.runtime || 'online'} 
           icon={Cpu} 
@@ -156,7 +158,7 @@ export const Dashboard = () => {
           to="/shogun"
         />
         <StatCard 
-          title="Active Lattice" 
+          title={t('dashboard.active_samurai', 'Active Lattice')} 
           value={`${data?.active_samurai?.length || 0} Samurai`} 
           status="operational" 
           icon={Users} 
@@ -165,7 +167,7 @@ export const Dashboard = () => {
           to="/samurai"
         />
         <StatCard 
-          title="Knowledge Vol." 
+          title={t('dashboard.database', 'Knowledge Vol.')} 
           value="1,248 Records" 
           status={data?.system_health?.qdrant === 'healthy' ? 'Lattice Indexed' : (data?.system_health?.qdrant || 'indexed')} 
           icon={Server} 
@@ -174,7 +176,7 @@ export const Dashboard = () => {
           to="/archives"
         />
         <StatCard 
-          title="Security Tier" 
+          title={t('dashboard.security_posture', 'Security Tier')} 
           value={data?.security_posture?.tier?.toUpperCase() || "GUARDED"} 
           status="Active" 
           icon={Shield} 
@@ -241,7 +243,7 @@ export const Dashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
              <div className="shogun-card space-y-4">
                 <h3 className="font-bold text-shogun-text flex items-center gap-2">
-                   <Zap className="w-4 h-4 text-shogun-gold" /> Quick Actions
+                   <Zap className="w-4 h-4 text-shogun-gold" /> {t('dashboard.quick_actions', 'Quick Actions')}
                 </h3>
                 <div className="grid grid-cols-2 gap-3">
                    <Link to="/samurai" className="flex flex-col items-center justify-center p-4 bg-[#050508] border border-shogun-border rounded-xl hover:border-shogun-gold transition-all group">
@@ -264,12 +266,12 @@ export const Dashboard = () => {
                  </div>
                  <div>
                     <h4 className="text-sm font-bold text-shogun-text">
-                      {posture?.kill_switch_active ? 'Harakiri Active' : 'Emergency Stop'}
+                      {posture?.kill_switch_active ? t('dashboard.harakiri_activated', 'Harakiri Active') : t('dashboard.harakiri', 'Emergency Stop')}
                     </h4>
                     <p className="text-[10px] text-shogun-subdued mt-1 px-4">
                       {posture?.kill_switch_active
                         ? 'All agents suspended. Posture: SHRINE.'
-                        : 'Immediately suspend all active autonomous engagement.'}
+                        : t('dashboard.harakiri_desc', 'Immediately suspend all active autonomous engagement.')}
                     </p>
                  </div>
                  <button
@@ -301,7 +303,7 @@ export const Dashboard = () => {
            <div className="shogun-card h-full min-h-[500px] flex flex-col">
               <h3 className="font-bold text-shogun-text flex items-center gap-3 mb-6">
                 <Clock className="w-4 h-4 text-shogun-blue" />
-                Telemetry Feed
+                {t('dashboard.recent_events', 'Telemetry Feed')}
               </h3>
               
               <div className="space-y-8 flex-1">

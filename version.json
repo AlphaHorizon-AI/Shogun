@@ -1,7 +1,7 @@
 {
-  "version": "1.0.6",
-  "build": 7,
+  "version": "1.0.7",
+  "build": 8,
   "channel": "stable",
-  "released": "2026-04-20T16:05:00Z",
-  "changelog": "Added Native Skills infrastructure. Hotfix: Added missing database commits to background tool execution routines and fixed custom permission merging in the execution loop."
+  "released": "2026-04-22T06:46:00Z",
+  "changelog": "Fixed internationalization logic in core Tenshu UI components missing i18n translation hooks, ensuring language selection properly translates the Dashboard, Sidebar, and TopBar interfaces."
 }

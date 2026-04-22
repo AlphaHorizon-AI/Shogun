@@ -2,7 +2,7 @@ import { Activity, ShieldCheck, Database, Globe } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 
 export const TopBar = () => {
-  const { language, setLanguage, languages } = useTranslation();
+  const { language, setLanguage, languages, t } = useTranslation();
 
   return (
     <header className="h-[68px] w-full bg-gradient-to-r from-[#050508] to-shogun-bg border-b border-shogun-border flex items-center justify-between px-6 shrink-0 shadow-lg relative z-10">
@@ -12,14 +12,14 @@ export const TopBar = () => {
         </div>
         <div className="flex flex-col">
           <h1 className="text-shogun-gold text-lg font-bold tracking-widest leading-none">SHOGUN</h1>
-          <span className="text-shogun-subdued text-[10px] uppercase tracking-[0.2em] font-medium">The Tenshu — Control Terminal</span>
+          <span className="text-shogun-subdued text-[10px] uppercase tracking-[0.2em] font-medium">{t('dashboard.title', 'The Tenshu — Control Terminal')}</span>
         </div>
       </div>
 
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2 px-3 py-1.5 bg-[#050508] rounded-full border border-shogun-border transition-all hover:border-shogun-blue">
           <Activity className="w-3.5 h-3.5 text-green-500 animate-pulse" />
-          <span className="text-[11px] font-semibold text-shogun-text tracking-wide truncate max-w-[100px]">SYSTEM READY</span>
+          <span className="text-[11px] font-semibold text-shogun-text tracking-wide truncate max-w-[100px] uppercase">{t('topbar.system_ready', 'SYSTEM READY')}</span>
         </div>
 
         <div className="flex items-center gap-2 bg-[#0a0e1a] border border-[#1a1f2e] rounded-lg px-2 py-1">
@@ -40,7 +40,7 @@ export const TopBar = () => {
         <div className="flex items-center gap-4 text-shogun-subdued">
           <div className="flex items-center gap-1.5 group cursor-default">
             <Database className="w-4 h-4 group-hover:text-shogun-blue transition-colors" />
-            <span className="text-xs">Healthy</span>
+            <span className="text-xs">{t('topbar.healthy', 'Healthy')}</span>
           </div>
           <div className="flex items-center gap-1.5 group cursor-default">
             <ShieldCheck className="w-4 h-4 group-hover:text-shogun-blue transition-colors" />

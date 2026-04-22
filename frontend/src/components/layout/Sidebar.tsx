@@ -18,6 +18,7 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
+import { useTranslation } from '../../i18n';
 
 interface NavItemProps {
   icon: React.ElementType;
@@ -55,6 +56,7 @@ export const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const { t } = useTranslation();
 
   // Check for updates on mount (non-blocking)
   useEffect(() => {
@@ -69,33 +71,33 @@ export const Sidebar = () => {
   return (
     <aside className="w-64 h-full bg-[#050508] border-r border-shogun-border p-4 flex flex-col gap-6 overflow-y-auto scrollbar-hide relative z-20">
       <div>
-        <h3 className="text-[10px] font-bold text-shogun-gold tracking-[0.2em] mb-3 pl-3 uppercase">Navigation</h3>
+        <h3 className="text-[10px] font-bold text-shogun-gold tracking-[0.2em] mb-3 pl-3 uppercase">{t('nav.navigation', 'Navigation')}</h3>
         <nav className="flex flex-col gap-1">
           <NavItem 
             icon={LayoutDashboard} 
-            label="Overview" 
-            subLabel="Command Center" 
+            label={t('nav.overview', 'Overview')} 
+            subLabel={t('nav.overview_sub', 'Command Center')} 
             active={location.pathname === '/'} 
             onClick={() => navigate('/')}
           />
           <NavItem 
             icon={User} 
-            label="Shogun" 
-            subLabel="My Agent" 
+            label={t('nav.shogun', 'Shogun')} 
+            subLabel={t('nav.shogun_sub', 'My Agent')} 
             active={location.pathname === '/shogun'}
             onClick={() => navigate('/shogun')}
           />
           <NavItem 
             icon={Users} 
-            label="Samurai" 
-            subLabel="Sub-Agents" 
+            label={t('nav.samurai', 'Samurai')} 
+            subLabel={t('nav.samurai_sub', 'Sub-Agents')} 
             active={location.pathname === '/samurai'}
             onClick={() => navigate('/samurai')}
           />
           <NavItem 
             icon={MessageSquare} 
-            label="Comms" 
-            subLabel="Chat Console" 
+            label={t('nav.comms', 'Comms')} 
+            subLabel={t('nav.comms_sub', 'Chat Console')} 
             active={location.pathname === '/chat'}
             onClick={() => navigate('/chat')}
           />
@@ -103,33 +105,33 @@ export const Sidebar = () => {
       </div>
 
       <div>
-        <h3 className="text-[10px] font-bold text-shogun-blue tracking-[0.2em] mb-3 pl-3 uppercase">Systems & Governance</h3>
+        <h3 className="text-[10px] font-bold text-shogun-blue tracking-[0.2em] mb-3 pl-3 uppercase">{t('nav.systems_governance', 'Systems & Governance')}</h3>
         <nav className="flex flex-col gap-1">
           <NavItem 
             icon={Sword} 
-            label="The Katana" 
-            subLabel="Models & Tools" 
+            label={t('nav.katana', 'The Katana')} 
+            subLabel={t('nav.katana_sub', 'Models & Tools')} 
             active={location.pathname === '/katana'}
             onClick={() => navigate('/katana')}
           />
           <NavItem 
             icon={Shield} 
-            label="The Torii" 
-            subLabel="Security Gateway" 
+            label={t('nav.torii', 'The Torii')} 
+            subLabel={t('nav.torii_sub', 'Security Gateway')} 
             active={location.pathname === '/torii'}
             onClick={() => navigate('/torii')}
           />
           <NavItem 
             icon={ScrollText} 
-            label="Kaizen" 
-            subLabel="Constitution" 
+            label={t('nav.kaizen', 'Kaizen')} 
+            subLabel={t('nav.kaizen_sub', 'Constitution')} 
             active={location.pathname === '/kaizen'}
             onClick={() => navigate('/kaizen')}
           />
           <NavItem 
             icon={Hand} 
-            label="Bushido" 
-            subLabel="Heartbeat" 
+            label={t('nav.bushido', 'Bushido')} 
+            subLabel={t('nav.bushido_sub', 'Heartbeat')} 
             active={location.pathname === '/bushido'}
             onClick={() => navigate('/bushido')}
           />
@@ -137,33 +139,33 @@ export const Sidebar = () => {
       </div>
 
       <div>
-        <h3 className="text-[10px] font-bold text-shogun-subdued tracking-[0.2em] mb-3 pl-3 uppercase">Operations</h3>
+        <h3 className="text-[10px] font-bold text-shogun-subdued tracking-[0.2em] mb-3 pl-3 uppercase">{t('nav.operations', 'Operations')}</h3>
         <nav className="flex flex-col gap-1">
           <NavItem 
             icon={Database} 
-            label="Archives" 
-            subLabel="Agent Memory" 
+            label={t('nav.archives', 'Archives')} 
+            subLabel={t('nav.archives_sub', 'Agent Memory')} 
             active={location.pathname === '/archives'}
             onClick={() => navigate('/archives')}
           />
           <NavItem 
             icon={BookOpen} 
-            label="Dojo" 
-            subLabel="Skill Registry" 
+            label={t('nav.dojo', 'Dojo')} 
+            subLabel={t('nav.dojo_sub', 'Skill Registry')} 
             active={location.pathname === '/dojo'}
             onClick={() => navigate('/dojo')}
           />
           <NavItem 
             icon={History} 
-            label="Logs" 
-            subLabel="Audit Trail" 
+            label={t('nav.logs', 'Logs')} 
+            subLabel={t('nav.logs_sub', 'Audit Trail')} 
             active={location.pathname === '/logs'}
             onClick={() => navigate('/logs')}
           />
           <NavItem 
             icon={HelpCircle} 
-            label="Guide" 
-            subLabel="Documentation" 
+            label={t('nav.guide', 'Guide')} 
+            subLabel={t('nav.guide_sub', 'Documentation')} 
             active={location.pathname === '/guide'}
             onClick={() => navigate('/guide')}
           />
@@ -171,12 +173,12 @@ export const Sidebar = () => {
       </div>
 
       <div>
-        <h3 className="text-[10px] font-bold tracking-[0.2em] mb-3 pl-3 uppercase" style={{color: 'rgb(129,140,248)'}}>Alliance</h3>
+        <h3 className="text-[10px] font-bold tracking-[0.2em] mb-3 pl-3 uppercase" style={{color: 'rgb(129,140,248)'}}>{t('nav.alliance', 'Alliance')}</h3>
         <nav className="flex flex-col gap-1">
           <NavItem 
             icon={Network} 
-            label="Nexus" 
-            subLabel="A2A Workspaces" 
+            label={t('nav.nexus', 'Nexus')} 
+            subLabel={t('nav.nexus_sub', 'A2A Workspaces')} 
             active={location.pathname === '/nexus'}
             onClick={() => navigate('/nexus')}
           />
