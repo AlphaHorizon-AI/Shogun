@@ -240,9 +240,9 @@
     "tab_architecture": "Arquitetura",
     "tab_safety": "Protocolos de Segurança",
     "tab_backup": "Gestão de Dados",
-    "disclaimer_title": "Aviso Legal",
-    "disclaimer_body": "O Shogun é fornecido apenas para uso informativo geral, experimental e operacional. É fornecido \"como está\" e \"conforme disponível\", sem garantias de qualquer tipo, expressas ou implícitas, incluindo, entre outras, precisão, adequação a um propósito específico, comercialização, disponibilidade ou não violação. Os usuários são os únicos responsáveis por avaliar, validar, monitorar e aprovar quaisquer saídas, ações, configurações ou decisões tomadas com ou por meio do Shogun. A Alpha Horizon isenta-se de responsabilidade por quaisquer danos diretos, indiretos, incidentais, consequenciais ou especiais decorrentes do uso ou da incapacidade de usar o Shogun, exceto onde tal limitação não for permitida pela lei aplicável.",
-    "disclaimer_oversight": "Supervisão humana necessária: O Shogun pode gerar saídas imprecisas, incompletas ou inadequadas. Não deve ser invocado sem a revisão humana adequada, especialmente em contextos legais, financeiros, de conformidade, segurança ou outros contextos de alto impacto."
+    "disclaimer_title": "Isenção de responsabilidade",
+    "disclaimer_body": "Shogun é um framework de orquestração de agentes de IA gratuito e de código aberto. Ele se destina a ajudar os usuários a construir, gerenciar e operar fluxos de trabalho de IA autônomos, mas não garante precisão, integridade, confiabilidade ou adequação para qualquer propósito específico. O Shogun é fornecido como está, e o uso do framework é inteiramente por conta e risco do usuário.",
+    "disclaimer_oversight": "Os usuários são responsáveis por garantir a supervisão humana adequada e por validar todas as saídas, ações e decisões produzidas com ou por meio do Shogun. A revisão humana deve permanecer presente em todos os momentos, especialmente em casos de uso legais, financeiros, regulatórios, de segurança ou outros de alto impacto."
   },
   "katana": {
     "title": "A Katana",

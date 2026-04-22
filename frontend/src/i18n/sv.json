@@ -240,9 +240,9 @@
     "tab_architecture": "Arkitektur",
     "tab_safety": "Säkerhetsprotokoll",
     "tab_backup": "Datahantering",
-    "disclaimer_title": "Juridisk ansvarsfriskrivning",
-    "disclaimer_body": "Shogun tillhandahålls endast för allmän informativ, experimentell och operativ användning. Den tillhandahålls i \"befintligt skick\" och \"i mån av tillgång\", utan några garantier av något slag, vare sig uttryckliga eller underförstådda, inklusive men inte begränsat till noggrannhet, lämplighet för ett visst ändamål, säljbarhet, tillgänglighet eller icke-intrång. Användare är ensamma ansvariga för att utvärdera, validera, övervaka och godkänna alla utdata, åtgärder, konfigurationer eller beslut som fattas med eller genom Shogun. Alpha Horizon frånsäger sig allt ansvar för direkta, indirekta, tillfälliga, följdskador eller särskilda skador som uppstår till följd av användning av, eller oförmåga att använda, Shogun, förutom där en sådan begränsning inte är tillåten enligt tillämplig lag.",
-    "disclaimer_oversight": "Mänsklig tillsyn krävs: Shogun kan generera felaktiga, ofullständiga eller olämpliga utdata. Man bör inte förlita sig på den utan lämplig mänsklig granskning, särskilt i juridiska, finansiella, efterlevnads-, säkerhets- eller andra sammanhang med stor inverkan."
+    "disclaimer_title": "Ansvarsfriskrivning",
+    "disclaimer_body": "Shogun är ett kostnadsfritt ramverk med öppen källkod för orkestrering av AI-agenter. Det är avsett att hjälpa användare att bygga, hantera och driva autonoma AI-arbetsflöden, men det garanterar inte noggrannhet, fullständighet, tillförlitlighet eller lämplighet för något visst ändamål. Shogun tillhandahålls i befintligt skick, och användning av ramverket sker helt på användarens egen risk.",
+    "disclaimer_oversight": "Användare ansvarar för att säkerställa lämplig mänsklig tillsyn och för att validera alla utdata, åtgärder och beslut som produceras med eller genom Shogun. Mänsklig granskning bör alltid vara en del av processen, särskilt i juridiska, finansiella, regulatoriska, säkerhetsmässiga eller andra användningsfall med stor inverkan."
   },
   "katana": {
     "title": "Katanan",

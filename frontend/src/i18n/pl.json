@@ -240,9 +240,9 @@
     "tab_architecture": "Architektura",
     "tab_safety": "Protokoły Bezpieczeństwa",
     "tab_backup": "Zarządzanie Danymi",
-    "disclaimer_title": "Zastrzeżenia prawne",
-    "disclaimer_body": "Shogun jest udostępniany wyłącznie do ogólnych celów informacyjnych, eksperymentalnych i operacyjnych. Jest dostarczany w stanie, w jakim się znajduje („as is”), i w miarę dostępności („as available”), bez jakichkolwiek gwarancji, wyraźnych lub dorozumianych, w tym m.in. gwarancji dokładności, przydatności do określonego celu, wartości handlowej, dostępności lub nienaruszania praw osób trzecich. Użytkownicy ponoszą wyłączną odpowiedzialność za ocenę, walidację, monitorowanie i zatwierdzanie wszelkich wyników, działań, konfiguracji lub decyzji podejmowanych za pomocą lub za pośrednictwem systemu Shogun. Alpha Horizon zrzeka się wszelkiej odpowiedzialności za jakiekolwiek szkody bezpośrednie, pośrednie, przypadkowe, wtórne lub szczególne wynikające z korzystania lub niemożności korzystania z systemu Shogun, z wyjątkiem sytuacji, w których takie ograniczenie nie jest dozwolone przez obowiązujące prawo.",
-    "disclaimer_oversight": "Wymagany nadzór człowieka: Shogun może generować niedokładne, niepełne lub niewłaściwe wyniki. Nie należy na nim polegać bez odpowiedniej weryfikacji przez człowieka, szczególnie w kontekstach prawnych, finansowych, związanych ze zgodnością, bezpieczeństwem lub innych obszarach o wysokim stopniu ryzyka."
+    "disclaimer_title": "Zastrzeżenie",
+    "disclaimer_body": "Shogun to darmowy i otwarty framework do orkiestracji agentów AI. Ma on na celu pomoc użytkownikom w budowaniu, zarządzaniu i obsłudze autonomicznych przepływów pracy AI, ale nie gwarantuje dokładności, kompletności, niezawodności ani przydatności do jakiegokolwiek konkretnego celu. Shogun jest dostarczany w stanie, w jakim się znajduje, a korzystanie z frameworka odbywa się całkowicie na własne ryzyko użytkownika.",
+    "disclaimer_oversight": "Użytkownicy są odpowiedzialni za zapewnienie odpowiedniego nadzoru ludzkiego oraz za sprawdzanie wszystkich wyników, działań i decyzji podejmowanych za pomocą lub za pośrednictwem systemu Shogun. Weryfikacja przez człowieka powinna być zachowana na każdym etapie, szczególnie w przypadkach prawnych, finansowych, regulacyjnych, związanych z bezpieczeństwem lub innych istotnych zastosowaniach."
   },
   "katana": {
     "title": "Katana",

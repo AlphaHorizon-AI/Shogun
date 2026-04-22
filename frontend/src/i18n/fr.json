@@ -240,9 +240,9 @@
     "tab_architecture": "Architecture",
     "tab_safety": "Protocoles de Sécurité",
     "tab_backup": "Gestion des Données",
-    "disclaimer_title": "Avis de non-responsabilité",
-    "disclaimer_body": "Shogun est fourni uniquement à des fins d'information générale, expérimentales et opérationnelles. Il est fourni « tel quel » et « selon la disponibilité », sans garantie d'aucune sorte, expresse ou implicite, y compris, mais sans s'y limiter, l'exactitude, l'adéquation à un usage particulier, la qualité marchande, la disponibilité ou l'absence de contrefaçon. Les utilisateurs sont seuls responsables de l'évaluation, de la validation, de la surveillance et de l'approbation de toutes les sorties, actions, configurations ou décisions prises avec ou via Shogun. Alpha Horizon décline toute responsabilité pour tout dommage direct, indirect, accessoire, consécutif ou spécial découlant de l'utilisation ou de l'incapacité d'utiliser Shogun, sauf si une telle limitation n'est pas autorisée par la loi applicable.",
-    "disclaimer_oversight": "Supervision humaine requise : Shogun peut générer des résultats inexacts, incomplets ou inappropriés. Il ne doit pas être utilisé sans un examen humain approprié, en particulier dans les contextes juridiques, financiers, de conformité, de sécurité ou tout autre contexte à fort impact."
+    "disclaimer_title": "Clause de non-responsabilité",
+    "disclaimer_body": "Shogun est un framework d'orchestration d'agents d'IA gratuit et open-source. Il est destiné à aider les utilisateurs à construire, gérer et exploiter des flux de travail d'IA autonomes, mais il ne garantit pas l'exactitude, l'exhaustivité, la fiabilité ou l'adéquation à un usage particulier. Shogun est fourni en l'état, et l'utilisation du framework est aux risques et périls de l'utilisateur.",
+    "disclaimer_oversight": "Les utilisateurs sont responsables de s'assurer d'une supervision humaine appropriée et de valider tous les résultats, actions et décisions produits avec ou via Shogun. Une révision humaine doit rester présente à tout moment, en particulier dans les cas d'utilisation juridiques, financiers, réglementaires, de sécurité ou autres contextes à fort impact."
   },
   "katana": {
     "title": "Le Katana",

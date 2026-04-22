@@ -240,9 +240,9 @@
     "tab_architecture": "Arkitektur",
     "tab_safety": "Sikkerhedsprotokoller",
     "tab_backup": "Datahåndtering",
-    "disclaimer_title": "Juridisk ansvarsfraskrivelse",
-    "disclaimer_body": "Shogun leveres kun til generel informativ, eksperimentel og operationel brug. Det leveres \"som det er\" og \"som tilgængeligt\", uden nogen form for garantier, udtrykkelige eller underforståede, herunder men ikke begrænset til nøjagtighed, egnethed til et bestemt formål, salgbarhed, tilgængelighed eller ikke-krænkelse. Brugere er eneansvarlige for at evaluere, validere, overvåge og godkende alle outputs, handlinger, konfigurationer eller beslutninger truffet med eller gennem Shogun. Alpha Horizon fraskriver sig ethvert ansvar for direkte, indirekte, tilfældige, følgeskader eller særlige skader som følge af brugen af eller manglende evne til at bruge Shogun, undtagen hvor en sådan begrænsning ikke er tilladt i henhold til gældende lovgivning.",
-    "disclaimer_oversight": "Menneskeligt tilsyn påkrævet: Shogun kan generere unøjagtige, ufuldstændige eller upassende outputs. Det må ikke lægges til grund uden passende menneskelig gennemgang, især i juridiske, finansielle, compliance-mæssige, sikkerhedsmæssige eller andre kontekster med stor indvirkning."
+    "disclaimer_title": "Ansvarsfraskrivelse",
+    "disclaimer_body": "Shogun er et gratis og open source-rammeværk til orkestrering af AI-agenter. Det er beregnet til at hjælpe brugere med at opbygge, administrere og drive autonome AI-arbejdsgange, men det garanterer ikke nøjagtighed, fuldstændighed, pålidelighed eller egnethed til noget bestemt formål. Shogun leveres som beset, og brug af rammeværket er helt på brugerens eget ansvar.",
+    "disclaimer_oversight": "Brugere er ansvarlige for at sikre passende menneskeligt tilsyn og for at validere alle outputs, handlinger og beslutninger produceret med eller gennem Shogun. Menneskelig gennemgang bør forblive i loopet til enhver tid, især i juridiske, finansielle, regulatoriske, sikkerhedsmæssige eller andre brugstilfælde med stor indvirkning."
   },
   "katana": {
     "title": "Katanaen",

@@ -240,9 +240,9 @@
     "tab_architecture": "Arkitektur",
     "tab_safety": "Sikkerhetsprotokoller",
     "tab_backup": "Datahåndtering",
-    "disclaimer_title": "Juridisk ansvarsfraskrivelse",
-    "disclaimer_body": "Shogun leveres kun for generell informasjonsmessig, eksperimentell og operasjonell bruk. Den leveres \"som den er\" og \"som tilgjengelig\", uten garantier av noe slag, verken uttrykkelige eller underforståtte, inkludert, men ikke begrenset til, nøyaktighet, egnethet for et bestemt formål, salgbarhet, tilgjengelighet eller ikke-krenkelse. Brukere er selv ansvarlige for å evaluere, validere, overvåke og godkjenne alle resultater, handlinger, konfigurasjoner eller beslutninger som tas med eller gjennom Shogun. Alpha Horizon fraskriver seg ethvert ansvar for direkte, indirekte, tilfeldige, følgeskader eller spesielle skader som oppstår som følge af bruk av, eller manglende evne til å bruke, Shogun, unntatt der en slik begrensning ikke er tillatt i henhold til gjeldende lov.",
-    "disclaimer_oversight": "Menneskelig tilsyn påkrevd: Shogun kan generere unøyaktige, ufullstendige eller upassende resultater. Det må ikke stoles på uten passende menneskelig vurdering, spesielt i juridiske, finansielle, compliance-, sikkerhets- eller andre høyrisikokontekster."
+    "disclaimer_title": "Ansvarsfraskrivelse",
+    "disclaimer_body": "Shogun er et gratis og åpen kildekode-rammeverk for orkestrering av AI-agenter. Det er ment å hjelpe brukere med å bygge, administrere og operere autonome AI-arbeidsprosesser, men det garanterer ikke nøyaktighet, fullstendighet, pålitelighet eller egnethet for noe bestemt formål. Shogun leveres som den er, og bruk av rammeverket er helt på brukerens egen risiko.",
+    "disclaimer_oversight": "Brukere er ansvarlige for å sikre passende menneskelig tilsyn og for å validere alle resultater, handlinger og beslutninger produsert med eller gjennom Shogun. Menneskelig vurdering bør forbli en del av prosessen til enhver tid, spesielt i juridiske, finansielle, regulatoriske, sikkerhetsmessige eller andre brukstilfeller med høy påvirkning."
   },
   "katana": {
     "title": "Katanaen",

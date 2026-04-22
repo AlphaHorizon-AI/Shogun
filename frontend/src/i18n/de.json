@@ -240,9 +240,9 @@
     "tab_architecture": "Architektur",
     "tab_safety": "Sicherheitsprotokolle",
     "tab_backup": "Datenverwaltung",
-    "disclaimer_title": "Rechtlicher Haftungsausschluss",
-    "disclaimer_body": "Shogun wird ausschließlich für allgemeine Informations-, experimentelle und betriebliche Zwecke bereitgestellt. Es wird „wie gesehen“ und „wie verfügbar“ bereitgestellt, ohne Garantien jeglicher Art, weder ausdrücklich noch stillschweigend, einschließlich, aber nicht beschränkt auf Genauigkeit, Eignung für einen bestimmten Zweck, Marktgängigkeit, Verfügbarkeit oder Nichtverletzung von Rechten. Die Benutzer sind allein verantwortlich für die Bewertung, Validierung, Überwachung und Genehmigung aller Ausgaben, Aktionen, Konfigurationen oder Entscheidungen, die mit oder durch Shogun getroffen werden. Alpha Horizon lehnt jede Haftung für direkte, indirekte, zufällige, Folgeschäden oder besondere Schäden ab, die aus der Nutzung oder der Unfähigkeit zur Nutzung von Shogun entstehen, es sei denn, eine solche Einschränkung ist nach geltendem Recht nicht zulässig.",
-    "disclaimer_oversight": "Menschliche Aufsicht erforderlich: Shogun kann ungenaue, unvollständige oder unangemessene Ausgaben generieren. Man darf sich nicht ohne angemessene menschliche Prüfung auf Shogun verlassen, insbesondere nicht in rechtlichen, finanziellen, Compliance-, Sicherheits- oder anderen Kontexten mit hoher Auswirkung."
+    "disclaimer_title": "Haftungsausschluss",
+    "disclaimer_body": "Shogun ist ein kostenloses Open-Source-Framework zur Orchestrierung von KI-Agenten. Es soll Benutzern dabei helfen, autonome KI-Workflows zu erstellen, zu verwalten und zu betreiben, garantiert jedoch keine Genauigkeit, Vollständigkeit, Zuverlässigkeit oder Eignung für einen bestimmten Zweck. Shogun wird im Ist-Zustand bereitgestellt, und die Nutzung des Frameworks erfolgt ausschließlich auf eigenes Risiko des Benutzers.",
+    "disclaimer_oversight": "Die Benutzer sind dafür verantwortlich, eine angemessene menschliche Aufsicht sicherzustellen und alle mit oder durch Shogun erzeugten Ergebnisse, Aktionen und Entscheidungen zu validieren. Eine menschliche Überprüfung sollte jederzeit gewährleistet sein, insbesondere in rechtlichen, finanziellen, regulatorischen, sicherheitsrelevanten oder anderen contexts mit hoher Auswirkung."
   },
   "katana": {
     "title": "Die Katana",

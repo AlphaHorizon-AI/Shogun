@@ -240,9 +240,9 @@
     "tab_architecture": "Arquitectura",
     "tab_safety": "Protocolos de Seguridad",
     "tab_backup": "Gestión de Datos",
-    "disclaimer_title": "Aviso legal",
-    "disclaimer_body": "Shogun se proporciona únicamente para uso informativo general, experimental y operativo. Se proporciona \"tal cual\" y \"según disponibilidad\", sin garantías de ningún tipo, ya sean expresas o implícitas, incluyendo, entre otras, la exactitud, la idoneidad para un propósito particular, la comerciabilidad, la disponibilidad o la no infracción. Los usuarios son los únicos responsables de evaluar, validar, monitorear y aprobar cualquier resultado, acción, configuración o decisión tomada con o a través de Shogun. Alpha Horizon renuncia a toda responsabilidad por daños directos, indirectos, incidentales, consecuentes o especiales que surjan del uso o la imposibilidad de usar Shogun, excepto cuando dicha limitación no esté permitida por la ley aplicable.",
-    "disclaimer_oversight": "Se requiere supervisión humana: Shogun puede generar resultados inexactos, incompletos o inapropiados. No debe confiarse en él sin la revisión humana adecuada, especialmente en contextos legales, financieros, de cumplimiento, seguridad u otros contextos de alto impacto."
+    "disclaimer_title": "Descargo de responsabilidad",
+    "disclaimer_body": "Shogun es un marco de orquestación de agentes de IA gratuito y de código abierto. Está destinado a ayudar a los usuarios a construir, gestionar y operar flujos de trabajo de IA autónomos, pero no garantiza la precisión, integridad, fiabilidad o idoneidad para cualquier propósito particular. Shogun se proporciona tal cual, y el uso del marco es bajo el propio riesgo del usuario.",
+    "disclaimer_oversight": "Los usuarios son responsables de garantizar una supervisión humana adecuada y de validar todos los resultados, acciones y decisiones producidos con o a través de Shogun. La revisión humana debe permanecer en el proceso en todo momento, particularmente en casos de uso legales, financieros, regulatorios, de seguridad u otros de alto impacto."
   },
   "katana": {
     "title": "La Katana",
