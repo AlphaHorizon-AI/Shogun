@@ -19,8 +19,8 @@ export const Shell = ({ children }: ShellProps) => {
             {children}
           </div>
           <footer className="mt-12 py-6 border-t border-shogun-border/30 text-center">
-            <p className="text-[10px] text-shogun-subdued uppercase tracking-widest font-bold">
-              {t('common.copyright', '© 2026 Alpha Horizon. All rights reserved')}
+            <p className="text-[10px] text-shogun-subdued uppercase tracking-[0.2em] font-bold">
+              {t('common.copyright', 'Created by Alpha Horizon · © 2026')}
             </p>
           </footer>
         </main>

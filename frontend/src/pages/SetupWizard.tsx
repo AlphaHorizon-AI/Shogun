@@ -983,6 +983,25 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               ))}
             </div>
 
+            {/* Legal Disclaimer */}
+            <div className="max-w-3xl mx-auto bg-orange-500/5 border border-orange-500/20 rounded-xl p-5">
+              <div className="flex items-start gap-4">
+                <AlertCircle className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+                <div className="space-y-3">
+                  <h4 className="text-[11px] font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                    <Shield className="w-3.5 h-3.5 text-orange-400" />
+                    {t('guide.disclaimer_title', 'Disclaimer')}
+                  </h4>
+                  <p className="text-[10px] text-[#999] leading-relaxed">
+                    {t('guide.disclaimer_body')}
+                  </p>
+                  <p className="text-[10px] font-bold text-white leading-relaxed">
+                    {t('guide.disclaimer_oversight')}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Rise + Cancel buttons */}
             <div className="flex items-center justify-center gap-4 pt-4">
               <button
