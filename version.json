@@ -1,7 +1,7 @@
 {
-  "version": "1.1.1",
-  "build": 12,
+  "version": "1.1.2",
+  "build": 13,
   "channel": "stable",
-  "released": "2026-04-22T10:40:00Z",
-  "changelog": "Translated the legal disclaimer and copyright notice into all 14 supported languages."
+  "released": "2026-04-22T10:45:00Z",
+  "changelog": "Finalized and verified full localization of the legal disclaimer and branding across all 14 language packs."
 }
