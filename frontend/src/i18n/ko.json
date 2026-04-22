@@ -228,7 +228,8 @@
     "no_results": "결과를 찾을 수 없음",
     "save_changes": "변경사항 저장",
     "saved": "저장됨",
-    "save_failed": "저장 실패"
+    "save_failed": "저장 실패",
+    "copyright": "© 2026 Alpha Horizon. All rights reserved"
   },
   "guide": {
     "title": "프레임워크 가이드",
@@ -238,7 +239,10 @@
     "tab_reference": "참조 매뉴얼",
     "tab_architecture": "아키텍처",
     "tab_safety": "안전 프로토콜",
-    "tab_backup": "데이터 관리"
+    "tab_backup": "데이터 관리",
+    "disclaimer_title": "Legal Disclaimer",
+    "disclaimer_body": "Shogun is provided for general informational, experimental, and operational use only. It is provided “as is” and “as available,” without warranties of any kind, express or implied, including but not limited to accuracy, fitness for a particular purpose, merchantability, availability, or non-infringement. Users are solely responsible for evaluating, validating, monitoring, and approving any outputs, actions, configurations, or decisions made with or through Shogun. Alpha Horizon disclaims liability for any direct, indirect, incidental, consequential, or special damages arising from the use of, or inability to use, Shogun, except where such limitation is not permitted by applicable law.",
+    "disclaimer_oversight": "Human oversight required: Shogun may generate inaccurate, incomplete, or inappropriate outputs. It must not be relied upon without appropriate human review, especially in legal, financial, compliance, security, or other high-impact contexts."
   },
   "katana": {
     "title": "카타나",

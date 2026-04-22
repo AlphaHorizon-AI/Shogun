@@ -1206,10 +1206,29 @@ export function Guide() {
           </div>
         )}
 
-
-
-
+      {/* Legal Disclaimer */}
+      <div className="mt-16 pt-8 border-t border-shogun-border/40">
+        <div className="shogun-card bg-orange-500/5 border-orange-500/20">
+          <div className="flex items-start gap-4">
+            <AlertCircle className="w-6 h-6 text-orange-400 shrink-0 mt-1" />
+            <div className="space-y-4">
+              <h4 className="text-sm font-bold text-shogun-text uppercase tracking-widest flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-orange-400" />
+                {t('guide.disclaimer_title', 'Legal Disclaimer')}
+              </h4>
+              <p className="text-xs text-shogun-subdued leading-relaxed">
+                {t('guide.disclaimer_body', 'Shogun is provided for general informational, experimental, and operational use only. It is provided “as is” and “as available,” without warranties of any kind, express or implied, including but not limited to accuracy, fitness for a particular purpose, merchantability, availability, or non-infringement. Users are solely responsible for evaluating, validating, monitoring, and approving any outputs, actions, configurations, or decisions made with or through Shogun. Alpha Horizon disclaims liability for any direct, indirect, incidental, consequential, or special damages arising from the use of, or inability to use, Shogun, except where such limitation is not permitted by applicable law.')}
+              </p>
+              <div className="p-3 bg-shogun-bg border border-shogun-border rounded-lg border-l-4 border-l-orange-400">
+                <p className="text-xs font-bold text-shogun-text">
+                  {t('guide.disclaimer_oversight', 'Human oversight required: Shogun may generate inaccurate, incomplete, or inappropriate outputs. It must not be relied upon without appropriate human review, especially in legal, financial, compliance, security, or other high-impact contexts.')}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
+  </div>
   );
 }

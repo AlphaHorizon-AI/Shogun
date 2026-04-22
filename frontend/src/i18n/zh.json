@@ -228,7 +228,8 @@
     "no_results": "未找到结果",
     "save_changes": "保存更改",
     "saved": "保存成功",
-    "save_failed": "保存失败"
+    "save_failed": "保存失败",
+    "copyright": "© 2026 Alpha Horizon. All rights reserved"
   },
   "guide": {
     "title": "框架指南",
@@ -238,7 +239,10 @@
     "tab_reference": "参考手册",
     "tab_architecture": "架构",
     "tab_safety": "安全协议",
-    "tab_backup": "数据管理"
+    "tab_backup": "数据管理",
+    "disclaimer_title": "Legal Disclaimer",
+    "disclaimer_body": "Shogun is provided for general informational, experimental, and operational use only. It is provided “as is” and “as available,” without warranties of any kind, express or implied, including but not limited to accuracy, fitness for a particular purpose, merchantability, availability, or non-infringement. Users are solely responsible for evaluating, validating, monitoring, and approving any outputs, actions, configurations, or decisions made with or through Shogun. Alpha Horizon disclaims liability for any direct, indirect, incidental, consequential, or special damages arising from the use of, or inability to use, Shogun, except where such limitation is not permitted by applicable law.",
+    "disclaimer_oversight": "Human oversight required: Shogun may generate inaccurate, incomplete, or inappropriate outputs. It must not be relied upon without appropriate human review, especially in legal, financial, compliance, security, or other high-impact contexts."
   },
   "katana": {
     "title": "刀",
