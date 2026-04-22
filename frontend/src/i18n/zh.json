@@ -229,7 +229,7 @@
     "save_changes": "保存更改",
     "saved": "保存成功",
     "save_failed": "保存失败",
-    "copyright": "© 2026 Alpha Horizon. All rights reserved"
+    "copyright": "© 2026 Alpha Horizon. 保留所有权利"
   },
   "guide": {
     "title": "框架指南",
@@ -240,9 +240,9 @@
     "tab_architecture": "架构",
     "tab_safety": "安全协议",
     "tab_backup": "数据管理",
-    "disclaimer_title": "Legal Disclaimer",
-    "disclaimer_body": "Shogun is provided for general informational, experimental, and operational use only. It is provided “as is” and “as available,” without warranties of any kind, express or implied, including but not limited to accuracy, fitness for a particular purpose, merchantability, availability, or non-infringement. Users are solely responsible for evaluating, validating, monitoring, and approving any outputs, actions, configurations, or decisions made with or through Shogun. Alpha Horizon disclaims liability for any direct, indirect, incidental, consequential, or special damages arising from the use of, or inability to use, Shogun, except where such limitation is not permitted by applicable law.",
-    "disclaimer_oversight": "Human oversight required: Shogun may generate inaccurate, incomplete, or inappropriate outputs. It must not be relied upon without appropriate human review, especially in legal, financial, compliance, security, or other high-impact contexts."
+    "disclaimer_title": "法律免责声明",
+    "disclaimer_body": "Shogun 仅供一般的资讯、实验和运营使用。它按“现状”和“可用性”提供，不提供任何形式的明示或暗示保证，包括但不限于准确性、特定用途的适用性、适销性、可用性或非侵权性。用户全权负责评估、验证、监督和批准通过 Shogun 做出或进行的任何输出、行动、配置或决策。Alpha Horizon 对因使用或无法使用 Shogun 而引起的任何直接、间接、附带、后果性或特殊损害不承担任何责任，除非适用法律不允许此类限制。",
+    "disclaimer_oversight": "需要人工监督：Shogun 可能会产生不准确、不完整或不恰当的输出。在没有适当的人工审查的情况下，不得依赖它，特别是在法律、财务、合规、安全或其他高影响的背景下。"
   },
   "katana": {
     "title": "刀",

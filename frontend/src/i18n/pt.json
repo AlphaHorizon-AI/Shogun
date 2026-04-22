@@ -229,7 +229,7 @@
     "save_changes": "Guardar Alterações",
     "saved": "Guardado com sucesso",
     "save_failed": "Falha ao guardar",
-    "copyright": "© 2026 Alpha Horizon. All rights reserved"
+    "copyright": "© 2026 Alpha Horizon. Todos os direitos reservados"
   },
   "guide": {
     "title": "Guia do Framework",
@@ -240,9 +240,9 @@
     "tab_architecture": "Arquitetura",
     "tab_safety": "Protocolos de Segurança",
     "tab_backup": "Gestão de Dados",
-    "disclaimer_title": "Legal Disclaimer",
-    "disclaimer_body": "Shogun is provided for general informational, experimental, and operational use only. It is provided “as is” and “as available,” without warranties of any kind, express or implied, including but not limited to accuracy, fitness for a particular purpose, merchantability, availability, or non-infringement. Users are solely responsible for evaluating, validating, monitoring, and approving any outputs, actions, configurations, or decisions made with or through Shogun. Alpha Horizon disclaims liability for any direct, indirect, incidental, consequential, or special damages arising from the use of, or inability to use, Shogun, except where such limitation is not permitted by applicable law.",
-    "disclaimer_oversight": "Human oversight required: Shogun may generate inaccurate, incomplete, or inappropriate outputs. It must not be relied upon without appropriate human review, especially in legal, financial, compliance, security, or other high-impact contexts."
+    "disclaimer_title": "Aviso Legal",
+    "disclaimer_body": "O Shogun é fornecido apenas para uso informativo geral, experimental e operacional. É fornecido \"como está\" e \"conforme disponível\", sem garantias de qualquer tipo, expressas ou implícitas, incluindo, entre outras, precisão, adequação a um propósito específico, comercialização, disponibilidade ou não violação. Os usuários são os únicos responsáveis por avaliar, validar, monitorar e aprovar quaisquer saídas, ações, configurações ou decisões tomadas com ou por meio do Shogun. A Alpha Horizon isenta-se de responsabilidade por quaisquer danos diretos, indiretos, incidentais, consequenciais ou especiais decorrentes do uso ou da incapacidade de usar o Shogun, exceto onde tal limitação não for permitida pela lei aplicável.",
+    "disclaimer_oversight": "Supervisão humana necessária: O Shogun pode gerar saídas imprecisas, incompletas ou inadequadas. Não deve ser invocado sem a revisão humana adequada, especialmente em contextos legais, financeiros, de conformidade, segurança ou outros contextos de alto impacto."
   },
   "katana": {
     "title": "A Katana",

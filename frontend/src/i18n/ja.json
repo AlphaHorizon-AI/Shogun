@@ -240,9 +240,9 @@
     "tab_architecture": "アーキテクチャ",
     "tab_safety": "安全プロトコル",
     "tab_backup": "データ管理",
-    "disclaimer_title": "Legal Disclaimer",
-    "disclaimer_body": "Shogun is provided for general informational, experimental, and operational use only. It is provided “as is” and “as available,” without warranties of any kind, express or implied, including but not limited to accuracy, fitness for a particular purpose, merchantability, availability, or non-infringement. Users are solely responsible for evaluating, validating, monitoring, and approving any outputs, actions, configurations, or decisions made with or through Shogun. Alpha Horizon disclaims liability for any direct, indirect, incidental, consequential, or special damages arising from the use of, or inability to use, Shogun, except where such limitation is not permitted by applicable law.",
-    "disclaimer_oversight": "Human oversight required: Shogun may generate inaccurate, incomplete, or inappropriate outputs. It must not be relied upon without appropriate human review, especially in legal, financial, compliance, security, or other high-impact contexts."
+    "disclaimer_title": "免責事項",
+    "disclaimer_body": "Shogunは、一般的な情報提供、実験、および運用のためにのみ提供されます。本システムは「現状のまま」かつ「利用可能な範囲」で提供され、正確性、特定の目的への適合性、商品性、可用性、または非侵害性を含むがこれらに限定されない、明示的か黙示的かを問わず、いかなる種類の保証も行いません。ユーザーは、Shogunを使用して、またはShogunを通じて行われるすべての出力、アクション、構成、または決定を評価、検証、監視、および承認することに対して単独で責任を負います。Alpha Horizonは、適用法でそのような制限が許可されていない場合を除き、Shogunの使用または使用不能から生じる直接的、間接的、付随的、派生的、または特別な損害について一切の責任を負いません。",
+    "disclaimer_oversight": "人間の監視が必要です：Shogunは、不正確、不完全、または不適切な出力を生成する可能性があります。特に法務、財務、コンプライアンス、セキュリティ、またはその他の影響の大きい文脈では、適切な人間のレビューなしに信頼しないでください。"
   },
   "katana": {
     "title": "刀",
