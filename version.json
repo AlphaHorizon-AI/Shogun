@@ -1,7 +1,7 @@
 {
-  "version": "1.1.7",
-  "build": 18,
+  "version": "1.1.8",
+  "build": 19,
   "channel": "stable",
-  "released": "2026-04-23T07:10:00Z",
-  "changelog": "Updated disclaimer across all 14 languages: replaced 'free and open-source' with 'free to use' branding."
+  "released": "2026-04-23T14:17:00Z",
+  "changelog": "Complete i18n for Shogun Profile (Models/Permissions/Operations tabs), real-time system metrics, fix desktop shortcut launcher."
 }
