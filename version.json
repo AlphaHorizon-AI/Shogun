@@ -1,7 +1,7 @@
 {
   "version": "1.1.8",
-  "build": 19,
+  "build": 20,
   "channel": "stable",
-  "released": "2026-04-23T14:17:00Z",
-  "changelog": "Complete i18n for Shogun Profile (Models/Permissions/Operations tabs), real-time system metrics, fix desktop shortcut launcher."
+  "released": "2026-04-23T15:16:00Z",
+  "changelog": "Complete i18n for Shogun Profile (Models/Permissions/Operations tabs), real-time system metrics, fix desktop shortcut launcher, and add missing Qdrant memory dependencies."
 }
