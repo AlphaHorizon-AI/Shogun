@@ -50,6 +50,29 @@ async def get_system_health():
     )
 
 
+@router.get("/metrics", response_model=ApiResponse)
+async def get_system_metrics():
+    """Return real-time system metrics (CPU, memory, disk)."""
+    import psutil
+
+    cpu_percent = psutil.cpu_percent(interval=0.3)
+    mem = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+
+    return ApiResponse(
+        success=True,
+        data={
+            "cpu_percent": round(cpu_percent, 1),
+            "memory_percent": round(mem.percent, 1),
+            "memory_used_gb": round(mem.used / (1024 ** 3), 1),
+            "memory_total_gb": round(mem.total / (1024 ** 3), 1),
+            "disk_percent": round(disk.percent, 1),
+            "disk_used_gb": round(disk.used / (1024 ** 3), 1),
+            "disk_total_gb": round(disk.total / (1024 ** 3), 1),
+        },
+    )
+
+
 @router.get("/overview", response_model=ApiResponse)
 async def get_overview(
     agent_svc: AgentService = Depends(get_agent_service),

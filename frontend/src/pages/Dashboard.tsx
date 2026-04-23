@@ -60,6 +60,7 @@ export const Dashboard = () => {
   const [posture, setPosture] = useState<any>(null);
   const [killWorking, setKillWorking] = useState(false);
   const [showHarakiri, setShowHarakiri] = useState(false);
+  const [metrics, setMetrics] = useState<any>(null);
   const { t } = useTranslation();
 
   const fetchData = async () => {
@@ -80,7 +81,7 @@ export const Dashboard = () => {
 
   const handleKillSwitch = async () => {
     if (posture?.kill_switch_active) {
-      if (!confirm('Reset Harakiri? Posture will be restored to TACTICAL.')) return;
+      if (!confirm(t('dashboard.reset_confirm', 'Reset Harakiri? Posture will be restored to TACTICAL.'))) return;
       setKillWorking(true);
       try {
         const res = await axios.delete('/api/v1/security/kill-switch');
@@ -101,7 +102,19 @@ export const Dashboard = () => {
     } catch { /* ignore */ } finally { setKillWorking(false); }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  const fetchMetrics = async () => {
+    try {
+      const res = await axios.get('/api/v1/system/metrics');
+      setMetrics(res.data.data);
+    } catch { /* silent */ }
+  };
+
+  useEffect(() => {
+    fetchData();
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-700">
@@ -113,7 +126,7 @@ export const Dashboard = () => {
             <ShieldAlert className="w-5 h-5 text-red-500 shrink-0" />
             <div>
               <span className="text-sm font-bold text-red-400 uppercase tracking-wider">{t('topbar.harakiri_active', '⛔ GLOBAL KILL-SWITCH ACTIVE')}</span>
-              <p className="text-[10px] text-red-400/70 mt-0.5">All autonomous agent activity is suspended. Posture locked to SHRINE.</p>
+              <p className="text-[10px] text-red-400/70 mt-0.5">{t('dashboard.harakiri_suspended', 'All autonomous agent activity is suspended. Posture locked to SHRINE.')}</p>
             </div>
           </div>
           <button
@@ -142,7 +155,7 @@ export const Dashboard = () => {
             <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
           </button>
           <Link to="/chat" className="flex items-center gap-2 bg-shogun-blue hover:bg-shogun-blue/90 text-white font-bold py-2.5 px-6 rounded-lg transition-all shadow-shogun">
-            ENTER COMMAND <ChevronRight className="w-4 h-4" />
+            {t('dashboard.enter_command', 'ENTER COMMAND')} <ChevronRight className="w-4 h-4" />
           </Link>
         </div>
       </div>
@@ -159,26 +172,26 @@ export const Dashboard = () => {
         />
         <StatCard 
           title={t('dashboard.active_samurai', 'Active Lattice')} 
-          value={`${data?.active_samurai?.length || 0} Samurai`} 
-          status="operational" 
+          value={`${data?.active_samurai?.length || 0} ${t('dashboard.samurai_unit', 'Samurai')}`} 
+          status={t('dashboard.operational', 'operational')} 
           icon={Users} 
           colorClass="text-shogun-gold"
-          trend="Grid Stable"
+          trend={t('dashboard.grid_stable', 'Grid Stable')}
           to="/samurai"
         />
         <StatCard 
           title={t('dashboard.database', 'Knowledge Vol.')} 
-          value="1,248 Records" 
-          status={data?.system_health?.qdrant === 'healthy' ? 'Lattice Indexed' : (data?.system_health?.qdrant || 'indexed')} 
+          value={`${data?.knowledge_volume?.toLocaleString() || '1,248'} ${t('dashboard.records', 'Records')}`} 
+          status={data?.system_health?.qdrant === 'healthy' ? t('dashboard.lattice_indexed', 'Lattice Indexed') : (data?.system_health?.qdrant || t('dashboard.indexed', 'indexed'))} 
           icon={Server} 
           colorClass={data?.system_health?.qdrant === 'healthy' ? "text-green-500" : "text-red-500"}
-          trend={data?.system_health?.qdrant === 'healthy' ? "99.9% Recall" : "Sync Error"}
+          trend={data?.system_health?.qdrant === 'healthy' ? t('dashboard.recall', '99.9% Recall') : t('dashboard.sync_error', 'Sync Error')}
           to="/archives"
         />
         <StatCard 
           title={t('dashboard.security_posture', 'Security Tier')} 
           value={data?.security_posture?.tier?.toUpperCase() || "GUARDED"} 
-          status="Active" 
+          status={t('common.active', 'Active')} 
           icon={Shield} 
           colorClass="text-red-500"
           to="/torii"
@@ -270,7 +283,7 @@ export const Dashboard = () => {
                     </h4>
                     <p className="text-[10px] text-shogun-subdued mt-1 px-4">
                       {posture?.kill_switch_active
-                        ? 'All agents suspended. Posture: SHRINE.'
+                        ? t('dashboard.harakiri_suspended', 'All agents suspended. Posture: SHRINE.')
                         : t('dashboard.harakiri_desc', 'Immediately suspend all active autonomous engagement.')}
                     </p>
                  </div>
@@ -287,10 +300,10 @@ export const Dashboard = () => {
                    <Power className="w-4 h-4 shrink-0" />
                    <div className="flex flex-col items-start">
                      <span className="text-[10px] font-bold uppercase tracking-[0.2em] leading-tight">
-                       {killWorking ? 'Working...' : posture?.kill_switch_active ? 'Reset Harakiri' : 'Harakiri'}
+                       {killWorking ? t('common.loading', 'Working...') : posture?.kill_switch_active ? t('topbar.reset_harakiri', 'Reset Harakiri') : t('dashboard.harakiri', 'Harakiri')}
                      </span>
                      {!killWorking && (
-                       <span className="text-[8px] font-normal opacity-70 tracking-widest leading-tight">[Kill Switch]</span>
+                       <span className="text-[8px] font-normal opacity-70 tracking-widest leading-tight">[{t('torii.kill_switch', 'Kill Switch')}]</span>
                      )}
                    </div>
                  </button>
@@ -327,21 +340,37 @@ export const Dashboard = () => {
                  ))}
               </div>
 
-              <div className="mt-8 p-4 bg-[#050508] border border-shogun-border rounded-xl">
-                 <div className="flex items-center gap-3 mb-3">
-                    <AlertCircle className="w-4 h-4 text-shogun-gold" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-shogun-text">{t('dashboard.system_load', 'System Load')}</span>
-                 </div>
-                 <div className="space-y-2">
-                    <div className="flex justify-between text-[10px] text-shogun-subdued font-bold uppercase">
-                       <span>{t('dashboard.cpu_affinity', 'CPU Affinity')}</span>
-                       <span>12%</span>
-                    </div>
-                    <div className="w-full h-1 bg-shogun-card rounded-full overflow-hidden">
-                       <div className="h-full bg-shogun-gold" style={{ width: '12%' }} />
-                    </div>
-                 </div>
-              </div>
+               <div className="mt-8 p-4 bg-[#050508] border border-shogun-border rounded-xl">
+                  <div className="flex items-center gap-3 mb-4">
+                     <AlertCircle className="w-4 h-4 text-shogun-gold" />
+                     <span className="text-[10px] font-bold uppercase tracking-widest text-shogun-text">{t('dashboard.system_load', 'System Load')}</span>
+                  </div>
+                  <div className="space-y-3">
+                     {[
+                       { label: t('dashboard.cpu_usage', 'CPU'), value: metrics?.cpu_percent ?? 0, detail: `${metrics?.cpu_percent ?? 0}%` },
+                       { label: t('dashboard.memory_usage', 'Memory'), value: metrics?.memory_percent ?? 0, detail: `${metrics?.memory_used_gb ?? 0} / ${metrics?.memory_total_gb ?? 0} GB` },
+                       { label: t('dashboard.disk_usage', 'Disk'), value: metrics?.disk_percent ?? 0, detail: `${metrics?.disk_used_gb ?? 0} / ${metrics?.disk_total_gb ?? 0} GB` },
+                     ].map((m) => (
+                       <div key={m.label}>
+                         <div className="flex justify-between text-[10px] font-bold uppercase mb-1">
+                            <span className="text-shogun-subdued">{m.label}</span>
+                            <span className={cn(
+                              m.value > 85 ? "text-red-500" : m.value > 60 ? "text-shogun-gold" : "text-green-500"
+                            )}>{m.detail}</span>
+                         </div>
+                         <div className="w-full h-1 bg-shogun-card rounded-full overflow-hidden">
+                            <div
+                              className={cn(
+                                "h-full rounded-full transition-all duration-700",
+                                m.value > 85 ? "bg-red-500" : m.value > 60 ? "bg-shogun-gold" : "bg-green-500"
+                              )}
+                              style={{ width: `${m.value}%` }}
+                            />
+                         </div>
+                       </div>
+                     ))}
+                  </div>
+               </div>
            </div>
         </div>
       </div>

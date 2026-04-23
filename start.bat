@@ -47,3 +47,8 @@ start "" cmd /c "timeout /t 3 /nobreak >nul & start http://localhost:8000"
 
 :: Start the server (blocking — keeps the window open)
 python -m shogun
+
+:: If the server exits, keep the window open so the user can see errors
+echo.
+echo   ⚠️  Shogun has stopped. Press any key to close this window.
+pause >nul

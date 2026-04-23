@@ -330,7 +330,7 @@ export const ShogunProfile = () => {
                 {t('shogun_profile.primary_agent', 'Primary Agent')}
               </span>
               <span className="text-xs text-shogun-subdued flex items-center gap-1">
-                <Workflow className="w-3 h-3" /> System Orchestrator
+                <Workflow className="w-3 h-3" /> {t('profile.system_orchestrator', 'System Orchestrator')}
               </span>
             </div>
           </div>
@@ -414,7 +414,7 @@ export const ShogunProfile = () => {
                     }}
                     className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-gold transition-colors"
                   >
-                    <option value="">Select a persona...</option>
+                    <option value="">{t('profile.select_persona', 'Select a persona...')}</option>
                     {personas.map(p => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
@@ -424,9 +424,9 @@ export const ShogunProfile = () => {
                     if (!p) return null;
                     return (
                       <div className="grid grid-cols-3 gap-1.5 mt-2">
-                        <span className="text-[8px] text-center py-1 rounded bg-shogun-gold/10 text-shogun-gold border border-shogun-gold/20 uppercase font-bold">{p.tone}</span>
-                        <span className="text-[8px] text-center py-1 rounded bg-shogun-blue/10 text-shogun-blue border border-shogun-blue/20 uppercase font-bold">{p.security_bias}</span>
-                        <span className="text-[8px] text-center py-1 rounded bg-green-500/10 text-green-500 border border-green-500/20 uppercase font-bold">{p.autonomy}</span>
+                        <span className="text-[8px] text-center py-1 rounded bg-shogun-gold/10 text-shogun-gold border border-shogun-gold/20 uppercase font-bold">{t(`profile.trait_${p.tone}`, p.tone)}</span>
+                        <span className="text-[8px] text-center py-1 rounded bg-shogun-blue/10 text-shogun-blue border border-shogun-blue/20 uppercase font-bold">{t(`profile.trait_${p.security_bias}`, p.security_bias)}</span>
+                        <span className="text-[8px] text-center py-1 rounded bg-green-500/10 text-green-500 border border-green-500/20 uppercase font-bold">{t(`profile.trait_${p.autonomy}`, p.autonomy)}</span>
                       </div>
                     );
                   })()}
@@ -461,7 +461,7 @@ export const ShogunProfile = () => {
                     onChange={(e) => setShogunData({ ...shogunData, autonomy: parseInt(e.target.value) })}
                     className="w-full accent-shogun-blue"
                   />
-                  <p className="text-[10px] text-shogun-subdued italic">Higher levels allow Shogun to spawn sub-agents and execute complex tools without explicit operator confirmation.</p>
+                  <p className="text-[10px] text-shogun-subdued italic">{t('profile.autonomy_desc', 'Higher levels allow Shogun to spawn sub-agents and execute complex tools without explicit operator confirmation.')}</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -580,16 +580,16 @@ export const ShogunProfile = () => {
               <div className="shogun-card space-y-4">
                 <div>
                   <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                    <Cpu className="w-5 h-5 text-shogun-blue" /> Primary Model
+                    <Cpu className="w-5 h-5 text-shogun-blue" /> {t('profile.primary_model', 'Primary Model')}
                   </h3>
-                  <p className="text-[10px] text-shogun-subdued mt-1">The default model used for all Shogun reasoning and task execution.</p>
+                  <p className="text-[10px] text-shogun-subdued mt-1">{t('profile.primary_model_desc', 'The default model used for all Shogun reasoning and task execution.')}</p>
                 </div>
 
                 {allModelOptions.length === 0 ? (
                   <div className="p-4 bg-[#050508] border border-shogun-border rounded-xl text-center space-y-2">
-                    <p className="text-sm text-shogun-subdued">No active providers found.</p>
+                    <p className="text-sm text-shogun-subdued">{t('profile.no_providers', 'No active providers found.')}</p>
                     <button onClick={() => navigate('/katana')} className="text-xs text-shogun-blue hover:text-shogun-gold font-bold uppercase tracking-widest">
-                      Configure in The Katana →
+                      {t('profile.configure_katana', 'Configure in The Katana →')}
                     </button>
                   </div>
                 ) : (
@@ -600,7 +600,7 @@ export const ShogunProfile = () => {
                       onChange={e => setPrimaryModel(e.target.value)}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm font-mono focus:border-shogun-gold outline-none transition-colors"
                     >
-                      <option value="">— Choose a model —</option>
+                      <option value="">{t('profile.choose_model', '— Choose a model —')}</option>
                       {providers.filter(p => p.status !== 'disabled').map((prov: any) => {
                         const modelIds: string[] = prov.config?.models?.length
                           ? prov.config.models
@@ -625,7 +625,7 @@ export const ShogunProfile = () => {
                         <span className="text-xs font-mono text-shogun-gold font-bold truncate">
                           {primaryModel.split('::')[1]}
                         </span>
-                        <span className="text-[9px] text-shogun-subdued ml-auto shrink-0">PRIMARY</span>
+                        <span className="text-[9px] text-shogun-subdued ml-auto shrink-0">{t('profile.primary_tag', 'PRIMARY')}</span>
                       </div>
                     )}
                   </div>
@@ -637,18 +637,18 @@ export const ShogunProfile = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                      <Workflow className="w-5 h-5 text-shogun-gold" /> Fallback Models
+                      <Workflow className="w-5 h-5 text-shogun-gold" /> {t('profile.fallback_models', 'Fallback Models')}
                     </h3>
-                    <p className="text-[10px] text-shogun-subdued mt-1">Used when the primary is unavailable. Order matters.</p>
+                    <p className="text-[10px] text-shogun-subdued mt-1">{t('profile.fallback_models_desc', 'Used when the primary is unavailable. Order matters.')}</p>
                   </div>
                   <span className="text-[10px] bg-shogun-gold/10 text-shogun-gold px-2 py-0.5 rounded border border-shogun-gold/20 font-bold shrink-0">
-                    {fallbackModels.length} selected
+                    {fallbackModels.length} {t('profile.selected', 'selected')}
                   </span>
                 </div>
 
                 {allModelOptions.length === 0 ? (
                   <div className="p-4 bg-[#050508] border border-shogun-border rounded-xl text-center">
-                    <p className="text-sm text-shogun-subdued">No active providers.</p>
+                    <p className="text-sm text-shogun-subdued">{t('profile.no_providers_short', 'No active providers.')}</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -665,7 +665,7 @@ export const ShogunProfile = () => {
                         }}
                         className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm font-mono focus:border-shogun-blue outline-none transition-colors"
                       >
-                        <option value="">— Add a fallback model —</option>
+                        <option value="">{t('profile.add_fallback_placeholder', '— Add a fallback model —')}</option>
                         {providers.filter(p => p.status !== 'disabled').map((prov: any) => {
                           const modelIds: string[] = prov.config?.models?.length
                             ? prov.config.models
@@ -694,7 +694,7 @@ export const ShogunProfile = () => {
                     {fallbackModels.length > 0 ? (
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.fallback_order", "Fallback Order")}</label>
-                        <p className="text-[9px] text-shogun-subdued/50">Drag to reorder priority.</p>
+                        <p className="text-[9px] text-shogun-subdued/50">{t('profile.drag_reorder', 'Drag to reorder priority.')}</p>
                         {fallbackModels.map((fm, i) => (
                           <div
                             key={fm}
@@ -728,7 +728,7 @@ export const ShogunProfile = () => {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-[11px] text-shogun-subdued italic text-center py-2">No fallbacks selected — the primary model will always be used.</p>
+                      <p className="text-[11px] text-shogun-subdued italic text-center py-2">{t('profile.no_fallbacks', 'No fallbacks selected — the primary model will always be used.')}</p>
                     )}
                   </div>
                 )}
@@ -742,10 +742,15 @@ export const ShogunProfile = () => {
                       onChange={e => setShogunData({ ...shogunData, model_routing_profile_id: e.target.value })}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none transition-colors"
                     >
-                      <option value="">— Select routing strategy —</option>
-                      {routingProfiles.map((rp: any) => (
-                        <option key={rp.id} value={rp.id}>{rp.name}</option>
-                      ))}
+                      <option value="">{t('profile.select_routing', '— Select routing strategy —')}</option>
+                      {routingProfiles.map((rp: any) => {
+                        const nameMap: Record<string,string> = {
+                          'Balanced (Default)': t('profile.routing_balanced', 'Balanced (Default)'),
+                          'Quality First': t('profile.routing_quality', 'Quality First'),
+                          'Cost Optimized': t('profile.routing_cost', 'Cost Optimized'),
+                        };
+                        return <option key={rp.id} value={rp.id}>{nameMap[rp.name] || rp.name}</option>;
+                      })}
                     </select>
                   </div>
                 )}
@@ -801,14 +806,14 @@ delegation_rules:
                   <Shield className="w-5 h-5 text-shogun-gold" /> {t('shogun_profile.authority_metrics', 'Authority Metrics')}
                 </h3>
                 {isCustomPolicy && (
-                  <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border border-shogun-blue/30 bg-shogun-blue/10 text-shogun-blue">Custom</span>
+                  <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border border-shogun-blue/30 bg-shogun-blue/10 text-shogun-blue">{t('profile.custom', 'Custom')}</span>
                 )}
               </div>
 
               {/* Risk Meter */}
               <div className="p-4 bg-[#050508] rounded-xl border border-shogun-border">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Security Risk Index</span>
+                  <span className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('profile.security_risk_index', 'Security Risk Index')}</span>
                   <span className={cn(
                     "text-sm font-bold font-mono",
                     riskScore <= 25 ? "text-green-400" : riskScore <= 50 ? "text-shogun-gold" : riskScore <= 75 ? "text-orange-400" : "text-red-400"
@@ -827,9 +832,9 @@ delegation_rules:
                   />
                 </div>
                 <div className="flex justify-between mt-1">
-                  <span className="text-[8px] text-green-400/60">LOCKED DOWN</span>
-                  <span className="text-[8px] text-shogun-gold/60">BALANCED</span>
-                  <span className="text-[8px] text-red-400/60">PERMISSIVE</span>
+                  <span className="text-[8px] text-green-400/60">{t('profile.locked_down', 'LOCKED DOWN')}</span>
+                  <span className="text-[8px] text-shogun-gold/60">{t('profile.risk_balanced', 'BALANCED')}</span>
+                  <span className="text-[8px] text-red-400/60">{t('profile.permissive', 'PERMISSIVE')}</span>
                 </div>
               </div>
 
@@ -845,7 +850,7 @@ delegation_rules:
                      }}
                      className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-gold transition-colors"
                    >
-                     <option value="">Select security tier...</option>
+                     <option value="">{t('profile.select_security_tier', 'Select security tier...')}</option>
                      {securityPolicies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                    </select>
                  </div>
@@ -863,7 +868,7 @@ delegation_rules:
                         className="flex-1 bg-[#050508] border border-shogun-border rounded-lg p-2 text-xs focus:border-shogun-blue transition-colors"
                       />
                       <button className="px-4 py-2 bg-shogun-blue/20 border border-shogun-blue/30 rounded-lg text-[10px] font-bold text-shogun-blue uppercase tracking-widest hover:bg-shogun-blue/30 transition-all">
-                        Save
+                        {t('common.save', 'Save')}
                       </button>
                     </div>
                   </div>
@@ -875,7 +880,7 @@ delegation_rules:
                       <div className="flex items-center gap-2 pb-1 border-b border-shogun-border/50 group/cat">
                         <Shield className="w-3.5 h-3.5 text-shogun-gold" />
                         <div className="relative">
-                          <span className="text-xs font-bold uppercase tracking-wider text-shogun-text cursor-help">{category.replace(/_/g, ' ')}</span>
+                          <span className="text-xs font-bold uppercase tracking-wider text-shogun-text cursor-help">{t(`profile.perm_cat_${category}`, category.replace(/_/g, ' '))}</span>
                           {getTooltip(category) && (
                             <div className="absolute left-0 bottom-full mb-2 w-64 p-2.5 bg-[#0a0e1a] border border-shogun-gold/30 rounded-lg text-[10px] text-shogun-text leading-relaxed shadow-xl opacity-0 pointer-events-none group-hover/cat:opacity-100 transition-opacity duration-200 z-50">
                               <div className="absolute -bottom-1 left-4 w-2 h-2 bg-[#0a0e1a] border-r border-b border-shogun-gold/30 rotate-45" />
@@ -901,7 +906,7 @@ delegation_rules:
                             return (
                               <div key={j} className={cn("py-1.5 px-2 rounded hover:bg-[#0a0e1a] transition-colors", isArray ? "space-y-2" : "flex items-center justify-between")}>
                                 <div className="relative group/tip">
-                                  <span className={cn("text-[10px] text-shogun-subdued font-medium capitalize", getTooltip(category, prop) && "border-b border-dashed border-shogun-subdued/30 cursor-help")}>{prop.replace(/_/g, ' ').toLowerCase()}</span>
+                                  <span className={cn("text-[10px] text-shogun-subdued font-medium capitalize", getTooltip(category, prop) && "border-b border-dashed border-shogun-subdued/30 cursor-help")}>{t(`profile.perm_prop_${prop}`, prop.replace(/_/g, ' ').toLowerCase())}</span>
                                   {getTooltip(category, prop) && (
                                     <div className="absolute left-0 bottom-full mb-2 w-56 p-2 bg-[#0a0e1a] border border-shogun-border rounded-lg text-[10px] text-shogun-text/80 leading-relaxed shadow-xl opacity-0 pointer-events-none group-hover/tip:opacity-100 transition-opacity duration-200 z-50">
                                       <div className="absolute -bottom-1 left-3 w-2 h-2 bg-[#0a0e1a] border-r border-b border-shogun-border rotate-45" />
@@ -931,10 +936,10 @@ delegation_rules:
                                       onChange={(e) => togglePermission(e.target.value)}
                                       className="bg-[#0a0a10] border border-shogun-border rounded px-2 py-0.5 text-[10px] font-bold uppercase text-shogun-gold focus:border-shogun-gold transition-colors"
                                     >
-                                      <option value="full">Full</option>
-                                      <option value="scoped">Scoped</option>
-                                      <option value="allowlist">Allowlist</option>
-                                      <option value="disabled">Disabled</option>
+                                      <option value="full">{t('profile.mode_full', 'Full')}</option>
+                                      <option value="scoped">{t('profile.mode_scoped', 'Scoped')}</option>
+                                      <option value="allowlist">{t('profile.mode_allowlist', 'Allowlist')}</option>
+                                      <option value="disabled">{t('profile.mode_disabled', 'Disabled')}</option>
                                     </select>
                                   ) : isNumber ? (
                                     <input
@@ -949,8 +954,8 @@ delegation_rules:
                                         {propVal.length === 0 && (
                                           <span className="text-[9px] text-shogun-subdued italic">
                                             {category.toLowerCase() === 'network' && prop.toLowerCase() === 'allowed_domains' 
-                                              ? 'No APIs selected — choose from the Katana Toolbox below' 
-                                              : 'No entries — type below to add'}
+                                              ? t('profile.no_apis_selected', 'No APIs selected \u2014 choose from the Katana Toolbox below') 
+                                              : t('profile.no_entries', 'No entries \u2014 type below to add')}
                                           </span>
                                         )}
                                         {propVal.map((item: string, k: number) => (
@@ -1009,26 +1014,26 @@ delegation_rules:
                                                       "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded",
                                                       tool.status === 'connected' ? "text-green-400 bg-green-500/10" : "text-shogun-subdued bg-[#0a0e1a]"
                                                     )}>
-                                                      {tool.status === 'connected' ? 'Active' : tool.status}
+                                                      {tool.status === 'connected' ? t('profile.status_active', 'Active') : tool.status}
                                                     </span>
                                                   </div>
                                                 </button>
                                               );
                                             })
                                           ) : (
-                                            <p className="text-[9px] text-shogun-subdued italic py-2">No tools or APIs registered in The Katana Toolbox yet.</p>
+                                            <p className="text-[9px] text-shogun-subdued italic py-2">{t('profile.no_tools', 'No tools or APIs registered in The Katana Toolbox yet.')}</p>
                                           )}
                                           <div className="pt-1 border-t border-shogun-border/30 space-y-1">
                                             <div className="flex items-center justify-between">
-                                              <span className="text-[8px] text-shogun-subdued uppercase tracking-widest font-bold">Add Custom Website</span>
+                                              <span className="text-[8px] text-shogun-subdued uppercase tracking-widest font-bold">{t('profile.add_custom_website', 'Add Custom Website')}</span>
                                               {!propVal.includes('*.*') && (
-                                                <span className="text-[8px] text-shogun-subdued italic">Type <code className="text-red-400 font-mono font-bold">*.*</code> to allow all</span>
+                                                <span className="text-[8px] text-shogun-subdued italic">{t('profile.type_wildcard', 'Type')} <code className="text-red-400 font-mono font-bold">*.*</code> {t('profile.to_allow_all', 'to allow all')}</span>
                                               )}
                                             </div>
                                             {propVal.includes('*.*') && (
                                               <div className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/30 rounded-lg">
-                                                <span className="text-[9px] font-bold text-red-400 uppercase tracking-widest">⚠ All websites permitted</span>
-                                                <span className="text-[8px] text-red-400/60">— The agent can access any domain without restriction.</span>
+                                                <span className="text-[9px] font-bold text-red-400 uppercase tracking-widest">{t('profile.all_websites_warning', '⚠ All websites permitted')}</span>
+                                                <span className="text-[8px] text-red-400/60">{t('profile.all_websites_desc', '— The agent can access any domain without restriction.')}</span>
                                               </div>
                                             )}
                                             <input
@@ -1077,7 +1082,7 @@ delegation_rules:
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-shogun-subdued italic p-4 text-center">Select a policy to view and customize constraints.</p>
+                  <p className="text-xs text-shogun-subdued italic p-4 text-center">{t('profile.select_policy_prompt', 'Select a policy to view and customize constraints.')}</p>
                 )}
 
                 {/* Reset to preset */}
@@ -1086,7 +1091,7 @@ delegation_rules:
                     onClick={() => { setCustomPermissions(null); setCustomPolicyName(''); }}
                     className="w-full py-2 bg-[#050508] border border-shogun-border rounded-lg text-[10px] font-bold text-shogun-subdued hover:text-red-400 hover:border-red-400/30 transition-all uppercase tracking-widest"
                   >
-                    Reset to Preset
+                    {t('profile.reset_to_preset', 'Reset to Preset')}
                   </button>
                 )}
               </div>
@@ -1094,13 +1099,13 @@ delegation_rules:
 
             <div className="shogun-card space-y-6">
               <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                <Workflow className="w-5 h-5 text-shogun-blue" /> Skill Inventory
+                <Workflow className="w-5 h-5 text-shogun-blue" /> {t('profile.skill_inventory', 'Skill Inventory')}
               </h3>
               <div className="space-y-2">
                 {[
-                  { name: 'Core Sentinel', type: 'System', size: '124KB' },
-                  { name: 'Tactical Analyzer', type: 'Intelligence', size: '2.1MB' },
-                  { name: 'Samurai Spawner', type: 'Orchestration', size: '450KB' },
+                  { name: t('profile.skill_core_sentinel', 'Core Sentinel'), type: t('profile.skill_type_system', 'System'), size: '124KB' },
+                  { name: t('profile.skill_tactical_analyzer', 'Tactical Analyzer'), type: t('profile.skill_type_intelligence', 'Intelligence'), size: '2.1MB' },
+                  { name: t('profile.skill_samurai_spawner', 'Samurai Spawner'), type: t('profile.skill_type_orchestration', 'Orchestration'), size: '450KB' },
                 ].map((skill, i) => (
                   <div 
                     key={i} 
@@ -1119,7 +1124,7 @@ delegation_rules:
                 onClick={() => navigate('/dojo')}
                 className="w-full py-2 bg-[#050508] border border-shogun-border rounded text-[10px] font-bold text-shogun-subdued hover:text-shogun-gold hover:border-shogun-gold transition-all uppercase tracking-widest"
               >
-                Browse Dojo for Skills
+                {t('profile.browse_dojo', 'Browse Dojo for Skills')}
               </button>
             </div>
           </div>
@@ -1129,7 +1134,7 @@ delegation_rules:
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="shogun-card space-y-6">
               <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                <Activity className="w-5 h-5 text-shogun-blue" /> System Diagnostics
+                <Activity className="w-5 h-5 text-shogun-blue" /> {t('profile.system_diagnostics', 'System Diagnostics')}
               </h3>
               <div className="grid grid-cols-1 gap-4">
                 <div className="p-4 bg-[#050508] border border-shogun-border rounded-xl flex items-center justify-between">
@@ -1141,9 +1146,9 @@ delegation_rules:
                       <Database className="w-5 h-5" />
                     </div>
                     <div>
-                      <p className="text-sm font-bold">Vector Engine (Qdrant)</p>
+                      <p className="text-sm font-bold">{t('profile.vector_engine', 'Vector Engine (Qdrant)')}</p>
                       <p className="text-[10px] text-shogun-subdued uppercase tracking-widest">
-                        {systemHealth?.qdrant === 'healthy' ? 'Lattice Synchronized' : 'Offline / Disk Error'}
+                        {systemHealth?.qdrant === 'healthy' ? t('profile.lattice_sync', 'Lattice Synchronized') : t('profile.offline_error', 'Offline / Disk Error')}
                       </p>
                     </div>
                   </div>
@@ -1161,35 +1166,35 @@ delegation_rules:
                       <Server className="w-5 h-5" />
                     </div>
                     <div>
-                      <p className="text-sm font-bold">Relational Core</p>
-                      <p className="text-[10px] text-shogun-subdued uppercase tracking-widest">SQLite Performance: Optimal</p>
+                      <p className="text-sm font-bold">{t('profile.relational_core', 'Relational Core')}</p>
+                      <p className="text-[10px] text-shogun-subdued uppercase tracking-widest">{t('profile.sqlite_optimal', 'SQLite Performance: Optimal')}</p>
                     </div>
                   </div>
-                  <span className="text-[8px] font-bold text-green-500 border border-green-500/30 px-2 py-0.5 rounded uppercase">Healthy</span>
+                  <span className="text-[8px] font-bold text-green-500 border border-green-500/30 px-2 py-0.5 rounded uppercase">{t('profile.healthy', 'Healthy')}</span>
                 </div>
               </div>
 
               <div className="mt-4 p-4 bg-shogun-blue/5 border border-shogun-blue/20 rounded-xl">
                                                 <div className="flex items-center gap-2 mb-2">
                   <RefreshCw className="w-3 h-3 text-shogun-blue animate-spin-slow" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-shogun-blue">Lattice Sync</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-shogun-blue">{t('profile.lattice_sync_title', 'Lattice Sync')}</span>
                 </div>
                 <p className="text-[10px] text-shogun-subdued leading-relaxed">
-                  Vector indices are automatically synchronized every 15 minutes. The last successful sync occurred {Math.floor(Math.random() * 10) + 1} minutes ago.
+                  {t('profile.lattice_sync_desc', 'Vector indices are automatically synchronized every 15 minutes.')} {t('profile.last_sync', 'The last successful sync occurred')} {Math.floor(Math.random() * 10) + 1} {t('profile.minutes_ago', 'minutes ago.')}
                 </p>
               </div>
             </div>
 
             <div className="shogun-card space-y-6">
               <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                <Clock className="w-5 h-5 text-shogun-gold" /> Operational Cadence (Cron)
+                <Clock className="w-5 h-5 text-shogun-gold" /> {t('profile.operational_cadence', 'Operational Cadence (Cron)')}
               </h3>
               <div className="space-y-4">
                 {[
-                  { jobType: 'memory_consolidation',  label: 'Nightly Consolidation',    desc: 'Merge episodic traces into semantic memory.',          icon: RefreshCw, cronLabel: 'Every night at 02:00' },
-                  { jobType: 'performance_audit',      label: 'Weekly Performance Audit', desc: 'Review agent fit metrics and behavioral drift.',        icon: Shield,    cronLabel: 'Every Monday at 03:00' },
-                  { jobType: 'skill_health_check',     label: 'Skill Health Check',       desc: 'Verify third-party tool connectivity and versions.',    icon: Settings,  cronLabel: 'Every night at 04:00' },
-                  { jobType: 'persona_drift_check',    label: 'Persona Drift Monitor',    desc: 'Detect deviations from core identity blueprints.',      icon: User,      cronLabel: 'Every Sunday at 05:00' },
+                  { jobType: 'memory_consolidation',  label: t('profile.cron_nightly','Nightly Consolidation'),       desc: t('profile.cron_nightly_desc','Merge episodic traces into semantic memory.'),       icon: RefreshCw, cronLabel: t('profile.cron_every_night_02','Every night at 02:00') },
+                  { jobType: 'performance_audit',      label: t('profile.cron_weekly_audit','Weekly Performance Audit'), desc: t('profile.cron_weekly_desc','Review agent fit metrics and behavioral drift.'),     icon: Shield,    cronLabel: t('profile.cron_every_mon_03','Every Monday at 03:00') },
+                  { jobType: 'skill_health_check',     label: t('profile.cron_skill_check','Skill Health Check'),       desc: t('profile.cron_skill_desc','Verify third-party tool connectivity and versions.'),  icon: Settings,  cronLabel: t('profile.cron_every_night_04','Every night at 04:00') },
+                  { jobType: 'persona_drift_check',    label: t('profile.cron_drift','Persona Drift Monitor'),          desc: t('profile.cron_drift_desc','Detect deviations from core identity blueprints.'),    icon: User,      cronLabel: t('profile.cron_every_sun_05','Every Sunday at 05:00') },
                 ].map((job) => {
                   const schedule = getPresetSchedule(job.jobType);
                   const isEnabled = schedule ? schedule.is_enabled : (shogunData.bushido_settings?.[job.jobType] ?? false);
@@ -1238,7 +1243,7 @@ delegation_rules:
                             }}
                           >
                             {isRunning && <RefreshCw className="w-2.5 h-2.5 animate-spin" />}
-                            {isRunning ? 'Running…' : 'Run Now'}
+                            {isRunning ? t('profile.running', 'Running…') : t('profile.run_now', 'Run Now')}
                           </button>
                         </div>
                         {/* Fixed schedule label */}
@@ -1256,7 +1261,7 @@ delegation_rules:
                               ? "text-green-400 border-green-500/30 bg-green-500/10"
                               : "text-shogun-subdued border-shogun-border"
                           )}>
-                            {isEnabled ? 'Active' : 'Paused'}
+                            {isEnabled ? t('profile.status_active_label', 'Active') : t('profile.status_paused', 'Paused')}
                           </span>
                         </div>
                       </div>
@@ -1270,9 +1275,9 @@ delegation_rules:
             <div className="md:col-span-2 shogun-card space-y-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                  <Settings className="w-5 h-5 text-shogun-blue" /> Create Custom Job
+                  <Settings className="w-5 h-5 text-shogun-blue" /> {t('profile.create_custom_job', 'Create Custom Job')}
                 </h3>
-                <span className="text-[10px] bg-shogun-blue/10 text-shogun-blue px-2 py-0.5 rounded border border-shogun-blue/20 font-bold uppercase tracking-widest">Builder</span>
+                <span className="text-[10px] bg-shogun-blue/10 text-shogun-blue px-2 py-0.5 rounded border border-shogun-blue/20 font-bold uppercase tracking-widest">{t('profile.builder', 'Builder')}</span>
               </div>
 
               {(() => {
@@ -1307,11 +1312,11 @@ delegation_rules:
                         <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.job_type", "Job Type")}</label>
                         <div className="space-y-2">
                           {[
-                            { value: 'memory_consolidation', label: 'Memory Consolidation', desc: 'Merge & prune memory traces' },
-                            { value: 'performance_audit', label: 'Performance Audit', desc: 'Review execution quality metrics' },
-                            { value: 'skill_health_check', label: 'Skill Health Check', desc: 'Verify tool connectivity' },
-                            { value: 'persona_drift_check', label: 'Persona Drift Check', desc: 'Detect behavioral deviation' },
-                            { value: 'custom_task', label: 'Custom Task', desc: 'Any repeating instruction — API calls, syncs, monitoring' },
+                            { value: 'memory_consolidation', label: t('profile.jt_memory','Memory Consolidation'), desc: t('profile.jt_memory_desc','Merge & prune memory traces') },
+                            { value: 'performance_audit', label: t('profile.jt_perf','Performance Audit'), desc: t('profile.jt_perf_desc','Review execution quality metrics') },
+                            { value: 'skill_health_check', label: t('profile.jt_skill','Skill Health Check'), desc: t('profile.jt_skill_desc','Verify tool connectivity') },
+                            { value: 'persona_drift_check', label: t('profile.jt_drift','Persona Drift Check'), desc: t('profile.jt_drift_desc','Detect behavioral deviation') },
+                            { value: 'custom_task', label: t('profile.jt_custom','Custom Task'), desc: t('profile.jt_custom_desc','Any repeating instruction \u2014 API calls, syncs, monitoring') },
                           ].map(jt => (
                             <button
                               key={jt.value}
@@ -1343,7 +1348,7 @@ delegation_rules:
                                   : "border-shogun-border text-shogun-subdued hover:border-shogun-subdued"
                               )}
                             >
-                              {f === 'one-off' ? 'One-off' : f}
+                              {t(`profile.freq_${f.replace('-','_')}`, f === 'one-off' ? 'One-off' : f)}
                             </button>
                           ))}
                         </div>
@@ -1352,7 +1357,7 @@ delegation_rules:
                         <div className="p-3 bg-[#050508] border border-shogun-border rounded-xl space-y-3 animate-in fade-in">
                           {frequency === 'one-off' && (
                             <div className="space-y-2">
-                              <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">Scheduled date & time</span>
+                              <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">{t('profile.scheduled_datetime','Scheduled date & time')}</span>
                               <input
                                 type="datetime-local"
                                 value={customJob.scheduleDateTime}
@@ -1362,7 +1367,7 @@ delegation_rules:
                               <p className="text-[9px] text-shogun-subdued italic">
                                 {customJob.scheduleDateTime 
                                   ? `Runs once on ${new Date(customJob.scheduleDateTime).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} at ${new Date(customJob.scheduleDateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
-                                  : 'Select a future date and time for this one-time task.'}
+                                  : t('profile.select_future_date','Select a future date and time for this one-time task.')}
                               </p>
                             </div>
                           )}
@@ -1370,7 +1375,7 @@ delegation_rules:
                           {frequency === 'hourly' && (
                             <div className="space-y-2">
                               <div className="flex justify-between items-center">
-                                <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">Minute offset</span>
+                                <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">{t('profile.minute_offset','Minute offset')}</span>
                                 <span className="text-xs font-mono font-bold text-shogun-gold">:{String(customJob.minuteOffset).padStart(2, '0')}</span>
                               </div>
                               <input
@@ -1379,13 +1384,13 @@ delegation_rules:
                                 onChange={(e) => setCustomJob({...customJob, minuteOffset: parseInt(e.target.value)})}
                                 className="w-full accent-shogun-gold"
                               />
-                              <p className="text-[9px] text-shogun-subdued italic">Runs every hour at :{String(customJob.minuteOffset).padStart(2, '0')}</p>
+                              <p className="text-[9px] text-shogun-subdued italic">{t('profile.runs_every_hour','Runs every hour at')} :{String(customJob.minuteOffset).padStart(2, '0')}</p>
                             </div>
                           )}
 
                           {frequency === 'nightly' && (
                             <div className="space-y-2">
-                              <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">Run at</span>
+                              <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">{t('profile.run_at','Run at')}</span>
                               <div className="flex items-center gap-3">
                                 <input
                                   type="time"
@@ -1393,7 +1398,7 @@ delegation_rules:
                                   onChange={(e) => setCustomJob({...customJob, scheduleTime: e.target.value})}
                                   className="bg-[#0a0a10] border border-shogun-border rounded-lg px-3 py-2 text-sm font-mono text-shogun-gold focus:border-shogun-gold transition-colors"
                                 />
-                                <span className="text-[10px] text-shogun-subdued">local time, every night</span>
+                                <span className="text-[10px] text-shogun-subdued">{t('profile.local_every_night','local time, every night')}</span>
                               </div>
                             </div>
                           )}
@@ -1401,7 +1406,7 @@ delegation_rules:
                           {frequency === 'weekly' && (
                             <div className="space-y-3">
                               <div className="space-y-2">
-                                <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">Active days</span>
+                                <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">{t('profile.active_days','Active days')}</span>
                                 <div className="flex gap-1.5">
                                   {['mon','tue','wed','thu','fri','sat','sun'].map(day => (
                                     <button
@@ -1425,7 +1430,7 @@ delegation_rules:
                                 </div>
                               </div>
                               <div className="space-y-1.5">
-                                <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">Run at</span>
+                                <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">{t('profile.run_at','Run at')}</span>
                                 <div className="flex items-center gap-3">
                                   <input
                                     type="time"
@@ -1443,7 +1448,7 @@ delegation_rules:
 
                           {frequency === 'monthly' && (
                             <div className="space-y-3">
-                              <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">Select day</span>
+                              <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">{t('profile.select_day','Select day')}</span>
                               <div className="grid grid-cols-7 gap-1">
                                 {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
                                   <button
@@ -1461,7 +1466,7 @@ delegation_rules:
                                 ))}
                               </div>
                               <div className="space-y-1.5 pt-1">
-                                <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">Run at</span>
+                                <span className="text-[10px] text-shogun-subdued uppercase tracking-widest">{t('profile.run_at','Run at')}</span>
                                 <div className="flex items-center gap-3">
                                   <input
                                     type="time"
@@ -1486,7 +1491,7 @@ delegation_rules:
                         <div className="flex justify-between items-center">
                           <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.priority", "Priority")}</label>
                           <span className="text-shogun-gold font-mono font-bold text-xs">
-                            {priority <= 25 ? 'Low' : priority <= 50 ? 'Normal' : priority <= 75 ? 'High' : 'Critical'}
+                            {priority <= 25 ? t('profile.priority_low', 'Low') : priority <= 50 ? t('profile.priority_normal', 'Normal') : priority <= 75 ? t('profile.priority_high', 'High') : t('profile.priority_critical', 'Critical')}
                           </span>
                         </div>
                         <input
@@ -1496,14 +1501,14 @@ delegation_rules:
                           className="w-full accent-shogun-gold"
                         />
                         <div className="flex justify-between text-[8px] text-shogun-subdued uppercase tracking-widest">
-                          <span>Low</span><span>Normal</span><span>High</span><span>Critical</span>
+                          <span>{t('profile.priority_low', 'Low')}</span><span>{t('profile.priority_normal', 'Normal')}</span><span>{t('profile.priority_high', 'High')}</span><span>{t('profile.priority_critical', 'Critical')}</span>
                         </div>
                       </div>
 
                       {(jobType === 'memory_consolidation' || jobType === 'performance_audit') && (
                         <div className="space-y-2">
                           <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">
-                            {jobType === 'memory_consolidation' ? 'Memory Types to Consolidate' : 'Memory Types to Audit'}
+                            {jobType === 'memory_consolidation' ? t('profile.mem_types_consolidate','Memory Types to Consolidate') : t('profile.mem_types_audit','Memory Types to Audit')}
                           </label>
                           <div className="grid grid-cols-2 gap-2">
                             {['episodic', 'semantic', 'procedural', 'persona'].map(t => (
@@ -1533,7 +1538,7 @@ delegation_rules:
                       {jobType === 'skill_health_check' && (
                         <div className="p-3 bg-[#050508] border border-shogun-border rounded-xl">
                           <p className="text-[10px] text-shogun-subdued">
-                            <span className="font-bold text-shogun-blue uppercase">Scope:</span> Verifies connectivity to all installed skills and third-party integrations. No memory parameters required.
+                            <span className="font-bold text-shogun-blue uppercase">{t('profile.scope','Scope')}:</span> {t('profile.scope_skill_desc','Verifies connectivity to all installed skills and third-party integrations. No memory parameters required.')}
                           </p>
                         </div>
                       )}
@@ -1541,7 +1546,7 @@ delegation_rules:
                       {jobType === 'persona_drift_check' && (
                         <div className="p-3 bg-[#050508] border border-shogun-border rounded-xl">
                           <p className="text-[10px] text-shogun-subdued">
-                            <span className="font-bold text-shogun-gold uppercase">Scope:</span> Compares current behavioral patterns against the active persona blueprint. Flags deviations exceeding threshold.
+                            <span className="font-bold text-shogun-gold uppercase">{t('profile.scope','Scope')}:</span> {t('profile.scope_drift_desc','Compares current behavioral patterns against the active persona blueprint. Flags deviations exceeding threshold.')}
                           </p>
                         </div>
                       )}
@@ -1557,7 +1562,7 @@ delegation_rules:
                             className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm leading-relaxed focus:border-shogun-blue transition-colors resize-none placeholder:text-shogun-subdued/50"
                           />
                           <p className="text-[9px] text-shogun-subdued italic">
-                            The Shogun will execute this instruction on the defined schedule. Use natural language — reference installed skills, APIs, or connectors by name.
+                            {t('profile.custom_task_hint','The Shogun will execute this instruction on the defined schedule. Use natural language \u2014 reference installed skills, APIs, or connectors by name.')}
                           </p>
                         </div>
                       )}
@@ -1578,8 +1583,8 @@ delegation_rules:
                           <div className="flex items-center gap-2">
                             <Workflow className="w-3.5 h-3.5 text-shogun-subdued" />
                             <div>
-                              <span className="text-xs font-semibold">Include Samurai metrics</span>
-                              <p className="text-[9px] text-shogun-subdued">Factor sub-agent data into the audit</p>
+                              <span className="text-xs font-semibold">{t('profile.include_samurai', 'Include Samurai metrics')}</span>
+                              <p className="text-[9px] text-shogun-subdued">{t('profile.include_samurai_desc', 'Factor sub-agent data into the audit')}</p>
                             </div>
                           </div>
                           <div className={cn(
@@ -1602,7 +1607,7 @@ delegation_rules:
                         >
                           <div className="flex items-center gap-2">
                             <Activity className="w-3.5 h-3.5 text-shogun-subdued" />
-                            <span className="text-xs font-semibold">Dry run (preview only)</span>
+                            <span className="text-xs font-semibold">{t('profile.dry_run', 'Dry run (preview only)')}</span>
                           </div>
                           <div className={cn(
                             "w-8 h-4 rounded-full relative transition-all duration-300",
@@ -1624,7 +1629,7 @@ delegation_rules:
                         >
                           <div className="flex items-center gap-2">
                             <CheckCircle2 className="w-3.5 h-3.5 text-shogun-subdued" />
-                            <span className="text-xs font-semibold">Auto-approve results</span>
+                            <span className="text-xs font-semibold">{t('profile.auto_approve', 'Auto-approve results')}</span>
                           </div>
                           <div className={cn(
                             "w-8 h-4 rounded-full relative transition-all duration-300",
@@ -1679,7 +1684,7 @@ delegation_rules:
                         className="w-full py-3 bg-gradient-to-r from-shogun-gold to-yellow-600 hover:from-yellow-600 hover:to-shogun-gold text-black font-bold rounded-lg transition-all shadow-shogun text-sm uppercase tracking-widest flex items-center justify-center gap-2"
                       >
                         <Zap className="w-4 h-4" />
-                        Create & Schedule Job
+                        {t('profile.create_schedule_btn', 'Create & Schedule Job')}
                       </button>
                     </div>
                   </div>
@@ -1692,13 +1697,13 @@ delegation_rules:
               <div className="md:col-span-2 shogun-card space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                    <Clock className="w-5 h-5 text-shogun-gold" /> Active Custom Schedules
+                    <Clock className="w-5 h-5 text-shogun-gold" /> {t('profile.active_custom_schedules', 'Active Custom Schedules')}
                   </h3>
                   <button
                     onClick={fetchSchedules}
                     className="text-[10px] font-bold text-shogun-subdued hover:text-shogun-gold transition-colors uppercase tracking-widest flex items-center gap-1"
                   >
-                    <RefreshCw className="w-3 h-3" /> Refresh
+                    <RefreshCw className="w-3 h-3" /> {t('profile.refresh', 'Refresh')}
                   </button>
                 </div>
                 <div className="space-y-2">

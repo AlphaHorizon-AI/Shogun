@@ -41,6 +41,7 @@ dependencies = [
     # --- Utilities ---
     "python-multipart>=0.0.12",
     "orjson>=3.10.0",
+    "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]
