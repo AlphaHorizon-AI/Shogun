@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import axios from 'axios';
 import { cn } from '../lib/utils';
+import { useTranslation } from '../i18n';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ function getSeverityIcon(sev: string) {
 // ── Component ─────────────────────────────────────────────────
 
 export function Logs() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -138,7 +140,7 @@ export function Logs() {
   // ── Clear ──────────────────────────────────────────────────
 
   const handleClear = async () => {
-    if (!confirm('Clear all log entries from the database? This cannot be undone.')) return;
+    if (!confirm(t('logs.clear_confirm'))) return;
     setClearing(true);
     try {
       await axios.delete('/api/v1/logs');
@@ -160,10 +162,10 @@ export function Logs() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
-            System Logs
-            <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Audit Trail</span>
+            {t('logs.title')}
+            <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">{t('logs.badge')}</span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-1">Real-time telemetry and execution history across the Samurai lattice.</p>
+          <p className="text-shogun-subdued text-sm mt-1">{t('logs.subtitle')}</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -174,14 +176,14 @@ export function Logs() {
               className={cn("px-3 py-1.5 text-[10px] font-bold uppercase rounded flex items-center gap-2 transition-all",
                 autoRefresh ? "bg-shogun-blue text-white" : "text-shogun-subdued hover:text-shogun-text")}
             >
-              <RefreshCw className={cn("w-3 h-3", autoRefresh && "animate-spin")} /> Live
+              <RefreshCw className={cn("w-3 h-3", autoRefresh && "animate-spin")} /> {t('logs.live')}
             </button>
             <button
               onClick={() => setAutoRefresh(false)}
               className={cn("px-3 py-1.5 text-[10px] font-bold uppercase rounded flex items-center gap-2 transition-all",
                 !autoRefresh ? "bg-[#1a2040] text-shogun-text" : "text-shogun-subdued hover:text-shogun-text")}
             >
-              <Activity className="w-3 h-3" /> Paused
+              <Activity className="w-3 h-3" /> {t('logs.paused')}
             </button>
           </div>
 
@@ -217,7 +219,7 @@ export function Logs() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-shogun-subdued" />
               <input
                 type="text"
-                placeholder="Search events, types..."
+                placeholder={t('logs.search_placeholder')}
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 className="w-full bg-shogun-bg border border-shogun-border rounded-lg pl-10 pr-4 py-2 text-xs focus:border-shogun-blue outline-none transition-all"
@@ -232,20 +234,20 @@ export function Logs() {
                 onChange={e => setMinSeverity(e.target.value)}
                 className="bg-shogun-bg border border-shogun-border rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase text-shogun-subdued outline-none focus:border-shogun-blue"
               >
-                <option value="all">All Levels</option>
-                <option value="info">Info</option>
-                <option value="warn">Warn</option>
-                <option value="error">Error</option>
-                <option value="critical">Critical</option>
+                <option value="all">{t('logs.all_levels')}</option>
+                <option value="info">{t('logs.info')}</option>
+                <option value="warn">{t('logs.warn')}</option>
+                <option value="error">{t('logs.error')}</option>
+                <option value="critical">{t('logs.critical')}</option>
               </select>
             </div>
           </div>
 
           {/* Legend */}
           <div className="hidden lg:flex items-center gap-3 text-[10px] text-shogun-subdued font-bold uppercase tracking-widest">
-            <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-shogun-blue" /> Info</span>
-            <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-yellow-400" /> Warn</span>
-            <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-red-500" /> Error</span>
+            <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-shogun-blue" /> {t('logs.info')}</span>
+            <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-yellow-400" /> {t('logs.warn')}</span>
+            <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-red-500" /> {t('logs.error')}</span>
           </div>
         </div>
 
@@ -257,11 +259,11 @@ export function Logs() {
           {loading && logs.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center opacity-30 gap-3">
               <Terminal className="w-10 h-10 animate-pulse" />
-              <span className="uppercase tracking-[0.3em]">Establishing Uplink...</span>
+              <span className="uppercase tracking-[0.3em]">{t('logs.establishing_uplink')}</span>
             </div>
           ) : filteredLogs.length === 0 ? (
             <div className="h-full flex items-center justify-center text-shogun-subdued italic">
-              No logs matching your current filters.
+              {t('logs.no_logs_matching')}
             </div>
           ) : filteredLogs.map((log, i) => (
             <div
@@ -310,7 +312,7 @@ export function Logs() {
               <Activity className="w-3 h-3" />
               {autoRefresh ? 'Live · 5s' : 'Paused'}
             </span>
-            <span>{filteredLogs.length} / {logs.length} events</span>
+            <span>{filteredLogs.length} / {logs.length} {t('logs.events')}</span>
             {errorCount > 0 && (
               <span className="flex items-center gap-1 text-red-400">
                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
@@ -325,7 +327,7 @@ export function Logs() {
             )}
           </div>
           <div className="flex items-center gap-1">
-            Terminal Node: <span className="text-shogun-text px-1 bg-shogun-bg border border-shogun-border rounded ml-1">Tenshu-Local-01</span>
+            {t('logs.terminal_node')}: <span className="text-shogun-text px-1 bg-shogun-bg border border-shogun-border rounded ml-1">Tenshu-Local-01</span>
           </div>
         </div>
       </div>

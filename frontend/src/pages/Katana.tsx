@@ -379,13 +379,13 @@ export function Katana() {
       const d = res.data.data;
       setTgStatus(d);
       if (!d.connected) {
-        setStatusMessage({ type: 'error', text: d.error || 'Connection failed.' });
+        setStatusMessage({ type: 'error', text: d.error || t('katana.connection_failed') });
       } else {
         setStatusMessage({ type: 'success', text: `Connected as @${d.bot_username}` });
         setTgToken('');
       }
     } catch {
-      setStatusMessage({ type: 'error', text: 'Failed to connect Telegram bot.' });
+      setStatusMessage({ type: 'error', text: t('katana.connect_failed') });
     } finally {
       setTgSaving(false);
       setTimeout(() => setStatusMessage(null), 4000);
@@ -431,16 +431,16 @@ export function Katana() {
   };
 
   const handleTgDisconnect = async () => {
-    if (!confirm('Disconnect Telegram bot? The stored token will be removed.')) return;
+    if (!confirm(t('katana.disconnect_confirm'))) return;
     try {
       await axios.delete('/api/v1/channels/telegram/disconnect');
       setTgStatus(null);
       setTgChatIds('');
       setTgWebhook('');
       setTgTestResult(null);
-      setStatusMessage({ type: 'success', text: 'Telegram bot disconnected.' });
+      setStatusMessage({ type: 'success', text: t('katana.bot_disconnected') });
     } catch {
-      setStatusMessage({ type: 'error', text: 'Failed to disconnect.' });
+      setStatusMessage({ type: 'error', text: t('katana.disconnect_failed') });
     } finally {
       setTimeout(() => setStatusMessage(null), 3000);
     }
@@ -845,7 +845,7 @@ export function Katana() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
-            {t('katana.title', 'The Katana')} <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Orchestration</span>
+            {t('katana.title', 'The Katana')} <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">{t('katana.badge')}</span>
           </h2>
           <p className="text-shogun-subdued text-sm mt-1">{t('katana.subtitle', 'Manage the cutting-edge models and tools that empower your agents.')}</p>
         </div>
@@ -931,13 +931,13 @@ export function Katana() {
                       }}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
                     >
-                      <optgroup label="AI Model Providers">
+                      <optgroup label={t('katana.ai_model_providers')}>
                         <option value="openai">OpenAI</option>
                         <option value="google">Google (Gemini)</option>
                         <option value="anthropic">Anthropic</option>
                         <option value="openrouter">OpenRouter</option>
                       </optgroup>
-                      <optgroup label="Local Providers">
+                      <optgroup label={t('katana.local_providers')}>
                         <option value="ollama">Ollama (Local)</option>
                         <option value="lmstudio">LM Studio (Local)</option>
                       </optgroup>
@@ -961,7 +961,7 @@ export function Katana() {
                   {/* Display Name / Local model picker */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">
-                      {isLocal ? 'Available Models' : 'Display Name'}
+                      {isLocal ? t('katana.available_models') : t('katana.display_name')}
                     </label>
                     {isLocal && localModels.length > 0 ? (
                       <select
@@ -970,7 +970,7 @@ export function Katana() {
                         onChange={(e) => setNewProvider({...newProvider, name: e.target.value})}
                         className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
                       >
-                        <option value="" disabled>Select a pulled model...</option>
+                        <option value="" disabled>{t('katana.select_pulled_model')}</option>
                         {localModels.map((m) => (
                           <option key={m} value={m}>{m}</option>
                         ))}
@@ -992,7 +992,7 @@ export function Katana() {
                           onClick={() => fetchLocalModels(newProvider.provider_type)}
                           className="text-[9px] font-bold text-shogun-blue hover:text-shogun-gold uppercase tracking-widest transition-colors flex items-center gap-1"
                         >
-                          <RefreshCw className="w-2.5 h-2.5" /> Scan for local models
+                          <RefreshCw className="w-2.5 h-2.5" /> {t('katana.scan_for_local_models')}
                         </button>
                         <span className="text-[9px] text-shogun-subdued">• Ensure {newProvider.provider_type === 'ollama' ? 'Ollama' : 'LM Studio'} is running</span>
                       </div>
@@ -1009,13 +1009,13 @@ export function Katana() {
                           onChange={(e) => setNewProvider({...newProvider, auth_type: e.target.value})}
                           className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
                         >
-                          <option value="api_key">API Key</option>
-                          <option value="oauth">OAuth</option>
+                          <option value="api_key">{t('katana.api_key_option')}</option>
+                          <option value="oauth">{t('katana.oauth_option')}</option>
                         </select>
                       </div>
                       <div className="space-y-1.5 mt-3">
                         <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">
-                          {newProvider.auth_type === 'oauth' ? 'OAuth Token' : 'API Key'}
+                          {newProvider.auth_type === 'oauth' ? t('katana.oauth_token') : t('katana.api_key_label')}
                         </label>
                         <input
                           type="password"
@@ -1032,7 +1032,7 @@ export function Katana() {
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">
-                        Base URL {isLocal ? '' : '(Auto)'}
+                        {t('katana.base_url_label')} {isLocal ? '' : t('katana.auto')}
                       </label>
                       <button
                         type="button"
@@ -1042,7 +1042,7 @@ export function Katana() {
                           baseUrlOverride ? "text-shogun-gold" : "text-shogun-blue hover:text-shogun-gold"
                         )}
                       >
-                        {baseUrlOverride ? '↩ Reset' : '✎ Override'}
+                        {baseUrlOverride ? t('katana.reset') : t('katana.override')}
                       </button>
                     </div>
                     <div className="relative">
@@ -1062,7 +1062,7 @@ export function Katana() {
                       {!baseUrlOverride && (
                         <div className="absolute right-3 top-1/2 -translate-y-1/2">
                           <span className="text-[8px] text-green-400 font-bold uppercase border border-green-400/20 bg-green-400/5 px-1.5 py-0.5 rounded">
-                            Default
+                            {t('katana.default')}
                           </span>
                         </div>
                       )}
@@ -1073,8 +1073,8 @@ export function Katana() {
                   {isLocal && (
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest flex items-center gap-1.5">
-                        <Folder className="w-3 h-3" /> Model Location
-                        <span className="text-shogun-subdued/50 normal-case font-normal tracking-normal text-[9px]">(filesystem path)</span>
+                        <Folder className="w-3 h-3" /> {t('katana.model_location')}
+                        <span className="text-shogun-subdued/50 normal-case font-normal tracking-normal text-[9px]">({t('katana.filesystem_path')})</span>
                       </label>
                       <div className="flex gap-2">
                         <input
@@ -1107,7 +1107,7 @@ export function Katana() {
                     </div>
                   )}
 
-                  {/* Pull a Model — Ollama only */}
+                  {/* {t('katana.pull_model')} — Ollama only */}
                   {newProvider.provider_type === 'ollama' && (
                     <div className="border border-shogun-border rounded-xl overflow-hidden">
                       <button
@@ -1119,7 +1119,7 @@ export function Katana() {
                           <Download className="w-3.5 h-3.5 text-cyan-400" />
                           Pull a Model
                           <span className="text-cyan-400/60 normal-case font-normal tracking-normal">
-                            — download directly to Ollama
+                            — {t('katana.download_to_ollama')}
                           </span>
                         </span>
                         {showPullPanel
@@ -1213,10 +1213,10 @@ export function Katana() {
                                       )}
                                     >
                                       {isThis
-                                        ? <><RefreshCw className="w-2.5 h-2.5 animate-spin" /> Pulling</>
+                                        ? <><RefreshCw className="w-2.5 h-2.5 animate-spin" /> {t('katana.pulling')}</>
                                         : alreadyHave
-                                          ? <><RefreshCw className="w-2.5 h-2.5" /> Re-pull</>
-                                          : <><Download className="w-2.5 h-2.5" /> Pull</>}
+                                          ? <><RefreshCw className="w-2.5 h-2.5" /> {t('katana.repull')}</>
+                                          : <><Download className="w-2.5 h-2.5" /> {t('katana.pull')}</>}
                                     </button>
                                   </div>
                                 );
@@ -1241,7 +1241,7 @@ export function Katana() {
                                 onClick={() => { handlePullModel(customPullTag.trim()); setCustomPullTag(''); }}
                                 className="px-3 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 hover:border-cyan-500/60 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-cyan-400 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-1"
                               >
-                                <Download className="w-3 h-3" /> Pull
+                                <Download className="w-3 h-3" /> {t('katana.pull')}
                               </button>
                             </div>
                             <p className="text-[9px] text-shogun-subdued/60">Any valid Ollama model tag from <span className="text-cyan-400/70 font-mono">ollama.com/library</span></p>
@@ -1262,7 +1262,7 @@ export function Katana() {
                       ) : (
                         editingProviderId ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />
                       )}
-                      {editingProviderId ? 'UPDATE PROVIDER' : 'INITIATE PROVIDER'}
+                      {editingProviderId ? t('katana.update_provider') : t('katana.initiate_provider')}
                     </button>
                     {editingProviderId && (
                       <button
@@ -1270,7 +1270,7 @@ export function Katana() {
                         onClick={handleCancelEdit}
                         className="px-4 py-2 bg-shogun-subdued/10 hover:bg-shogun-subdued/20 border border-shogun-border rounded-lg text-shogun-subdued text-xs font-bold uppercase transition-all"
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                     )}
                   </div>
@@ -1281,17 +1281,17 @@ export function Katana() {
             {/* Active Providers grid */}
             <div className="lg:col-span-2 space-y-6">
               <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                <Cpu className="w-5 h-5 text-shogun-blue" /> Active Providers
+                <Cpu className="w-5 h-5 text-shogun-blue" /> {t('katana.active_providers')}
               </h3>
 
               {loading ? (
                 <div className="p-12 text-center shogun-card opacity-50">
                   <RefreshCw className="w-8 h-8 animate-spin mx-auto text-shogun-blue mb-4" />
-                  <p className="text-xs uppercase tracking-widest font-bold">Querying Model Grid...</p>
+                  <p className="text-xs uppercase tracking-widest font-bold">{t('katana.querying_model_grid')}</p>
                 </div>
               ) : providers.length === 0 ? (
                 <div className="p-12 text-center shogun-card border-dashed">
-                  <p className="text-shogun-subdued italic">No model providers configured. Agents will be offline.</p>
+                  <p className="text-shogun-subdued italic">{t('katana.no_providers')}</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4">
@@ -1310,15 +1310,15 @@ export function Katana() {
                               <div className="flex items-center gap-2">
                                 <h4 className="font-bold text-shogun-text">{p.name}</h4>
                                 {isActive
-                                  ? <span className="text-[8px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded border border-green-500/20 font-bold uppercase">Active</span>
-                                  : <span className="text-[8px] bg-shogun-subdued/10 text-shogun-subdued px-1.5 py-0.5 rounded border border-shogun-border font-bold uppercase">{p.status ?? 'Not configured'}</span>
+                                  ? <span className="text-[8px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded border border-green-500/20 font-bold uppercase">{t('katana.active')}</span>
+                                  : <span className="text-[8px] bg-shogun-subdued/10 text-shogun-subdued px-1.5 py-0.5 rounded border border-shogun-border font-bold uppercase">{p.status ?? t('katana.not_configured')}</span>
                                 }
                               </div>
                               <div className="flex items-center gap-2 mt-1">
                                 <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-[#050508] border border-shogun-border text-shogun-subdued">
                                   {getProviderDisplayType(p.provider_type)}
                                 </span>
-                                <span className="text-xs text-shogun-subdued">{p.base_url || 'Default Endpoint'}</span>
+                                <span className="text-xs text-shogun-subdued">{p.base_url || t('katana.default_endpoint')}</span>
                               </div>
                             </div>
                           </div>
@@ -1337,21 +1337,21 @@ export function Katana() {
                             <button
                               onClick={() => handleStartEdit(p)}
                               className="p-2 hover:bg-shogun-card rounded-lg transition-colors text-shogun-subdued hover:text-shogun-gold"
-                              title="Edit Provider"
+                              title={t('katana.edit_provider')}
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleToggleProvider(p.id, p.status)}
                               className="p-2 hover:bg-shogun-card rounded-lg transition-colors text-shogun-subdued hover:text-shogun-text"
-                              title={isActive ? 'Disable' : 'Enable'}
+                              title={isActive ? t('katana.disable') : t('katana.enable')}
                             >
                               {isActive ? <Zap className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
                             </button>
                             <button
                               onClick={() => handleDeleteProvider(p.id, p.name)}
                               className="p-2 hover:bg-red-500/10 text-red-500/50 hover:text-red-500 rounded-lg transition-colors"
-                              title="Delete Provider"
+                              title={t('katana.delete_provider')}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1374,7 +1374,7 @@ export function Katana() {
             {/* ── Toolbar ──────────────────────────────────────── */}
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                <Wrench className="w-5 h-5 text-shogun-blue" /> Tool Connectors
+                <Wrench className="w-5 h-5 text-shogun-blue" /> {t('katana.tool_connectors')}
                 <span className="text-[10px] font-normal bg-shogun-card border border-shogun-border px-1.5 py-0.5 rounded text-shogun-subdued">
                   {tools.length} active
                 </span>
@@ -1390,7 +1390,7 @@ export function Katana() {
                 )}
               >
                 {showRegisterTool ? <X className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                {showRegisterTool ? 'Cancel' : 'Register New Tool'}
+                {showRegisterTool ? t('common.cancel') : t('katana.register_new_tool')}
               </button>
             </div>
 
@@ -1399,7 +1399,7 @@ export function Katana() {
               <div className="shogun-card border-shogun-blue/30 animate-in slide-in-from-top-3 duration-300">
                 <div className="flex items-center justify-between mb-5">
                   <h4 className="font-bold text-shogun-text flex items-center gap-2">
-                    <Puzzle className="w-4 h-4 text-shogun-blue" /> Register Tool Connector
+                    <Puzzle className="w-4 h-4 text-shogun-blue" /> {t('katana.register_tool_connector')}
                   </h4>
                   {/* Mode toggle */}
                   <div className="flex items-center gap-1 p-1 bg-[#050508] border border-shogun-border rounded-lg">
@@ -1414,7 +1414,7 @@ export function Katana() {
                             : "text-shogun-subdued hover:text-shogun-text"
                         )}
                       >
-                        {m === 'quick' ? '⚡ Quick Pick' : '✏️ Manual'}
+                        {m === 'quick' ? t('katana.quick_pick') : t('katana.manual')}
                       </button>
                     ))}
                   </div>
@@ -1430,7 +1430,7 @@ export function Katana() {
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-shogun-subdued" />
                           <input
                             type="text"
-                            placeholder="Search APIs... (e.g. stripe, weather, openai)"
+                            placeholder={t('katana.search_apis')}
                             value={apiSearch}
                             onChange={(e) => setApiSearch(e.target.value)}
                             className="w-full bg-[#050508] border border-shogun-border rounded-lg pl-9 pr-3 py-2.5 text-sm focus:border-shogun-blue outline-none"
@@ -1438,7 +1438,7 @@ export function Katana() {
                         </div>
                         <div className="h-64 overflow-y-auto space-y-1 pr-1 scrollbar-thin scrollbar-thumb-shogun-border scrollbar-track-transparent">
                           {filteredApis.length === 0 ? (
-                            <p className="text-xs text-shogun-subdued italic text-center py-8">No APIs match your search.</p>
+                            <p className="text-xs text-shogun-subdued italic text-center py-8">{t('katana.no_apis_match')}</p>
                           ) : filteredApis.map((api) => (
                             <button
                               key={api.name}
@@ -1475,10 +1475,10 @@ export function Katana() {
                             </div>
                             <div className="grid grid-cols-2 gap-2 text-[10px]">
                               {[
-                                { label: 'Endpoint', value: selectedApi.base_url },
-                                { label: 'Auth',     value: selectedApi.auth_type.replace('_', ' ').toUpperCase() },
-                                { label: 'Type',     value: selectedApi.connector_type.toUpperCase() },
-                                { label: 'Risk',     value: selectedApi.risk_level.toUpperCase() },
+                                { label: t('katana.endpoint'), value: selectedApi.base_url },
+                                { label: t('katana.auth'),     value: selectedApi.auth_type.replace('_', ' ').toUpperCase() },
+                                { label: t('katana.type'),     value: selectedApi.connector_type.toUpperCase() },
+                                { label: t('katana.risk'),     value: selectedApi.risk_level.toUpperCase() },
                               ].map(({ label, value }) => (
                                 <div key={label} className="space-y-0.5">
                                   <p className="text-shogun-subdued uppercase tracking-widest font-bold">{label}</p>
@@ -1522,7 +1522,7 @@ export function Katana() {
                         ) : (
                           <div className="flex-1 flex flex-col items-center justify-center text-center bg-[#050508] border border-dashed border-shogun-border rounded-xl p-8 gap-3">
                             <Puzzle className="w-8 h-8 text-shogun-subdued opacity-40" />
-                            <p className="text-xs text-shogun-subdued">Select an API from the list to preview it here.</p>
+                            <p className="text-xs text-shogun-subdued">{t('katana.select_api_preview')}</p>
                           </div>
                         )}
                       </div>
@@ -1619,7 +1619,7 @@ export function Katana() {
                       className="flex items-center gap-2 px-6 py-2.5 bg-shogun-blue hover:bg-shogun-blue/90 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-lg text-sm transition-all"
                     >
                       {registerSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                      Register Connector
+                      {t('katana.register_connector')}
                     </button>
                     <button
                       type="button"
@@ -1629,7 +1629,7 @@ export function Katana() {
                       Cancel
                     </button>
                     {registerMode === 'quick' && !selectedApi && (
-                      <p className="text-[10px] text-shogun-subdued ml-auto">← Select an API first</p>
+                      <p className="text-[10px] text-shogun-subdued ml-auto">{t('katana.select_api_first')}</p>
                     )}
                   </div>
                 </form>
@@ -1641,12 +1641,12 @@ export function Katana() {
               {loading ? (
                 <div className="col-span-3 p-12 text-center shogun-card opacity-50">
                   <RefreshCw className="w-8 h-8 animate-spin mx-auto text-shogun-blue mb-4" />
-                  <p className="text-xs uppercase tracking-widest font-bold">Loading Connectors...</p>
+                  <p className="text-xs uppercase tracking-widest font-bold">{t('katana.loading_connectors')}</p>
                 </div>
               ) : tools.length === 0 ? (
                 <div className="col-span-3 p-12 text-center shogun-card border-dashed">
                   <Wrench className="w-8 h-8 text-shogun-subdued opacity-30 mx-auto mb-3" />
-                  <p className="text-shogun-subdued italic text-sm">No tool connectors found. Agents are currently primitive.</p>
+                  <p className="text-shogun-subdued italic text-sm">{t('katana.no_tools')}</p>
                   <button
                     onClick={() => setShowRegisterTool(true)}
                     className="mt-4 text-[10px] font-bold text-shogun-blue hover:text-shogun-gold uppercase tracking-widest transition-colors"
@@ -1660,7 +1660,7 @@ export function Katana() {
                   <button
                     onClick={() => handleDeleteTool(tool.id, tool.name)}
                     className="absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-red-500/50 hover:text-red-500 transition-all"
-                    title="Remove connector"
+                    title={t('katana.remove_connector')}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -1719,7 +1719,7 @@ export function Katana() {
             {/* ── Header ──────────────────────────────────────── */}
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                <SlidersHorizontal className="w-5 h-5 text-shogun-blue" /> Routing Profiles
+                <SlidersHorizontal className="w-5 h-5 text-shogun-blue" /> {t('katana.routing_profiles')}
                 <span className="text-[10px] font-normal bg-shogun-card border border-shogun-border px-1.5 py-0.5 rounded text-shogun-subdued">
                   {routingProfiles.length} profiles
                 </span>
@@ -1734,15 +1734,15 @@ export function Katana() {
                 )}
               >
                 {showCreateProfile ? <X className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                {showCreateProfile ? 'Cancel' : 'New Profile'}
+                {showCreateProfile ? t('common.cancel') : t('katana.new_profile')}
               </button>
             </div>
 
-            {/* ── Create Profile Panel ──────────────────────── */}
+            {/* ── {t('katana.create_profile')} Panel ──────────────────────── */}
             {showCreateProfile && (
               <div className="shogun-card border-shogun-blue/30 animate-in slide-in-from-top-3 duration-300">
                 <h4 className="font-bold text-shogun-text flex items-center gap-2 mb-4">
-                  <GitBranch className="w-4 h-4 text-shogun-blue" /> New Routing Profile
+                  <GitBranch className="w-4 h-4 text-shogun-blue" /> {t('katana.new_routing_profile')}
                 </h4>
                 <form onSubmit={handleCreateProfile}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1776,7 +1776,7 @@ export function Katana() {
                         onChange={e => setNewProfile({ ...newProfile, is_default: e.target.checked })}
                         className="accent-shogun-blue"
                       />
-                      Set as default profile
+                      {t('katana.set_as_default_profile')}
                     </label>
                     <button
                       type="submit"
@@ -1795,7 +1795,7 @@ export function Katana() {
             {loading ? (
               <div className="p-12 text-center shogun-card opacity-50">
                 <RefreshCw className="w-8 h-8 animate-spin mx-auto text-shogun-blue mb-4" />
-                <p className="text-xs uppercase tracking-widest font-bold">Loading Profiles...</p>
+                <p className="text-xs uppercase tracking-widest font-bold">{t('katana.loading_profiles')}</p>
               </div>
             ) : routingProfiles.length === 0 ? (
               <div className="shogun-card text-center py-20 space-y-4 border-dashed">
@@ -1803,16 +1803,16 @@ export function Katana() {
                   <ArrowRightLeft className="w-8 h-8 text-shogun-blue" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-shogun-text">No Routing Profiles</h4>
+                  <h4 className="font-bold text-shogun-text">{t('katana.no_routing_profiles')}</h4>
                   <p className="text-sm text-shogun-subdued mt-1 max-w-sm mx-auto">
-                    Create a profile to define how tasks are routed to specific model providers.
+                    {t('katana.no_routing_profiles_desc')}
                   </p>
                 </div>
                 <button
                   onClick={() => setShowCreateProfile(true)}
                   className="text-[10px] font-bold text-shogun-blue hover:text-shogun-gold uppercase tracking-widest transition-colors"
                 >
-                  + Create your first profile
+                  {t('katana.create_first_profile')}
                 </button>
               </div>
             ) : (
@@ -1842,12 +1842,12 @@ export function Katana() {
                               <h4 className="font-bold text-shogun-text">{profile.name}</h4>
                               {profile.is_default && (
                                 <span className="text-[8px] bg-shogun-gold/10 text-shogun-gold px-1.5 py-0.5 rounded border border-shogun-gold/30 font-bold uppercase tracking-widest">
-                                  Default
+                                  {t('katana.default')}
                                 </span>
                               )}
                             </div>
                             <p className="text-xs text-shogun-subdued mt-0.5">
-                              {profile.description || 'No description.'}
+                              {profile.description || t('katana.no_description')}
                             </p>
                           </div>
                         </div>
@@ -1867,7 +1867,7 @@ export function Katana() {
                             )}
                           >
                             <Layers className="w-3 h-3" />
-                            {rules.length} {rules.length === 1 ? 'rule' : 'rules'}
+                            {rules.length} {rules.length === 1 ? t('katana.rule') : t('katana.rules')}
                             {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                           </button>
 
@@ -1876,7 +1876,7 @@ export function Katana() {
                             <button
                               onClick={() => handleSetDefault(profile.id)}
                               className="p-2 hover:bg-shogun-gold/10 text-shogun-subdued hover:text-shogun-gold rounded-lg transition-colors"
-                              title="Set as default"
+                              title={t('katana.set_as_default')}
                             >
                               <StarOff className="w-4 h-4" />
                             </button>
@@ -1886,7 +1886,7 @@ export function Katana() {
                           <button
                             onClick={() => handleDeleteProfile(profile.id, profile.name)}
                             className="p-2 hover:bg-red-500/10 text-red-500/40 hover:text-red-500 rounded-lg transition-colors"
-                            title="Delete profile"
+                            title={t('katana.delete_profile')}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1899,13 +1899,13 @@ export function Katana() {
 
                           {/* Header */}
                           <div className="flex items-center justify-between">
-                            <p className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Routing Rules</p>
+                            <p className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.routing_rules')}</p>
                             {!showAddRule && (
                               <button
                                 onClick={() => setShowAddRule(true)}
                                 className="flex items-center gap-1 text-[10px] font-bold text-shogun-blue hover:text-shogun-gold uppercase tracking-widest transition-colors"
                               >
-                                <Plus className="w-3 h-3" /> Add Rule
+                                <Plus className="w-3 h-3" /> {t('katana.add_rule')}
                               </button>
                             )}
                           </div>
@@ -1913,7 +1913,7 @@ export function Katana() {
                           {/* Existing rules */}
                           {rules.length === 0 && !showAddRule ? (
                             <div className="text-center py-6 bg-[#050508] rounded-xl border border-dashed border-shogun-border">
-                              <p className="text-xs text-shogun-subdued italic">No rules yet — all requests fall through to the default model.</p>
+                              <p className="text-xs text-shogun-subdued italic">{t('katana.no_rules')}</p>
                             </div>
                           ) : (
                             <div className="space-y-2">
@@ -1927,25 +1927,25 @@ export function Katana() {
                                     </div>
                                     <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1">
                                       <div>
-                                        <p className="text-[9px] text-shogun-subdued uppercase tracking-widest font-bold">Task Type</p>
+                                        <p className="text-[9px] text-shogun-subdued uppercase tracking-widest font-bold">{t('katana.task_type_label')}</p>
                                         <p className="text-xs font-bold text-shogun-text">
-                                          {rule.task_type === '*' ? 'All Tasks' : rule.task_type}
+                                          {rule.task_type === '*' ? t('katana.all_tasks') : rule.task_type}
                                         </p>
                                       </div>
                                       <div>
-                                        <p className="text-[9px] text-shogun-subdued uppercase tracking-widest font-bold">Primary Model</p>
+                                        <p className="text-[9px] text-shogun-subdued uppercase tracking-widest font-bold">{t('katana.primary_model')}</p>
                                         <p className="text-xs font-bold text-shogun-text truncate">
                                           {primaryProvider?.name || (
-                                            <span className="text-red-400/70 text-[10px]">Unlinked</span>
+                                            <span className="text-red-400/70 text-[10px]">{t('katana.unlinked')}</span>
                                           )}
                                         </p>
                                       </div>
                                       <div>
-                                        <p className="text-[9px] text-shogun-subdued uppercase tracking-widest font-bold">Latency</p>
+                                        <p className="text-[9px] text-shogun-subdued uppercase tracking-widest font-bold">{t('katana.latency')}</p>
                                         <p className="text-xs text-shogun-text">{rule.latency_bias || <span className="text-shogun-subdued">—</span>}</p>
                                       </div>
                                       <div>
-                                        <p className="text-[9px] text-shogun-subdued uppercase tracking-widest font-bold">Cost</p>
+                                        <p className="text-[9px] text-shogun-subdued uppercase tracking-widest font-bold">{t('katana.cost')}</p>
                                         <p className="text-xs text-shogun-text">{rule.cost_bias || <span className="text-shogun-subdued">—</span>}</p>
                                       </div>
                                     </div>
@@ -1954,18 +1954,18 @@ export function Katana() {
                                       <button
                                         onClick={(e) => { e.stopPropagation(); handleStartEditRule(idx, rule); }}
                                         className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-shogun-blue/10 border border-shogun-blue/20 hover:bg-shogun-blue/20 text-shogun-blue transition-all"
-                                        title="Edit rule"
+                                        title={t('common.edit')}
                                       >
                                         <Edit2 className="w-3.5 h-3.5" />
-                                        <span className="text-[10px] font-bold uppercase tracking-wider">Edit</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider">{t('common.edit')}</span>
                                       </button>
                                       <button
                                         onClick={(e) => { e.stopPropagation(); handleDeleteRule(profile.id, rules, idx); }}
                                         className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-red-500/5 border border-red-500/10 hover:bg-red-500/10 text-red-500 transition-all"
-                                        title="Remove rule"
+                                        title={t('common.delete')}
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
-                                        <span className="text-[10px] font-bold uppercase tracking-wider">Delete</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider">{t('common.delete')}</span>
                                       </button>
                                     </div>
                                   </div>
@@ -1979,9 +1979,9 @@ export function Katana() {
                             <div className="bg-shogun-blue/5 border border-shogun-blue/20 rounded-xl p-4 space-y-4 animate-in slide-in-from-top-2 duration-200">
                               <p className="text-[10px] font-bold text-shogun-blue uppercase tracking-widest flex items-center gap-1.5">
                                 {editingRuleIdx !== null ? (
-                                  <><Edit2 className="w-3 h-3" /> Edit Routing Rule</>
+                                  <><Edit2 className="w-3 h-3" /> {t('katana.edit_routing_rule')}</>
                                 ) : (
-                                  <><Plus className="w-3 h-3" /> New Routing Rule</>
+                                  <><Plus className="w-3 h-3" /> {t('katana.new_routing_rule')}</>
                                 )}
                               </p>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1993,18 +1993,18 @@ export function Katana() {
                                     onChange={e => setNewRule({ ...newRule, task_type: e.target.value })}
                                     className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-blue outline-none"
                                   >
-                                    <option value="*">* All Tasks (wildcard)</option>
-                                    <option value="research">Research & Information Gathering</option>
-                                    <option value="code">Code & Engineering</option>
-                                    <option value="analysis">Analysis & Reasoning</option>
-                                    <option value="creative">Creative Generation</option>
-                                    <option value="summarize">Summarization</option>
-                                    <option value="planning">Planning & Strategy</option>
-                                    <option value="qa">QA & Verification</option>
-                                    <option value="chat">Chat & Conversation</option>
-                                    <option value="extraction">Data Extraction</option>
-                                    <option value="translation">Translation</option>
-                                    <option value="vision">Vision & Multimodal</option>
+                                    <option value="*">{t('katana.all_tasks_wildcard')}</option>
+                                    <option value="research">{t('katana.task_research')}</option>
+                                    <option value="code">{t('katana.task_code')}</option>
+                                    <option value="analysis">{t('katana.task_analysis')}</option>
+                                    <option value="creative">{t('katana.task_creative')}</option>
+                                    <option value="summarize">{t('katana.task_summarize')}</option>
+                                    <option value="planning">{t('katana.task_planning')}</option>
+                                    <option value="qa">{t('katana.task_qa')}</option>
+                                    <option value="chat">{t('katana.task_chat')}</option>
+                                    <option value="extraction">{t('katana.task_extraction')}</option>
+                                    <option value="translation">{t('katana.task_translation')}</option>
+                                    <option value="vision">{t('katana.task_vision')}</option>
                                   </select>
                                 </div>
 
@@ -2016,18 +2016,18 @@ export function Katana() {
                                     onChange={e => setNewRule({ ...newRule, primary_model_id: e.target.value })}
                                     className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-blue outline-none"
                                   >
-                                    <option value="">Select a provider...</option>
+                                    <option value="">{t('katana.select_provider')}</option>
                                     {providers.map(p => (
                                       <option key={p.id} value={p.id}>
                                         {p.name} — {p.provider_type}
                                       </option>
                                     ))}
                                     {providers.length === 0 && (
-                                      <option disabled>No providers configured yet</option>
+                                      <option disabled>{t('katana.no_providers_yet')}</option>
                                     )}
                                   </select>
                                   {providers.length === 0 && (
-                                    <p className="text-[9px] text-yellow-400">⚠ Add a Model Provider first</p>
+                                    <p className="text-[9px] text-yellow-400">⚠ {t('katana.add_provider_first')}</p>
                                   )}
                                 </div>
 
@@ -2039,10 +2039,10 @@ export function Katana() {
                                     onChange={e => setNewRule({ ...newRule, latency_bias: e.target.value })}
                                     className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-blue outline-none"
                                   >
-                                    <option value="">None (unbiased)</option>
-                                    <option value="low">Low — Prioritise speed</option>
-                                    <option value="medium">Medium — Balanced</option>
-                                    <option value="high">High — Tolerate latency for quality</option>
+                                    <option value="">{t('katana.none_unbiased')}</option>
+                                    <option value="low">{t('katana.latency_low')}</option>
+                                    <option value="medium">{t('katana.latency_medium')}</option>
+                                    <option value="high">{t('katana.latency_high')}</option>
                                   </select>
                                 </div>
 
@@ -2054,10 +2054,10 @@ export function Katana() {
                                     onChange={e => setNewRule({ ...newRule, cost_bias: e.target.value })}
                                     className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-blue outline-none"
                                   >
-                                    <option value="">None (unbiased)</option>
-                                    <option value="budget">Budget — Prefer cheapest model</option>
-                                    <option value="standard">Standard — Balance cost/quality</option>
-                                    <option value="premium">Premium — Best model regardless of cost</option>
+                                    <option value="">{t('katana.none_unbiased')}</option>
+                                    <option value="budget">{t('katana.cost_budget')}</option>
+                                    <option value="standard">{t('katana.cost_standard')}</option>
+                                    <option value="premium">{t('katana.cost_premium')}</option>
                                   </select>
                                 </div>
                               </div>
@@ -2069,17 +2069,17 @@ export function Katana() {
                                     disabled={!newRule.primary_model_id}
                                     className="flex items-center gap-2 px-5 py-2 bg-shogun-blue hover:bg-shogun-blue/90 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-lg text-sm transition-all"
                                   >
-                                    <Save className="w-3.5 h-3.5" /> {editingRuleIdx !== null ? 'Update Rule' : 'Save Rule'}
+                                    <Save className="w-3.5 h-3.5" /> {editingRuleIdx !== null ? t('katana.update_rule') : t('katana.save_rule')}
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => { setShowAddRule(false); setEditingRuleIdx(null); setNewRule({ task_type: '*', primary_model_id: '', latency_bias: '', cost_bias: '' }); }}
                                     className="px-4 py-2 text-sm text-shogun-subdued hover:text-shogun-text transition-colors font-bold"
                                   >
-                                    Cancel
+                                    {t('common.cancel')}
                                   </button>
                                 {!newRule.primary_model_id && (
-                                  <span className="text-[10px] text-shogun-subdued ml-auto">← Select a provider to continue</span>
+                                  <span className="text-[10px] text-shogun-subdued ml-auto">{t('katana.select_provider_continue')}</span>
                                 )}
                               </div>
                             </div>
@@ -2089,8 +2089,8 @@ export function Katana() {
                           <div className="flex items-start gap-2 mt-2 px-1">
                             <Shield className="w-3 h-3 text-shogun-subdued mt-0.5 shrink-0" />
                             <p className="text-[10px] text-shogun-subdued leading-relaxed">
-                              Rules are evaluated top-to-bottom. The first matching <code className="text-shogun-blue font-mono">task_type</code> wins.
-                              Use <code className="text-shogun-blue font-mono">*</code> as the last rule to catch all unmatched tasks.
+                              {t('katana.routing_legend')} <code className="text-shogun-blue font-mono">task_type</code> {t('katana.routing_legend_wins')}.
+                              {t('katana.routing_legend_wildcard')} <code className="text-shogun-blue font-mono">*</code> {t('katana.routing_legend_catch')}.
                             </p>
                           </div>
                         </div>
@@ -2109,14 +2109,14 @@ export function Katana() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                  <MessageCircle className="w-5 h-5 text-shogun-blue" /> Telegram Channel
+                  <MessageCircle className="w-5 h-5 text-shogun-blue" /> {t('katana.telegram_channel')}
                 </h3>
-                <p className="text-xs text-shogun-subdued mt-1">Connect a Telegram bot to chat with Shogun directly from your phone.</p>
+                <p className="text-xs text-shogun-subdued mt-1">{t('katana.telegram_desc')}</p>
               </div>
               {tgStatus?.connected && (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-green-400/10 border border-green-400/30 rounded-lg">
                   <Wifi className="w-3.5 h-3.5 text-green-400" />
-                  <span className="text-xs font-bold text-green-400">Connected</span>
+                  <span className="text-xs font-bold text-green-400">{t('katana.connected')}</span>
                 </div>
               )}
             </div>
@@ -2135,26 +2135,26 @@ export function Katana() {
                         <p className="font-bold text-shogun-text">@{tgStatus.bot_username}</p>
                         <p className="text-[10px] text-shogun-subdued mt-0.5">Bot ID: {tgStatus.bot_id} · {tgStatus.first_name}</p>
                         <p className="text-[10px] text-shogun-subdued">
-                          Mode: <span className="font-bold uppercase text-green-400">{tgStatus.mode}</span>
+                          {t('katana.mode')}: <span className="font-bold uppercase text-green-400">{tgStatus.mode}</span>
                           {tgStatus.last_connected_at && <> · {new Date(tgStatus.last_connected_at).toLocaleDateString()}</>}
                         </p>
                       </div>
                     </div>
                     <button onClick={handleTgDisconnect}
                       className="flex items-center gap-1.5 px-3 py-1.5 border border-red-400/30 text-red-400/70 hover:text-red-400 hover:border-red-400/50 rounded-lg text-xs font-bold transition-all">
-                      <WifiOff className="w-3.5 h-3.5" /> Disconnect
+                      <WifiOff className="w-3.5 h-3.5" /> {t('katana.disconnect')}
                     </button>
                   </div>
                 )}
 
                 <div className="shogun-card space-y-5">
                   <h4 className="text-sm font-bold text-shogun-text">
-                    {tgStatus?.connected ? 'Update Configuration' : 'Connect a Bot'}
+                    {tgStatus?.connected ? t('katana.update_configuration') : t('katana.connect_a_bot')}
                   </h4>
                   <form onSubmit={handleTgConnect} className="space-y-4">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest flex items-center gap-1.5">
-                        <ShieldCheck className="w-3 h-3 text-shogun-gold" /> Bot Token *
+                        <ShieldCheck className="w-3 h-3 text-shogun-gold" /> {t('katana.bot_token')}
                       </label>
                       <div className="relative">
                         <input type={tgShowToken ? 'text' : 'password'} required
@@ -2167,7 +2167,7 @@ export function Katana() {
                         </button>
                       </div>
                       <p className="text-[9px] text-shogun-subdued/60">
-                        Get a token from <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-shogun-blue hover:underline">@BotFather</a>.
+                        {t('katana.get_token_from')} <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-shogun-blue hover:underline">@BotFather</a>.
                       </p>
                     </div>
 
@@ -2178,12 +2178,12 @@ export function Katana() {
                           <button key={m} type="button" onClick={() => setTgMode(m)}
                             className={cn('flex-1 py-2 rounded-lg border text-xs font-bold uppercase tracking-widest transition-all',
                               tgMode === m ? 'bg-shogun-blue text-white border-shogun-blue' : 'border-shogun-border text-shogun-subdued hover:border-shogun-blue/40')}>
-                            {m === 'polling' ? '🔄 Polling' : '🌐 Webhook'}
+                            {m === 'polling' ? t('katana.polling') : t('katana.webhook')}
                           </button>
                         ))}
                       </div>
                       <p className="text-[9px] text-shogun-subdued/60">
-                        {tgMode === 'polling' ? 'Shogun polls Telegram. Simple, no public URL needed.' : 'Telegram pushes to your server. Requires a public HTTPS URL.'}
+                        {tgMode === 'polling' ? t('katana.polling_desc') : t('katana.webhook_desc')}
                       </p>
                     </div>
 
@@ -2198,20 +2198,20 @@ export function Katana() {
 
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest flex items-center gap-1.5">
-                        <Shield className="w-3 h-3 text-shogun-gold" /> Allowed Chat IDs
-                        <span className="font-normal normal-case tracking-normal text-shogun-subdued/50">(optional whitelist)</span>
+                        <Shield className="w-3 h-3 text-shogun-gold" /> {t('katana.allowed_chat_ids')}
+                        <span className="font-normal normal-case tracking-normal text-shogun-subdued/50">({t('katana.optional_whitelist')})</span>
                       </label>
                       <input type="text" placeholder="e.g. 123456789, -987654321"
                         value={tgChatIds} onChange={e => setTgChatIds(e.target.value)}
                         className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none font-mono" />
-                      <p className="text-[9px] text-shogun-subdued/60">Comma-separated IDs. Leave empty to allow all. Negative IDs = groups.</p>
+                      <p className="text-[9px] text-shogun-subdued/60">{t('katana.chat_ids_help')}</p>
                     </div>
 
                     <button type="submit" disabled={tgSaving || !tgToken.trim()}
                       className="w-full flex items-center justify-center gap-2 py-3 bg-shogun-blue hover:bg-shogun-blue/90 disabled:opacity-40 text-white font-bold rounded-lg text-sm transition-all">
                       {tgSaving
-                        ? <><RefreshCw className="w-4 h-4 animate-spin" /> Connecting…</>
-                        : <><MessageCircle className="w-4 h-4" /> {tgStatus?.connected ? 'Update Connection' : 'Connect Bot'}</>}
+                        ? <><RefreshCw className="w-4 h-4 animate-spin" /> {t('katana.connecting')}</>
+                        : <><MessageCircle className="w-4 h-4" /> {tgStatus?.connected ? t('katana.update_connection') : t('katana.connect_bot')}</>}
                     </button>
                   </form>
                 </div>
@@ -2221,10 +2221,10 @@ export function Katana() {
               <div className="lg:col-span-2 space-y-5">
                 <div className="shogun-card space-y-4">
                   <h4 className="text-sm font-bold text-shogun-text flex items-center gap-2">
-                    <Send className="w-4 h-4 text-shogun-blue" /> Test Connection
+                    <Send className="w-4 h-4 text-shogun-blue" /> {t('katana.test_connection')}
                   </h4>
                   {!tgStatus?.connected
-                    ? <p className="text-center py-6 text-shogun-subdued text-xs italic">Connect a bot first.</p>
+                    ? <p className="text-center py-6 text-shogun-subdued text-xs italic">{t('katana.connect_bot_first')}</p>
                     : (
                       <div className="space-y-3">
                         <input type="text" placeholder="Your chat ID, e.g. 123456789"
@@ -2232,7 +2232,7 @@ export function Katana() {
                           className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-blue outline-none font-mono" />
                         <button onClick={handleTgTest} disabled={tgTesting || !tgTestChat.trim()}
                           className="w-full flex items-center justify-center gap-2 py-2.5 border border-shogun-blue/40 bg-shogun-blue/10 hover:bg-shogun-blue/20 text-shogun-blue disabled:opacity-40 font-bold rounded-lg text-sm transition-all">
-                          {tgTesting ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sending…</> : <><Send className="w-3.5 h-3.5" /> Send Test</>}
+                          {tgTesting ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> {t('katana.sending')}</> : <><Send className="w-3.5 h-3.5" /> {t('katana.send_test')}</>}
                         </button>
                         {tgTestResult && (
                           <div className={cn('p-3 rounded-lg text-xs flex items-start gap-2',
@@ -2248,15 +2248,15 @@ export function Katana() {
 
                 <div className="shogun-card space-y-4">
                   <h4 className="text-sm font-bold text-shogun-text flex items-center gap-2">
-                    <ChevronRight className="w-4 h-4 text-shogun-gold" /> Quick Setup
+                    <ChevronRight className="w-4 h-4 text-shogun-gold" /> {t('katana.quick_setup')}
                   </h4>
                   <ol className="space-y-3">
                     {[
-                      { n: '1', t: 'Message @BotFather on Telegram', href: 'https://t.me/BotFather' },
-                      { n: '2', t: 'Send /newbot — follow the prompts' },
-                      { n: '3', t: 'Copy the bot token BotFather gives you' },
-                      { n: '4', t: 'Paste it above and Connect' },
-                      { n: '5', t: 'Send "Hello" directly to your new Shogun bot!' },
+                      { n: '1', t: t('katana.tg_step1'), href: 'https://t.me/BotFather' },
+                      { n: '2', t: t('katana.tg_step2') },
+                      { n: '3', t: t('katana.tg_step3') },
+                      { n: '4', t: t('katana.tg_step4') },
+                      { n: '5', t: t('katana.tg_step5') },
                     ].map(({ n, t, href }) => (
                       <li key={n} className="flex items-start gap-3">
                         <span className="w-5 h-5 rounded-full bg-shogun-blue/20 border border-shogun-blue/40 text-shogun-blue text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">{n}</span>
@@ -2270,9 +2270,9 @@ export function Katana() {
                     <button onClick={handleTgDetect} disabled={tgDetecting}
                       className="w-full flex items-center justify-center gap-2 py-2 border border-shogun-gold/30 bg-shogun-gold/10 hover:bg-shogun-gold/20 text-shogun-gold disabled:opacity-40 font-bold rounded-lg text-xs transition-all">
                       {tgDetecting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                      Auto-Detect My Chat ID
+                      {t('katana.auto_detect_chat_id')}
                     </button>
-                    <p className="text-[10px] text-shogun-subdued text-center mt-2 leading-tight">Must complete Step 5 before clicking. <br/>It will automatically test and whitelist your ID.</p>
+                    <p className="text-[10px] text-shogun-subdued text-center mt-2 leading-tight">{t('katana.must_complete_step5')} <br/>{t('katana.auto_whitelist_desc')}</p>
                   </div>
                 </div>
               </div>

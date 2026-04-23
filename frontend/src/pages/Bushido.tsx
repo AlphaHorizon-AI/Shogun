@@ -18,6 +18,7 @@ import {
   Save
 } from "lucide-react";
 import { cn } from '../lib/utils';
+import { useTranslation } from '../i18n';
 
 const API = 'http://localhost:8000/api/v1/bushido';
 
@@ -53,6 +54,7 @@ const DEFAULT_CALIBRATION: Calibration = {
 };
 
 export function Bushido() {
+  const { t } = useTranslation();
   // ── Stats ──────────────────────────────────────────
   const [stats, setStats] = useState<BushidoStats | null>(null);
   
@@ -117,11 +119,11 @@ export function Bushido() {
         priority: 50,
         scope: { agent_ids: [], memory_types: [] },
       });
-      setStatusMsg({ type: 'success', text: 'Reflection cycle initiated. Monitor Insight Stream for results.' });
+      setStatusMsg({ type: 'success', text: t('bushido.reflection_initiated') });
       // Refresh stats and insights after a delay
       setTimeout(() => { loadStats(); loadInsights(); }, 5000);
     } catch {
-      setStatusMsg({ type: 'error', text: 'Failed to trigger reflection.' });
+      setStatusMsg({ type: 'error', text: t('bushido.reflection_failed') });
     } finally {
       setReflecting(false);
       setTimeout(() => setStatusMsg(null), 5000);
@@ -133,9 +135,9 @@ export function Bushido() {
     try {
       await axios.put(`${API}/calibration`, calibration);
       setCalibrationDirty(false);
-      setStatusMsg({ type: 'success', text: 'Calibration saved.' });
+      setStatusMsg({ type: 'success', text: t('bushido.calibration_saved') });
     } catch {
-      setStatusMsg({ type: 'error', text: 'Failed to save calibration.' });
+      setStatusMsg({ type: 'error', text: t('bushido.calibration_save_failed') });
     } finally {
       setSaving(false);
       setTimeout(() => setStatusMsg(null), 4000);
@@ -151,9 +153,9 @@ export function Bushido() {
         exploration_variance: res.data.data.exploration_variance,
       });
       setCalibrationDirty(false);
-      setStatusMsg({ type: 'success', text: 'Calibration reset to baseline.' });
+      setStatusMsg({ type: 'success', text: t('bushido.calibration_reset') });
     } catch {
-      setStatusMsg({ type: 'error', text: 'Failed to reset calibration.' });
+      setStatusMsg({ type: 'error', text: t('bushido.calibration_reset_failed') });
     } finally {
       setTimeout(() => setStatusMsg(null), 4000);
     }
@@ -194,9 +196,9 @@ export function Bushido() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
-            Bushido <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Reflection Engine</span>
+            {t('bushido.title')} <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">{t('bushido.badge')}</span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-1">Monitor and calibrate the autonomous feedback loops that optimize agent precision.</p>
+          <p className="text-shogun-subdued text-sm mt-1">{t('bushido.subtitle')}</p>
         </div>
         
         <div className="flex items-center gap-3">
@@ -206,7 +208,7 @@ export function Bushido() {
                 engineOk ? "bg-green-500 animate-pulse" : "bg-orange-500 animate-pulse"
               )} />
               <span className="text-[10px] font-bold uppercase tracking-widest text-shogun-text">
-                {stats ? (engineOk ? 'Engine Synchronized' : 'Engine Degraded') : 'Connecting...'}
+                {stats ? (engineOk ? t('bushido.engine_synchronized') : t('bushido.engine_degraded')) : t('bushido.connecting')}
               </span>
            </div>
            <button 
@@ -215,7 +217,7 @@ export function Bushido() {
              className="flex items-center gap-2 bg-shogun-blue hover:bg-shogun-blue/90 text-white font-bold py-2.5 px-6 rounded-lg transition-all shadow-shogun disabled:opacity-50"
            >
              <RefreshCw className={cn("w-4 h-4", reflecting && "animate-spin")} />
-             {reflecting ? 'REFLECTING...' : 'FORCE REFLECTION'}
+             {reflecting ? t('bushido.reflecting') : t('bushido.force_reflection')}
            </button>
         </div>
       </div>
@@ -234,10 +236,10 @@ export function Bushido() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
          {[
-           { label: 'Avg Fit Quality', value: stats ? `${stats.fit_quality}%` : '—', icon: Target, color: 'text-shogun-gold' },
-           { label: 'Active Cycles', value: stats ? stats.active_cycles.toLocaleString() : '—', icon: Activity, color: 'text-shogun-blue' },
-           { label: 'Optimization Delta', value: stats ? `+${stats.optimization_delta}%` : '—', icon: TrendingUp, color: 'text-green-500' },
-           { label: 'Neural Load', value: stats ? `${stats.neural_load}%` : '—', icon: BrainCircuit, color: stats && stats.neural_load > 75 ? 'text-red-400' : 'text-shogun-subdued' }
+           { label: t('bushido.avg_fit_quality'), value: stats ? `${stats.fit_quality}%` : '—', icon: Target, color: 'text-shogun-gold' },
+           { label: t('bushido.active_cycles'), value: stats ? stats.active_cycles.toLocaleString() : '—', icon: Activity, color: 'text-shogun-blue' },
+           { label: t('bushido.optimization_delta'), value: stats ? `+${stats.optimization_delta}%` : '—', icon: TrendingUp, color: 'text-green-500' },
+           { label: t('bushido.neural_load'), value: stats ? `${stats.neural_load}%` : '—', icon: BrainCircuit, color: stats && stats.neural_load > 75 ? 'text-red-400' : 'text-shogun-subdued' }
          ].map((stat, i) => (
            <div key={i} className="shogun-card border-b-2 border-transparent hover:border-shogun-blue transition-all group">
               <div className="flex items-center gap-2 mb-2">
@@ -255,11 +257,11 @@ export function Bushido() {
            <div className="shogun-card space-y-8">
               <div className="flex items-center justify-between">
                  <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                    <Settings2 className="w-5 h-5 text-shogun-blue" /> Behavior Calibration
+                    <Settings2 className="w-5 h-5 text-shogun-blue" /> {t('bushido.behavior_calibration')}
                  </h3>
                  <div className="flex items-center gap-2">
                    {calibrationDirty && (
-                     <span className="text-[9px] text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20 font-bold uppercase">unsaved</span>
+                     <span className="text-[9px] text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20 font-bold uppercase">{t('bushido.unsaved')}</span>
                    )}
                    <span className="text-[10px] text-shogun-subdued uppercase font-bold tracking-tighter italic">Behavioral Tuning v1.0</span>
                  </div>
@@ -270,7 +272,7 @@ export function Bushido() {
                  <div className="space-y-4">
                     <div className="flex justify-between items-center">
                        <label className="text-xs font-bold text-shogun-text flex items-center gap-2 uppercase tracking-wide">
-                          <Flame className="w-3.5 h-3.5 text-orange-500" /> Reflection Intensity
+                          <Flame className="w-3.5 h-3.5 text-orange-500" /> {t('bushido.reflection_intensity')}
                        </label>
                        <span className="text-xs font-mono text-shogun-blue">{calibration.reflection_intensity}%</span>
                     </div>
@@ -282,16 +284,16 @@ export function Bushido() {
                       onChange={(e) => updateCalibration('reflection_intensity', parseInt(e.target.value))}
                       className="w-full h-1.5 bg-shogun-card rounded-lg appearance-none cursor-pointer accent-shogun-blue"
                     />
-                    <p className="text-[10px] text-shogun-subdued">Higher intensity increases token consumption but provides far deeper logical validation.</p>
+                    <p className="text-[10px] text-shogun-subdued">{t('bushido.reflection_intensity_desc')}</p>
                  </div>
 
                  {/* Memory Consolidation Rate */}
                  <div className="space-y-4">
                     <div className="flex justify-between items-center">
                        <label className="text-xs font-bold text-shogun-text flex items-center gap-2 uppercase tracking-wide">
-                          <Binary className="w-3.5 h-3.5 text-shogun-gold" /> Memory Consolidation Rate
+                          <Binary className="w-3.5 h-3.5 text-shogun-gold" /> {t('bushido.memory_consolidation_rate')}
                        </label>
-                       <span className="text-xs font-mono text-shogun-gold">{consolidationDisplay} / epoch</span>
+                       <span className="text-xs font-mono text-shogun-gold">{consolidationDisplay} / {t('bushido.epoch')}</span>
                     </div>
                     <input 
                       type="range" 
@@ -301,14 +303,14 @@ export function Bushido() {
                       onChange={(e) => updateCalibration('consolidation_rate', parseInt(e.target.value))}
                       className="w-full h-1.5 bg-shogun-card rounded-lg appearance-none cursor-pointer accent-shogun-gold"
                     />
-                    <p className="text-[10px] text-shogun-subdued">Frequency of episodic-to-semantic memory transformation cycles.</p>
+                    <p className="text-[10px] text-shogun-subdued">{t('bushido.memory_consolidation_desc')}</p>
                  </div>
                  
                  {/* Exploration Variance */}
                  <div className="space-y-4">
                     <div className="flex justify-between items-center">
                        <label className="text-xs font-bold text-shogun-text flex items-center gap-2 uppercase tracking-wide">
-                          <Compass className="w-3.5 h-3.5 text-green-500" /> Exploration Variance
+                          <Compass className="w-3.5 h-3.5 text-green-500" /> {t('bushido.exploration_variance')}
                        </label>
                        <span className="text-xs font-mono text-green-500">{varianceDisplay}</span>
                     </div>
@@ -320,7 +322,7 @@ export function Bushido() {
                       onChange={(e) => updateCalibration('exploration_variance', parseInt(e.target.value))}
                       className="w-full h-1.5 bg-shogun-card rounded-lg appearance-none cursor-pointer accent-green-500"
                     />
-                    <p className="text-[10px] text-shogun-subdued">Controls how much the agent explores novel approaches vs. sticking to proven patterns.</p>
+                    <p className="text-[10px] text-shogun-subdued">{t('bushido.exploration_variance_desc')}</p>
                  </div>
               </div>
 
@@ -329,14 +331,14 @@ export function Bushido() {
                    onClick={handleResetBaseline}
                    className="flex-1 py-3 bg-shogun-card border border-shogun-border rounded-xl text-xs font-bold uppercase tracking-widest hover:text-shogun-gold hover:border-shogun-gold transition-all flex items-center justify-center gap-2"
                  >
-                    <RotateCcw className="w-3.5 h-3.5" /> Reset To Baseline
+                    <RotateCcw className="w-3.5 h-3.5" /> {t('bushido.reset_to_baseline')}
                  </button>
                  <button 
                    onClick={handleSaveCalibration}
                    disabled={saving || !calibrationDirty}
                    className="flex-1 py-3 bg-[#1e293b] border border-shogun-blue/30 rounded-xl text-xs font-bold uppercase tracking-widest text-shogun-text hover:bg-shogun-blue transition-all shadow-[0_0_15px_rgba(74,140,199,0.1)] disabled:opacity-50 flex items-center justify-center gap-2"
                  >
-                    <Save className="w-3.5 h-3.5" /> {saving ? 'Saving...' : 'Save Calibration'}
+                    <Save className="w-3.5 h-3.5" /> {saving ? t('bushido.saving') : t('bushido.save_calibration')}
                  </button>
               </div>
            </div>
@@ -347,14 +349,14 @@ export function Bushido() {
            {/* Insight Stream */}
            <div className="shogun-card min-h-[300px]">
               <h3 className="text-sm font-bold flex items-center gap-2 text-shogun-gold mb-6 uppercase tracking-widest">
-                 <Sparkles className="w-4 h-4" /> Insight Stream
+                 <Sparkles className="w-4 h-4" /> {t('bushido.insight_stream')}
                  <span className="text-[9px] text-shogun-subdued bg-shogun-card px-1.5 py-0.5 rounded border border-shogun-border ml-auto">{insights.length}</span>
               </h3>
               
               <div className="space-y-6">
                  {insights.length === 0 && (
                    <div className="text-[10px] text-shogun-subdued text-center py-8">
-                     No recommendations yet. Run a Bushido job to generate insights.
+                     {t('bushido.no_recommendations')}
                    </div>
                  )}
                  {insights.map((insight) => (
@@ -390,10 +392,10 @@ export function Bushido() {
            <div className="shogun-card bg-shogun-blue/5 border-shogun-blue/20">
               <div className="flex items-center gap-3 mb-3 text-shogun-blue">
                  <ShieldCheck className="w-4 h-4" />
-                 <h4 className="text-[10px] font-bold uppercase tracking-widest">Formal Verification</h4>
+                 <h4 className="text-[10px] font-bold uppercase tracking-widest">{t('bushido.formal_verification')}</h4>
               </div>
               <p className="text-[10px] text-shogun-subdued leading-relaxed">
-                 The Bushido engine uses formal verification loops to ensure that all behavioral optimizations remain strictly within the bounds defined in the Kaizen constitution.
+                 {t('bushido.formal_verification_desc')}
               </p>
            </div>
         </div>

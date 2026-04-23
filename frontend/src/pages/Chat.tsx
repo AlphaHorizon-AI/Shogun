@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, Terminal, Bot, User, Trash2, History, X, ChevronDown, ChevronRight, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useTranslation } from '../i18n';
 
 interface Message {
   role: 'user' | 'shogun';
@@ -65,6 +66,7 @@ function archiveSession(msgs: Message[]) {
 }
 
 export const Chat = () => {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<Message[]>(loadCurrent);
   const operatorName = localStorage.getItem('shogun_operator_name') || 'Daimyo';
   const [input, setInput] = useState('');
@@ -183,7 +185,7 @@ export const Chat = () => {
         const copy = [...prev];
         copy[copy.length - 1] = {
           ...copy[copy.length - 1],
-          content: '⚠️ Terminal bridge interrupted. Check backend connectivity.',
+          content: '⚠️ ' + t('chat.bridge_interrupted') + '',
         };
         return copy;
       });
@@ -215,17 +217,17 @@ export const Chat = () => {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
-            Comms{' '}
+            {t('chat.title')}{' '}
             <span className="text-xs font-normal text-shogun-subdued bg-shogun-card px-2 py-1 rounded border border-shogun-border tracking-[0.2em] uppercase">
-              Interface
+              {t('chat.badge')}
             </span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-1">Direct encrypted link to primary Shogun agent.</p>
+          <p className="text-shogun-subdued text-sm mt-1">{t('chat.subtitle')}</p>
         </div>
         <button
           onClick={handleClear}
           className="p-2 text-shogun-subdued hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-          title="Clear Terminal (saves to history)"
+          title={t('chat.clear_tooltip')}
         >
           <Trash2 className="w-5 h-5" />
         </button>
@@ -240,7 +242,7 @@ export const Chat = () => {
           {messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-shogun-subdued space-y-3 opacity-50">
               <Terminal className="w-12 h-12" />
-              <p className="text-sm italic tracking-wide">Terminal empty. Waiting for input...</p>
+              <p className="text-sm italic tracking-wide">{t('chat.terminal_empty')}</p>
             </div>
           )}
 
@@ -297,7 +299,7 @@ export const Chat = () => {
                         : "bg-shogun-card border border-shogun-border text-shogun-subdued"
                     )}>
                       {msg.search ? <Globe className="w-2.5 h-2.5" /> : <Bot className="w-2.5 h-2.5" />}
-                      {msg.search ? "Web Search" : msg.model}
+                      {msg.search ? t('chat.web_search') : msg.model}
                     </div>
                   )}
                 </div>
@@ -315,7 +317,7 @@ export const Chat = () => {
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
               disabled={isThinking}
-              placeholder={isThinking ? 'Transmitting directive...' : 'Enter directive...'}
+              placeholder={isThinking ? t('chat.placeholder_thinking') : t('chat.placeholder')}
               className="w-full bg-shogun-card border border-shogun-border rounded-xl py-4 pl-6 pr-14 text-shogun-text placeholder:text-shogun-subdued focus:outline-none focus:border-shogun-blue focus:ring-1 focus:ring-shogun-blue/20 transition-all font-mono text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <button
@@ -336,10 +338,10 @@ export const Chat = () => {
                 className="text-[10px] text-shogun-subdued flex items-center gap-1 underline cursor-pointer hover:text-shogun-blue transition-colors"
               >
                 <History className="w-3 h-3" />
-                View History ({history.length} sessions)
+                {t('chat.view_history')} ({history.length} {t('chat.sessions')})
               </button>
             </div>
-            <span className="text-[10px] text-shogun-subdued italic">Enter to send</span>
+            <span className="text-[10px] text-shogun-subdued italic">{t('chat.enter_to_send')}</span>
           </div>
         </div>
       </div>
@@ -360,10 +362,10 @@ export const Chat = () => {
               <div>
                 <h3 className="text-lg font-bold text-shogun-text flex items-center gap-2">
                   <History className="w-5 h-5 text-shogun-gold" />
-                  Comms History
+                  {t('chat.comms_history')}
                 </h3>
                 <p className="text-[11px] text-shogun-subdued mt-0.5">
-                  {history.length} archived session{history.length !== 1 ? 's' : ''} — stored locally
+                  {history.length} {t('chat.archived_sessions')}
                 </p>
               </div>
               <button
@@ -379,7 +381,7 @@ export const Chat = () => {
               {history.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-shogun-subdued space-y-3 opacity-50">
                   <History className="w-10 h-10" />
-                  <p className="text-sm italic">No history yet. Clear a session to archive it.</p>
+                  <p className="text-sm italic">{t('chat.no_history')}</p>
                 </div>
               ) : (
                 history.map(session => {
@@ -400,14 +402,14 @@ export const Chat = () => {
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-mono text-shogun-text truncate">{preview}</p>
                           <p className="text-[10px] text-shogun-subdued mt-0.5">
-                            {session.startedAt} · {msgCount} message{msgCount !== 1 ? 's' : ''}
+                            {session.startedAt} · {msgCount} {t('chat.messages')}
                           </p>
                         </div>
                         <button
                           onClick={e => { e.stopPropagation(); restoreSession(session); }}
                           className="text-[10px] text-shogun-blue hover:text-shogun-gold font-bold uppercase tracking-wider shrink-0 px-2 py-1 border border-shogun-blue/30 rounded-lg transition-colors"
                         >
-                          Restore
+                          {t('chat.restore')}
                         </button>
                       </div>
 
@@ -445,7 +447,7 @@ export const Chat = () => {
                   }}
                   className="w-full text-xs text-red-400/60 hover:text-red-400 transition-colors py-2 border border-red-400/10 hover:border-red-400/30 rounded-lg"
                 >
-                  Clear All History
+                  {t('chat.clear_all_history')}
                 </button>
               </div>
             )}

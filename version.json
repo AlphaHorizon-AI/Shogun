@@ -1,7 +1,7 @@
 {
-  "version": "1.1.6",
-  "build": 17,
+  "version": "1.1.7",
+  "build": 18,
   "channel": "stable",
-  "released": "2026-04-22T11:00:00Z",
-  "changelog": "Comprehensive internationalization fix across the UI framework, achieving 100% translatability for previously omitted table headers and complex component definitions."
+  "released": "2026-04-23T07:10:00Z",
+  "changelog": "Updated disclaimer across all 14 languages: replaced 'free and open-source' with 'free to use' branding."
 }

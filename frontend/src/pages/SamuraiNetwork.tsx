@@ -105,7 +105,7 @@ export const SamuraiNetwork = () => {
   const handleAction = async (agentId: string, action: 'suspend' | 'resume' | 'delete') => {
     try {
       if (action === 'delete') {
-        if (!confirm('Are you sure you want to delete this samurai?')) return;
+        if (!confirm(t('samurai_network.confirm_delete'))) return;
         await axios.delete(`/api/v1/agents/${agentId}`);
       } else {
         await axios.post(`/api/v1/agents/${agentId}/${action}`);
@@ -143,7 +143,7 @@ export const SamuraiNetwork = () => {
       setEditAgent(null);
       fetchAll();
     } catch (err: any) {
-      setEditError(err?.response?.data?.detail || 'Failed to save changes.');
+      setEditError(err?.response?.data?.detail || t('samurai_network.save_failed'));
     } finally {
       setEditSaving(false);
     }
@@ -164,7 +164,7 @@ export const SamuraiNetwork = () => {
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
             {t('samurai_network.title', 'Samurai Network')}
-            <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Fleet Status</span>
+            <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">{t('samurai_network.fleet_status')}</span>
           </h2>
           <p className="text-shogun-subdued text-sm mt-1">{t('samurai_network.subtitle', 'Orchestrate specialized sub-agents across the mission grid.')}</p>
         </div>
@@ -204,16 +204,16 @@ export const SamuraiNetwork = () => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-shogun-subdued" />
             <input
               type="text"
-              placeholder="Filter by name or slug..."
+              placeholder={t('samurai_network.filter_placeholder')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-shogun-card border border-shogun-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-shogun-blue transition-colors outline-none"
             />
           </div>
           <select className="bg-shogun-card border border-shogun-border rounded-lg px-3 py-2 text-xs text-shogun-subdued outline-none focus:border-shogun-blue">
-            <option>All Status</option>
-            <option>Active</option>
-            <option>Suspended</option>
+            <option>{t('samurai_network.all_status')}</option>
+            <option>{t('samurai_network.status_active')}</option>
+            <option>{t('samurai_network.status_suspended')}</option>
           </select>
         </div>
 
@@ -236,12 +236,12 @@ export const SamuraiNetwork = () => {
                   <td colSpan={7} className="p-12 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-6 h-6 border-2 border-shogun-gold border-t-transparent rounded-full animate-spin" />
-                      <span className="text-xs text-shogun-subdued uppercase tracking-widest">Scanning Grid...</span>
+                      <span className="text-xs text-shogun-subdued uppercase tracking-widest">{t('samurai_network.scanning_grid')}</span>
                     </div>
                   </td>
                 </tr>
               ) : filteredAgents.length === 0 ? (
-                <tr><td colSpan={7} className="p-12 text-center text-shogun-subdued text-sm italic">No active Samurai found in this sector.</td></tr>
+                <tr><td colSpan={7} className="p-12 text-center text-shogun-subdued text-sm italic">{t('samurai_network.no_samurai')}</td></tr>
               ) : filteredAgents.map((agent) => {
                 const routingName = getRoutingName(agent);
                 return (
@@ -286,7 +286,7 @@ export const SamuraiNetwork = () => {
                         if (!mission) return (
                           <div className="flex items-center gap-2">
                             <div className="w-1.5 h-1.5 rounded-full bg-shogun-subdued/40" />
-                            <span className="text-[10px] text-shogun-subdued italic">Idle — No active task</span>
+                            <span className="text-[10px] text-shogun-subdued italic">{t('samurai_network.idle')}</span>
                           </div>
                         );
                         const progress = estimateProgress(mission);
@@ -329,7 +329,7 @@ export const SamuraiNetwork = () => {
                           <span className="text-[10px] font-bold text-shogun-gold/90 truncate max-w-[120px]" title={routingName}>{routingName}</span>
                         </div>
                       ) : (
-                        <span className="text-[10px] text-shogun-subdued italic">Default</span>
+                        <span className="text-[10px] text-shogun-subdued italic">{t('samurai_network.default_routing')}</span>
                       )}
                     </td>
 
@@ -342,18 +342,18 @@ export const SamuraiNetwork = () => {
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         {agent.status === 'active' ? (
-                          <button onClick={() => handleAction(agent.id, 'suspend')} className="p-1.5 hover:bg-shogun-blue/10 text-shogun-blue rounded transition-colors" title="Suspend Agent">
+                          <button onClick={() => handleAction(agent.id, 'suspend')} className="p-1.5 hover:bg-shogun-blue/10 text-shogun-blue rounded transition-colors" title={t('samurai_network.suspend_agent')}>
                             <Pause className="w-3.5 h-3.5" />
                           </button>
                         ) : (
-                          <button onClick={() => handleAction(agent.id, 'resume')} className="p-1.5 hover:bg-green-500/10 text-green-500 rounded transition-colors" title="Resume Agent">
+                          <button onClick={() => handleAction(agent.id, 'resume')} className="p-1.5 hover:bg-green-500/10 text-green-500 rounded transition-colors" title={t('samurai_network.resume_agent')}>
                             <Play className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <button onClick={() => handleAction(agent.id, 'delete')} className="p-1.5 hover:bg-red-500/10 text-red-500 rounded transition-colors" title="Delete Agent">
+                        <button onClick={() => handleAction(agent.id, 'delete')} className="p-1.5 hover:bg-red-500/10 text-red-500 rounded transition-colors" title={t('samurai_network.delete_agent')}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => openEditModal(agent)} className="p-1.5 hover:bg-shogun-gold/10 text-shogun-gold rounded transition-colors" title="Configure Samurai">
+                        <button onClick={() => openEditModal(agent)} className="p-1.5 hover:bg-shogun-gold/10 text-shogun-gold rounded transition-colors" title={t('samurai_network.configure_samurai')}>
                           <MoreVertical className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -378,7 +378,7 @@ export const SamuraiNetwork = () => {
               <div>
                 <div className="flex items-center gap-2">
                   <Settings className="w-4 h-4 text-shogun-gold" />
-                  <h3 className="text-lg font-bold text-shogun-gold">Configure Samurai</h3>
+                  <h3 className="text-lg font-bold text-shogun-gold">{t('samurai_network.configure_samurai')}</h3>
                 </div>
                 <p className="text-[10px] text-shogun-subdued uppercase tracking-widest font-bold mt-1">
                   {editAgent.name} · <span className="font-mono">{editAgent.id.slice(0, 8)}</span>
@@ -393,7 +393,7 @@ export const SamuraiNetwork = () => {
             <div className="p-6 space-y-5">
               {/* Name */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Unit Name</label>
+                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai_network.unit_name')}</label>
                 <input
                   type="text"
                   value={editForm.name}
@@ -404,20 +404,20 @@ export const SamuraiNetwork = () => {
 
               {/* Role */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Designation (Role)</label>
+                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai_network.designation_role')}</label>
                 <select
                   value={editForm.role_id}
                   onChange={(e) => setEditForm({ ...editForm, role_id: e.target.value })}
                   className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-gold transition-colors outline-none cursor-pointer"
                 >
-                  <option value="">— Keep current role —</option>
+                  <option value="">{t('samurai_network.keep_current_role')}</option>
                   {samuraiRoles.map((role) => (
                     <option key={role.id} value={role.id}>{role.name}</option>
                   ))}
                 </select>
                 {editAgent.samurai_profile?.samurai_role?.name && (
                   <p className="text-[9px] text-shogun-subdued">
-                    Current: <span className="text-shogun-blue font-bold">{editAgent.samurai_profile.samurai_role.name}</span>
+                    {t('samurai_network.current')}: <span className="text-shogun-blue font-bold">{editAgent.samurai_profile.samurai_role.name}</span>
                   </p>
                 )}
               </div>
@@ -425,50 +425,50 @@ export const SamuraiNetwork = () => {
               {/* Routing Profile */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest flex items-center gap-1.5">
-                  <Zap className="w-3 h-3 text-shogun-gold/70" /> Routing Profile
+                  <Zap className="w-3 h-3 text-shogun-gold/70" /> {t('samurai_network.routing_profile')}
                 </label>
                 <select
                   value={editForm.model_routing_profile_id}
                   onChange={(e) => setEditForm({ ...editForm, model_routing_profile_id: e.target.value })}
                   className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-gold transition-colors outline-none cursor-pointer"
                 >
-                  <option value="">— System Default —</option>
+                  <option value="">{t('samurai_network.system_default')}</option>
                   {routingProfiles.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name}{p.is_default ? ' (Default)' : ''}
+                      {p.name}{p.is_default ? ` (${t('samurai_network.default_routing')})` : ''}
                     </option>
                   ))}
                 </select>
                 {editAgent.routing_profile?.name && (
                   <p className="text-[9px] text-shogun-subdued">
-                    Current: <span className="text-shogun-gold font-bold">{editAgent.routing_profile.name}</span>
+                    {t('samurai_network.current')}: <span className="text-shogun-gold font-bold">{editAgent.routing_profile.name}</span>
                   </p>
                 )}
               </div>
 
               {/* Spawn Policy */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Spawn Policy</label>
+                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai_network.spawn_policy')}</label>
                 <select
                   value={editForm.spawn_policy}
                   onChange={(e) => setEditForm({ ...editForm, spawn_policy: e.target.value })}
                   className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-gold transition-colors outline-none cursor-pointer"
                 >
-                  <option value="manual">Manual Deploy</option>
-                  <option value="auto">Auto-Spawn (Reactive)</option>
-                  <option value="scheduled">Scheduled Routine</option>
+                  <option value="manual">{t('samurai_network.manual_deploy')}</option>
+                  <option value="auto">{t('samurai_network.auto_spawn')}</option>
+                  <option value="scheduled">{t('samurai_network.scheduled_routine')}</option>
                 </select>
               </div>
 
               {/* Description */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Operational Directive</label>
+                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai_network.operational_directive')}</label>
                 <textarea
                   value={editForm.description}
                   onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                   rows={3}
                   className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-xs focus:border-shogun-gold transition-colors outline-none resize-none"
-                  placeholder="Operational role description..."
+                  placeholder={t('samurai_network.directive_placeholder')}
                 />
               </div>
 
@@ -487,7 +487,7 @@ export const SamuraiNetwork = () => {
                 onClick={() => setEditAgent(null)}
                 className="flex-1 bg-shogun-card hover:bg-[#1a2040] text-shogun-subdued font-bold py-2.5 rounded-lg transition-all border border-shogun-border text-sm"
               >
-                CANCEL
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handleEditSave}
@@ -500,7 +500,7 @@ export const SamuraiNetwork = () => {
                 )}
               >
                 {editSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                {editSaving ? 'SAVING...' : 'SAVE CHANGES'}
+                {editSaving ? t('samurai_network.saving') : t('samurai_network.save_changes')}
               </button>
             </div>
           </div>
@@ -516,8 +516,8 @@ export const SamuraiNetwork = () => {
           <div className="bg-[#0a0e1a] border border-shogun-border rounded-xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="bg-shogun-card border-b border-shogun-border p-6 flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-bold text-shogun-gold">Deploy New Samurai</h3>
-                <p className="text-[10px] text-shogun-subdued uppercase tracking-widest font-bold mt-1">Initialize fleet expansion</p>
+                <h3 className="text-xl font-bold text-shogun-gold">{t('samurai_network.deploy_new')}</h3>
+                <p className="text-[10px] text-shogun-subdued uppercase tracking-widest font-bold mt-1">{t('samurai_network.initialize_fleet')}</p>
               </div>
               <button onClick={() => setShowCreateModal(false)} className="p-2 hover:bg-shogun-gold/10 text-shogun-subdued hover:text-shogun-gold rounded-lg transition-colors">
                 <X className="w-4 h-4" />
@@ -527,7 +527,7 @@ export const SamuraiNetwork = () => {
             <form onSubmit={handleCreate} className="p-6 space-y-5">
               {/* Role */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Samurai Designation (Role)</label>
+                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai_network.samurai_designation')}</label>
                 <select
                   required
                   value={newAgent.role_id}
@@ -544,7 +544,7 @@ export const SamuraiNetwork = () => {
                   }}
                   className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-blue transition-colors outline-none cursor-pointer"
                 >
-                  <option value="" disabled>Select a role...</option>
+                  <option value="" disabled>{t('samurai_network.select_role')}</option>
                   {samuraiRoles.map((role) => (
                     <option key={role.id} value={role.id}>{role.name}</option>
                   ))}
@@ -554,7 +554,7 @@ export const SamuraiNetwork = () => {
               <div className="grid grid-cols-2 gap-4">
                 {/* Name */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Custom Unit Name</label>
+                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai_network.custom_unit_name')}</label>
                   <input
                     type="text"
                     required
@@ -567,15 +567,15 @@ export const SamuraiNetwork = () => {
 
                 {/* Spawn Policy */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Spawn Policy</label>
+                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai_network.spawn_policy')}</label>
                   <select
                     value={newAgent.spawn_policy}
                     onChange={(e) => setNewAgent({ ...newAgent, spawn_policy: e.target.value })}
                     className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-blue transition-colors outline-none cursor-pointer"
                   >
-                    <option value="manual">Manual Deploy</option>
-                    <option value="auto">Auto-Spawn (Reactive)</option>
-                    <option value="scheduled">Scheduled Routine</option>
+                    <option value="manual">{t('samurai_network.manual_deploy')}</option>
+                    <option value="auto">{t('samurai_network.auto_spawn')}</option>
+                    <option value="scheduled">{t('samurai_network.scheduled_routine')}</option>
                   </select>
                 </div>
               </div>
@@ -583,31 +583,31 @@ export const SamuraiNetwork = () => {
               {/* Routing Profile */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest flex items-center gap-1.5">
-                  <Zap className="w-3 h-3 text-shogun-gold/70" /> Model Routing Profile
+                  <Zap className="w-3 h-3 text-shogun-gold/70" /> {t('samurai_network.model_routing_profile')}
                 </label>
                 <select
                   value={newAgent.model_routing_profile_id}
                   onChange={(e) => setNewAgent({ ...newAgent, model_routing_profile_id: e.target.value })}
                   className="w-full bg-[#050508] border border-shogun-border rounded-lg p-2.5 text-sm focus:border-shogun-blue transition-colors outline-none cursor-pointer"
                 >
-                  <option value="">— System Default —</option>
+                  <option value="">{t('samurai_network.system_default')}</option>
                   {routingProfiles.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name}{p.is_default ? ' (Default)' : ''}
+                      {p.name}{p.is_default ? ` (${t('samurai_network.default_routing')})` : ''}
                     </option>
                   ))}
                 </select>
-                <p className="text-[9px] text-shogun-subdued">Controls which AI model this samurai uses for inference and task routing.</p>
+                <p className="text-[9px] text-shogun-subdued">{t('samurai_network.routing_description')}</p>
               </div>
 
               {/* Description */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Operational Directive</label>
+                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai_network.operational_directive')}</label>
                 <textarea
                   value={newAgent.description}
                   onChange={(e) => setNewAgent({ ...newAgent, description: e.target.value })}
                   className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-xs focus:border-shogun-blue transition-colors outline-none h-24 resize-none"
-                  placeholder="Select a designation to auto-populate this..."
+                  placeholder={t('samurai_network.auto_populate_placeholder')}
                 />
               </div>
 
@@ -617,7 +617,7 @@ export const SamuraiNetwork = () => {
                   onClick={() => setShowCreateModal(false)}
                   className="flex-1 bg-shogun-card hover:bg-[#1a2040] text-shogun-subdued font-bold py-3 rounded-lg transition-all border border-shogun-border"
                 >
-                  ABORT
+                  {t('samurai_network.abort')}
                 </button>
                 <button
                   type="submit"
@@ -629,7 +629,7 @@ export const SamuraiNetwork = () => {
                       : "bg-shogun-blue hover:bg-shogun-blue/90 text-white"
                   )}
                 >
-                  DEPLOY SAMURAI
+                  {t('samurai_network.deploy_samurai_btn')}
                 </button>
               </div>
             </form>

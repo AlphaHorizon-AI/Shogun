@@ -42,17 +42,26 @@ interface Policy {
   created_at: string;
 }
 
-const TIERS: { id: TierType; label: string; badge: string; color: string; bg: string; border: string; description: string }[] = [
-  { id: 'shrine',   label: 'SHRINE',   badge: 'MAX',     color: 'text-shogun-gold',  bg: 'bg-shogun-gold/5',   border: 'border-shogun-gold/40',  description: 'Zero-trust. Local only. No external tool execution.' },
-  { id: 'guarded',  label: 'GUARDED',  badge: '',        color: 'text-green-400',    bg: 'bg-green-400/5',     border: 'border-green-400/40',    description: 'Restricted network. Allowlist tools. Human-in-the-loop.' },
-  { id: 'tactical', label: 'TACTICAL', badge: 'DEFAULT', color: 'text-shogun-blue',  bg: 'bg-shogun-blue/5',   border: 'border-shogun-blue/40',  description: 'Balanced autonomy. Scoped filesystem access.' },
-  { id: 'campaign', label: 'CAMPAIGN', badge: '',        color: 'text-orange-400',   bg: 'bg-orange-400/5',    border: 'border-orange-400/40',   description: 'High autonomy. Broad network access. Automated spawns.' },
-  { id: 'ronin',    label: 'RONIN',    badge: 'UNSAFE',  color: 'text-red-500',      bg: 'bg-red-500/5',       border: 'border-red-500/40',      description: 'Unrestricted execution. Sandbox environments only.' },
+const TIER_DEFS: { id: TierType; color: string; bg: string; border: string }[] = [
+  { id: 'shrine',   color: 'text-shogun-gold',  bg: 'bg-shogun-gold/5',   border: 'border-shogun-gold/40' },
+  { id: 'guarded',  color: 'text-green-400',    bg: 'bg-green-400/5',     border: 'border-green-400/40' },
+  { id: 'tactical', color: 'text-shogun-blue',  bg: 'bg-shogun-blue/5',   border: 'border-shogun-blue/40' },
+  { id: 'campaign', color: 'text-orange-400',   bg: 'bg-orange-400/5',    border: 'border-orange-400/40' },
+  { id: 'ronin',    color: 'text-red-500',      bg: 'bg-red-500/5',       border: 'border-red-500/40' },
 ];
 
 
 export function Torii() {
   const { t } = useTranslation();
+
+  const TIERS = useMemo(() => [
+    { ...TIER_DEFS[0], label: 'SHRINE',   badge: t('torii.badge_max'),     description: t('torii.tier_shrine_desc') },
+    { ...TIER_DEFS[1], label: 'GUARDED',  badge: '',                       description: t('torii.tier_guarded_desc') },
+    { ...TIER_DEFS[2], label: 'TACTICAL', badge: t('torii.badge_default'), description: t('torii.tier_tactical_desc') },
+    { ...TIER_DEFS[3], label: 'CAMPAIGN', badge: '',                       description: t('torii.tier_campaign_desc') },
+    { ...TIER_DEFS[4], label: 'RONIN',    badge: t('torii.badge_unsafe'),  description: t('torii.tier_ronin_desc') },
+  ], [t]);
+
   const [loading, setLoading]       = useState(true);
   const [posture, setPosture]       = useState<Posture | null>(null);
   const [policies, setPolicies]     = useState<Policy[]>([]);
@@ -115,9 +124,9 @@ export function Torii() {
     try {
       const res = await axios.patch('/api/v1/security/posture', { active_tier: tier });
       setPosture(res.data.data);
-      flash('success', `Security posture updated to ${tier.toUpperCase()}.`);
+      flash('success', t('torii.posture_updated') + ' ' + tier.toUpperCase());
     } catch {
-      flash('error', 'Failed to update posture.');
+      flash('error', t('torii.posture_failed'));
     } finally {
       setSaving(false);
     }
@@ -127,13 +136,13 @@ export function Torii() {
   const handleKillSwitch = async () => {
     if (posture?.kill_switch_active) {
       // Reset — single confirm is fine for the safe direction
-      if (!confirm('Reset the Kill Switch? Posture will be restored to TACTICAL.')) return;
+      if (!confirm(t('torii.reset_confirm'))) return;
       try {
         const res = await axios.delete('/api/v1/security/kill-switch');
         setPosture(res.data.data);
-        flash('success', 'Kill switch reset. Posture restored to TACTICAL.');
+        flash('success', t('torii.reset_success'));
       } catch {
-        flash('error', 'Failed to reset kill switch.');
+        flash('error', t('torii.reset_failed'));
       }
       return;
     }
@@ -146,9 +155,9 @@ export function Torii() {
     try {
       const res = await axios.post('/api/v1/security/kill-switch');
       setPosture(res.data.data);
-      flash('error', 'HARAKIRI INITIATED — POSTURE LOCKED TO SHRINE.');
+      flash('error', t('torii.harakiri_initiated'));
     } catch {
-      flash('error', 'Failed to activate Harakiri.');
+      flash('error', t('torii.harakiri_failed'));
     }
   };
 
@@ -165,27 +174,27 @@ export function Torii() {
         dry_run_supported: newPolicy.dry_run_supported,
         permissions: {},
       });
-      flash('success', `Policy "${newPolicy.name}" created.`);
+      flash('success', t('torii.policy_created'));
       setShowCreate(false);
       setNewPolicy({ name: '', tier: 'tactical', description: '', kill_switch_enabled: true, dry_run_supported: true });
       fetchData();
     } catch {
-      flash('error', 'Failed to create policy.');
+      flash('error', t('torii.policy_create_failed'));
     } finally {
       setSaving(false);
     }
   };
 
   // ── Delete policy ───────────────────────────────────────────────
-  const handleDeletePolicy = async (id: string, name: string) => {
-    if (!confirm(`Delete policy "${name}"? This cannot be undone.`)) return;
+  const handleDeletePolicy = async (id: string, _name: string) => {
+    if (!confirm(t('torii.policy_delete_confirm'))) return;
     try {
       await axios.delete(`/api/v1/security/policies/${id}`);
-      flash('success', `Policy "${name}" deleted.`);
+      flash('success', t('torii.policy_deleted'));
       if (viewPolicy?.id === id) setViewPolicy(null);
       fetchData();
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || 'Failed to delete policy.';
+      const detail = err?.response?.data?.detail || t('torii.policy_delete_failed');
       flash('error', detail);
     }
   };
@@ -214,7 +223,7 @@ export function Torii() {
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
             {t('torii.title', 'The Torii')}{' '}
             <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">
-              Security Portal
+              {t('torii.badge')}
             </span>
           </h2>
           <p className="text-shogun-subdued text-sm mt-1">
@@ -234,7 +243,7 @@ export function Torii() {
           <Power className="w-4 h-4 shrink-0" />
           <div className="flex flex-col items-start">
             <span className="text-sm leading-tight">
-              {posture?.kill_switch_active ? 'Reset Harakiri' : 'Harakiri'}
+              {posture?.kill_switch_active ? t('torii.reset_harakiri') : t('torii.harakiri')}
             </span>
             <span className="text-[9px] font-normal opacity-70 tracking-widest leading-tight">[{t('torii.kill_switch', 'Kill Switch')}]</span>
           </div>
@@ -265,8 +274,8 @@ export function Torii() {
               <Shield className="w-5 h-5 text-shogun-gold" /> {t('torii.security_posture', 'Security Posture')}
             </h3>
             <p className="text-[10px] text-shogun-subdued mb-5 uppercase tracking-widest">
-              {posture ? `Active: ${posture.active_tier.toUpperCase()}` : 'Loading...'}
-              {saving && <span className="ml-2 animate-pulse">Saving…</span>}
+              {posture ? t('torii.active_label') + ': ' + posture.active_tier.toUpperCase() : t('common.loading')}
+              {saving && <span className="ml-2 animate-pulse">{t('common.saving')}</span>}
             </p>
 
             <div className="space-y-2.5">
@@ -310,13 +319,13 @@ export function Torii() {
           {/* Posture detail card */}
           {posture && (
             <div className="shogun-card space-y-3">
-              <h4 className="text-xs font-bold text-shogun-subdued uppercase tracking-widest">Current Constraints</h4>
+              <h4 className="text-xs font-bold text-shogun-subdued uppercase tracking-widest">{t('torii.current_constraints')}</h4>
               {[
-                { icon: HardDrive, label: 'Filesystem', value: posture.filesystem_mode },
-                { icon: Globe,     label: 'Network',    value: posture.network_mode },
-                { icon: Terminal,  label: 'Shell',      value: posture.shell_enabled ? 'Enabled' : 'Disabled' },
-                { icon: Zap,       label: 'Auto-skills', value: posture.skill_auto_install ? 'Allowed' : 'Off' },
-                { icon: Users,     label: 'Max agents', value: String(posture.max_active_subagents) },
+                { icon: HardDrive, label: t('torii.filesystem'), value: posture.filesystem_mode },
+                { icon: Globe,     label: t('torii.network'),    value: posture.network_mode },
+                { icon: Terminal,  label: t('torii.shell'),      value: posture.shell_enabled ? t('torii.enabled') : t('torii.disabled') },
+                { icon: Zap,       label: t('torii.auto_skills'), value: posture.skill_auto_install ? t('torii.allowed') : t('torii.off') },
+                { icon: Users,     label: t('torii.max_agents'), value: String(posture.max_active_subagents) },
               ].map(({ icon: Icon, label, value }) => (
                 <div key={label} className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-shogun-subdued">
@@ -330,10 +339,10 @@ export function Torii() {
 
           <div className="shogun-card bg-red-500/5 border-red-500/20">
             <h4 className="text-xs font-bold text-red-500 flex items-center gap-2 mb-2">
-              <AlertTriangle className="w-4 h-4" /> EMERGENCY PROTOCOLS
+              <AlertTriangle className="w-4 h-4" /> {t('torii.emergency_protocols')}
             </h4>
             <p className="text-[10px] text-shogun-subdued leading-relaxed">
-              Activating RONIN mode or the Kill Switch removes safety gates. Use only inside a fully isolated environment.
+              {t('torii.emergency_desc')}
             </p>
           </div>
         </div>
@@ -343,13 +352,13 @@ export function Torii() {
           <div className="shogun-card flex flex-col">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                <Lock className="w-5 h-5 text-shogun-blue" /> Policy Registry
+                <Lock className="w-5 h-5 text-shogun-blue" /> {t('torii.policy_registry')}
               </h3>
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-shogun-subdued" />
                 <input
                   type="text"
-                  placeholder="Filter policies..."
+                  placeholder={t('torii.filter_policies')}
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   className="bg-[#050508] border border-shogun-border rounded-lg pl-8 pr-3 py-1.5 text-xs outline-none focus:border-shogun-blue"
@@ -361,13 +370,13 @@ export function Torii() {
               {loading ? (
                 <div className="flex flex-col items-center justify-center h-48 opacity-50">
                   <RefreshCw className="w-8 h-8 animate-spin text-shogun-blue mb-2" />
-                  <span className="text-[10px] uppercase tracking-widest font-bold">Auditing Shields...</span>
+                  <span className="text-[10px] uppercase tracking-widest font-bold">{t('torii.auditing_shields')}</span>
                 </div>
               ) : filteredPolicies.length === 0 ? (
                 <div className="text-center py-16 text-shogun-subdued italic text-sm">
                   {search
-                    ? `No policies match "${search}".`
-                    : 'No policies defined. Create one below.'
+                    ? t('torii.no_match')
+                    : t('torii.no_policies')
                   }
                 </div>
               ) : (
@@ -391,7 +400,7 @@ export function Torii() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <h4 className="text-sm font-bold text-shogun-text truncate">{policy.name}</h4>
                               {policy.is_builtin && (
-                                <span className="text-[8px] border border-shogun-subdued/30 text-shogun-subdued px-1.5 py-0.5 rounded uppercase">Built-in</span>
+                                <span className="text-[8px] border border-shogun-subdued/30 text-shogun-subdued px-1.5 py-0.5 rounded uppercase">{t('torii.built_in')}</span>
                               )}
                             </div>
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -400,11 +409,11 @@ export function Torii() {
                               </span>
                               <span className="text-[10px] text-shogun-subdued flex items-center gap-1">
                                 <Activity className="w-3 h-3" />
-                                {ruleCount} permission {ruleCount === 1 ? 'block' : 'blocks'}
+                                {ruleCount} {ruleCount === 1 ? t('torii.permission_block') : t('torii.permission_blocks')}
                               </span>
                               {policy.kill_switch_enabled && (
                                 <span className="text-[9px] text-green-400 flex items-center gap-0.5">
-                                  <CheckCircle2 className="w-2.5 h-2.5" /> kill-switch
+                                  <CheckCircle2 className="w-2.5 h-2.5" /> {t('torii.kill_switch_label')}
                                 </span>
                               )}
                             </div>
@@ -415,14 +424,14 @@ export function Torii() {
                           <button
                             onClick={() => setViewPolicy(policy)}
                             className="p-2 hover:bg-shogun-card rounded-lg text-shogun-subdued hover:text-shogun-text transition-colors"
-                            title="View policy"
+                            title={t('torii.view_policy')}
                           >
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleCopyPolicy(policy)}
                             className="p-2 hover:bg-shogun-card rounded-lg text-shogun-subdued hover:text-shogun-gold transition-colors"
-                            title="Export / copy as JSON"
+                            title={t('torii.export_json')}
                           >
                             {copiedId === policy.id
                               ? <Check className="w-4 h-4 text-green-400" />
@@ -433,7 +442,7 @@ export function Torii() {
                             <button
                               onClick={() => handleDeletePolicy(policy.id, policy.name)}
                               className="p-2 hover:bg-red-500/10 rounded-lg text-shogun-subdued hover:text-red-400 transition-colors"
-                              title="Delete policy"
+                              title={t('torii.delete_policy_tooltip')}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -449,14 +458,14 @@ export function Torii() {
             <div className="mt-6 pt-5 border-t border-shogun-border flex items-center justify-between">
               <div className="flex items-center gap-2 text-[10px] text-shogun-subdued uppercase tracking-widest font-bold">
                 <Lock className="w-3 h-3 text-shogun-gold" />
-                {policies.length} {policies.length === 1 ? 'policy' : 'policies'} in registry
+                {policies.length} {policies.length === 1 ? t('torii.policy_singular') : t('torii.policy_plural')} {t('torii.in_registry')}
               </div>
               <button
                 onClick={() => setShowCreate(v => !v)}
                 className="flex items-center gap-1.5 text-[10px] font-bold text-shogun-blue hover:text-shogun-gold uppercase tracking-widest transition-all"
               >
                 {showCreate ? <X className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                {showCreate ? 'Cancel' : 'Create Tactical Policy'}
+                {showCreate ? t('common.cancel') : t('torii.create_tactical_policy')}
               </button>
             </div>
 
@@ -467,7 +476,7 @@ export function Torii() {
                 className="mt-5 pt-5 border-t border-shogun-border space-y-4 animate-in slide-in-from-bottom-2 duration-200"
               >
                 <h4 className="text-sm font-bold text-shogun-text flex items-center gap-2">
-                  <Plus className="w-4 h-4 text-shogun-blue" /> New Tactical Policy
+                  <Plus className="w-4 h-4 text-shogun-blue" /> {t('torii.new_tactical_policy')}
                 </h4>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -517,7 +526,7 @@ export function Torii() {
                         onChange={e => setNewPolicy({ ...newPolicy, kill_switch_enabled: e.target.checked })}
                         className="accent-shogun-blue"
                       />
-                      <span className="text-xs text-shogun-subdued">Kill-switch enabled</span>
+                      <span className="text-xs text-shogun-subdued">{t('torii.kill_switch_enabled')}</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -526,7 +535,7 @@ export function Torii() {
                         onChange={e => setNewPolicy({ ...newPolicy, dry_run_supported: e.target.checked })}
                         className="accent-shogun-blue"
                       />
-                      <span className="text-xs text-shogun-subdued">Dry-run supported</span>
+                      <span className="text-xs text-shogun-subdued">{t('torii.dry_run_supported')}</span>
                     </label>
                   </div>
                 </div>
@@ -538,14 +547,14 @@ export function Torii() {
                     className="flex items-center gap-2 px-5 py-2.5 bg-shogun-blue hover:bg-shogun-blue/90 disabled:opacity-50 text-white font-bold rounded-lg text-sm transition-all"
                   >
                     {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    Save Policy
+                    {t('torii.save_policy')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowCreate(false)}
                     className="px-4 py-2.5 text-sm text-shogun-subdued hover:text-shogun-text transition-colors"
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                 </div>
               </form>
@@ -570,10 +579,10 @@ export function Torii() {
                     </span>
                   ) : null; })()}
                   {viewPolicy.is_builtin && (
-                    <span className="text-[8px] border border-shogun-subdued/30 text-shogun-subdued px-1.5 py-0.5 rounded uppercase">Built-in</span>
+                    <span className="text-[8px] border border-shogun-subdued/30 text-shogun-subdued px-1.5 py-0.5 rounded uppercase">{t('torii.built_in')}</span>
                   )}
                   <span className="text-[10px] text-shogun-subdued">
-                    Created {new Date(viewPolicy.created_at).toLocaleDateString()}
+                    {t('torii.created')} {new Date(viewPolicy.created_at).toLocaleDateString()}
                   </span>
                 </div>
               </div>
@@ -583,7 +592,7 @@ export function Torii() {
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-shogun-blue border border-shogun-blue/30 rounded-lg hover:bg-shogun-blue/10 transition-all"
                 >
                   {copiedId === viewPolicy.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                  {copiedId === viewPolicy.id ? 'Copied!' : 'Export JSON'}
+                  {copiedId === viewPolicy.id ? t('torii.copied') : t('torii.export_json_btn')}
                 </button>
                 <button onClick={() => setViewPolicy(null)} className="p-2 text-shogun-subdued hover:text-shogun-text rounded-lg hover:bg-shogun-card transition-all">
                   <X className="w-5 h-5" />
@@ -600,22 +609,22 @@ export function Torii() {
               {/* Flags */}
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { label: 'Kill-switch', value: viewPolicy.kill_switch_enabled },
-                  { label: 'Dry-run', value: viewPolicy.dry_run_supported },
+                  { label: t('torii.kill_switch_label'), value: viewPolicy.kill_switch_enabled },
+                  { label: t('torii.dry_run_label'), value: viewPolicy.dry_run_supported },
                 ].map(({ label, value }) => (
                   <div key={label} className="flex items-center gap-2 p-3 bg-[#050508] border border-shogun-border rounded-lg">
                     {value ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : <X className="w-4 h-4 text-red-400" />}
                     <span className="text-xs text-shogun-subdued">{label}</span>
-                    <span className="text-xs font-bold text-shogun-text ml-auto">{value ? 'Yes' : 'No'}</span>
+                    <span className="text-xs font-bold text-shogun-text ml-auto">{value ? t('common.yes') : t('common.no')}</span>
                   </div>
                 ))}
               </div>
 
               {/* Permissions JSON */}
               <div className="space-y-2">
-                <h4 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Permission Blocks</h4>
+                <h4 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('torii.permission_blocks_title')}</h4>
                 {Object.keys(viewPolicy.permissions).length === 0 ? (
-                  <p className="text-xs text-shogun-subdued italic">No explicit permissions set — inherits posture defaults.</p>
+                  <p className="text-xs text-shogun-subdued italic">{t('torii.no_permissions')}</p>
                 ) : (
                   Object.entries(viewPolicy.permissions).map(([category, perms]) => (
                     <div key={category} className="bg-[#050508] border border-shogun-border rounded-lg overflow-hidden">
@@ -638,7 +647,7 @@ export function Torii() {
                   onClick={() => handleDeletePolicy(viewPolicy.id, viewPolicy.name)}
                   className="flex items-center gap-2 text-xs text-red-400/60 hover:text-red-400 transition-colors px-3 py-2 border border-red-400/10 hover:border-red-400/30 rounded-lg"
                 >
-                  <Trash2 className="w-3 h-3" /> Delete this policy
+                  <Trash2 className="w-3 h-3" /> {t('torii.delete_this_policy')}
                 </button>
               </div>
             )}
