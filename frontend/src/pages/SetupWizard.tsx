@@ -235,13 +235,61 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
 
   const testProvider = async (prov: ProviderConfig) => {
     updateProvider(prov.id, { status: 'testing' });
-    // Simulate a brief delay for UX
-    await new Promise(r => setTimeout(r, 1200));
-    // If the provider has an API key or is local, mark as connected
-    if (prov.api_key || ['ollama', 'lmstudio', 'local'].includes(prov.provider_type)) {
-      updateProvider(prov.id, { status: 'connected' });
-    } else {
-      updateProvider(prov.id, { status: 'failed' });
+    const isLocal = ['ollama', 'lmstudio', 'local'].includes(prov.provider_type);
+
+    // Determine the base URL for the /v1/models call
+    const BASE_URLS: Record<string, string> = {
+      openai: 'https://api.openai.com',
+      anthropic: 'https://api.anthropic.com',
+      google: 'https://generativelanguage.googleapis.com',
+      openrouter: 'https://openrouter.ai/api',
+      perplexity: 'https://api.perplexity.ai',
+    };
+    const baseUrl = prov.base_url || BASE_URLS[prov.provider_type] || '';
+
+    try {
+      // Try to fetch models from the provider's API
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (prov.api_key) {
+        headers['Authorization'] = `Bearer ${prov.api_key}`;
+      }
+
+      const modelsUrl = isLocal
+        ? `${baseUrl}/api/tags`   // Ollama uses /api/tags
+        : `${baseUrl}/v1/models`;
+
+      const res = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(8000) });
+
+      if (res.ok) {
+        const json = await res.json();
+        let discoveredModels: string[] = [];
+
+        if (isLocal && json.models) {
+          // Ollama format: { models: [{ name: "llama3:latest" }, ...] }
+          discoveredModels = json.models.map((m: any) => m.name || m.model).filter(Boolean);
+        } else if (json.data) {
+          // OpenAI-compatible format: { data: [{ id: "gpt-4o" }, ...] }
+          discoveredModels = json.data.map((m: any) => m.id).filter(Boolean);
+        }
+
+        // Merge discovered models with any manually entered ones (deduplicated)
+        const merged = Array.from(new Set([...prov.models, ...discoveredModels]));
+        updateProvider(prov.id, { status: 'connected', models: merged.length > 0 ? merged : prov.models });
+      } else {
+        // API responded but with error — still mark connected if we have credentials
+        if (prov.api_key || isLocal) {
+          updateProvider(prov.id, { status: 'connected' });
+        } else {
+          updateProvider(prov.id, { status: 'failed' });
+        }
+      }
+    } catch {
+      // Network error — fall back to credential check
+      if (prov.api_key || isLocal) {
+        updateProvider(prov.id, { status: 'connected' });
+      } else {
+        updateProvider(prov.id, { status: 'failed' });
+      }
     }
   };
 
@@ -739,13 +787,58 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                 )}
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Models (comma-separated)</label>
-                  <input
-                    value={activeProv.models.join(', ')}
-                    onChange={e => updateProvider(activeProv.id, { models: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-                    placeholder="gpt-4o, gpt-4o-mini"
-                    className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none transition-colors"
-                  />
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Models</label>
+                    {activeProv.models.length > 0 && (
+                      <span className="text-[10px] text-[#d4a017] font-bold">{activeProv.models.length} available</span>
+                    )}
+                  </div>
+                  {activeProv.models.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 p-2.5 bg-[#050508] border border-[#2a2f3e] rounded-lg max-h-32 overflow-y-auto">
+                      {activeProv.models.map(m => (
+                        <span key={m} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#1a1f2e] border border-[#2a2f3e] text-[10px] font-mono text-white group">
+                          {m}
+                          <button
+                            onClick={() => updateProvider(activeProv.id, { models: activeProv.models.filter(x => x !== m) })}
+                            className="text-[#555] hover:text-red-400 transition-colors"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      placeholder="Add model name..."
+                      className="flex-1 bg-[#050508] border border-[#2a2f3e] rounded-lg p-2 text-xs font-mono text-white focus:border-[#3b82f6] outline-none transition-colors"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          const val = (e.target as HTMLInputElement).value.trim();
+                          if (val && !activeProv.models.includes(val)) {
+                            updateProvider(activeProv.id, { models: [...activeProv.models, val] });
+                            (e.target as HTMLInputElement).value = '';
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const input = document.querySelector<HTMLInputElement>('input[placeholder="Add model name..."]');
+                        if (input && input.value.trim()) {
+                          const val = input.value.trim();
+                          if (!activeProv.models.includes(val)) {
+                            updateProvider(activeProv.id, { models: [...activeProv.models, val] });
+                            input.value = '';
+                          }
+                        }
+                      }}
+                      className="px-3 py-2 rounded-lg bg-[#1a1f2e] border border-[#2a2f3e] text-[10px] font-bold text-[#888] hover:text-white hover:border-[#3b82f6] transition-all"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-[#555]">Click "Test Connection" to auto-discover models, or add them manually above.</p>
                 </div>
 
                 <div className="flex items-center gap-3">
