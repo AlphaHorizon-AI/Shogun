@@ -5,6 +5,9 @@
 
 set -e
 
+# Ensure we run from the script's own directory
+cd "$(dirname "$0")"
+
 # Colors
 GOLD='\033[1;33m'
 BLUE='\033[1;34m'

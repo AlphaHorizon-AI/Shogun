@@ -6,6 +6,9 @@ setlocal EnableDelayedExpansion
 ::  SHOGUN - One-Click Installer (Windows)
 :: ===============================================================
 
+:: Ensure we run from the script's own directory
+cd /d "%~dp0"
+
 echo.
 echo  +----------------------------------------------------------+
 echo  :                                                          :
