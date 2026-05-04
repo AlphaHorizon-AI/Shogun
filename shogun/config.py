@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     )
 
     # ── Application ──────────────────────────────────────────
-    app_env: Literal["development", "staging", "production"] = "development"
-    debug: bool = True
+    app_env: Literal["development", "staging", "production"] = "production"
+    debug: bool = False
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     ui_port: int = 7860

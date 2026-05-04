@@ -1,0 +1,7 @@
+# Force Windows batch files to always use CRLF line endings,
+# including in GitHub ZIP downloads (archive exports).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell scripts always LF
+*.sh  text eol=lf

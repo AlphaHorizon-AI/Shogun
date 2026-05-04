@@ -34,8 +34,8 @@ def _ensure_env_file() -> None:
     # No example found — write sensible defaults inline
     project_root = Path(__file__).resolve().parent.parent
     env_path.write_text(
-        f"APP_ENV=development\n"
-        f"DEBUG=true\n"
+        f"APP_ENV=production\n"
+        f"DEBUG=false\n"
         f"API_HOST=0.0.0.0\n"
         f"API_PORT=8000\n"
         f"DATABASE_URL=sqlite+aiosqlite:///{project_root}/data/shogun.db\n"
@@ -88,8 +88,7 @@ def main() -> None:
     print("  SHOGUN — The Tenshu (FastAPI + React)")
     print("=" * 60)
     
-    app_env = os.getenv("APP_ENV", "development")
-    if app_env == "development":
+    if settings.app_env == "development":
         print("  [DEVELOPMENT MODE]")
         print(f"  - Backend: http://{settings.api_host}:{settings.api_port}")
         print("  - Frontend: http://localhost:3000 (run: npm run dev in /frontend)")
