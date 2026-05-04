@@ -181,9 +181,39 @@ export const ShogunProfile = () => {
         setShogunData(agent);
         // ── Restore model selections saved in bushido_settings ──
         const bs = agent.bushido_settings || {};
-        if (bs.primary_model) setPrimaryModel(bs.primary_model);
-        if (bs.fallback_models) setFallbackModels(bs.fallback_models);
+        let savedPrimary = bs.primary_model || '';
+        let savedFallbacks: string[] = bs.fallback_models || [];
         if (bs.custom_permissions) setCustomPermissions(bs.custom_permissions);
+
+        // ── Auto-heal stale frontend UUIDs ──
+        // The setup wizard used crypto.randomUUID() as provider IDs which
+        // don't match DB UUIDs.  Remap by model name if the saved UUID
+        // isn't in the providers list.
+        const providerList: any[] =
+          providersRes.status === 'fulfilled' && providersRes.value.data.data
+            ? providersRes.value.data.data
+            : [];
+
+        const remapModelRef = (ref: string): string => {
+          if (!ref || !ref.includes('::')) return ref;
+          const [savedId, modelName] = ref.split('::', 2);
+          // Check if the saved provider ID exists in our providers
+          if (providerList.some((p: any) => p.id === savedId)) return ref;
+          // Try to find a provider that has this model in its config
+          for (const prov of providerList) {
+            const models: string[] = prov.config?.models || [];
+            if (models.includes(modelName) || prov.name === modelName) {
+              return `${prov.id}::${modelName}`;
+            }
+          }
+          return ref; // Return as-is if no match found
+        };
+
+        savedPrimary = remapModelRef(savedPrimary);
+        savedFallbacks = savedFallbacks.map(remapModelRef);
+
+        if (savedPrimary) setPrimaryModel(savedPrimary);
+        if (savedFallbacks.length > 0) setFallbackModels(savedFallbacks);
       }
       if (healthRes.status === 'fulfilled' && healthRes.value.data.data) {
         setSystemHealth(healthRes.value.data.data);

@@ -15,17 +15,28 @@ echo.
 echo   ⚔️  SHOGUN — Starting the Tenshu...
 echo.
 
-:: Check if venv exists
-if not exist "venv\Scripts\activate.bat" (
+:: Check if venv exists (support both "venv" and ".venv" names)
+set "VENV_DIR="
+if exist "venv\Scripts\activate.bat" (
+    set "VENV_DIR=venv"
+)
+if exist ".venv\Scripts\activate.bat" (
+    set "VENV_DIR=.venv"
+)
+
+if "%VENV_DIR%"=="" (
     echo   ERROR: Virtual environment not found.
+    echo   Looked for: venv\  and  .venv\
     echo   Please run install.bat first.
     echo.
-    pause
+    echo   Press any key to close...
+    pause >nul
     exit /b 1
 )
 
 :: Activate venv
-call venv\Scripts\activate.bat
+echo   Using virtual environment: %VENV_DIR%
+call %VENV_DIR%\Scripts\activate.bat
 
 :: Check if frontend is built
 if not exist "frontend\dist\index.html" (
@@ -50,5 +61,7 @@ python -m shogun
 
 :: If the server exits, keep the window open so the user can see errors
 echo.
-echo   ⚠️  Shogun has stopped. Press any key to close this window.
+echo   ⚠️  Shogun has stopped.
+echo   Press any key to close this window.
 pause >nul
+

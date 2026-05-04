@@ -101,6 +101,9 @@ async def complete_setup(payload: SetupCompletePayload):
     from sqlalchemy import select
 
     created_provider_ids: list[str] = []
+    # Map frontend-generated provider UUIDs → actual DB UUIDs so model
+    # selections (primary_model / fallback_models) reference real records.
+    frontend_to_db_id: dict[str, str] = {}
 
     async with async_session_factory() as session:
         from shogun.db.models.operator import Operator
@@ -114,7 +117,7 @@ async def complete_setup(payload: SetupCompletePayload):
             session.add(op)
 
         # ── 1. Create model providers ────────────────────────────────
-        for prov in payload.providers:
+        for idx, prov in enumerate(payload.providers):
             slug = f"{prov.provider_type}-{prov.name}".lower().replace(" ", "-")
             # Check if provider with this slug already exists
             existing = await session.execute(
@@ -131,6 +134,7 @@ async def complete_setup(payload: SetupCompletePayload):
                 }
                 existing_record.status = "connected"
                 created_provider_ids.append(str(existing_record.id))
+                # We don't know the frontend UUID here but we'll try to match below
             else:
                 provider_record = ModelProvider(
                     provider_type=prov.provider_type,
@@ -150,6 +154,56 @@ async def complete_setup(payload: SetupCompletePayload):
                 await session.flush()
                 created_provider_ids.append(str(provider_record.id))
 
+        # ── 1b. Build frontend→DB provider ID mapping ────────────────
+        # The frontend uses crypto.randomUUID() as provider IDs in model
+        # selection values like "frontendUUID::modelName".  We need to
+        # remap those to the real database UUIDs so the chat endpoint and
+        # Tenshu profile can resolve providers correctly.
+        #
+        # Strategy: extract all unique frontend provider UUIDs from the
+        # primary_model / fallback_models strings, then match them to
+        # DB providers by index order (providers list is in the same
+        # order as created_provider_ids).
+        frontend_uuids_seen: list[str] = []
+        all_model_refs = [payload.primary_model] + payload.fallback_models
+        for ref in all_model_refs:
+            if "::" in ref:
+                fe_id = ref.split("::")[0]
+                if fe_id and fe_id not in frontend_uuids_seen:
+                    frontend_uuids_seen.append(fe_id)
+
+        # Match frontend UUIDs to DB provider IDs by looking up which
+        # provider has models that appear in the model references
+        for fe_id in frontend_uuids_seen:
+            # Find which provider index this frontend UUID belongs to
+            # by checking which provider's models list contains the
+            # model names referenced with this frontend UUID
+            model_names_for_fe = [
+                ref.split("::")[1] for ref in all_model_refs
+                if ref.startswith(f"{fe_id}::")
+            ]
+            for idx, prov in enumerate(payload.providers):
+                if idx < len(created_provider_ids):
+                    # Check if any of the model names match this provider's models
+                    prov_models = set(prov.models) | {prov.name}
+                    if any(m in prov_models for m in model_names_for_fe):
+                        frontend_to_db_id[fe_id] = created_provider_ids[idx]
+                        break
+            # Fallback: if we only have one provider, map directly
+            if fe_id not in frontend_to_db_id and len(created_provider_ids) == 1:
+                frontend_to_db_id[fe_id] = created_provider_ids[0]
+
+        def _remap_model_ref(ref: str) -> str:
+            """Replace frontend UUID prefix with real DB UUID."""
+            if "::" not in ref:
+                return ref
+            fe_id, model_name = ref.split("::", 1)
+            db_id = frontend_to_db_id.get(fe_id, fe_id)
+            return f"{db_id}::{model_name}"
+
+        remapped_primary = _remap_model_ref(payload.primary_model)
+        remapped_fallbacks = [_remap_model_ref(fb) for fb in payload.fallback_models]
+
         # ── 2. Create/update Shogun agent ────────────────────────────
         result = await session.execute(
             select(Agent).where(
@@ -165,8 +219,8 @@ async def complete_setup(payload: SetupCompletePayload):
             "weekly_performance_audit": True,
             "skill_health_check": True,
             "persona_drift_check": False,
-            "primary_model": payload.primary_model,
-            "fallback_models": payload.fallback_models,
+            "primary_model": remapped_primary,
+            "fallback_models": remapped_fallbacks,
         }
 
         if shogun:

@@ -50,21 +50,29 @@ echo        Found Node.js %NODE_VER%
 
 :: -- Step 3: Create Python virtual environment ------------------
 echo [3/8] Creating Python virtual environment...
-if not exist "venv" (
+set "VENV_DIR="
+if exist ".venv\Scripts\activate.bat" (
+    set "VENV_DIR=.venv"
+    echo        Existing .venv found — reusing.
+)
+if exist "venv\Scripts\activate.bat" (
+    set "VENV_DIR=venv"
+    echo        Existing venv found — reusing.
+)
+if "%VENV_DIR%"=="" (
     python -m venv venv
     if %ERRORLEVEL% neq 0 (
         echo  ERROR: Failed to create virtual environment.
         pause
         exit /b 1
     )
+    set "VENV_DIR=venv"
     echo        Virtual environment created.
-) else (
-    echo        Virtual environment already exists.
 )
 
 :: -- Step 4: Install Python dependencies ------------------------
 echo [4/8] Installing Python dependencies...
-call venv\Scripts\activate.bat
+call %VENV_DIR%\Scripts\activate.bat
 pip install . --quiet --disable-pip-version-check
 if %ERRORLEVEL% neq 0 (
     echo  ERROR: Failed to install Python dependencies.

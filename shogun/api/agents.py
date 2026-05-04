@@ -341,6 +341,20 @@ async def _shogun_chat_internal(user_msg: str, history: list, svc: AgentService)
                 except Exception:
                     provider = None
 
+            # If the saved UUID didn't match (e.g. stale frontend UUID from
+            # setup wizard), try to find a provider whose models list
+            # contains the saved model name.
+            if not provider and saved_model_name:
+                res = await db.execute(
+                    select(ModelProvider).where(ModelProvider.status == "connected")
+                )
+                for p in res.scalars().all():
+                    p_models = p.config.get("models") or []
+                    if saved_model_name in p_models or saved_model_name == p.name:
+                        provider = p
+                        res_reason = "model_name_match_fallback"
+                        break
+
             if not provider:
                 res = await db.execute(
                     select(ModelProvider)

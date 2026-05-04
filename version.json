@@ -1,7 +1,7 @@
 {
-  "version": "1.1.8",
-  "build": 20,
+  "version": "1.1.9",
+  "build": 21,
   "channel": "stable",
-  "released": "2026-04-23T15:16:00Z",
-  "changelog": "Complete i18n for Shogun Profile (Models/Permissions/Operations tabs), real-time system metrics, fix desktop shortcut launcher, and add missing Qdrant memory dependencies."
+  "released": "2026-05-04T10:18:00Z",
+  "changelog": "Fix setup wizard model registration (remap frontend UUIDs to DB UUIDs), add model-name fallback in chat endpoint, auto-heal stale model refs in Tenshu profile, fix start.bat venv detection (.venv support), and re-create desktop shortcut with icon."
 }
