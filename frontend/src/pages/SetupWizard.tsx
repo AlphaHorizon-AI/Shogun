@@ -16,7 +16,8 @@ interface ProviderConfig {
   name: string;
   api_key: string;
   base_url: string;
-  models: string[];
+  models: string[];            // User-selected models (used in Step 7)
+  discoveredModels: string[];  // All models found via API
   status: 'pending' | 'testing' | 'connected' | 'failed';
   auth_type: string;
 }
@@ -218,6 +219,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
       api_key: '',
       base_url: isLocal ? 'http://localhost:11434' : '',
       models: [],
+      discoveredModels: [],
       status: 'pending' as const,
       auth_type: isLocal ? 'none' : 'api_key',
     }]);
@@ -272,9 +274,8 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
           discoveredModels = json.data.map((m: any) => m.id).filter(Boolean);
         }
 
-        // Merge discovered models with any manually entered ones (deduplicated)
-        const merged = Array.from(new Set([...prov.models, ...discoveredModels]));
-        updateProvider(prov.id, { status: 'connected', models: merged.length > 0 ? merged : prov.models });
+        // Store discovered models separately — user picks from these
+        updateProvider(prov.id, { status: 'connected', discoveredModels: discoveredModels });
       } else {
         // API responded but with error — still mark connected if we have credentials
         if (prov.api_key || isLocal) {
@@ -786,31 +787,69 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                   </>
                 )}
 
+                {/* ── Discovered Models (browse & pick) ── */}
+                {activeProv.discoveredModels.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Available Models</label>
+                      <span className="text-[10px] text-[#555]">{activeProv.discoveredModels.length} found · double-click to add</span>
+                    </div>
+                    <div className="bg-[#050508] border border-[#2a2f3e] rounded-lg max-h-40 overflow-y-auto">
+                      {activeProv.discoveredModels.map(m => {
+                        const isSelected = activeProv.models.includes(m);
+                        return (
+                          <div
+                            key={m}
+                            onDoubleClick={() => {
+                              if (!isSelected) {
+                                updateProvider(activeProv.id, { models: [...activeProv.models, m] });
+                              }
+                            }}
+                            className={`
+                              flex items-center justify-between px-3 py-1.5 text-[11px] font-mono cursor-pointer select-none
+                              border-b border-[#1a1f2e] last:border-b-0 transition-colors
+                              ${isSelected
+                                ? 'text-[#d4a017] bg-[#d4a017]/5'
+                                : 'text-[#999] hover:bg-[#1a1f2e] hover:text-white'}
+                            `}
+                          >
+                            <span className="truncate">{m}</span>
+                            {isSelected && <CheckCircle2 className="w-3 h-3 text-[#d4a017] shrink-0" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Selected Models (used in Step 7) ── */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Models</label>
+                    <label className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">Selected Models</label>
                     {activeProv.models.length > 0 && (
-                      <span className="text-[10px] text-[#d4a017] font-bold">{activeProv.models.length} available</span>
+                      <span className="text-[10px] text-[#d4a017] font-bold">{activeProv.models.length} selected</span>
                     )}
                   </div>
-                  {activeProv.models.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 p-2.5 bg-[#050508] border border-[#2a2f3e] rounded-lg max-h-32 overflow-y-auto">
+                  {activeProv.models.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 p-2.5 bg-[#0a0e1a] border border-[#d4a017]/20 rounded-lg">
                       {activeProv.models.map(m => (
-                        <span key={m} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#1a1f2e] border border-[#2a2f3e] text-[10px] font-mono text-white group">
+                        <span key={m} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#d4a017]/10 border border-[#d4a017]/30 text-[10px] font-mono text-[#d4a017]">
                           {m}
                           <button
                             onClick={() => updateProvider(activeProv.id, { models: activeProv.models.filter(x => x !== m) })}
-                            className="text-[#555] hover:text-red-400 transition-colors"
+                            className="text-[#d4a017]/40 hover:text-red-400 transition-colors"
                           >
                             <X className="w-2.5 h-2.5" />
                           </button>
                         </span>
                       ))}
                     </div>
+                  ) : (
+                    <p className="text-[10px] text-[#555] italic py-2 text-center">No models selected yet. {activeProv.discoveredModels.length > 0 ? 'Double-click above to add.' : 'Click "Test Connection" to discover, or add manually.'}</p>
                   )}
                   <div className="flex gap-2">
                     <input
-                      placeholder="Add model name..."
+                      placeholder="Or type a model name..."
                       className="flex-1 bg-[#050508] border border-[#2a2f3e] rounded-lg p-2 text-xs font-mono text-white focus:border-[#3b82f6] outline-none transition-colors"
                       onKeyDown={e => {
                         if (e.key === 'Enter') {
@@ -824,7 +863,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                     />
                     <button
                       onClick={() => {
-                        const input = document.querySelector<HTMLInputElement>('input[placeholder="Add model name..."]');
+                        const input = document.querySelector<HTMLInputElement>('input[placeholder="Or type a model name..."]');
                         if (input && input.value.trim()) {
                           const val = input.value.trim();
                           if (!activeProv.models.includes(val)) {
@@ -838,7 +877,6 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                       Add
                     </button>
                   </div>
-                  <p className="text-[9px] text-[#555]">Click "Test Connection" to auto-discover models, or add them manually above.</p>
                 </div>
 
                 <div className="flex items-center gap-3">
