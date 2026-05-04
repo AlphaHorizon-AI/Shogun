@@ -853,7 +853,9 @@
     "web_search": "Nettsøk",
     "bridge_interrupted": "Terminalbro avbrutt. Sjekk backend-tilkobling.",
     "messages": "meldinger",
-    "message": "melding"
+    "message": "melding",
+    "welcome_message": "Systems stabilized. I am ready for directives, Shogun.",
+    "agent_label": "SHOGUN"
   },
   "updates_page": {
     "title": "Systemoppdateringer",

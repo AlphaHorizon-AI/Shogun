@@ -853,7 +853,9 @@
     "web_search": "网络搜索",
     "bridge_interrupted": "终端桥接中断。请检查后端连接。",
     "messages": "消息",
-    "message": "消息"
+    "message": "消息",
+    "welcome_message": "Systems stabilized. I am ready for directives, Shogun.",
+    "agent_label": "SHOGUN"
   },
   "updates_page": {
     "title": "系统更新",

@@ -274,7 +274,7 @@ export const SamuraiNetwork = () => {
                       <div className="flex items-center gap-2">
                         <div className={cn("w-1.5 h-1.5 rounded-full", agent.status === 'active' ? "bg-green-500" : "bg-shogun-blue")} />
                         <span className={cn("text-[10px] font-bold uppercase tracking-widest", agent.status === 'active' ? "text-green-500" : "text-shogun-blue")}>
-                          {agent.status}
+                          {agent.status === 'active' ? t('samurai_network.status_active') : t('samurai_network.status_suspended')}
                         </span>
                       </div>
                     </td>

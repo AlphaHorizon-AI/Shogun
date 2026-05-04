@@ -98,7 +98,7 @@ echo  +----------------------------------------------------------+
 echo  :                                                          :
 echo  :   Installation complete!                                 :
 echo  :                                                          :
-echo  :   Shogun is starting at http://localhost:8000            :
+echo  :   Shogun is starting at http://localhost:8000/setup      :
 echo  :   Your browser will open automatically in 5 seconds.     :
 echo  :                                                          :
 echo  :   A desktop shortcut has been created.                   :
@@ -110,7 +110,7 @@ echo  +----------------------------------------------------------+
 echo.
 
 :: Open browser after a short delay
-start "" cmd /c "timeout /t 5 /nobreak >nul & start http://localhost:8000"
+start "" cmd /c "timeout /t 5 /nobreak >nul & start http://localhost:8000/setup"
 
 :: Start the server (blocking)
 python -m shogun

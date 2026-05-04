@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Shell } from './components/layout/Shell'
 import { Dashboard } from './pages/Dashboard'
 import { Chat } from './pages/Chat'
@@ -67,10 +67,9 @@ function FirstRunGate({ children }: { children: React.ReactNode }) {
  * Setup page wrapper — handles completion and redirect.
  */
 function SetupPage() {
-  const navigate = useNavigate()
   return (
     <SetupWizard onComplete={() => {
-      navigate('/guide', { replace: true })
+      window.location.href = '/guide'
     }} />
   )
 }

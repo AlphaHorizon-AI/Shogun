@@ -853,7 +853,9 @@
     "web_search": "Ricerca Web",
     "bridge_interrupted": "Ponte terminale interrotto. Verifica la connettività backend.",
     "messages": "messaggi",
-    "message": "messaggio"
+    "message": "messaggio",
+    "welcome_message": "Systems stabilized. I am ready for directives, Shogun.",
+    "agent_label": "SHOGUN"
   },
   "updates_page": {
     "title": "Aggiornamenti Sistema",

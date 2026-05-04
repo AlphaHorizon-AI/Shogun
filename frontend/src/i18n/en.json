@@ -792,5 +792,27 @@
     "scope_skill_desc": "Verifies connectivity to all installed skills and third-party integrations. No memory parameters required.",
     "scope_drift_desc": "Compares current behavioral patterns against the active persona blueprint. Flags deviations exceeding threshold.",
     "custom_task_hint": "The Shogun will execute this instruction on the defined schedule. Use natural language — reference installed skills, APIs, or connectors by name."
+  },
+  "chat": {
+    "title": "Comms",
+    "subtitle": "Chat Console — Directly orchestrate the Shogun via terminal interface.",
+    "badge": "Command Console",
+    "clear_tooltip": "Clear current session",
+    "terminal_empty": "Terminal empty. Awaiting mission parameters.",
+    "web_search": "Web Search",
+    "placeholder_thinking": "Shogun is thinking...",
+    "placeholder": "Enter directive for the Shogun...",
+    "view_history": "View History",
+    "sessions": "sessions",
+    "enter_to_send": "Press Enter to send",
+    "comms_history": "Comms History",
+    "archived_sessions": "archived sessions",
+    "no_history": "No archived sessions found.",
+    "messages": "messages",
+    "restore": "RESTORE",
+    "clear_all_history": "CLEAR ALL HISTORY",
+    "bridge_interrupted": "Neural bridge interrupted. Check logs.",
+    "welcome_message": "Systems stabilized. I am ready for directives, Shogun.",
+    "agent_label": "SHOGUN"
   }
 }

@@ -15,7 +15,7 @@ export const Shell = ({ children }: ShellProps) => {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-y-auto p-8 relative scroll-smooth bg-shogun-card/30 flex flex-col">
-          <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 flex-1">
+          <div className="w-full max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 flex-1">
             {children}
           </div>
           <footer className="mt-12 py-6 border-t border-shogun-border/30 text-center">

@@ -853,7 +853,9 @@
     "web_search": "웹 검색",
     "bridge_interrupted": "터미널 브리지가 중단되었습니다. 백엔드 연결을 확인하세요.",
     "messages": "메시지",
-    "message": "메시지"
+    "message": "메시지",
+    "welcome_message": "Systems stabilized. I am ready for directives, Shogun.",
+    "agent_label": "SHOGUN"
   },
   "updates_page": {
     "title": "시스템 업데이트",

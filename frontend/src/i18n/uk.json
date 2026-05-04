@@ -853,7 +853,9 @@
     "web_search": "Веб-пошук",
     "bridge_interrupted": "Термінальний міст перервано. Перевірте з'єднання з бекендом.",
     "messages": "повідомлення",
-    "message": "повідомлення"
+    "message": "повідомлення",
+    "welcome_message": "Systems stabilized. I am ready for directives, Shogun.",
+    "agent_label": "SHOGUN"
   },
   "updates_page": {
     "title": "Оновлення Системи",

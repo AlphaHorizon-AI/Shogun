@@ -853,7 +853,9 @@
     "web_search": "Wyszukiwanie w Sieci",
     "bridge_interrupted": "Most terminala przerwany. Sprawdź połączenie z backendem.",
     "messages": "wiadomości",
-    "message": "wiadomość"
+    "message": "wiadomość",
+    "welcome_message": "Systems stabilized. I am ready for directives, Shogun.",
+    "agent_label": "SHOGUN"
   },
   "updates_page": {
     "title": "Aktualizacje Systemu",
