@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from pathlib import Path as _Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,6 +62,7 @@ async def create_flow(
 # ═══════════════════════════════════════════════════════════════
 
 _TEMPLATE_CACHE: dict | None = None
+_log = logging.getLogger(__name__)
 
 
 async def _sync_live_flow_schedule(flow) -> None:
@@ -78,18 +80,39 @@ def _load_templates() -> dict:
     global _TEMPLATE_CACHE
     if _TEMPLATE_CACHE is not None:
         return _TEMPLATE_CACHE
-    tpl_path = _Path(__file__).resolve().parent.parent / "data" / "flow_templates.json"
-    if not tpl_path.exists():
-        _TEMPLATE_CACHE = {"version": "1.0", "total_templates": 0, "categories": [], "templates": []}
-        return _TEMPLATE_CACHE
-    _TEMPLATE_CACHE = json.loads(tpl_path.read_text(encoding="utf-8"))
+    package_root = _Path(__file__).resolve().parent.parent
+    candidates = (
+        package_root / "resources" / "flow_templates.json",
+        # Compatibility with installations made before build 38.
+        package_root / "data" / "flow_templates.json",
+    )
+    tpl_path = next((path for path in candidates if path.is_file()), None)
+    if tpl_path is None:
+        searched = ", ".join(str(path) for path in candidates)
+        _log.error("AgentFlow template catalog is missing; searched: %s", searched)
+        raise RuntimeError(
+            "The built-in AgentFlow template catalog is missing. "
+            "Run Shogun Repair/Update, then restart Shogun."
+        )
+
+    try:
+        _TEMPLATE_CACHE = json.loads(tpl_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        _log.exception("Could not load AgentFlow templates from %s", tpl_path)
+        raise RuntimeError(
+            "The built-in AgentFlow template catalog could not be loaded. "
+            "Run Shogun Repair/Update, then restart Shogun."
+        ) from exc
     return _TEMPLATE_CACHE
 
 
 @router.get("/templates", response_model=ApiResponse)
 async def list_templates():
     """Return the full template catalog (categories + lightweight template list)."""
-    catalog = _load_templates()
+    try:
+        catalog = _load_templates()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     # Return lightweight version (without full node/edge data)
     lightweight = []
     for t in catalog.get("templates", []):

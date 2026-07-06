@@ -250,10 +250,25 @@ async def check_mado_access() -> None:
     await check_gensui_mado()
 
 
+def check_mado_browser_mode(browser_mode: str, posture: dict[str, Any]) -> None:
+    """Reject visible browser sessions when the active posture is headless-only."""
+    if browser_mode == "visible" and posture.get("mado_headless_only", True):
+        tier = posture.get("active_tier", "tactical")
+        _emit_block_event(
+            "mado_visible_blocked",
+            f"Visible browser session blocked at tier {tier.upper()}",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"Security posture [{tier.upper()}] permits headless Mado sessions only.",
+        )
+
+
 async def check_mado_session_limit() -> None:
     """Raise HTTP 403 if creating another browser session would exceed the tier limit."""
     from shogun.api.security import _get_agent_posture
     from shogun.db.engine import async_session_factory
+    from shogun.services.mado_service import _active_contexts
     from shogun.services.mado_service_crud import MadoSessionService
 
     posture = await _get_agent_posture()
@@ -262,7 +277,15 @@ async def check_mado_session_limit() -> None:
 
     async with async_session_factory() as db:
         svc = MadoSessionService(db)
-        current_count = await svc.count_active()
+        persisted_count = await svc.count_active()
+
+    # AgentFlow sessions are runtime-only and use ``flow_`` IDs. API/native
+    # sessions are persisted and use UUID IDs, even while they are open.
+    runtime_only_count = sum(
+        1 for session_id in _active_contexts
+        if str(session_id).startswith("flow_")
+    )
+    current_count = persisted_count + runtime_only_count
 
     if current_count >= max_sessions:
         log.warning(
@@ -374,16 +397,21 @@ def _emit_block_event(block_type: str, message: str) -> None:
         import asyncio
         from shogun.services.event_logger import EventLogger
 
-        asyncio.ensure_future(EventLogger.emit_policy_event(
-            f"policy.posture_blocked",
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+
+        loop.create_task(EventLogger.emit_policy_event(
+            "policy.posture_blocked",
             message,
             severity="warn",
             policy_ref=f"posture_guard:{block_type}",
             policy_decision="denied",
             policy_reason=message,
         ))
-        asyncio.ensure_future(EventLogger.emit_risk_event(
-            f"risk.posture_enforcement",
+        loop.create_task(EventLogger.emit_risk_event(
+            "risk.posture_enforcement",
             message,
             severity="warn",
             risk_score="medium",

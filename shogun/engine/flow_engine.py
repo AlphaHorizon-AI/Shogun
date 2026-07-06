@@ -699,8 +699,15 @@ async def _exec_mado_browser(config: dict, context_str: str) -> str:
     Supports: navigate, extract_content, screenshot, fill_form,
               click, execute_js, wait_for
     """
+    from fastapi import HTTPException
+
     from shogun.services import mado_service
-    from shogun.services.posture_guard import get_posture_tool_filter
+    from shogun.services.posture_guard import (
+        check_mado_access,
+        check_mado_browser_mode,
+        check_mado_session_limit,
+        get_posture_tool_filter,
+    )
 
     action = config.get("action", "navigate")
     url = config.get("url", "")
@@ -708,13 +715,19 @@ async def _exec_mado_browser(config: dict, context_str: str) -> str:
     session_name = config.get("session_name", "flow_browser")
     browser_mode = config.get("browser_mode", "headless")
 
-    # Check Torii permissions
-    posture = await get_posture_tool_filter()
-    if not posture.get("mado_enabled", False):
-        return f"[BLOCKED] Browser automation is disabled at tier {posture.get('active_tier', 'unknown').upper()}"
-
     # Use a deterministic session ID for the flow to allow session reuse
     flow_session_id = f"flow_{session_name}"
+
+    # Enforce the same local Torii, Harakiri, Gensui, browser-mode, and
+    # session-limit rules used by chat and the Mado API.
+    try:
+        await check_mado_access()
+        posture = await get_posture_tool_filter()
+        check_mado_browser_mode(browser_mode, posture)
+        if flow_session_id not in mado_service._active_contexts:
+            await check_mado_session_limit()
+    except HTTPException as exc:
+        return f"[BLOCKED] {exc.detail}"
 
     # Ensure browser is launched
     launch_result = await mado_service.launch_browser(

@@ -13,7 +13,7 @@ TEMPLATE_IDS = {
 
 
 def _catalog() -> dict:
-    path = Path(__file__).parents[1] / "shogun" / "data" / "flow_templates.json"
+    path = Path(__file__).parents[1] / "shogun" / "resources" / "flow_templates.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -21,7 +21,7 @@ def test_template_catalog_is_included_in_installed_package_data():
     pyproject = tomllib.loads(
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )
-    assert "data/*.json" in pyproject["tool"]["setuptools"]["package-data"]["shogun"]
+    assert "resources/*.json" in pyproject["tool"]["setuptools"]["package-data"]["shogun"]
 
 
 def test_channel_templates_are_catalogued_and_connected():

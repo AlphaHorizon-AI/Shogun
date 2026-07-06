@@ -1,8 +1,8 @@
 {
   "version": "1.6.0",
   "name": "Shogun OS",
-  "build": 37,
+  "build": 38,
   "channel": "stable",
-  "released": "2026-07-06T16:50:00Z",
-  "changelog": "Fix: AgentFlow templates missing on fresh installs (data/ directory over-exclusion), fix browser auto-open after install, improved error surfacing in install scripts."
+  "released": "2026-07-06T17:55:00Z",
+  "changelog": "Fix: AgentFlow templates survive older upgrades; Telegram defaults to tool-capable Mission mode; Mado is simplified to an operational console with browser permissions enforced centrally by Torii and Gensui."
 }

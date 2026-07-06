@@ -4,6 +4,8 @@ import json
 import logging
 from typing import Any
 
+from fastapi import HTTPException
+
 from shogun.db.engine import async_session_factory
 from shogun.api.agents import _get_system_context
 
@@ -1894,17 +1896,19 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
 
         elif name == "browse_web":
             # ── Mado browser automation ──────────────────────────
-            from shogun.services.posture_guard import get_posture_tool_filter
+            from shogun.services.posture_guard import (
+                check_mado_access,
+                check_mado_session_limit,
+            )
             from shogun.services import mado_service
             from shogun.services.mado_service_crud import MadoSessionService
             from datetime import datetime, timezone
 
-            posture = await get_posture_tool_filter()
-            if not posture.get("mado_enabled", False):
-                return json.dumps({
-                    "status": "error",
-                    "message": f"Browser automation is disabled at tier {posture.get('active_tier', 'unknown').upper()}. Enable Mado in the Torii.",
-                })
+            try:
+                # One shared gate enforces local Torii, Harakiri, and Gensui.
+                await check_mado_access()
+            except HTTPException as exc:
+                return json.dumps({"status": "error", "message": str(exc.detail)})
 
             url = args.get("url", "")
             extract_type = args.get("extract_type", "text")
@@ -1930,6 +1934,10 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
             mado_svc = MadoSessionService(db_session)
             db_record = await mado_svc.get_by_profile_name("native_skill")
             if db_record is None:
+                try:
+                    await check_mado_session_limit()
+                except HTTPException as exc:
+                    return json.dumps({"status": "error", "message": str(exc.detail)})
                 db_record = await mado_svc.create(
                     name="Agent Browser",
                     profile_name="native_skill",
@@ -1994,17 +2002,15 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
 
         elif name == "take_screenshot":
             # ── Mado screenshot ──────────────────────────────────
-            from shogun.services.posture_guard import get_posture_tool_filter
+            from shogun.services.posture_guard import check_mado_access
             from shogun.services import mado_service
             from shogun.services.mado_service_crud import MadoSessionService
             from datetime import datetime, timezone
 
-            posture = await get_posture_tool_filter()
-            if not posture.get("mado_enabled", False):
-                return json.dumps({
-                    "status": "error",
-                    "message": "Browser automation is disabled. Enable Mado in the Torii.",
-                })
+            try:
+                await check_mado_access()
+            except HTTPException as exc:
+                return json.dumps({"status": "error", "message": str(exc.detail)})
 
             # Resolve the native skill session from DB
             mado_svc = MadoSessionService(db_session)

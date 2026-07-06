@@ -5,13 +5,14 @@ import json
 import logging
 import time
 import traceback
-import httpx
 from datetime import datetime, timezone
 
+import httpx
+
+from shogun.api.agents import _classify_chat_mode, _shogun_chat_internal
 from shogun.db.engine import async_session_factory
 from shogun.db.models.agent import Agent
 from shogun.services.agent_service import AgentService
-from shogun.api.agents import _shogun_chat_internal, _classify_chat_mode
 from shogun.services.channel_service import _TELEGRAM_KEY, _get_agent_bushido
 
 logger = logging.getLogger("shogun.telegram_poller")
@@ -35,6 +36,41 @@ def _get_tg_client() -> httpx.AsyncClient:
 # ── Telegram config cache (avoid DB hit every poll cycle) ──────────────────
 _tg_config_cache: dict = {"data": None, "ts": 0.0}
 _TG_CONFIG_TTL = 60  # seconds
+
+
+def _select_telegram_chat_mode(user_msg: str, history: list) -> tuple[str, str, dict]:
+    """Choose a lane for Telegram, which has no graphical mode selector.
+
+    Telegram defaults to Mission so requests can use the tools permitted by
+    the active Torii posture. Operators can opt into a narrower lane per
+    message.
+    """
+    text = user_msg.strip()
+    lowered = text.lower()
+    overrides = {
+        "/fast": "fast",
+        "/governed": "governed",
+        "/mission": "mission",
+        "/auto": "auto",
+    }
+    for command, requested_mode in overrides.items():
+        if lowered == command or lowered.startswith(command + " "):
+            clean_message = text[len(command):].lstrip() or "Hello"
+            classification = _classify_chat_mode(clean_message, history)
+            mode = classification["mode"] if requested_mode == "auto" else requested_mode
+            classification = {
+                **classification,
+                "mode": mode,
+                "reason": f"telegram_{requested_mode}_override",
+            }
+            return clean_message, mode, classification
+
+    classification = _classify_chat_mode(text, history)
+    return text, "mission", {
+        **classification,
+        "mode": "mission",
+        "reason": "telegram_mission_default",
+    }
 
 
 async def _get_cached_telegram_config() -> tuple[dict, dict]:
@@ -190,9 +226,10 @@ async def process_telegram_message(bot_token: str, chat_id: str, user_msg: str):
             )
             await session.commit()
             
-            # ── 1. Route via mode classifier (fast vs mission) ─────
-            classification = _classify_chat_mode(user_msg, history)
-            mode = classification["mode"]
+            # ── 1. Select the Telegram execution lane ──────────────
+            # Telegram has no graphical mode selector, so default to the
+            # tool-capable Mission lane. Torii still gates every tool call.
+            user_msg, mode, classification = _select_telegram_chat_mode(user_msg, history)
             logger.info(
                 "[Telegram] Mode classified: %s (reason=%s, matched=%s)",
                 mode,
@@ -208,6 +245,13 @@ async def process_telegram_message(bot_token: str, chat_id: str, user_msg: str):
                 from shogun.api.agents import _shogun_fast_chat
                 logger.info("[Telegram] Routing to Fast Chat lane...")
                 response_stream = await _shogun_fast_chat(
+                    user_msg=user_msg, history=history, svc=svc,
+                    classification=classification,
+                )
+            elif mode == "governed":
+                from shogun.api.governed_chat import _shogun_governed_chat
+                logger.info("[Telegram] Routing to Governed Chat lane...")
+                response_stream = await _shogun_governed_chat(
                     user_msg=user_msg, history=history, svc=svc,
                     classification=classification,
                 )

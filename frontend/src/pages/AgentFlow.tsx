@@ -3140,6 +3140,7 @@ function CreateFlowModal({
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [categories, setCategories] = useState<TemplateCategoryInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [creating, setCreating] = useState<string | null>(null);
@@ -3160,6 +3161,8 @@ function CreateFlowModal({
         }
       } catch (err) {
         console.error('Failed to load templates:', err);
+        const detail = axios.isAxiosError(err) ? err.response?.data?.detail : '';
+        setLoadError(detail || 'AgentFlow templates could not be loaded. Run Shogun Repair/Update and restart Shogun.');
       } finally {
         setLoading(false);
       }
@@ -3308,6 +3311,12 @@ function CreateFlowModal({
                 {loading ? (
                   <div className="flex items-center justify-center py-16">
                     <Loader2 className="w-6 h-6 text-[#d4a017] animate-spin" />
+                  </div>
+                ) : loadError ? (
+                  <div className="text-center py-16 px-8">
+                    <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-3" />
+                    <p className="text-sm text-amber-300 font-semibold">Templates unavailable</p>
+                    <p className="text-xs text-[#7a8899] mt-2">{loadError}</p>
                   </div>
                 ) : filteredTemplates.length === 0 ? (
                   <div className="text-center py-16">

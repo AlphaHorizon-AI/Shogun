@@ -1290,8 +1290,8 @@ npm start`}</pre>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Browser sessions are managed automatically. When Shogun shuts down, all active Playwright browser instances are cleanly closed. The Mado page in the sidebar shows the current session status and lets you manually manage active browser contexts.</p>
                    </div>
                    <div className="shogun-card space-y-2 md:col-span-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-cyan-400" /> Per-Session Security Policy</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Each browser session can have its own <strong>security policy</strong> — a fine-grained sandbox controlling what the session is allowed to do. Configure HTTPS-only mode, download/upload/form-submission/JS-execution permissions (allowed, blocked, or approval-required), external navigation restrictions, and page-load limits. Session policies layer <em>inside</em> the global Torii posture: a session can only be <strong>more restrictive</strong> than the Torii tier, never less. Create and edit policies from the Mado session UI or via <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">PATCH /api/v1/mado/sessions/{'{'}id{'}'}/policy</code>.</p>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-cyan-400" /> One Permission Authority</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Torii is the sole permission authority for Mado. The active posture controls browser access, headless or visible mode, autonomous browsing, uploads, downloads, and session limits. Mado is an operational console for runtime health, screenshots, resets, and diagnostics — it does not maintain a second permission system.</p>
                    </div>
                 </div>
 
@@ -1312,18 +1312,17 @@ npm start`}</pre>
                       <p className="text-xs text-shogun-subdued leading-relaxed mt-1"><strong>Security Note:</strong> Mado must be enabled in your Torii security posture. At <strong>SHRINE</strong> tier, Mado is completely disabled. <strong>GUARDED</strong> allows 1 session with no downloads/uploads. You need at least <strong>TACTICAL</strong> (headless only) for full Mado features.</p>
                    </div>
 
-                   {/* Step 2: Create a Session */}
+                   {/* Step 2: Automatic Session */}
                    <div className="shogun-card space-y-3 border-l-2 border-cyan-400/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><span className="text-cyan-400 font-mono text-sm">02</span> Creating a Browser Session</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">A session is an isolated browser instance with its own profile (cookies, history, storage). Think of it like a separate browser window.</p>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><span className="text-cyan-400 font-mono text-sm">02</span> Let Shogun Manage the Browser</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">You do not need to create browser sessions manually. Shogun creates its managed browser profile automatically the first time a governed task calls <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">browse_web</code>.</p>
                       <ol className="text-xs text-shogun-subdued space-y-1 ml-4 list-decimal">
-                         <li>On the Mado page, go to the <strong>Sessions</strong> tab and click <strong>"+ New Session"</strong>.</li>
-                         <li><strong>Session Name:</strong> A friendly display name (e.g., "Research Browser" or "Daily News Monitor").</li>
-                         <li><strong>Profile Name:</strong> A unique identifier used for persistent storage on disk (e.g., "research_agent"). Cookies and login sessions survive restarts.</li>
-                         <li><strong>Browser Mode:</strong> Choose between <strong>Headless</strong> (invisible, faster, works on servers) or <strong>Visible</strong> (shows a real browser window — great for debugging and demos, but requires a display).</li>
-                         <li>Click <strong>Create</strong>. The session appears in the list with a status indicator.</li>
+                         <li>Set browser permissions in <strong>Torii</strong>.</li>
+                         <li>Ask Shogun to browse, or run an AgentFlow containing a Mado Browser node.</li>
+                         <li>Use <strong>Mado → Overview</strong> to inspect the managed session.</li>
+                         <li>Use <strong>Reset</strong> only when the browser needs a clean profile.</li>
                       </ol>
-                      <p className="text-xs text-shogun-subdued leading-relaxed mt-1"><strong>Tip:</strong> Create separate sessions for different purposes — a "Research" session, a "Monitoring" session, etc. Each has isolated cookies and profiles.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed mt-1"><strong>Advanced diagnostics</strong> lists runtime sessions and storage paths without adding another security configuration layer.</p>
                    </div>
 
                    {/* Scenario A: Chat-Driven Browsing */}
@@ -1359,18 +1358,17 @@ npm start`}</pre>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Screenshots are saved to the <strong>Mado → Screenshots</strong> tab with a timestamp. You can view all captured images there. Files are stored at <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">data/mado/screenshots/</code>.</p>
                    </div>
 
-                   {/* Scenario C: Quick Actions UI */}
+                   {/* Scenario C: Operational Console */}
                    <div className="shogun-card space-y-3 border-l-2 border-violet-400/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><span className="text-violet-400 font-mono text-sm">C</span> Scenario: Using the Quick Actions Panel</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The <strong>Quick Actions</strong> tab on the Mado page gives you direct control over browser sessions — no chat needed:</p>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><span className="text-violet-400 font-mono text-sm">C</span> Scenario: Inspecting Browser Operations</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Use the Mado console to inspect browser work while Torii remains responsible for permissions:</p>
                       <ol className="text-xs text-shogun-subdued space-y-1 ml-4 list-decimal">
-                         <li>Go to the <strong>Quick Actions</strong> tab.</li>
-                         <li>Select a session from the <strong>Active Session</strong> dropdown.</li>
-                         <li>Enter a URL in the <strong>Navigate to URL</strong> field and click <strong>Go</strong>. The result shows the page title and final URL.</li>
-                         <li>Click <strong>Screenshot</strong> to capture the current page — it's saved to the Screenshots gallery instantly.</li>
-                         <li>Click <strong>Extract Text</strong> to pull the full page content as readable text. The result appears in the output panel below.</li>
+                         <li><strong>Overview:</strong> Check Chromium, agent-browser health, and session count.</li>
+                         <li><strong>Screenshots:</strong> Review evidence captured by chat and AgentFlow tasks.</li>
+                         <li><strong>Advanced:</strong> Inspect runtime sessions and storage paths, or remove stale sessions.</li>
+                         <li><strong>Torii:</strong> Change browser permissions and posture limits.</li>
                       </ol>
-                      <p className="text-xs text-shogun-subdued leading-relaxed mt-1"><strong>Best for:</strong> Quick manual inspections, testing whether a URL loads correctly before automating it, or grabbing content from a specific page without typing a full chat prompt.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed mt-1"><strong>Design principle:</strong> Mado shows browser operations; Torii governs them.</p>
                    </div>
 
                    {/* Scenario D: Agent Flow with Mado */}
@@ -1411,7 +1409,7 @@ npm start`}</pre>
                       <div className="font-bold text-shogun-text flex items-center gap-2"><span className="text-amber-400 font-mono text-sm">F</span> Scenario: Generating PDFs from Web Pages</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Mado can convert any web page to a PDF document — useful for archiving, reports, or compliance evidence:</p>
                       <ol className="text-xs text-shogun-subdued space-y-1 ml-4 list-decimal">
-                         <li>Navigate to the page you want to convert (via chat, Quick Actions, or API).</li>
+                         <li>Navigate to the page you want to convert (via chat, AgentFlow, or API).</li>
                          <li>Call the PDF endpoint: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">POST /api/v1/mado/sessions/{'{'}session_id{'}'}/pdf</code></li>
                          <li>The PDF is generated in A4 format with background colors and saved to <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">data/mado/downloads/</code>.</li>
                       </ol>
@@ -1427,27 +1425,24 @@ npm start`}</pre>
                          <li><strong>Isolation:</strong> Different profiles don't share cookies or data — like using separate Chrome profiles.</li>
                          <li><strong>Cleanup:</strong> Delete a session to close the browser. The profile data stays on disk until you manually delete it from <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">data/mado/profiles/</code>.</li>
                       </ul>
-                      <p className="text-xs text-shogun-subdued leading-relaxed mt-1"><strong>Storage paths</strong> are visible on the <strong>Settings</strong> tab of the Mado page: profiles, screenshots, and downloads each have their own directory.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed mt-1"><strong>Storage paths</strong> are visible under <strong>Mado → Advanced</strong>. The agent-managed profile is created automatically and can be reset from Overview.</p>
                    </div>
 
-                   {/* Security Policies */}
+                   {/* Torii Permissions */}
                    <div className="shogun-card space-y-3 border-l-2 border-red-400/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-red-400" /> Configuring Per-Session Security Policies</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Each session can have a <strong>security policy</strong> — a sandbox that limits what the browser session is allowed to do. This gives you fine-grained control without changing the global Torii posture.</p>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-red-400" /> Configuring Mado Permissions</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Configure Mado once in <strong>Torii</strong>. These rules apply consistently to chat, Telegram, the Mado API, and AgentFlow browser nodes. Gensui remains an outer fleet-level authority when connected.</p>
                       <div className="bg-shogun-bg rounded-lg p-3 space-y-2">
-                         <p className="text-[10px] text-red-400/80 font-bold uppercase tracking-widest">Policy Fields</p>
+                         <p className="text-[10px] text-red-400/80 font-bold uppercase tracking-widest">Torii Controls</p>
                          <ul className="text-xs text-shogun-subdued space-y-1 ml-2 list-disc">
-                            <li><strong>HTTPS Only:</strong> When enabled, the session blocks navigation to non-HTTPS URLs.</li>
-                            <li><strong>Downloads:</strong> <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">allowed</code> · <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">blocked</code> · <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">approval_required</code></li>
-                            <li><strong>Uploads:</strong> Same three modes — controls file upload actions.</li>
-                            <li><strong>Form Submission:</strong> Controls whether the session can submit forms.</li>
-                            <li><strong>External Navigation:</strong> <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">allowed</code> or <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">blocked</code> — when blocked, the session can only navigate to domains in its allowlist.</li>
-                            <li><strong>JS Execution:</strong> <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">allowed</code> or <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">blocked</code> — controls the <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">/execute-js</code> endpoint.</li>
-                            <li><strong>Max Page Loads:</strong> Caps the total number of navigations allowed in the session lifetime (0 = unlimited).</li>
+                            <li><strong>Mado enabled:</strong> Allows or blocks browser automation entirely.</li>
+                            <li><strong>Headless only:</strong> Prevents visible browser windows at restricted postures.</li>
+                            <li><strong>Maximum sessions:</strong> Applies to API, agent-managed, and AgentFlow sessions.</li>
+                            <li><strong>Autonomous browsing:</strong> Controls unattended browser work.</li>
+                            <li><strong>Downloads and uploads:</strong> Governs file transfer through Mado.</li>
                          </ul>
                       </div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed mt-1"><strong>Priority:</strong> The session policy is the <em>inner</em> layer. Torii is the <em>outer</em> layer. If Torii blocks downloads globally, the session policy cannot override that. A session policy can only be <strong>more restrictive</strong> than Torii — never less.</p>
-                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>How to set:</strong> Configure the security policy when creating a session (expand the "Security Policy" section in the create modal), or edit it later via the "Edit Policy" button on any session card. You can also use the API: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">PATCH /api/v1/mado/sessions/{'{'}id{'}'}/policy</code>.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed mt-1"><strong>Priority:</strong> Gensui policy overrides local Torii when fleet governance is active. Mado itself does not override either authority.</p>
                    </div>
 
                    {/* Troubleshooting */}
@@ -1455,11 +1450,10 @@ npm start`}</pre>
                       <div className="font-bold text-shogun-text flex items-center gap-2"><span className="text-red-400 font-mono text-sm">⚠</span> Troubleshooting</div>
                       <ul className="text-xs text-shogun-subdued space-y-2 ml-4 list-disc">
                          <li><strong>"Browser automation is disabled"</strong> — Your Torii security tier doesn't allow Mado. Go to <strong>Torii → Security Posture</strong> and switch to GUARDED or higher (GUARDED allows 1 session; TACTICAL+ enables full features).</li>
-                         <li><strong>"Domain not in allowlist"</strong> — Your session or security policy has a domain allowlist that doesn't include the URL you're trying to visit. Edit the session's domain allowlist or update the policy in Torii.</li>
                          <li><strong>"No active browser session"</strong> — For chat skills (<code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">take_screenshot</code>), you must first use <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">browse_web</code> to navigate to a page.</li>
                          <li><strong>Chromium not installed</strong> — Click "Install Chromium" on the Mado page. Requires internet access for the initial download (~200 MB).</li>
                          <li><strong>Session shows "idle" forever</strong> — The browser launches lazily. It only starts when you perform an action (navigate, screenshot, etc.). This is normal.</li>
-                         <li><strong>Visible mode not working</strong> — Visible mode requires a display. On headless servers (Linux VPS, Docker), use headless mode only.</li>
+                         <li><strong>Visible mode blocked</strong> — The active Torii posture may enforce headless-only browsing. CAMPAIGN or RONIN can permit visible sessions.</li>
                       </ul>
                    </div>
                 </div>

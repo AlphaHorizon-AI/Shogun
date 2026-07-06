@@ -83,10 +83,16 @@ async def create_session(
     svc: MadoSessionService = Depends(get_mado_session_service),
 ):
     """Create a new browser session (validates Torii permissions)."""
-    from shogun.services.posture_guard import check_mado_access, check_mado_session_limit
+    from shogun.services.posture_guard import (
+        check_mado_access,
+        check_mado_browser_mode,
+        check_mado_session_limit,
+        get_posture_tool_filter,
+    )
 
     await check_mado_access()
     await check_mado_session_limit()
+    check_mado_browser_mode(body.browser_mode, await get_posture_tool_filter())
 
     # Check for duplicate profile name
     existing = await svc.get_by_profile_name(body.profile_name)
