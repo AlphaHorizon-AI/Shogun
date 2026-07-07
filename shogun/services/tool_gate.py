@@ -180,6 +180,12 @@ MODE_THRESHOLDS: dict[str, dict[str, GateAction]] = {
         "high":     GateAction.CONFIRM,
         "critical": GateAction.BLOCK,
     },
+    "campaign": {
+        "low":      GateAction.ALLOW,
+        "medium":   GateAction.ALLOW,
+        "high":     GateAction.ALLOW,
+        "critical": GateAction.BLOCK,
+    },
     "ronin_browser": {
         "low":      GateAction.ALLOW,
         "medium":   GateAction.ALLOW,
