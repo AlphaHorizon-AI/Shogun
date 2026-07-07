@@ -1,8 +1,8 @@
 {
   "version": "1.6.0",
   "name": "Shogun OS",
-  "build": 38,
+  "build": 39,
   "channel": "stable",
-  "released": "2026-07-06T17:55:00Z",
-  "changelog": "Fix: AgentFlow templates survive older upgrades; Telegram defaults to tool-capable Mission mode; Mado is simplified to an operational console with browser permissions enforced centrally by Torii and Gensui."
+  "released": "2026-07-07T00:00:00Z",
+  "changelog": "Fix: Campaign mode now allows approved high-risk tools such as send_email without an extra ToolGate confirmation, while explicit tool overrides can still require confirmation or block execution."
 }
