@@ -387,7 +387,7 @@ NATIVE_TOOLS = [
                             "type": "object",
                             "properties": {
                                 "id": {"type": "string", "description": "Unique node ID (e.g. 'node-1', 'node-2')."},
-                                "node_type": {"type": "string", "enum": ["input", "samurai", "shogun_approval", "logic", "output", "mado_browser"], "description": "Type of node."},
+                                "node_type": {"type": "string", "enum": ["input", "samurai", "shogun_approval", "logic", "output", "mado_browser", "subflow", "stack_orchestrator"], "description": "Type of node."},
                                 "label": {"type": "string", "description": "Display label for the node."},
                                 "position_x": {"type": "number", "description": "X position on canvas (start at 100, space 300 apart)."},
                                 "position_y": {"type": "number", "description": "Y position on canvas (start at 200, space 150 apart)."},

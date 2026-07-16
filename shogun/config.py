@@ -52,6 +52,23 @@ class Settings(BaseSettings):
     office_path: Path = PROJECT_ROOT / "data" / "office"
     workspace_path: Path = PROJECT_ROOT / "data" / "workspace"
 
+    # Flow Stacking / governed hierarchical AgentFlow execution
+    flow_stacking_enabled: bool = True
+    flow_stacking_max_depth: int = 3
+    flow_stacking_hard_max_depth: int = 5
+    flow_stacking_max_child_runs_per_parent: int = 20
+    flow_stacking_max_total_runs_per_root: int = 100
+    flow_stacking_default_timeout_seconds: int = 600
+    flow_stacking_allow_latest_version: bool = True
+    flow_stacking_max_parallel_children: int = 4
+
+    # Stack Orchestrator / long-horizon runtime control
+    stack_orchestrator_enabled: bool = True
+    stack_orchestrator_allow_supervised: bool = True
+    stack_orchestrator_default_runtime_minutes: int = 60
+    stack_orchestrator_poll_interval_seconds: float = 0.25
+    stack_orchestrator_max_steps: int = 100
+
     # ── Telegram ─────────────────────────────────────────────
     telegram_bot_token: str | None = None
     telegram_allowed_chat_ids: str | None = None

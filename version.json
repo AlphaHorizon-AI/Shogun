@@ -1,8 +1,8 @@
 {
-  "version": "1.6.15",
+  "version": "1.7.0",
   "name": "Shogun OS",
-  "build": 62,
+  "build": 63,
   "channel": "stable",
-  "released": "2026-07-07T00:00:00Z",
-  "changelog": "Agent Flow schedules now activate when saved, updates show restart-pending state, and the update page refreshes itself after install."
+  "released": "2026-07-16T00:00:00Z",
+  "changelog": "Flow Stacking adds hierarchical AgentFlows, 180 long-running stack templates, editable stack canvases, reusable custom templates, and stack-level orchestration controls."
 }

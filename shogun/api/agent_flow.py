@@ -21,6 +21,13 @@ from shogun.schemas.agent_flow import (
     AgentFlowRunListItem,
     AgentFlowRunResponse,
     AgentFlowUpdate,
+    FlowStackCreate,
+    FlowStackComposeEdge,
+    FlowStackComposeNode,
+    FlowStackComposeRequest,
+    FlowStackTemplateInstantiate,
+    SaveFlowTemplateRequest,
+    SubflowValidationRequest,
 )
 from shogun.schemas.common import ApiResponse
 from shogun.services.agent_flow_service import AgentFlowService
@@ -66,6 +73,100 @@ async def create_flow(
             detail=f"AgentFlow schedule could not be synchronized: {exc}",
         ) from exc
     return ApiResponse(data=AgentFlowResponse.model_validate(record))
+
+
+@router.post("/flow-stacks", response_model=ApiResponse, status_code=201)
+async def create_flow_stack(
+    body: FlowStackCreate,
+    svc: AgentFlowService = Depends(get_agent_flow_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a normal AgentFlow containing sequential Subflow nodes."""
+    from shogun.db.models.agent_flow import AgentFlow
+
+    result = await db.execute(
+        select(AgentFlow).where(
+            AgentFlow.id.in_(body.flow_ids),
+            AgentFlow.is_deleted.is_(False),
+        )
+    )
+    selected = {flow.id: flow for flow in result.scalars().all()}
+    missing = [str(flow_id) for flow_id in body.flow_ids if flow_id not in selected]
+    blocked = [
+        selected[flow_id].name
+        for flow_id in body.flow_ids
+        if flow_id in selected and not selected[flow_id].allow_as_subflow
+    ]
+    if missing:
+        raise HTTPException(404, detail=f"Flow Stack contains missing flows: {', '.join(missing)}")
+    if blocked:
+        raise HTTPException(422, detail=f"These flows cannot be used as subflows: {', '.join(blocked)}")
+    from shogun.config import settings
+    if body.version_mode == "latest" and not settings.flow_stacking_allow_latest_version:
+        raise HTTPException(422, detail="Latest-version Flow Stack references are disabled")
+
+    stack = await svc.create(
+        name=body.name,
+        description=body.description or "Flow Stack generated from reusable Shogun flows.",
+        trigger_type="manual",
+        schedule_config={},
+        flow_type="stack",
+        input_contract={},
+        output_contract={},
+        risk_tier=max(
+            (selected[fid].risk_tier for fid in body.flow_ids),
+            key=lambda risk: {"low": 0, "medium": 1, "high": 2}.get(risk, 0),
+        ),
+        default_timeout_seconds=body.timeout_seconds,
+        allow_as_subflow=True,
+        required_tools=sorted({tool for fid in body.flow_ids for tool in (selected[fid].required_tools or [])}),
+    )
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    input_id = str(uuid.uuid4())
+    nodes.append({
+        "id": input_id,
+        "node_type": "input",
+        "label": "Stack Input",
+        "position_x": 0,
+        "position_y": 120,
+        "config": {"input_type": "subflow", "description": "Input passed into the Flow Stack"},
+    })
+    previous_id = input_id
+    for index, flow_id in enumerate(body.flow_ids, start=1):
+        child = selected[flow_id]
+        node_id = str(uuid.uuid4())
+        nodes.append({
+            "id": node_id,
+            "node_type": "subflow",
+            "label": child.name,
+            "position_x": index * 280,
+            "position_y": 120,
+            "config": {
+                "child_flow_id": str(child.id),
+                "child_flow_version_mode": body.version_mode,
+                "child_flow_version": child.version if body.version_mode == "locked" else None,
+                "execution_mode": "sequential",
+                "timeout_seconds": body.timeout_seconds,
+                "on_failure": "fail_parent",
+                "input_mapping": {},
+                "output_mapping": {},
+            },
+        })
+        edges.append({"source_node_id": previous_id, "target_node_id": node_id})
+        previous_id = node_id
+    output_id = str(uuid.uuid4())
+    nodes.append({
+        "id": output_id,
+        "node_type": "output",
+        "label": "Stack Output",
+        "position_x": (len(body.flow_ids) + 1) * 280,
+        "position_y": 120,
+        "config": {"output_type": "artifact", "format": "json"},
+    })
+    edges.append({"source_node_id": previous_id, "target_node_id": output_id})
+    saved = await svc.save_flow_graph(stack.id, nodes, edges, {"x": 20, "y": 80, "zoom": 0.8})
+    return ApiResponse(data=AgentFlowResponse.model_validate(saved), meta={"message": "Flow Stack created"})
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -133,8 +234,153 @@ def _load_templates() -> dict:
     return _TEMPLATE_CACHE
 
 
+def _built_in_template(template_id: str) -> dict | None:
+    return next(
+        (item for item in _load_templates().get("templates", []) if item["id"] == template_id),
+        None,
+    )
+
+
+def _flow_stack_templates() -> list[dict]:
+    """Build 180 original long-horizon operating programs from reusable AgentFlows."""
+    by_id = {item["id"]: item for item in _load_templates().get("templates", [])}
+    role_pools = {
+        "intake": ["project-status", "campaign-brief", "meeting-minutes", "risk-assessment", "process-docs", "customer-persona"],
+        "intelligence": ["competitor-analysis", "market-research", "regulatory-monitor", "supplier-research", "tech-trends", "brand-monitor"],
+        "analysis": ["adv-anomaly-detect", "adv-quarterly-forecast", "sales-kpi", "data-quality", "adv-pricing-intel", "survey-analysis"],
+        "governance": ["adv-compliance-check", "adv-risk-register", "contract-review", "gdpr-checklist", "adv-audit-prep", "quality-audit"],
+        "planning": ["adv-strategic-plan", "adv-gtm-plan", "adv-workforce-plan", "onboarding-plan", "adv-business-case", "content-calendar"],
+        "production": ["whitepaper", "adv-content-suite", "training-material", "process-docs", "adv-localization", "adv-ops-dashboard"],
+        "verification": ["quality-audit", "data-quality", "doc-compare", "adv-audit-prep", "adv-compliance-check", "adv-training-eval"],
+        "communication": ["adv-report-distribution", "internal-announcement", "newsletter", "ops-brief-channel-broadcast", "weekly-status", "press-release"],
+    }
+    archetypes = [
+        ("Continuous Intelligence", "Competitive Signal Watchtower", "maintain a continuously refreshed view of competitors, market shifts, and response options"),
+        ("Continuous Intelligence", "Regulatory Radar", "detect regulatory change early, assess exposure, and keep an evidence-backed response plan current"),
+        ("Continuous Intelligence", "Technology Horizon Scan", "track emerging technology, evaluate relevance, and turn signals into governed experiments"),
+        ("Strategy & Transformation", "Market Entry Program", "take a market opportunity from evidence gathering through entry plan, controls, and executive decision"),
+        ("Strategy & Transformation", "Operating Model Transformation", "diagnose operational friction, design the target model, and govern a phased transformation"),
+        ("Strategy & Transformation", "Strategic Portfolio Review", "continuously evaluate initiatives, dependencies, risk, value, and funding recommendations"),
+        ("Product & Innovation", "Product Discovery Program", "move from customer evidence and market intelligence to a verified product opportunity brief"),
+        ("Product & Innovation", "Launch Readiness Command", "coordinate launch workstreams, surface readiness gaps, verify assets, and package the go-live decision"),
+        ("Product & Innovation", "Innovation Pipeline", "collect ideas, evaluate strategic fit, govern experiments, and publish investment recommendations"),
+        ("Growth & Brand", "Integrated Go-to-Market Program", "coordinate research, positioning, content, channels, measurement, and optimization as one program"),
+        ("Growth & Brand", "Brand Health Command", "monitor brand signals, investigate changes, plan interventions, and verify market-facing consistency"),
+        ("Growth & Brand", "Content Growth Engine", "operate a research-led content system with parallel production, compliance, localization, and distribution"),
+        ("Customer Operations", "Customer Onboarding Journey", "coordinate onboarding knowledge, communications, success signals, risk checks, and follow-through"),
+        ("Customer Operations", "Retention Recovery Program", "identify churn signals, investigate causes, design interventions, and track verified recovery actions"),
+        ("Customer Operations", "Voice of Customer Council", "turn customer feedback into recurring analysis, governed priorities, action plans, and executive reporting"),
+        ("Data & Executive Operations", "Executive Performance Cycle", "run a recurring evidence-to-decision cycle across KPIs, anomalies, risks, and executive actions"),
+        ("Data & Executive Operations", "Forecast and Scenario Program", "maintain forecasts, challenge assumptions, model scenarios, and package decision-ready options"),
+        ("Data & Executive Operations", "Data Quality Remediation", "discover quality failures, assess impact, coordinate remediation, verify fixes, and report controls"),
+        ("Risk & Compliance", "Enterprise Risk Assurance", "maintain a living risk picture with evidence, mitigation ownership, verification, and escalation"),
+        ("Risk & Compliance", "Contract Lifecycle Command", "coordinate drafting, review, obligation tracking, compliance verification, and stakeholder communication"),
+        ("Risk & Compliance", "Audit Readiness Program", "continuously assemble evidence, test controls, close gaps, and maintain an audit-ready package"),
+        ("People & Capability", "Workforce Planning Cycle", "connect workforce evidence, skills gaps, operating priorities, risk, and an approved capability plan"),
+        ("People & Capability", "Talent Acquisition Program", "run a governed hiring pipeline from role design through screening, interviews, and onboarding readiness"),
+        ("People & Capability", "Learning Academy Operation", "design, produce, validate, distribute, and evaluate an evolving learning program"),
+        ("Incident & Resilience", "Incident Command System", "coordinate triage, investigation, stakeholder updates, recovery, verification, and final incident reporting"),
+        ("Incident & Resilience", "Root Cause and Prevention Program", "move from evidence collection to root cause, corrective actions, verification, and organizational learning"),
+        ("Incident & Resilience", "Supplier Continuity Watch", "monitor supplier risk, test alternatives, maintain mitigations, and escalate continuity decisions"),
+        ("Knowledge & Publishing", "Policy Publishing System", "research, draft, review, localize, publish, and maintain governed organizational policy"),
+        ("Knowledge & Publishing", "Research-to-Whitepaper Program", "turn broad research into a verified, compliant, multi-format publication and distribution plan"),
+        ("Knowledge & Publishing", "Multilingual Knowledge Hub", "maintain source knowledge, translations, quality controls, updates, and audience distribution"),
+    ]
+    contexts = [
+        ("Enterprise", 1440, 120), ("Regional", 960, 100), ("Product", 720, 80),
+        ("Customer", 720, 80), ("Regulated", 1440, 150), ("Transformation", 1440, 150),
+    ]
+    phase_names = [
+        "Frame objective and operating context", "Run intelligence workstream", "Run evidence and analysis workstream",
+        "Run governance and risk workstream", "Synthesize the program plan", "Produce operational artifacts",
+        "Verify outcomes and controls", "Publish decision package and next checkpoint",
+    ]
+    positions = [(340, 220), (650, 20), (650, 220), (650, 420), (970, 220), (1290, 80), (1290, 360), (1610, 220)]
+    topology = [(0, 1), (0, 2), (0, 3), (1, 4), (2, 4), (3, 4), (4, 5), (4, 6), (5, 7), (6, 7)]
+    recipes: list[dict] = []
+    role_names = list(role_pools)
+    for archetype_index, (category, program_name, purpose) in enumerate(archetypes):
+        for context_index, (context, runtime_minutes, iterations) in enumerate(contexts):
+            members = []
+            for role_index, role in enumerate(role_names):
+                pool = [item for item in role_pools[role] if item in by_id]
+                members.append(pool[(archetype_index * 2 + context_index + role_index) % len(pool)])
+            node_ids = [f"phase-{index + 1}" for index in range(len(members))]
+            objective = f"Operate the {context.lower()} {program_name.lower()} to {purpose}."
+            recipes.append({
+                "id": f"stack-program-{archetype_index + 1:02d}-{context.lower()}",
+                "name": f"{context} {program_name}",
+                "description": f"A long-running operating program that {purpose}. Three parallel workstreams converge into planning, production, independent verification, and a checkpointed decision package.",
+                "category": category, "icon": "layers", "difficulty": "long-running",
+                "duration_label": "8–24 hours, resumable", "flow_template_ids": members,
+                "flow_count": len(members), "source": "built-in",
+                "builder_nodes": [{
+                    "id": node_ids[index], "label": phase_names[index], "template_id": template_id,
+                    "position_x": positions[index][0], "position_y": positions[index][1],
+                } for index, template_id in enumerate(members)],
+                "builder_edges": [{"source": node_ids[source], "target": node_ids[target]} for source, target in topology],
+                "orchestrator_config": {
+                    "mode": "template", "objective": objective,
+                    "success_criteria": [
+                        "All parallel workstreams complete with traceable artifacts",
+                        "Verification passes before the decision package is published",
+                        "The final package identifies owners, risks, decisions, and the next checkpoint",
+                    ],
+                    "model_routing_profile": "balanced", "max_runtime_minutes": runtime_minutes,
+                    "max_iterations": iterations, "max_retry_attempts_per_step": 3,
+                    "timeout_seconds": 7200,
+                    "checkpoint_frequency": "after_each_subflow", "context_compaction": "enabled",
+                    "verification_required": True, "approval_policy": "step_based",
+                    "artifact_policy": "retain_all", "failure_policy": "retry",
+                },
+            })
+    return recipes
+
+
+async def _instantiate_flow_template(
+    template_id: str, svc: AgentFlowService, name: str | None = None,
+):
+    """Instantiate either a built-in catalog template or a saved custom template."""
+    if template_id.startswith("custom:"):
+        try:
+            source_id = uuid.UUID(template_id.split(":", 1)[1])
+        except ValueError as exc:
+            raise HTTPException(404, f"Template not found: {template_id}") from exc
+        source = await svc.get_flow_full(source_id)
+        if not source or not source.is_template:
+            raise HTTPException(404, f"Template not found: {template_id}")
+        flow = await svc.duplicate_flow(source_id)
+        if not flow:
+            raise HTTPException(404, f"Template not found: {template_id}")
+        flow.name = name or flow.name.removesuffix(" (Copy)")
+        flow.is_template = False
+        flow.template_category = None
+        flow.template_source = None
+        flow.template_config = {}
+        await svc.session.flush()
+        return await svc.get_flow_full(flow.id)
+
+    template = _built_in_template(template_id)
+    if not template:
+        raise HTTPException(404, f"Template not found: {template_id}")
+    trigger_type = template.get("trigger_type", "manual")
+    flow = await svc.create(
+        name=name or template["name"],
+        description=template.get("description", ""),
+        trigger_type=trigger_type,
+        schedule_config=_normalized_schedule_config(template.get("schedule_config", {}))
+            if trigger_type == "scheduled" else template.get("schedule_config", {}),
+        status="active" if trigger_type == "scheduled" else "draft",
+    )
+    saved = await svc.save_flow_graph(
+        flow.id, template.get("nodes", []), template.get("edges", []),
+        {"x": 50, "y": 100, "zoom": 0.85},
+    )
+    return saved or flow
+
+
 @router.get("/templates", response_model=ApiResponse)
-async def list_templates():
+async def list_templates(svc: AgentFlowService = Depends(get_agent_flow_service)):
     """Return the full template catalog (categories + lightweight template list)."""
     try:
         catalog = _load_templates()
@@ -153,11 +399,238 @@ async def list_templates():
             "trigger_type": t["trigger_type"],
             "node_count": t.get("node_count", len(t.get("nodes", []))),
         })
+    custom = await svc.list_saved_templates(flow_type="standard")
+    for item in custom:
+        lightweight.append({
+            "id": f"custom:{item.id}", "name": item.name,
+            "description": item.description or "Saved custom AgentFlow template",
+            "category": item.template_category or "My Templates", "icon": "bookmark",
+            "difficulty": "custom", "trigger_type": item.trigger_type,
+            "node_count": len(item.nodes), "source": "custom",
+        })
+    categories = list(catalog.get("categories", []))
+    if custom:
+        categories.append({"name": "My Templates", "count": len(custom)})
     return ApiResponse(data={
-        "total": catalog.get("total_templates", len(lightweight)),
-        "categories": catalog.get("categories", []),
+        "total": len(lightweight),
+        "categories": categories,
         "templates": lightweight,
     })
+
+
+@router.get("/flow-stack-templates", response_model=ApiResponse)
+async def list_flow_stack_templates(svc: AgentFlowService = Depends(get_agent_flow_service)):
+    built_in = _flow_stack_templates()
+    custom = await svc.list_saved_templates(flow_type="stack")
+    custom_items = []
+    for item in custom:
+        subflow_nodes = [node for node in item.nodes if node.node_type == "subflow"]
+        subflow_ids = {str(node.id) for node in subflow_nodes}
+        custom_items.append({
+            "id": f"custom:{item.id}", "name": item.name,
+            "description": item.description or "Saved custom Flow Stack template",
+            "category": item.template_category or "My Templates", "icon": "bookmark",
+            "difficulty": "custom", "flow_count": len(subflow_nodes), "source": "custom",
+            "builder_nodes": [{
+                "id": str(node.id), "label": node.label,
+                "flow_id": str((node.config or {}).get("child_flow_id")),
+                "position_x": node.position_x, "position_y": node.position_y,
+            } for node in subflow_nodes],
+            "builder_edges": [{
+                "source": str(edge.source_node_id), "target": str(edge.target_node_id),
+            } for edge in item.edges
+                if str(edge.source_node_id) in subflow_ids and str(edge.target_node_id) in subflow_ids],
+        })
+    categories = sorted({item["category"] for item in [*built_in, *custom_items]})
+    return ApiResponse(data={
+        "total": len(built_in) + len(custom_items), "built_in_total": 180,
+        "categories": [{"name": name, "count": sum(i["category"] == name for i in [*built_in, *custom_items])} for name in categories],
+        "templates": [*built_in, *custom_items],
+    })
+
+
+@router.get("/templates/{template_id}", response_model=ApiResponse)
+async def get_template_detail(
+    template_id: str,
+    svc: AgentFlowService = Depends(get_agent_flow_service),
+):
+    """Return the complete graph behind a built-in or user-saved AgentFlow template."""
+    if template_id.startswith("custom:"):
+        try:
+            flow_id = uuid.UUID(template_id.split(":", 1)[1])
+        except ValueError as exc:
+            raise HTTPException(404, f"Template not found: {template_id}") from exc
+        flow = await svc.get_flow_full(flow_id)
+        if not flow or not flow.is_template:
+            raise HTTPException(404, f"Template not found: {template_id}")
+        return ApiResponse(data={
+            "id": template_id,
+            "name": flow.name,
+            "description": flow.description or "Saved custom AgentFlow template",
+            "category": flow.template_category or "My Templates",
+            "trigger_type": flow.trigger_type,
+            "nodes": [{
+                "id": str(node.id), "node_type": node.node_type, "label": node.label,
+                "position_x": node.position_x, "position_y": node.position_y,
+                "config": node.config or {},
+            } for node in flow.nodes],
+            "edges": [{
+                "id": str(edge.id), "source_node_id": str(edge.source_node_id),
+                "target_node_id": str(edge.target_node_id), "label": edge.label,
+                "edge_type": edge.edge_type, "config": edge.config or {},
+            } for edge in flow.edges],
+            "source": "custom",
+        })
+    template = _built_in_template(template_id)
+    if not template:
+        raise HTTPException(404, f"Template not found: {template_id}")
+    return ApiResponse(data=template)
+
+
+@router.post("/flow-stacks/from-template", response_model=ApiResponse, status_code=201)
+async def create_stack_from_template(
+    body: FlowStackTemplateInstantiate,
+    svc: AgentFlowService = Depends(get_agent_flow_service),
+):
+    if body.template_id.startswith("custom:"):
+        stack = await _instantiate_flow_template(body.template_id, svc, body.name)
+        return ApiResponse(data=AgentFlowResponse.model_validate(stack))
+    recipe = next((item for item in _flow_stack_templates() if item["id"] == body.template_id), None)
+    if not recipe:
+        raise HTTPException(404, f"Flow Stack template not found: {body.template_id}")
+    stack_body = FlowStackComposeRequest(
+        name=body.name or recipe["name"], description=recipe["description"],
+        category=recipe["category"],
+        nodes=[FlowStackComposeNode(
+            id=item["id"], template_id=item["template_id"], label=item["label"],
+            position_x=item["position_x"], position_y=item["position_y"],
+        ) for item in recipe["builder_nodes"]],
+        edges=[FlowStackComposeEdge(source=item["source"], target=item["target"])
+               for item in recipe["builder_edges"]],
+        orchestrator_config=recipe["orchestrator_config"],
+    )
+    return await compose_flow_stack(stack_body, svc)
+
+
+@router.post("/flow-stacks/compose", response_model=ApiResponse, status_code=201)
+async def compose_flow_stack(
+    body: FlowStackComposeRequest,
+    svc: AgentFlowService = Depends(get_agent_flow_service),
+):
+    """Persist the connected canvas as an executable stack with embedded orchestrator policy."""
+    ids = {item.id for item in body.nodes}
+    if len(ids) != len(body.nodes):
+        raise HTTPException(422, "Every canvas node must have a unique id")
+    outgoing = {item.id: [] for item in body.nodes}
+    incoming = {item.id: 0 for item in body.nodes}
+    for edge in body.edges:
+        if edge.source not in ids or edge.target not in ids:
+            raise HTTPException(422, "A connection references a missing canvas node")
+        if edge.source == edge.target:
+            raise HTTPException(422, "A Flow Stack cannot connect a node to itself")
+        outgoing[edge.source].append(edge.target)
+        incoming[edge.target] += 1
+    if len(body.nodes) > 1 and not body.edges:
+        raise HTTPException(422, "Connect the AgentFlow templates before saving the stack")
+    pending = [item for item, count in incoming.items() if count == 0]
+    visited = 0
+    indegree = dict(incoming)
+    while pending:
+        current = pending.pop()
+        visited += 1
+        for target in outgoing[current]:
+            indegree[target] -= 1
+            if indegree[target] == 0:
+                pending.append(target)
+    if visited != len(body.nodes):
+        raise HTTPException(422, "Flow Stack connections must not contain a cycle")
+
+    children = {}
+    for item in body.nodes:
+        if bool(item.template_id) == bool(item.flow_id):
+            raise HTTPException(422, f"Canvas node '{item.id}' must reference one template or one saved flow")
+        if item.template_id:
+            children[item.id] = await _instantiate_flow_template(item.template_id, svc, item.label)
+        else:
+            child = await svc.get_flow_full(item.flow_id)
+            if not child or child.is_template or not child.allow_as_subflow:
+                raise HTTPException(422, f"Canvas node '{item.id}' references an unavailable flow")
+            children[item.id] = child
+
+    stack = await svc.create(
+        name=body.name, description=body.description or "Connected Flow Stack",
+        trigger_type="manual",
+        schedule_config={"stack_orchestrator": body.orchestrator_config},
+        flow_type="stack", risk_tier="low", allow_as_subflow=True,
+        default_timeout_seconds=int(body.orchestrator_config.get("timeout_seconds", 600)),
+        required_tools=sorted({tool for flow in children.values() for tool in (flow.required_tools or [])}),
+    )
+    input_id, output_id = str(uuid.uuid4()), str(uuid.uuid4())
+    graph_nodes = [{
+        "id": input_id, "node_type": "input", "label": "Orchestrator Input",
+        "position_x": -320, "position_y": 80,
+        "config": {"input_type": "orchestrated", "orchestrator": body.orchestrator_config},
+    }]
+    graph_edges = []
+    for item in body.nodes:
+        child = children[item.id]
+        graph_nodes.append({
+            "id": item.id, "node_type": "subflow", "label": item.label or child.name,
+            "position_x": item.position_x, "position_y": item.position_y,
+            "config": {
+                "child_flow_id": str(child.id), "child_flow_version_mode": "locked",
+                "child_flow_version": child.version, "execution_mode": "orchestrated",
+                "timeout_seconds": stack.default_timeout_seconds, "on_failure": "fail_parent",
+                "input_mapping": {}, "output_mapping": {},
+            },
+        })
+    for edge in body.edges:
+        graph_edges.append({
+            "id": edge.id, "source_node_id": edge.source, "target_node_id": edge.target,
+        })
+    for source in (item for item, count in incoming.items() if count == 0):
+        graph_edges.append({"source_node_id": input_id, "target_node_id": source})
+    graph_nodes.append({
+        "id": output_id, "node_type": "output", "label": "Stack Output",
+        "position_x": max((item.position_x for item in body.nodes), default=0) + 360,
+        "position_y": 80, "config": {"output_type": "artifact", "format": "json"},
+    })
+    for source, targets in outgoing.items():
+        if not targets:
+            graph_edges.append({"source_node_id": source, "target_node_id": output_id})
+    saved = await svc.save_flow_graph(stack.id, graph_nodes, graph_edges, {"x": 40, "y": 80, "zoom": 0.8})
+    meta = {"message": "Flow Stack saved"}
+    if body.save_as_template:
+        template = await svc.duplicate_flow(saved.id)
+        template.name = saved.name
+        template.is_template = True
+        template.template_category = body.category
+        template.template_source = "custom"
+        template.template_config = {"source_flow_id": str(saved.id), "orchestrator": body.orchestrator_config}
+        await svc.session.flush()
+        meta["template_id"] = f"custom:{template.id}"
+    return ApiResponse(data=AgentFlowResponse.model_validate(saved), meta=meta)
+
+
+@router.post("/{flow_id}/save-as-template", response_model=ApiResponse, status_code=201)
+async def save_flow_as_template(
+    flow_id: uuid.UUID,
+    body: SaveFlowTemplateRequest,
+    svc: AgentFlowService = Depends(get_agent_flow_service),
+):
+    source = await svc.get_flow_full(flow_id)
+    if not source:
+        raise HTTPException(404, "Agent Flow not found")
+    template = await svc.duplicate_flow(flow_id)
+    template.name = body.name or source.name
+    template.description = body.description if body.description is not None else source.description
+    template.is_template = True
+    template.template_category = body.category
+    template.template_source = "custom"
+    template.template_config = {"source_flow_id": str(source.id), "source_version": source.version}
+    await svc.session.flush()
+    template = await svc.get_flow_full(template.id)
+    return ApiResponse(data=AgentFlowResponse.model_validate(template), meta={"message": "Reusable template saved"})
 
 
 @router.post("/from-template", response_model=ApiResponse, status_code=201)
@@ -173,47 +646,7 @@ async def create_from_template(
     if not template_id:
         raise HTTPException(400, "template_id is required")
 
-    catalog = _load_templates()
-    template = None
-    for t in catalog.get("templates", []):
-        if t["id"] == template_id:
-            template = t
-            break
-
-    if not template:
-        raise HTTPException(404, f"Template not found: {template_id}")
-
-    # Create the flow
-    flow_name = body.get("name") or template["name"]
-    trigger_type = template.get("trigger_type", "manual")
-    flow = await svc.create(
-        name=flow_name,
-        description=template.get("description", ""),
-        trigger_type=trigger_type,
-        schedule_config=_normalized_schedule_config(template.get("schedule_config", {})) if trigger_type == "scheduled" else template.get("schedule_config", {}),
-        status="active" if trigger_type == "scheduled" else "draft",
-    )
-
-    # Save the graph (nodes + edges) from the template
-    nodes_data = template.get("nodes", [])
-    edges_data = template.get("edges", [])
-    import logging
-    _log = logging.getLogger(__name__)
-    _log.info("FROM-TEMPLATE: flow_id=%s, nodes=%d, edges=%d", flow.id, len(nodes_data), len(edges_data))
-    if nodes_data:
-        try:
-            saved = await svc.save_flow_graph(
-                flow_id=flow.id,
-                nodes_data=nodes_data,
-                edges_data=edges_data,
-                viewport={"x": 50, "y": 100, "zoom": 0.85},
-            )
-            _log.info("FROM-TEMPLATE: save result has %d nodes, %d edges",
-                       len(saved.nodes) if saved else 0, len(saved.edges) if saved else 0)
-            if saved:
-                flow = saved
-        except Exception as exc:
-            _log.error("FROM-TEMPLATE: save_flow_graph FAILED: %s", exc, exc_info=True)
+    flow = await _instantiate_flow_template(template_id, svc, body.get("name"))
 
     try:
         await _sync_live_flow_schedule(flow)
@@ -306,6 +739,103 @@ async def delete_flow(
     return ApiResponse(data={"deleted": True})
 
 
+async def _validate_subflow_graph(
+    db: AsyncSession,
+    parent_flow_id: uuid.UUID,
+    proposed_nodes: list[dict] | None = None,
+) -> list[str]:
+    """Validate references, version locks, static cycles, and configured depth."""
+    from shogun.config import settings
+    from shogun.db.models.agent_flow import AgentFlow, AgentFlowNode
+
+    flow_result = await db.execute(select(AgentFlow).where(AgentFlow.is_deleted.is_(False)))
+    flows = {flow.id: flow for flow in flow_result.scalars().all()}
+    node_result = await db.execute(select(AgentFlowNode).where(AgentFlowNode.node_type == "subflow"))
+    adjacency: dict[uuid.UUID, list[uuid.UUID]] = {}
+    configs: dict[tuple[uuid.UUID, uuid.UUID], dict] = {}
+    for node in node_result.scalars().all():
+        try:
+            child_id = uuid.UUID(str((node.config or {}).get("child_flow_id")))
+        except (ValueError, TypeError):
+            continue
+        adjacency.setdefault(node.flow_id, []).append(child_id)
+        configs[(node.flow_id, child_id)] = node.config or {}
+    if proposed_nodes is not None:
+        adjacency[parent_flow_id] = []
+        for node in proposed_nodes:
+            if node.get("node_type") != "subflow":
+                continue
+            config = node.get("config") or {}
+            try:
+                child_id = uuid.UUID(str(config.get("child_flow_id")))
+            except (ValueError, TypeError):
+                raise ValueError("Subflow node has an invalid or missing child_flow_id.")
+            adjacency[parent_flow_id].append(child_id)
+            configs[(parent_flow_id, child_id)] = config
+
+    warnings: list[str] = []
+    for source, children in adjacency.items():
+        for child_id in children:
+            child = flows.get(child_id)
+            if not child:
+                raise ValueError(f"Subflow reference {child_id} does not exist.")
+            if not child.allow_as_subflow:
+                raise ValueError(f"Flow '{child.name}' is not allowed to run as a subflow.")
+            config = configs.get((source, child_id), {})
+            mode = config.get("child_flow_version_mode", "locked")
+            locked = config.get("child_flow_version")
+            if mode not in {"locked", "latest"}:
+                raise ValueError(
+                    f"Flow '{child.name}' has invalid version mode '{mode}'; "
+                    "expected 'locked' or 'latest'."
+                )
+            if mode == "latest" and not settings.flow_stacking_allow_latest_version:
+                raise ValueError("Latest-version subflow references are disabled.")
+            if mode == "latest":
+                warnings.append(f"'{child.name}' will use its latest saved version at execution time.")
+            if mode == "locked" and locked is not None and int(locked) != child.version:
+                raise ValueError(
+                    f"Flow '{child.name}' is locked to unavailable version {locked}; "
+                    f"current version is {child.version}."
+                )
+
+    hard_limit = min(settings.flow_stacking_max_depth, settings.flow_stacking_hard_max_depth)
+
+    def walk(flow_id: uuid.UUID, path: list[uuid.UUID]) -> None:
+        if len(path) - 1 > hard_limit:
+            raise ValueError(f"Subflow hierarchy exceeds the maximum depth of {hard_limit}.")
+        for child_id in adjacency.get(flow_id, []):
+            if child_id in path:
+                names = [flows[item].name if item in flows else str(item) for item in [*path, child_id]]
+                raise ValueError(f"Subflow cycle detected: {' -> '.join(names)}")
+            walk(child_id, [*path, child_id])
+
+    walk(parent_flow_id, [parent_flow_id])
+    return list(dict.fromkeys(warnings))
+
+
+@router.post("/{flow_id}/validate-subflow", response_model=ApiResponse)
+async def validate_subflow(
+    flow_id: uuid.UUID,
+    body: SubflowValidationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    config = {
+        "child_flow_id": str(body.child_flow_id),
+        "child_flow_version_mode": body.child_flow_version_mode,
+        "child_flow_version": body.child_flow_version,
+    }
+    try:
+        warnings = await _validate_subflow_graph(
+            db,
+            flow_id,
+            [{"node_type": "subflow", "config": config}],
+        )
+    except ValueError as exc:
+        return ApiResponse(data={"valid": False, "warnings": [], "errors": [str(exc)]})
+    return ApiResponse(data={"valid": True, "warnings": warnings, "errors": []})
+
+
 # ── Bulk save graph (nodes + edges) ──────────────────────────
 
 
@@ -316,9 +846,14 @@ async def save_graph(
     svc: AgentFlowService = Depends(get_agent_flow_service),
 ):
     """Atomically save the full canvas graph (all nodes and edges)."""
+    proposed = [n.model_dump() for n in body.nodes]
+    try:
+        await _validate_subflow_graph(svc.session, flow_id, proposed)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     record = await svc.save_flow_graph(
         flow_id=flow_id,
-        nodes_data=[n.model_dump() for n in body.nodes],
+        nodes_data=proposed,
         edges_data=[e.model_dump() for e in body.edges],
         viewport=body.viewport,
     )
@@ -436,7 +971,12 @@ async def run_flow(
 
     trigger = body.trigger_type if body else "manual"
     try:
-        run_id = await start_flow_run(flow_id, trigger_type=trigger)
+        run_id = await start_flow_run(
+            flow_id,
+            trigger_type=trigger,
+            input_payload=body.input_payload if body else {},
+            governance_context=body.governance_context if body else {},
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -516,6 +1056,82 @@ async def get_flow_run(
     if not run:
         raise HTTPException(status_code=404, detail="Flow run not found")
     return ApiResponse(data=AgentFlowRunResponse.model_validate(run))
+
+
+def _run_tree_node(run, flow_name: str) -> dict:
+    return {
+        "run_id": str(run.id),
+        "flow_id": str(run.flow_id),
+        "flow_name": flow_name,
+        "flow_version": run.flow_version,
+        "status": run.status,
+        "root_run_id": str(run.root_run_id or run.id),
+        "parent_run_id": str(run.parent_run_id) if run.parent_run_id else None,
+        "parent_node_id": str(run.parent_node_id) if run.parent_node_id else None,
+        "run_depth": run.run_depth,
+        "started_at": run.started_at,
+        "completed_at": run.completed_at,
+        "error_message": run.error_message,
+        "governance_context": run.governance_context or {},
+        "children": [],
+    }
+
+
+@router.get("/runs/{run_id}/tree", response_model=ApiResponse)
+async def get_run_tree(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Return the requested run and every nested descendant as a tree."""
+    from shogun.db.models.agent_flow import AgentFlow
+    from shogun.db.models.agent_flow_run import AgentFlowRun
+
+    requested = await db.get(AgentFlowRun, run_id)
+    if not requested:
+        raise HTTPException(404, detail="Flow run not found")
+    result = await db.execute(
+        select(AgentFlowRun, AgentFlow.name)
+        .join(AgentFlow, AgentFlow.id == AgentFlowRun.flow_id)
+        .where(AgentFlowRun.root_run_id == (requested.root_run_id or requested.id))
+        .order_by(AgentFlowRun.run_depth, AgentFlowRun.created_at)
+    )
+    nodes = {str(run.id): _run_tree_node(run, name) for run, name in result.all()}
+    for node in nodes.values():
+        parent_id = node["parent_run_id"]
+        if parent_id in nodes:
+            nodes[parent_id]["children"].append(node)
+    return ApiResponse(data=nodes.get(str(run_id)))
+
+
+@router.get("/runs/{run_id}/children", response_model=ApiResponse)
+async def get_run_children(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    from shogun.db.models.agent_flow import AgentFlow
+    from shogun.db.models.agent_flow_run import AgentFlowRun
+
+    result = await db.execute(
+        select(AgentFlowRun, AgentFlow.name)
+        .join(AgentFlow, AgentFlow.id == AgentFlowRun.flow_id)
+        .where(AgentFlowRun.parent_run_id == run_id)
+        .order_by(AgentFlowRun.created_at)
+    )
+    rows = result.all()
+    return ApiResponse(data=[_run_tree_node(run, name) for run, name in rows], meta={"total": len(rows)})
+
+
+@router.get("/runs/{run_id}/parent", response_model=ApiResponse)
+async def get_run_parent(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    from shogun.db.models.agent_flow import AgentFlow
+    from shogun.db.models.agent_flow_run import AgentFlowRun
+
+    run = await db.get(AgentFlowRun, run_id)
+    if not run:
+        raise HTTPException(404, detail="Flow run not found")
+    if not run.parent_run_id:
+        return ApiResponse(data=None)
+    result = await db.execute(
+        select(AgentFlowRun, AgentFlow.name)
+        .join(AgentFlow, AgentFlow.id == AgentFlowRun.flow_id)
+        .where(AgentFlowRun.id == run.parent_run_id)
+    )
+    parent = result.first()
+    return ApiResponse(data=_run_tree_node(*parent) if parent else None)
 
 
 @router.delete("/runs/{run_id}", response_model=ApiResponse)

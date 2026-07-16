@@ -17,11 +17,13 @@ import {
   Camera,
   Clipboard,
   Download,
+  Layers3,
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
 import { AgentFlow } from './AgentFlow';
+import { FlowStack } from './FlowStack';
 import {
   clearSamuraiDiagnostics,
   copySamuraiDiagnostics,
@@ -40,7 +42,7 @@ export const SamuraiNetwork = () => {
   const [routingProfiles, setRoutingProfiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'fleet' | 'agent-flow'>('fleet');
+  const [activeTab, setActiveTab] = useState<'fleet' | 'agent-flow' | 'flow-stack'>('fleet');
   const [searchTerm, setSearchTerm] = useState('');
   const [editAgent, setEditAgent] = useState<any | null>(null);
   const [editForm, setEditForm] = useState({
@@ -84,6 +86,8 @@ export const SamuraiNetwork = () => {
     if (window.location.hash === '#agent-flow') {
       logSamuraiDiagnostic('samurai.hash_open_agent_flow');
       setActiveTab('agent-flow');
+    } else if (window.location.hash === '#flow-stack') {
+      setActiveTab('flow-stack');
     }
     fetchAll();
   }, []);
@@ -94,7 +98,7 @@ export const SamuraiNetwork = () => {
       const tabText = Array.from(document.querySelectorAll('button'))
         .map((button) => button.textContent?.trim())
         .filter(Boolean)
-        .filter((text) => text === 'Fleet' || text === 'Agent Flow');
+        .filter((text) => text === 'Fleet' || text === 'Agent Flow' || text === 'Flow Stack');
       logSamuraiDiagnostic('samurai.tab_dom_check', {
         activeTab,
         foundTabs: tabText,
@@ -261,10 +265,10 @@ export const SamuraiNetwork = () => {
     a.slug.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const openTab = (tab: 'fleet' | 'agent-flow') => {
+  const openTab = (tab: 'fleet' | 'agent-flow' | 'flow-stack') => {
     logSamuraiDiagnostic('samurai.tab_click', { tab });
     setActiveTab(tab);
-    window.history.replaceState(null, '', tab === 'agent-flow' ? '#agent-flow' : window.location.pathname);
+    window.history.replaceState(null, '', tab === 'fleet' ? window.location.pathname : `#${tab}`);
     window.setTimeout(() => captureSamuraiSnapshot(`tab-click-${tab}`), 0);
   };
 
@@ -341,10 +345,25 @@ export const SamuraiNetwork = () => {
           <GitBranch className="w-4 h-4" />
           {t('samurai_network.tab_agent_flow', 'Agent Flow')}
         </button>
+        <button
+          onClick={() => openTab('flow-stack')}
+          className={cn(
+            "flex items-center gap-2 px-5 py-3 text-xs font-bold uppercase tracking-wider transition-all rounded-md border",
+            activeTab === 'flow-stack'
+              ? "text-black bg-shogun-gold border-shogun-gold shadow-shogun"
+              : "text-shogun-subdued border-transparent hover:text-shogun-text hover:border-shogun-border"
+          )}
+        >
+          <Layers3 className="w-4 h-4" />
+          Flow Stack
+        </button>
       </div>
 
       {/* Agent Flow Tab */}
       {activeTab === 'agent-flow' && <AgentFlow />}
+
+      {/* Flow Stack Tab */}
+      {activeTab === 'flow-stack' && <FlowStack />}
 
       {/* Fleet Tab — existing content */}
       {activeTab === 'fleet' && (<>

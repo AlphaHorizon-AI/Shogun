@@ -25,7 +25,14 @@ from shogun.db.models.kaizen_revision import KaizenRevision
 from shogun.db.models.workspace import Workspace, WorkspacePeer, WorkspaceMessage
 from shogun.db.models.email_account import EmailAccount
 from shogun.db.models.agent_flow import AgentFlow, AgentFlowNode, AgentFlowEdge
-from shogun.db.models.agent_flow_run import AgentFlowRun
+from shogun.db.models.agent_flow_run import AgentFlowRun, AgentFlowRunEdge
+from shogun.db.models.stack_orchestrator import (
+    StackArtifact,
+    StackCheckpoint,
+    StackRun,
+    StackStepRun,
+    StackVerification,
+)
 from shogun.db.models.mado_session import MadoSession
 from shogun.db.models.ronin_session import RoninSession
 from shogun.db.models.chat_message import ChatMessage
@@ -73,6 +80,12 @@ __all__ = [
     "AgentFlowNode",
     "AgentFlowEdge",
     "AgentFlowRun",
+    "AgentFlowRunEdge",
+    "StackRun",
+    "StackStepRun",
+    "StackCheckpoint",
+    "StackArtifact",
+    "StackVerification",
     "MadoSession",
     "RoninSession",
     "ChatMessage",

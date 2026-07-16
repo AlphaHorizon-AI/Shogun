@@ -13,21 +13,24 @@ Supports parallel execution of independent sibling nodes.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import re
 import uuid
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shogun.db.engine import async_session_factory
 from shogun.db.models.agent import Agent
 from shogun.db.models.agent_flow import AgentFlow, AgentFlowEdge, AgentFlowNode
-from shogun.db.models.agent_flow_run import AgentFlowRun
+from shogun.db.models.agent_flow_run import AgentFlowRun, AgentFlowRunEdge
 from shogun.db.models.model_definition import ModelDefinition
 from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_routing import ModelRoutingProfile
@@ -36,6 +39,28 @@ log = logging.getLogger("shogun.flow_engine")
 
 # ── Active runs registry (for cancellation) ─────────────────
 _active_runs: dict[str, asyncio.Task] = {}
+_child_run_semaphore: asyncio.Semaphore | None = None
+
+
+@dataclass(slots=True)
+class ChildFlowExecutionOptions:
+    """Controls a governed child execution without introducing another engine."""
+
+    version_mode: str = "locked"
+    flow_version: int | None = None
+    timeout_seconds: int | None = None
+    execution_mode: str = "sequential"
+    on_failure: str = "fail_parent"
+    max_retries: int = 0
+
+
+def _parallel_child_semaphore() -> asyncio.Semaphore:
+    global _child_run_semaphore
+    if _child_run_semaphore is None:
+        from shogun.config import settings
+
+        _child_run_semaphore = asyncio.Semaphore(settings.flow_stacking_max_parallel_children)
+    return _child_run_semaphore
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -46,6 +71,8 @@ _active_runs: dict[str, asyncio.Task] = {}
 async def start_flow_run(
     flow_id: uuid.UUID,
     trigger_type: str = "manual",
+    input_payload: dict[str, Any] | None = None,
+    governance_context: dict[str, Any] | None = None,
 ) -> uuid.UUID:
     """Create a FlowRun record and launch execution as a background task.
 
@@ -58,20 +85,31 @@ async def start_flow_run(
         result = await session.execute(
             select(AgentFlow).where(
                 AgentFlow.id == flow_id,
-                AgentFlow.is_deleted == False,
+                AgentFlow.is_deleted.is_(False),
             )
         )
         flow = result.scalar_one_or_none()
         if not flow:
             raise ValueError(f"Agent Flow {flow_id} not found or deleted")
 
+        effective_governance = await _root_governance_context(governance_context or {})
+        payload = _json_object(input_payload or {}, "Flow input")
         run = AgentFlowRun(
             id=run_id,
             flow_id=flow_id,
+            flow_version=flow.version,
+            root_run_id=run_id,
+            parent_run_id=None,
+            parent_node_id=None,
+            run_depth=0,
             status="pending",
             trigger_type=trigger_type,
             node_states={},
             result_summary={},
+            input_payload=payload,
+            output_payload={},
+            artifacts=[],
+            governance_context=effective_governance,
         )
         session.add(run)
         await session.commit()
@@ -95,17 +133,36 @@ async def cancel_flow_run(run_id: uuid.UUID) -> bool:
     task = _active_runs.get(str(run_id))
     if task and not task.done():
         task.cancel()
-        # Update DB status
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
         async with async_session_factory() as session:
+            requested = await session.get(AgentFlowRun, run_id)
+            if not requested:
+                return False
+            root_id = requested.root_run_id or requested.id
             result = await session.execute(
-                select(AgentFlowRun).where(AgentFlowRun.id == run_id)
+                select(AgentFlowRun).where(
+                    AgentFlowRun.root_run_id == root_id,
+                    AgentFlowRun.status.in_(["pending", "running", "waiting_for_approval"]),
+                )
             )
-            run = result.scalar_one_or_none()
-            if run:
+            now = datetime.now(timezone.utc)
+            cancelled_children: list[asyncio.Task] = []
+            for run in result.scalars().all():
+                child_task = _active_runs.get(str(run.id))
+                if child_task and not child_task.done():
+                    child_task.cancel()
+                    if child_task is not task:
+                        cancelled_children.append(child_task)
                 run.status = "cancelled"
-                run.completed_at = datetime.now(timezone.utc)
-                run.error_message = "Cancelled by user"
-                await session.commit()
+                run.completed_at = now
+                run.error_message = "Cancelled by user or ancestor run"
+            await session.commit()
+        if cancelled_children:
+            await asyncio.gather(*cancelled_children, return_exceptions=True)
+        await _sync_run_edge_status(run_id, "cancelled")
         log.info("Flow run %s cancelled", run_id)
         return True
     return False
@@ -146,6 +203,8 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                 select(AgentFlowRun).where(AgentFlowRun.id == run_id)
             )
             run = run_result.scalar_one()
+            run_input = dict(run.input_payload or {})
+            governance_context = dict(run.governance_context or {})
             run.status = "running"
             run.started_at = datetime.now(timezone.utc)
 
@@ -214,6 +273,8 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                         node=node,
                         predecessor_outputs=pred_outputs,
                         node_map=node_map,
+                        run_input=run_input,
+                        governance_context=governance_context,
                     )
                 )
 
@@ -229,7 +290,11 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                     )
                     # Check failure action
                     config = node.config or {}
-                    failure_action = config.get("failure_action", "stop")
+                    failure_action = config.get("failure_action") or {
+                        "fail_parent": "stop",
+                        "continue_with_error": "continue",
+                        "route_to_error": "continue",
+                    }.get(config.get("on_failure", "fail_parent"), "stop")
                     if failure_action == "stop":
                         await _fail_run(
                             run_id,
@@ -242,7 +307,14 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                         _mark_downstream_skipped(
                             node_id, edge_by_source, skipped_nodes
                         )
-                    # "retry" and "escalate" fall through (retry handled inside _execute_single_node)
+                    elif failure_action == "continue":
+                        node_outputs[node_id] = {
+                            "status": "failed",
+                            "output": {},
+                            "artifacts": [],
+                            "errors": [str(result)],
+                        }
+                    # "retry" and "escalate" fall through (retry handled inside the executor)
                 else:
                     node_outputs[node_id] = result
                     await _update_node_state(
@@ -279,6 +351,7 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
 
     except asyncio.CancelledError:
         log.info("Flow run %s was cancelled", run_id)
+        await _cancel_run_record(run_id, "Cancelled by user or ancestor run")
         raise
     except Exception as exc:
         log.exception("Flow run %s failed with unexpected error", run_id)
@@ -295,6 +368,8 @@ async def _execute_single_node(
     node: AgentFlowNode,
     predecessor_outputs: dict[str, Any],
     node_map: dict[str, AgentFlowNode],
+    run_input: dict[str, Any] | None = None,
+    governance_context: dict[str, Any] | None = None,
 ) -> Any:
     """Execute a single node and return its output."""
     node_id = str(node.id)
@@ -322,9 +397,9 @@ async def _execute_single_node(
         context_str += f"\n\n[Additional Context]:\n{config['context_injection']}"
 
     if node_type == "input":
-        return await _exec_input(config, context_str)
+        return await _exec_input(config, context_str, run_input or {})
     elif node_type == "samurai":
-        return await _exec_samurai(config, context_str)
+        return await _exec_samurai(config, context_str, governance_context or {})
     elif node_type == "shogun_approval":
         return await _exec_approval(config, predecessor_outputs)
     elif node_type == "logic":
@@ -348,11 +423,83 @@ async def _execute_single_node(
         return await _exec_workspace(config, context_str)
     elif node_type == "office":
         return await _exec_office(config, context_str)
+    elif node_type == "subflow":
+        return await _exec_subflow(
+            run_id,
+            node,
+            predecessor_outputs,
+            run_input or {},
+            governance_context or {},
+        )
+    elif node_type == "stack_orchestrator":
+        return await _exec_stack_orchestrator(run_id, config, run_input or {})
     else:
         raise ValueError(f"Unknown node type: {node_type}")
 
 
-async def _exec_input(config: dict, context_str: str) -> str:
+async def _exec_stack_orchestrator(
+    parent_flow_run_id: uuid.UUID,
+    config: dict[str, Any],
+    run_input: dict[str, Any],
+) -> dict[str, Any]:
+    """Start the backend control service represented by a Katana control node."""
+    from shogun.config import settings
+    from shogun.db.models.stack_orchestrator import StackRun
+    from shogun.schemas.stack_orchestrator import StackOrchestratorCreate
+    from shogun.services.stack_orchestrator import StackOrchestratorService
+
+    selected_stack_id = config.get("selected_stack_id")
+    async with async_session_factory() as session:
+        parent = await session.get(AgentFlowRun, parent_flow_run_id)
+        if parent and selected_stack_id and str(parent.flow_id) == str(selected_stack_id):
+            raise ValueError("Stack Orchestrator cannot select the Agent Flow that contains itself.")
+        body = StackOrchestratorCreate(
+            mode=config.get("mode", "selected_stack"),
+            stack_template_id=config.get("stack_template_id"),
+            selected_stack_id=selected_stack_id,
+            objective=config.get("objective") or str(run_input.get("objective") or "Execute Agent Stack"),
+            success_criteria=config.get("success_criteria") or [],
+            allowed_tools=config.get("allowed_tools") or [],
+            model_routing_profile=config.get("model_routing_profile", "balanced"),
+            max_runtime_minutes=int(config.get("max_runtime_minutes", 60)),
+            max_iterations=int(config.get("max_iterations", 50)),
+            max_retry_attempts_per_step=int(config.get("max_retry_attempts_per_step", 2)),
+            checkpoint_frequency=config.get("checkpoint_frequency", "after_each_step"),
+            context_compaction=(
+                "enabled" if config.get("context_compaction", True) in {True, "enabled"} else "disabled"
+            ),
+            verification_required=bool(config.get("verification_required", True)),
+            approval_policy=config.get("approval_policy", "inherited"),
+            artifact_policy=config.get("artifact_policy", "retain_all"),
+            failure_policy=config.get("failure_policy", "pause"),
+            input_payload=run_input,
+        )
+        service = StackOrchestratorService(session)
+        stack = await service.create(body)
+        stack_run_id = stack.id
+        if stack.status == "created":
+            await service.start(stack.id)
+
+    while True:
+        await asyncio.sleep(settings.stack_orchestrator_poll_interval_seconds)
+        async with async_session_factory() as session:
+            stack = await session.get(StackRun, stack_run_id)
+            if not stack:
+                raise ValueError("Stack Orchestrator run record disappeared.")
+            if stack.status not in {"created", "running"}:
+                return {
+                    "stack_run_id": str(stack.id),
+                    "status": stack.status,
+                    "objective": stack.objective,
+                    "current_step_id": stack.current_step_id,
+                    "completed_steps": stack.completed_steps,
+                    "failed_steps": stack.failed_steps,
+                    "final_summary": stack.final_summary,
+                    "requires_review": stack.status == "waiting_approval",
+                }
+
+
+async def _exec_input(config: dict, context_str: str, run_input: dict[str, Any] | None = None) -> Any:
     """Input node — returns its configuration as initial context.
 
     Handles multiple input types:
@@ -368,6 +515,13 @@ async def _exec_input(config: dict, context_str: str) -> str:
     input_type = config.get("input_type", "manual")
 
     output_parts = []
+
+    if run_input:
+        # API, stack, and parent-flow payloads remain structured for downstream
+        # Subflow mapping. Existing text-only flows retain their prior behavior.
+        if not description and input_type in {"api", "event", "nexus", "subflow"}:
+            return run_input
+        output_parts.append(json.dumps(run_input, ensure_ascii=False, default=str))
 
     # Always include description if present
     if description:
@@ -405,12 +559,377 @@ async def _exec_input(config: dict, context_str: str) -> str:
     return "\n\n".join(output_parts)
 
 
-async def _exec_samurai(config: dict, context_str: str) -> str:
+async def _exec_subflow(
+    parent_run_id: uuid.UUID,
+    node: AgentFlowNode,
+    predecessor_outputs: dict[str, Any],
+    run_input: dict[str, Any],
+    governance_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Resolve a Subflow node and execute it through the existing DAG engine."""
+    config = node.config or {}
+    child_flow_id = config.get("child_flow_id")
+    if not child_flow_id:
+        raise ValueError("Subflow execution failed: no child flow is selected.")
+    try:
+        child_uuid = uuid.UUID(str(child_flow_id))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Subflow execution failed: the selected child flow ID is invalid.") from exc
+
+    mapping_context = {
+        "input": run_input.get("input", run_input),
+        "node": {node_id: {"output": output} for node_id, output in predecessor_outputs.items()},
+        "artifacts": run_input.get("artifacts", {}),
+        "context": {**run_input.get("context", {}), **governance_context},
+        "governance": governance_context,
+    }
+    input_mapping = config.get("input_mapping") or {}
+    if input_mapping:
+        child_input = resolve_flow_mapping(input_mapping, mapping_context)
+    elif predecessor_outputs:
+        last_output = list(predecessor_outputs.values())[-1]
+        if isinstance(last_output, dict) and "output" in last_output:
+            child_input = _json_object(last_output["output"], "Child flow input")
+        elif isinstance(last_output, dict):
+            child_input = last_output
+        else:
+            child_input = {"input": last_output}
+    else:
+        child_input = run_input
+
+    options = ChildFlowExecutionOptions(
+        version_mode=config.get("child_flow_version_mode", "locked"),
+        flow_version=config.get("child_flow_version"),
+        timeout_seconds=config.get("timeout_seconds"),
+        execution_mode=config.get("execution_mode", "sequential"),
+        on_failure=config.get("on_failure", "fail_parent"),
+        max_retries=max(0, int(config.get("max_retries", 0))),
+    )
+    result = await execute_child_flow(
+        parent_run_id=parent_run_id,
+        parent_node_id=node.id,
+        child_flow_id=child_uuid,
+        child_input=child_input,
+        options=options,
+        governance_context=governance_context,
+    )
+    output_mapping = config.get("output_mapping") or {}
+    if output_mapping:
+        result["raw_output"] = result.get("output", {})
+        result["output"] = resolve_flow_mapping(
+            output_mapping,
+            {"child": result, "output": result.get("output", {})},
+        )
+    return result
+
+
+async def execute_child_flow(
+    parent_run_id: uuid.UUID,
+    parent_node_id: uuid.UUID,
+    child_flow_id: uuid.UUID,
+    child_input: dict[str, Any],
+    options: ChildFlowExecutionOptions,
+    governance_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Create, govern, await, and audit one child run using `_execute_flow`."""
+    from shogun.config import settings
+    from shogun.services.event_logger import EventLogger
+
+    if not settings.flow_stacking_enabled:
+        raise ValueError("Flow Stacking is disabled in Shogun configuration.")
+
+    child_input = _json_object(child_input, "Child flow input")
+    child_run_id = uuid.uuid4()
+    async with _parallel_child_semaphore():
+        async with async_session_factory() as session:
+            parent = await session.get(AgentFlowRun, parent_run_id)
+            child_flow = await session.get(AgentFlow, child_flow_id)
+            if not parent:
+                raise ValueError("Subflow execution failed: parent run no longer exists.")
+            if not child_flow or child_flow.is_deleted:
+                raise ValueError("Subflow execution failed: the selected child flow no longer exists.")
+            if not child_flow.allow_as_subflow:
+                raise ValueError("Subflow blocked: the selected flow does not allow child execution.")
+            await _validate_child_safety(session, parent, child_flow)
+            _validate_child_permissions(governance_context, child_flow.required_tools or [])
+
+            version_mode = options.version_mode or "locked"
+            if version_mode not in {"locked", "latest"}:
+                raise ValueError("Subflow blocked: version mode must be 'locked' or 'latest'.")
+            if version_mode == "latest" and not settings.flow_stacking_allow_latest_version:
+                raise ValueError("Subflow blocked: latest-version references are disabled.")
+            if (
+                version_mode == "locked"
+                and options.flow_version is not None
+                and options.flow_version != child_flow.version
+            ):
+                raise ValueError(
+                    f"Subflow blocked: locked version {options.flow_version} is unavailable; "
+                    f"current version is {child_flow.version}."
+                )
+
+            root_run_id = parent.root_run_id or parent.id
+            child_governance = _inherit_governance(governance_context, child_flow)
+            child_run = AgentFlowRun(
+                id=child_run_id,
+                flow_id=child_flow.id,
+                flow_version=child_flow.version,
+                root_run_id=root_run_id,
+                parent_run_id=parent.id,
+                parent_node_id=parent_node_id,
+                run_depth=parent.run_depth + 1,
+                status="pending",
+                trigger_type="subflow",
+                node_states={},
+                result_summary={},
+                input_payload=child_input,
+                output_payload={},
+                artifacts=[],
+                governance_context=child_governance,
+            )
+            edge = AgentFlowRunEdge(
+                root_run_id=root_run_id,
+                parent_run_id=parent.id,
+                child_run_id=child_run.id,
+                parent_node_id=parent_node_id,
+                child_flow_id=child_flow.id,
+                execution_mode=options.execution_mode,
+                status="created",
+            )
+            session.add_all([child_run, edge])
+            await session.commit()
+            child_name = child_flow.name
+            child_risk = child_flow.risk_tier
+
+        await EventLogger.emit_governance_event(
+            "flow.subflow.started",
+            f"Child flow '{child_name}' started",
+            trace_id=str(parent_run_id),
+            session_id=str(child_run_id),
+            risk_score=child_risk,
+            detail={
+                "root_run_id": str(root_run_id),
+                "parent_run_id": str(parent_run_id),
+                "child_run_id": str(child_run_id),
+                "child_flow_id": str(child_flow_id),
+                "parent_node_id": str(parent_node_id),
+                "run_depth": parent.run_depth + 1,
+                "flow_version": child_flow.version,
+            },
+            governance_flags=child_governance,
+        )
+
+        retries = options.max_retries + 1
+        for attempt in range(retries):
+            task = asyncio.create_task(_execute_flow(child_run_id, child_flow_id))
+            _active_runs[str(child_run_id)] = task
+            try:
+                timeout = (
+                    options.timeout_seconds
+                    or child_flow.default_timeout_seconds
+                    or settings.flow_stacking_default_timeout_seconds
+                )
+                await asyncio.wait_for(task, timeout=timeout)
+                break
+            except TimeoutError as exc:
+                task.cancel()
+                await _cancel_run_record(child_run_id, f"Subflow timed out after {timeout} seconds")
+                if attempt + 1 >= retries:
+                    await EventLogger.emit_governance_event(
+                        "flow.subflow.failed",
+                        f"Child flow '{child_name}' timed out",
+                        result="failure",
+                        severity="error",
+                        trace_id=str(parent_run_id),
+                        session_id=str(child_run_id),
+                        risk_score=child_risk,
+                        detail={"child_run_id": str(child_run_id), "timeout_seconds": timeout},
+                    )
+                    raise ValueError(
+                        f"Subflow timed out after {timeout} seconds. The child run was cancelled."
+                    ) from exc
+            finally:
+                _active_runs.pop(str(child_run_id), None)
+
+        async with async_session_factory() as session:
+            completed = await session.get(AgentFlowRun, child_run_id)
+            if not completed:
+                raise ValueError("Subflow execution failed: child run record disappeared.")
+            status = completed.status
+            output = completed.output_payload or completed.result_summary or {}
+            result = {
+                "child_run_id": str(completed.id),
+                "child_flow_id": str(completed.flow_id),
+                "flow_version": completed.flow_version,
+                "status": status,
+                "output": output,
+                "artifacts": completed.artifacts or [],
+                "summary": completed.result_summary or {},
+                "errors": [completed.error_message] if completed.error_message else [],
+            }
+
+        event_type = "flow.subflow.completed" if status == "completed" else "flow.subflow.failed"
+        await EventLogger.emit_governance_event(
+            event_type,
+            f"Child flow '{child_name}' {status}",
+            result="success" if status == "completed" else "failure",
+            severity="info" if status == "completed" else "error",
+            trace_id=str(parent_run_id),
+            session_id=str(child_run_id),
+            risk_score=child_risk,
+            detail=result,
+            governance_flags=child_governance,
+        )
+        if status != "completed" and options.on_failure == "fail_parent":
+            raise ValueError(completed.error_message or f"Child flow failed with status {status}.")
+        return result
+
+
+async def _validate_child_safety(session: AsyncSession, parent: AgentFlowRun, child_flow: AgentFlow) -> None:
+    from shogun.config import settings
+
+    if parent.flow_id == child_flow.id:
+        raise ValueError("Subflow blocked: a flow cannot call itself.")
+    next_depth = parent.run_depth + 1
+    max_depth = min(settings.flow_stacking_max_depth, settings.flow_stacking_hard_max_depth)
+    if next_depth > max_depth:
+        raise ValueError(f"Subflow blocked: maximum hierarchy depth of {max_depth} would be exceeded.")
+
+    ancestor_flow_ids = {parent.flow_id}
+    ancestor_id = parent.parent_run_id
+    while ancestor_id:
+        ancestor = await session.get(AgentFlowRun, ancestor_id)
+        if not ancestor:
+            break
+        ancestor_flow_ids.add(ancestor.flow_id)
+        ancestor_id = ancestor.parent_run_id
+    if child_flow.id in ancestor_flow_ids:
+        raise ValueError("Subflow blocked: cycle detected. The child flow is already an ancestor.")
+
+    child_count = await session.scalar(
+        select(func.count()).select_from(AgentFlowRun).where(AgentFlowRun.parent_run_id == parent.id)
+    )
+    if int(child_count or 0) >= settings.flow_stacking_max_child_runs_per_parent:
+        raise ValueError("Subflow blocked: maximum child runs for this parent has been reached.")
+    root_count = await session.scalar(
+        select(func.count()).select_from(AgentFlowRun).where(
+            AgentFlowRun.root_run_id == (parent.root_run_id or parent.id)
+        )
+    )
+    if int(root_count or 0) >= settings.flow_stacking_max_total_runs_per_root:
+        raise ValueError("Subflow blocked: maximum total runs for this execution tree has been reached.")
+
+
+def _validate_child_permissions(governance: dict[str, Any], required_tools: list[str]) -> None:
+    denied = [tool for tool in required_tools if not _tool_allowed_by_governance(tool, governance)]
+    if denied:
+        raise ValueError(
+            "Subflow blocked: the child flow requires tools that are not allowed by the parent "
+            f"governance context: {', '.join(sorted(denied))}."
+        )
+
+
+def _tool_allowed_by_governance(tool: str, governance: dict[str, Any]) -> bool:
+    permissions = governance.get("permissions", governance)
+    explicit = governance.get("allowed_tools")
+    if isinstance(explicit, list) and tool not in explicit:
+        return False
+    checks = {
+        "mado_browser": "mado_enabled",
+        "browse_web": "mado_enabled",
+        "take_screenshot": "mado_enabled",
+        "email_send": "comms_send_email",
+        "send_email": "comms_send_email",
+        "workspace": "workspace_enabled",
+        "office": "office_enabled",
+        "shell": "shell_enabled",
+    }
+    permission = checks.get(tool)
+    return True if permission is None else bool(permissions.get(permission, False))
+
+
+async def _root_governance_context(requested: dict[str, Any]) -> dict[str, Any]:
+    from shogun.services.posture_guard import get_posture_permissions
+
+    permissions = await get_posture_permissions()
+    context = {
+        "posture_level": permissions.get("active_tier", "tactical"),
+        "approval_mode": requested.get("approval_mode", "inherit"),
+        "permissions": permissions,
+        "audit_context": requested.get("audit_context", {}),
+        "workspace_boundaries": requested.get("workspace_boundaries", []),
+        "customer_context": requested.get("customer_context", {}),
+        "risk_tier": requested.get("risk_tier", "low"),
+    }
+    if isinstance(requested.get("allowed_tools"), list):
+        context["allowed_tools"] = list(dict.fromkeys(requested["allowed_tools"]))
+    return context
+
+
+def _inherit_governance(parent: dict[str, Any], child_flow: AgentFlow) -> dict[str, Any]:
+    inherited = json.loads(json.dumps(parent, default=str))
+    risk_rank = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+    parent_risk = inherited.get("risk_tier", "low")
+    inherited["risk_tier"] = max(
+        (parent_risk, child_flow.risk_tier),
+        key=lambda value: risk_rank.get(str(value), 0),
+    )
+    inherited["inherited"] = True
+    inherited["child_flow_id"] = str(child_flow.id)
+    inherited["child_required_tools"] = list(child_flow.required_tools or [])
+    return inherited
+
+
+_FLOW_TOKEN = re.compile(r"{{\s*([^{}]+?)\s*}}")
+
+
+def resolve_flow_mapping(value: Any, context: dict[str, Any]) -> Any:
+    """Resolve the MVP Flow Stacking mapping syntax recursively."""
+    if isinstance(value, dict):
+        return {key: resolve_flow_mapping(item, context) for key, item in value.items()}
+    if isinstance(value, list):
+        return [resolve_flow_mapping(item, context) for item in value]
+    if not isinstance(value, str):
+        return value
+    exact = _FLOW_TOKEN.fullmatch(value)
+    if exact:
+        return _lookup_flow_token(context, exact.group(1))
+    return _FLOW_TOKEN.sub(lambda match: str(_lookup_flow_token(context, match.group(1))), value)
+
+
+def _lookup_flow_token(context: dict[str, Any], path: str) -> Any:
+    current: Any = context
+    for part in path.split("."):
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+        elif isinstance(current, list) and part.isdigit() and int(part) < len(current):
+            current = current[int(part)]
+        else:
+            raise ValueError(f"Flow mapping could not resolve '{{{{{path}}}}}'.")
+    return current
+
+
+def _json_object(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        value = {"input": value}
+    try:
+        serialized = json.dumps(value, default=str)
+        result = json.loads(serialized)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be JSON-serializable.") from exc
+    return result
+
+
+async def _exec_samurai(
+    config: dict,
+    context_str: str,
+    governance_context: dict[str, Any] | None = None,
+) -> str:
     """Samurai node — delegates task to LLM using agent's routing profile."""
     task_description = config.get("task_description", "")
     expected_output = config.get("expected_output", "")
     agent_id = config.get("agent_id")
-    routing_profile_id = config.get("routing_profile_id")
+    routing_profile_id = (governance_context or {}).get("model_profile") or config.get("routing_profile_id")
     timeout = config.get("timeout", 300)
     retry_count = config.get("retry_count", 0)
 
@@ -1299,9 +1818,15 @@ async def _resolve_llm_chain(
     profile: ModelRoutingProfile | None = None
     try:
         if routing_profile_id:
+            try:
+                profile_id = uuid.UUID(routing_profile_id)
+            except (TypeError, ValueError):
+                profile_id = None
             profile = await session.scalar(
                 select(ModelRoutingProfile).where(
-                    ModelRoutingProfile.id == uuid.UUID(routing_profile_id)
+                    ModelRoutingProfile.id == profile_id
+                    if profile_id
+                    else ModelRoutingProfile.name == routing_profile_id
                 )
             )
         else:
@@ -1525,8 +2050,18 @@ async def _record_node_artifact(
         node_state["artifact_path"] = artifact_path
         states[node_id] = node_state
         run.node_states = states
+        artifacts = list(run.artifacts or [])
+        if not any(item.get("path_or_ref") == artifact_path for item in artifacts if isinstance(item, dict)):
+            artifacts.append({
+                "artifact_type": "file",
+                "path_or_ref": artifact_path,
+                "created_by_run_id": str(run_id),
+                "created_by_node_id": node_id,
+            })
+        run.artifacts = artifacts
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(run, "node_states")
+        flag_modified(run, "artifacts")
         await session.commit()
 
 
@@ -1590,6 +2125,7 @@ async def _fail_run(
         run.error_message = error_message[:2000]
         await session.commit()
 
+    await _sync_run_edge_status(run_id, "failed")
     log.error("Flow run %s FAILED: %s", run_id, error_message)
 
 
@@ -1609,6 +2145,10 @@ async def _complete_run(
         run.status = "completed"
         run.completed_at = datetime.now(timezone.utc)
 
+        # Preserve structured child handoffs alongside the legacy string
+        # summary used by the existing run-history UI.
+        run.output_payload = _json_object(result_summary, "Flow output")
+
         # Preserve final reports in full. This is the authoritative content
         # shown by View Result and must not differ from the workspace artifact.
         complete_summary = {}
@@ -1619,7 +2159,32 @@ async def _complete_run(
         flag_modified(run, "result_summary")
         await session.commit()
 
+    await _sync_run_edge_status(run_id, "completed")
     log.info("Flow run %s COMPLETED", run_id)
+
+
+async def _cancel_run_record(run_id: uuid.UUID, reason: str) -> None:
+    async with async_session_factory() as session:
+        run = await session.get(AgentFlowRun, run_id)
+        if run and run.status not in {"completed", "failed", "cancelled"}:
+            run.status = "cancelled"
+            run.completed_at = datetime.now(timezone.utc)
+            run.error_message = reason[:2000]
+            await session.commit()
+    await _sync_run_edge_status(run_id, "cancelled")
+
+
+async def _sync_run_edge_status(run_id: uuid.UUID, status: str) -> None:
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(AgentFlowRunEdge).where(AgentFlowRunEdge.child_run_id == run_id)
+        )
+        edge = result.scalar_one_or_none()
+        if edge:
+            edge.status = status
+            if status in {"completed", "failed", "cancelled"}:
+                edge.completed_at = datetime.now(timezone.utc)
+            await session.commit()
 
 
 def _truncate(text: str, max_len: int) -> str:

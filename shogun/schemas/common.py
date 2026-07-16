@@ -295,6 +295,8 @@ class FlowNodeType(str, Enum):
     LOGIC = "logic"
     INPUT = "input"
     OUTPUT = "output"
+    SUBFLOW = "subflow"
+    STACK_ORCHESTRATOR = "stack_orchestrator"
 
 
 class FlowEdgeType(str, Enum):

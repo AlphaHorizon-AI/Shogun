@@ -30,12 +30,24 @@ class AgentFlowService(BaseService[AgentFlow]):
         status: str | None = None,
         offset: int = 0,
         limit: int = 50,
+        include_templates: bool = False,
     ) -> tuple[Sequence[AgentFlow], int]:
         """List flows with optional status filter, excluding soft-deleted."""
         filters = [AgentFlow.is_deleted == False]
+        if not include_templates:
+            filters.append(AgentFlow.is_template == False)
         if status:
             filters.append(AgentFlow.status == status)
         return await self.get_all(offset=offset, limit=limit, filters=filters)
+
+    async def list_saved_templates(
+        self, *, flow_type: str | None = None, limit: int = 500,
+    ) -> Sequence[AgentFlow]:
+        filters = [AgentFlow.is_deleted == False, AgentFlow.is_template == True]
+        if flow_type:
+            filters.append(AgentFlow.flow_type == flow_type)
+        items, _ = await self.get_all(offset=0, limit=limit, filters=filters)
+        return items
 
     # ── Get full flow with nodes and edges ───────────────────
 
@@ -48,6 +60,7 @@ class AgentFlowService(BaseService[AgentFlow]):
                 selectinload(AgentFlow.nodes),
                 selectinload(AgentFlow.edges),
             )
+            .execution_options(populate_existing=True)
         )
         return result.scalars().first()
 
@@ -146,6 +159,7 @@ class AgentFlowService(BaseService[AgentFlow]):
         # Update viewport if provided
         if viewport:
             flow.viewport = viewport
+        flow.version = int(flow.version or 1) + 1
 
         await self.session.flush()
 
@@ -168,6 +182,18 @@ class AgentFlowService(BaseService[AgentFlow]):
             trigger_type=source.trigger_type,
             schedule_config=source.schedule_config,
             viewport=source.viewport,
+            version=1,
+            flow_type=source.flow_type,
+            input_contract=source.input_contract,
+            output_contract=source.output_contract,
+            risk_tier=source.risk_tier,
+            default_timeout_seconds=source.default_timeout_seconds,
+            allow_as_subflow=source.allow_as_subflow,
+            required_tools=source.required_tools,
+            is_template=False,
+            template_category=None,
+            template_source=None,
+            template_config={},
         )
         self.session.add(new_flow)
         await self.session.flush()

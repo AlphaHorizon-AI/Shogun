@@ -90,6 +90,17 @@ class AgentFlowCreate(BaseModel):
     description: str | None = None
     trigger_type: str = "manual"
     schedule_config: dict[str, Any] = Field(default_factory=dict)
+    flow_type: str = "standard"
+    input_contract: dict[str, Any] = Field(default_factory=dict)
+    output_contract: dict[str, Any] = Field(default_factory=dict)
+    risk_tier: str = "low"
+    default_timeout_seconds: int = Field(default=600, ge=1, le=86400)
+    allow_as_subflow: bool = True
+    required_tools: list[str] = Field(default_factory=list)
+    is_template: bool = False
+    template_category: str | None = None
+    template_source: str | None = None
+    template_config: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentFlowUpdate(BaseModel):
@@ -101,6 +112,17 @@ class AgentFlowUpdate(BaseModel):
     schedule_config: dict[str, Any] | None = None
     status: str | None = None
     viewport: dict[str, Any] | None = None
+    flow_type: str | None = None
+    input_contract: dict[str, Any] | None = None
+    output_contract: dict[str, Any] | None = None
+    risk_tier: str | None = None
+    default_timeout_seconds: int | None = Field(default=None, ge=1, le=86400)
+    allow_as_subflow: bool | None = None
+    required_tools: list[str] | None = None
+    is_template: bool | None = None
+    template_category: str | None = None
+    template_source: str | None = None
+    template_config: dict[str, Any] | None = None
 
 
 class AgentFlowResponse(ShogunBase):
@@ -113,6 +135,18 @@ class AgentFlowResponse(ShogunBase):
     trigger_type: str
     schedule_config: dict[str, Any]
     viewport: dict[str, Any]
+    version: int = 1
+    flow_type: str = "standard"
+    input_contract: dict[str, Any] = Field(default_factory=dict)
+    output_contract: dict[str, Any] = Field(default_factory=dict)
+    risk_tier: str = "low"
+    default_timeout_seconds: int = 600
+    allow_as_subflow: bool = True
+    required_tools: list[str] = Field(default_factory=list)
+    is_template: bool = False
+    template_category: str | None = None
+    template_source: str | None = None
+    template_config: dict[str, Any] = Field(default_factory=dict)
     is_deleted: bool
     created_at: datetime
     updated_at: datetime
@@ -129,6 +163,13 @@ class AgentFlowListItem(ShogunBase):
     description: str | None
     status: str
     trigger_type: str
+    version: int = 1
+    flow_type: str = "standard"
+    risk_tier: str = "low"
+    allow_as_subflow: bool = True
+    is_template: bool = False
+    template_category: str | None = None
+    template_source: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -151,6 +192,8 @@ class AgentFlowRunCreate(BaseModel):
     """Trigger a flow execution."""
 
     trigger_type: str = "manual"
+    input_payload: dict[str, Any] = Field(default_factory=dict)
+    governance_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentFlowRunResponse(ShogunBase):
@@ -160,8 +203,17 @@ class AgentFlowRunResponse(ShogunBase):
     flow_id: uuid.UUID
     status: str
     trigger_type: str
+    flow_version: int = 1
+    root_run_id: uuid.UUID | None = None
+    parent_run_id: uuid.UUID | None = None
+    parent_node_id: uuid.UUID | None = None
+    run_depth: int = 0
     node_states: dict[str, Any]
     result_summary: dict[str, Any]
+    input_payload: dict[str, Any] = Field(default_factory=dict)
+    output_payload: dict[str, Any] = Field(default_factory=dict)
+    artifacts: list[Any] = Field(default_factory=list)
+    governance_context: dict[str, Any] = Field(default_factory=dict)
     started_at: datetime | None
     completed_at: datetime | None
     error_message: str | None
@@ -176,8 +228,69 @@ class AgentFlowRunListItem(ShogunBase):
     flow_id: uuid.UUID
     status: str
     trigger_type: str
+    flow_version: int = 1
+    root_run_id: uuid.UUID | None = None
+    parent_run_id: uuid.UUID | None = None
+    parent_node_id: uuid.UUID | None = None
+    run_depth: int = 0
     started_at: datetime | None
     completed_at: datetime | None
     error_message: str | None
     created_at: datetime
+
+
+class FlowStackCreate(BaseModel):
+    """Create a normal flow composed of sequential subflow nodes."""
+
+    name: str
+    description: str | None = None
+    flow_ids: list[uuid.UUID] = Field(min_length=2, max_length=20)
+    version_mode: str = "locked"
+    timeout_seconds: int = Field(default=600, ge=1, le=86400)
+
+
+class SubflowValidationRequest(BaseModel):
+    child_flow_id: uuid.UUID
+    child_flow_version_mode: str = "locked"
+    child_flow_version: int | None = None
+
+
+class SaveFlowTemplateRequest(BaseModel):
+    """Save a reusable snapshot of an existing flow or stack."""
+
+    name: str | None = None
+    category: str = "My Templates"
+    description: str | None = None
+
+
+class FlowStackComposeNode(BaseModel):
+    """A draggable AgentFlow template or saved flow on the stack canvas."""
+
+    id: str
+    template_id: str | None = None
+    flow_id: uuid.UUID | None = None
+    label: str | None = None
+    position_x: float = 0.0
+    position_y: float = 0.0
+
+
+class FlowStackComposeEdge(BaseModel):
+    id: str | None = None
+    source: str
+    target: str
+
+
+class FlowStackComposeRequest(BaseModel):
+    name: str
+    description: str | None = None
+    category: str = "Custom"
+    nodes: list[FlowStackComposeNode] = Field(min_length=1, max_length=50)
+    edges: list[FlowStackComposeEdge] = Field(default_factory=list)
+    orchestrator_config: dict[str, Any] = Field(default_factory=dict)
+    save_as_template: bool = False
+
+
+class FlowStackTemplateInstantiate(BaseModel):
+    template_id: str
+    name: str | None = None
 

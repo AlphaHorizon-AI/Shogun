@@ -67,6 +67,9 @@ import {
   LayoutGrid,
   MessageSquare,
   Settings,
+  Layers3,
+  Network,
+  BookmarkPlus,
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from '../lib/utils';
@@ -77,7 +80,7 @@ import { logSamuraiDiagnostic } from '../lib/samuraiDiagnostics';
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════
 
-interface AgentFlowData {
+export interface AgentFlowData {
   id: string;
   name: string;
   description: string | null;
@@ -85,6 +88,10 @@ interface AgentFlowData {
   trigger_type: string;
   schedule_config: Record<string, any>;
   viewport: { x: number; y: number; zoom: number };
+  version: number;
+  flow_type: string;
+  risk_tier: string;
+  allow_as_subflow: boolean;
   nodes: FlowNodeData[];
   edges: FlowEdgeData[];
   created_at: string;
@@ -113,14 +120,49 @@ interface FlowEdgeData {
   config: Record<string, any>;
 }
 
-interface FlowListItem {
+export interface FlowListItem {
   id: string;
   name: string;
   description: string | null;
   status: string;
   trigger_type: string;
+  version: number;
+  flow_type: string;
+  risk_tier: string;
+  allow_as_subflow: boolean;
   created_at: string;
   updated_at: string;
+}
+
+interface StackStepRunData {
+  id: string;
+  step_id: string;
+  name: string;
+  status: string;
+  model_used: string | null;
+  retry_count: number;
+  max_retries: number;
+  verification_status: string;
+  flow_run_id: string | null;
+  error_json: Record<string, any>;
+}
+
+interface StackRunData {
+  id: string;
+  stack_id: string | null;
+  mode: string;
+  status: string;
+  objective: string;
+  posture: string;
+  model_profile: string;
+  current_step_id: string | null;
+  completed_steps: string[];
+  pending_steps: string[];
+  failed_steps: string[];
+  approval_events: any[];
+  final_summary: Record<string, any>;
+  created_at: string;
+  steps: StackStepRunData[];
 }
 
 interface OutputResultRequest {
@@ -164,6 +206,8 @@ const NODE_PALETTE = [
   { type: 'channel_send',    label: 'Telegram / Teams', icon: MessageSquare, color: '#38bdf8', desc: 'Send an operator message' },
   { type: 'workspace',       label: 'Workspace',        icon: FolderOpen, color: '#f59e0b', desc: 'File operations' },
   { type: 'office',          label: 'Office',           icon: FileSpreadsheet, color: '#10b981', desc: 'Office documents' },
+  { type: 'subflow',         label: 'Subflow',          icon: Layers3, color: '#8b5cf6', desc: 'Run a reusable child flow' },
+  { type: 'stack_orchestrator', label: 'Stack Orchestrator', icon: Network, color: '#c084fc', desc: 'Supervise long-running Agent Stacks' },
 ] as const;
 
 
@@ -182,6 +226,8 @@ const nodeColors: Record<string, string> = {
   channel_send: '#38bdf8',
   workspace: '#f59e0b',
   office: '#10b981',
+  subflow: '#8b5cf6',
+  stack_orchestrator: '#c084fc',
 };
 
 const nodeIcons: Record<string, React.ElementType> = {
@@ -195,11 +241,48 @@ const nodeIcons: Record<string, React.ElementType> = {
   channel_send: MessageSquare,
   workspace: FolderOpen,
   office: FileSpreadsheet,
+  subflow: Layers3,
+  stack_orchestrator: Network,
 };
 
 function isInspectorInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(
     target.closest('button, input, textarea, select, a, [role="button"], .nodrag, .nowheel')
+  );
+}
+
+function ExecutionTreeNode({ node }: { node: any }) {
+  const statusColor = node.status === 'completed' ? '#22c55e'
+    : node.status === 'failed' ? '#ef4444'
+    : node.status === 'running' ? '#4a8cc7'
+    : node.status === 'cancelled' ? '#7a8899'
+    : '#d4a017';
+  return (
+    <div className="relative pl-4">
+      {node.run_depth > 0 && <div className="absolute left-0 top-0 h-4 w-3 border-b border-l border-[#2a3060] rounded-bl" />}
+      <div className="rounded-lg border border-[#1a2040] bg-[#0e1225] p-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: statusColor }} />
+            <span className="truncate text-[10px] font-bold text-[#c8d0d8]">{node.flow_name}</span>
+            <span className="text-[8px] text-[#7a8899]">v{node.flow_version}</span>
+          </div>
+          <span className="text-[8px] font-bold uppercase" style={{ color: statusColor }}>{node.status}</span>
+        </div>
+        <div className="mt-1 flex gap-3 text-[8px] text-[#7a8899]">
+          <span>Depth {node.run_depth}</span>
+          {node.started_at && node.completed_at && (
+            <span>{((parseRunTimestamp(node.completed_at).getTime() - parseRunTimestamp(node.started_at).getTime()) / 1000).toFixed(1)}s</span>
+          )}
+          <span className="ml-auto font-mono">{String(node.run_id).slice(0, 8)}</span>
+        </div>
+      </div>
+      {node.children?.length > 0 && (
+        <div className="mt-2 space-y-2 border-l border-[#1a2040] pl-2">
+          {node.children.map((child: any) => <ExecutionTreeNode key={child.run_id} node={child} />)}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -467,6 +550,34 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             )}
           </>
         )}
+        {type === 'subflow' && (
+          <>
+            <div className="flex items-center gap-1">
+              <Layers3 className="w-2.5 h-2.5 text-[#8b5cf6]/70" />
+              <span className="text-[8px] font-bold text-[#8b5cf6]/80 uppercase">
+                {config.child_flow_name || 'Select child flow'}
+              </span>
+            </div>
+            <p className="text-[8px] text-[#7a8899]">
+              {config.child_flow_version_mode || 'locked'}
+              {config.child_flow_version ? ` · v${config.child_flow_version}` : ''}
+              {' · '}{config.on_failure || 'fail_parent'}
+            </p>
+          </>
+        )}
+        {type === 'stack_orchestrator' && (
+          <>
+            <div className="flex items-center gap-1">
+              <Network className="w-2.5 h-2.5 text-[#c084fc]/80" />
+              <span className="text-[8px] font-bold text-[#c084fc] uppercase">
+                {config.mode || 'selected_stack'}
+              </span>
+            </div>
+            <p className="text-[9px] text-[#7a8899] line-clamp-2">
+              {config.objective || 'Configure a governed long-running objective'}
+            </p>
+          </>
+        )}
       </div>
 
       {/* Handles */}
@@ -546,6 +657,8 @@ const nodeTypes: NodeTypes = {
   channel_send: FlowNode,
   workspace: FlowNode,
   office: FlowNode,
+  subflow: FlowNode,
+  stack_orchestrator: FlowNode,
 };
 
 
@@ -894,6 +1007,54 @@ function _hasMatchingFiles(children: any[], extensions: string[]): boolean {
 // NODE INSPECTOR PANEL
 // ═══════════════════════════════════════════════════════════════
 
+function JsonConfigEditor({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: Record<string, any>;
+  onChange: (value: Record<string, any>) => void;
+  placeholder: string;
+}) {
+  const [draft, setDraft] = useState(JSON.stringify(value || {}, null, 2));
+  const [error, setError] = useState('');
+
+  useEffect(() => setDraft(JSON.stringify(value || {}, null, 2)), [value]);
+
+  const commit = () => {
+    try {
+      const parsed = JSON.parse(draft || '{}');
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error('Use a JSON object');
+      onChange(parsed);
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid JSON');
+    }
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">{label}</label>
+      <textarea
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        rows={5}
+        spellCheck={false}
+        placeholder={placeholder}
+        className={cn(
+          "w-full bg-[#0a0e1a] border rounded-lg p-2 text-[10px] font-mono text-[#c8d0d8] outline-none resize-y",
+          error ? "border-[#ef4444]" : "border-[#1a2040] focus:border-[#8b5cf6]",
+        )}
+      />
+      {error && <p className="text-[8px] text-[#ef4444]">{error}</p>}
+    </div>
+  );
+}
+
+
 function NodeInspector({
   node,
   onUpdate,
@@ -901,6 +1062,7 @@ function NodeInspector({
   agents,
   routingProfiles,
   flowId,
+  flows,
 }: {
   node: Node;
   onUpdate: (id: string, data: any) => void;
@@ -908,11 +1070,14 @@ function NodeInspector({
   agents: any[];
   routingProfiles: any[];
   flowId: string;
+  flows: FlowListItem[];
 }) {
   const nodeType = node.type || 'samurai';
   const color = nodeColors[nodeType] || '#d4a017';
   const Icon = nodeIcons[nodeType] || Users;
   const config: Record<string, any> = (node.data as Record<string, any>)?.config || {};
+  const [subflowValidation, setSubflowValidation] = useState<{valid: boolean; warnings: string[]; errors: string[]} | null>(null);
+  const [validatingSubflow, setValidatingSubflow] = useState(false);
 
   const updateConfig = (key: string, value: any) => {
     onUpdate(node.id, {
@@ -923,6 +1088,27 @@ function NodeInspector({
 
   const updateLabel = (label: string) => {
     onUpdate(node.id, { ...node.data, label });
+  };
+
+  const validateSelectedSubflow = async () => {
+    if (!config.child_flow_id) return;
+    setValidatingSubflow(true);
+    try {
+      const response = await axios.post(`/api/v1/agent-flows/${flowId}/validate-subflow`, {
+        child_flow_id: config.child_flow_id,
+        child_flow_version_mode: config.child_flow_version_mode || 'locked',
+        child_flow_version: config.child_flow_version || null,
+      });
+      setSubflowValidation(response.data?.data || null);
+    } catch (err) {
+      setSubflowValidation({
+        valid: false,
+        warnings: [],
+        errors: [axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Validation failed'],
+      });
+    } finally {
+      setValidatingSubflow(false);
+    }
   };
 
   return (
@@ -1630,6 +1816,212 @@ Content-Type: application/json
           </>
         )}
 
+        {/* Flow Stacking / Subflow fields */}
+        {nodeType === 'subflow' && (
+          <>
+            <div className="rounded-lg border border-[#8b5cf6]/25 bg-[#8b5cf6]/5 p-3">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[#8b5cf6]">Governed child execution</p>
+              <p className="mt-1 text-[9px] leading-relaxed text-[#7a8899]">
+                The child inherits this run's posture, permission ceiling, audit context, and cancellation state.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Child Flow</label>
+              <select
+                value={config.child_flow_id || ''}
+                onChange={(event) => {
+                  const child = flows.find((item) => item.id === event.target.value);
+                  onUpdate(node.id, {
+                    ...node.data,
+                    config: {
+                      ...config,
+                      child_flow_id: child?.id || '',
+                      child_flow_name: child?.name || '',
+                      child_flow_version: child?.version || null,
+                      child_flow_version_mode: config.child_flow_version_mode || 'locked',
+                      execution_mode: 'sequential',
+                      timeout_seconds: config.timeout_seconds || 600,
+                      on_failure: config.on_failure || 'fail_parent',
+                    },
+                  });
+                  setSubflowValidation(null);
+                }}
+                className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#8b5cf6] outline-none"
+              >
+                <option value="">Select a reusable flow...</option>
+                {flows.filter((item) => item.id !== flowId).map((item) => (
+                  <option key={item.id} value={item.id} disabled={!item.allow_as_subflow}>
+                    {item.name} · v{item.version} · {item.risk_tier}{!item.allow_as_subflow ? ' · blocked' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Version</label>
+                <select
+                  value={config.child_flow_version_mode || 'locked'}
+                  onChange={(event) => updateConfig('child_flow_version_mode', event.target.value)}
+                  className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#8b5cf6] outline-none"
+                >
+                  <option value="locked">Locked</option>
+                  <option value="latest">Latest</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Timeout</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={86400}
+                  value={config.timeout_seconds || 600}
+                  onChange={(event) => updateConfig('timeout_seconds', Number(event.target.value))}
+                  className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#8b5cf6] outline-none"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Failure Policy</label>
+              <select
+                value={config.on_failure || 'fail_parent'}
+                onChange={(event) => updateConfig('on_failure', event.target.value)}
+                className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#8b5cf6] outline-none"
+              >
+                <option value="fail_parent">Fail parent</option>
+                <option value="continue_with_error">Continue with error</option>
+                <option value="route_to_error">Route error downstream</option>
+              </select>
+            </div>
+            <JsonConfigEditor
+              label="Input Mapping"
+              value={config.input_mapping || {}}
+              onChange={(value) => updateConfig('input_mapping', value)}
+              placeholder={'{"topic": "{{input.topic}}"}'}
+            />
+            <JsonConfigEditor
+              label="Output Mapping"
+              value={config.output_mapping || {}}
+              onChange={(value) => updateConfig('output_mapping', value)}
+              placeholder={'{"summary": "{{output.summary}}"}'}
+            />
+            <button
+              type="button"
+              disabled={!config.child_flow_id || validatingSubflow}
+              onClick={validateSelectedSubflow}
+              className="w-full flex items-center justify-center gap-2 rounded-lg border border-[#8b5cf6]/30 bg-[#8b5cf6]/10 px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-[#a78bfa] disabled:opacity-40"
+            >
+              {validatingSubflow ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
+              Validate safety & governance
+            </button>
+            {subflowValidation && (
+              <div className={cn(
+                "rounded-lg border p-2.5 text-[9px]",
+                subflowValidation.valid
+                  ? "border-[#22c55e]/25 bg-[#22c55e]/5 text-[#22c55e]"
+                  : "border-[#ef4444]/25 bg-[#ef4444]/5 text-[#ef4444]",
+              )}>
+                <p className="font-bold uppercase tracking-wider">
+                  {subflowValidation.valid ? 'Reference is safe' : 'Reference is blocked'}
+                </p>
+                {[...subflowValidation.warnings, ...subflowValidation.errors].map((message, index) => (
+                  <p key={index} className="mt-1 opacity-80">{message}</p>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Stack Orchestrator control-node fields */}
+        {nodeType === 'stack_orchestrator' && (
+          <>
+            <div className="rounded-lg border border-[#c084fc]/25 bg-[#c084fc]/5 p-3">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[#c084fc]">Runtime control layer</p>
+              <p className="mt-1 text-[9px] leading-relaxed text-[#7a8899]">
+                Supervises Agent Stacks through persistent state, checkpoints, verification, retries and inherited posture permissions. Concrete work remains in Agent Flow.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Execution Mode</label>
+              <select value={config.mode || 'selected_stack'} onChange={(event) => updateConfig('mode', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#c084fc] outline-none">
+                <option value="selected_stack">Selected Agent Stack</option>
+                <option value="template">Stack Template</option>
+                <option value="goal_driven">Goal-driven plan</option>
+              </select>
+            </div>
+            {(config.mode || 'selected_stack') === 'selected_stack' && (
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Agent Stack</label>
+                <select value={config.selected_stack_id || ''} onChange={(event) => updateConfig('selected_stack_id', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#c084fc] outline-none">
+                  <option value="">Select an Agent Stack...</option>
+                  {flows.filter((item) => item.id !== flowId).map((item) => (
+                    <option key={item.id} value={item.id}>{item.name} · {item.flow_type} · {item.risk_tier}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {config.mode === 'template' && (
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Stack Template ID</label>
+                <input value={config.stack_template_id || ''} onChange={(event) => updateConfig('stack_template_id', event.target.value)} placeholder="bug-fix-stack" className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#c084fc] outline-none" />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Objective</label>
+              <textarea value={config.objective || ''} onChange={(event) => updateConfig('objective', event.target.value)} rows={3} placeholder="Describe the long-running outcome..." className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#c084fc] outline-none resize-y" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Success Criteria</label>
+              <textarea value={(config.success_criteria || []).join('\n')} onChange={(event) => updateConfig('success_criteria', event.target.value.split('\n').map((item) => item.trim()).filter(Boolean))} rows={3} placeholder={'One criterion per line\nTests pass\nArtifacts verified'} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#c084fc] outline-none resize-y" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Allowed Tools</label>
+              <input value={(config.allowed_tools || []).join(', ')} onChange={(event) => updateConfig('allowed_tools', event.target.value.split(',').map((item) => item.trim()).filter(Boolean))} placeholder="workspace, ide, mado" className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#c084fc] outline-none" />
+              <p className="text-[8px] text-[#555]">This list can only narrow the active posture. IDE and Ronin permissions must also be explicitly enabled.</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Model Routing Profile</label>
+              <select value={config.model_routing_profile || 'balanced'} onChange={(event) => updateConfig('model_routing_profile', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#c084fc] outline-none">
+                <option value="balanced">Balanced</option>
+                {routingProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Max Runtime (min)</label>
+                <input type="number" min={1} max={1440} value={config.max_runtime_minutes || 60} onChange={(event) => updateConfig('max_runtime_minutes', Number(event.target.value))} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Max Iterations</label>
+                <input type="number" min={1} max={500} value={config.max_iterations || 50} onChange={(event) => updateConfig('max_iterations', Number(event.target.value))} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Retries / Step</label>
+                <input type="number" min={0} max={10} value={config.max_retry_attempts_per_step ?? 2} onChange={(event) => updateConfig('max_retry_attempts_per_step', Number(event.target.value))} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Checkpoint</label>
+                <select value={config.checkpoint_frequency || 'after_each_step'} onChange={(event) => updateConfig('checkpoint_frequency', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none">
+                  <option value="after_each_step">Each step</option><option value="after_each_subflow">Each subflow</option><option value="timed">Timed</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex items-center gap-2 rounded-lg border border-[#1a2040] p-2 text-[9px] text-[#c8d0d8]"><input type="checkbox" checked={config.context_compaction !== false} onChange={(event) => updateConfig('context_compaction', event.target.checked)} /> Context compaction</label>
+              <label className="flex items-center gap-2 rounded-lg border border-[#1a2040] p-2 text-[9px] text-[#c8d0d8]"><input type="checkbox" checked={config.verification_required !== false} onChange={(event) => updateConfig('verification_required', event.target.checked)} /> Verification required</label>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Approval Policy</label>
+              <select value={config.approval_policy || 'inherited'} onChange={(event) => updateConfig('approval_policy', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none">
+                <option value="inherited">Inherited</option><option value="step_based">Step based</option><option value="always_required_for_high_risk">Always for high risk</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5"><label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Failure Policy</label><select value={config.failure_policy || 'pause'} onChange={(event) => updateConfig('failure_policy', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none"><option value="pause">Pause</option><option value="retry">Retry</option><option value="continue_with_error">Continue with error</option><option value="fail_stack">Fail stack</option></select></div>
+              <div className="space-y-1.5"><label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Artifacts</label><select value={config.artifact_policy || 'retain_all'} onChange={(event) => updateConfig('artifact_policy', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none"><option value="retain_all">Retain all</option><option value="retain_final_only">Final only</option><option value="retain_selected">Selected</option></select></div>
+            </div>
+          </>
+        )}
+
         {/* Mado Browser fields */}
         {nodeType === 'mado_browser' && (
           <>
@@ -2043,18 +2435,20 @@ Content-Type: application/json
 // MAIN CANVAS COMPONENT (wrapped in ReactFlowProvider externally)
 // ═══════════════════════════════════════════════════════════════
 
-function AgentFlowCanvas({
+export function AgentFlowCanvas({
   flow,
   onBack,
   onFlowUpdate: _onFlowUpdate,
   agents,
   routingProfiles,
+  availableFlows,
 }: {
   flow: AgentFlowData;
   onBack: () => void;
   onFlowUpdate: () => void;
   agents: any[];
   routingProfiles: any[];
+  availableFlows: FlowListItem[];
 }) {
   void _onFlowUpdate; // reserved for Phase 2 execution engine
   const reactFlowInstance = useReactFlow();
@@ -2114,6 +2508,7 @@ function AgentFlowCanvas({
   const [runHistory, setRunHistory] = useState<any[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedRunDetails, setSelectedRunDetails] = useState<any | null>(null);
+  const [selectedRunTree, setSelectedRunTree] = useState<any | null>(null);
   const [loadingRunDetails, setLoadingRunDetails] = useState(false);
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -2125,9 +2520,13 @@ function AgentFlowCanvas({
     setSelectedRunId(runId);
     setLoadingRunDetails(true);
     try {
-      const resp = await axios.get(`/api/v1/agent-flows/runs/${runId}`);
+      const [resp, treeResp] = await Promise.all([
+        axios.get(`/api/v1/agent-flows/runs/${runId}`),
+        axios.get(`/api/v1/agent-flows/runs/${runId}/tree`),
+      ]);
       const run = resp.data?.data || null;
       setSelectedRunDetails(run);
+      setSelectedRunTree(treeResp.data?.data || null);
       return run;
     } catch (err) {
       console.error(err);
@@ -2136,6 +2535,7 @@ function AgentFlowCanvas({
         trigger_type: 'manual',
         result_summary: { [fallback.label]: fallback.content },
       } : null);
+      setSelectedRunTree(null);
       return null;
     } finally {
       setLoadingRunDetails(false);
@@ -2156,6 +2556,7 @@ function AgentFlowCanvas({
       trigger_type: 'manual',
       result_summary: { [request.label]: request.content },
     });
+    setSelectedRunTree(null);
   }, [loadRunResult]);
 
   const outputResultContext = useMemo<OutputResultContextValue>(() => ({
@@ -2371,13 +2772,29 @@ function AgentFlowCanvas({
       });
 
       const paletteItem = NODE_PALETTE.find((p) => p.type === nodeType);
+      const initialConfig = nodeType === 'stack_orchestrator' ? {
+        mode: 'selected_stack',
+        objective: '',
+        success_criteria: [],
+        allowed_tools: [],
+        model_routing_profile: 'balanced',
+        max_runtime_minutes: 60,
+        max_iterations: 50,
+        max_retry_attempts_per_step: 2,
+        checkpoint_frequency: 'after_each_step',
+        context_compaction: true,
+        verification_required: true,
+        approval_policy: 'inherited',
+        artifact_policy: 'retain_all',
+        failure_policy: 'pause',
+      } : {};
       const newNode: Node = {
         id: crypto.randomUUID(),
         type: nodeType,
         position,
         data: {
           label: paletteItem?.label || 'New Node',
-          config: {},
+          config: initialConfig,
         },
       };
 
@@ -2466,6 +2883,22 @@ function AgentFlowCanvas({
     }
   }, [flow.id, flow.name, flow.trigger_type, flowName, nodes, edges, reactFlowInstance]);
 
+  const handleSaveAsTemplate = useCallback(async () => {
+    if (dirty) await handleSave();
+    const templateName = window.prompt('Template name', flowName);
+    if (!templateName) return;
+    const category = window.prompt('Template category', 'My Templates') || 'My Templates';
+    try {
+      await axios.post(`/api/v1/agent-flows/${flow.id}/save-as-template`, {
+        name: templateName,
+        category,
+      });
+      window.alert(`Reusable template “${templateName}” saved.`);
+    } catch (err: any) {
+      window.alert(err?.response?.data?.detail || 'Could not save this template.');
+    }
+  }, [dirty, flow.id, flowName, handleSave]);
+
   // ── Trigger run ──────────────────────────────────────────
   const handleRun = useCallback(async () => {
     if (executing) return;
@@ -2547,6 +2980,7 @@ function AgentFlowCanvas({
       if (selectedRunId === id) {
         setSelectedRunId(null);
         setSelectedRunDetails(null);
+        setSelectedRunTree(null);
       }
     } catch (err) {
       console.error('Failed to delete flow run:', err);
@@ -2590,7 +3024,7 @@ function AgentFlowCanvas({
   }, [selectedNodeId, inspectorNode, nodes.length]);
 
   return (
-    <div className="relative flex h-[calc(100vh-120px)] rounded-lg overflow-hidden border border-[#1a2040] min-w-0">
+    <div data-testid="agent-flow-editor" data-flow-id={flow.id} className="relative flex h-[calc(100vh-120px)] rounded-lg overflow-hidden border border-[#1a2040] min-w-0">
       {/* Canvas */}
       <div className="flex-1 min-w-0 flex flex-col bg-[#060810]">
         {/* Toolbar */}
@@ -2683,6 +3117,14 @@ function AgentFlowCanvas({
             >
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
               {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={handleSaveAsTemplate}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-[#8b5cf6]/15 text-[#c084fc] border border-[#8b5cf6]/30 hover:bg-[#8b5cf6]/25 transition-all"
+              title="Save this AgentFlow for future reuse"
+            >
+              <BookmarkPlus className="w-3 h-3" /> Template
             </button>
 
             <div className="h-5 w-px bg-[#1a2040]" />
@@ -2834,6 +3276,7 @@ function AgentFlowCanvas({
             agents={agents}
             routingProfiles={routingProfiles}
             flowId={flow.id}
+            flows={availableFlows}
           />
         </div>
       )}
@@ -2994,6 +3437,8 @@ function AgentFlowCanvas({
                           selectedRunDetails.status === 'failed' ? "text-[#ef4444]" : "text-[#4a8cc7]"
                         )}>{selectedRunDetails.status}</span></span>
                         <span className="bg-[#1a2040] px-2.5 py-1 rounded">Trigger: {selectedRunDetails.trigger_type}</span>
+                        <span className="bg-[#1a2040] px-2.5 py-1 rounded">Depth: {selectedRunDetails.run_depth || 0}</span>
+                        {selectedRunDetails.flow_version && <span className="bg-[#1a2040] px-2.5 py-1 rounded">Flow v{selectedRunDetails.flow_version}</span>}
                         {selectedRunDetails.started_at && selectedRunDetails.completed_at && (
                           <span className="bg-[#1a2040] px-2.5 py-1 rounded">
                             Duration: {((parseRunTimestamp(selectedRunDetails.completed_at).getTime() - parseRunTimestamp(selectedRunDetails.started_at).getTime()) / 1000).toFixed(2)}s
@@ -3006,6 +3451,23 @@ function AgentFlowCanvas({
                           <h3 className="text-xs font-bold text-[#ef4444] uppercase tracking-wider mb-2">Error Details</h3>
                           <p className="text-sm text-[#ef4444]/90 whitespace-pre-wrap font-mono">{selectedRunDetails.error_message}</p>
                         </div>
+                      )}
+
+                      {selectedRunTree && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 border-b border-[#1a2040] pb-2">
+                            <Network className="w-4 h-4 text-[#8b5cf6]" />
+                            <h3 className="text-xs font-bold text-[#c8d0d8] uppercase tracking-wider">Flow Stacking Execution Tree</h3>
+                          </div>
+                          <ExecutionTreeNode node={selectedRunTree} />
+                        </div>
+                      )}
+
+                      {selectedRunDetails.governance_context && Object.keys(selectedRunDetails.governance_context).length > 0 && (
+                        <details className="rounded-lg border border-[#1a2040] bg-[#0e1225] p-3">
+                          <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-wider text-[#7a8899]">Inherited governance context</summary>
+                          <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-[9px] text-[#c8d0d8]">{JSON.stringify(selectedRunDetails.governance_context, null, 2)}</pre>
+                        </details>
                       )}
 
                       {selectedRunDetails.result_summary && Object.keys(selectedRunDetails.result_summary).length > 0 ? (
@@ -3194,6 +3656,11 @@ function FlowListView({
                 </div>
 
                 <div className="flex items-center gap-3 mt-4">
+                  {flow.flow_type === 'stack' && (
+                    <span className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border text-[#a78bfa] bg-[#8b5cf6]/10 border-[#8b5cf6]/30">
+                      Flow Stack
+                    </span>
+                  )}
                   <span
                     className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border"
                     style={{
@@ -3223,6 +3690,276 @@ function FlowListView({
 
 
 // ═══════════════════════════════════════════════════════════════
+export function StackOrchestratorConsole({ flows, onClose }: { flows: FlowListItem[]; onClose: () => void }) {
+  const [runs, setRuns] = useState<StackRunData[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<StackRunData | null>(null);
+  const [checkpoints, setCheckpoints] = useState<any[]>([]);
+  const [artifacts, setArtifacts] = useState<any[]>([]);
+  const [verifications, setVerifications] = useState<any[]>([]);
+  const [mode, setMode] = useState<'selected_stack' | 'goal_driven' | 'template'>('selected_stack');
+  const [objective, setObjective] = useState('');
+  const [selectedStackId, setSelectedStackId] = useState('');
+  const [templateId, setTemplateId] = useState('');
+  const [modelProfile, setModelProfile] = useState('balanced');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const refresh = useCallback(async () => {
+    try {
+      const listResponse = await axios.get('/api/v1/stacks/orchestrator');
+      const list = listResponse.data?.data || [];
+      setRuns(list);
+      if (selectedId) {
+        const [runResponse, checkpointResponse, artifactResponse, verificationResponse] = await Promise.all([
+          axios.get(`/api/v1/stacks/orchestrator/${selectedId}`),
+          axios.get(`/api/v1/stacks/orchestrator/${selectedId}/checkpoints`),
+          axios.get(`/api/v1/stacks/orchestrator/${selectedId}/artifacts`),
+          axios.get(`/api/v1/stacks/orchestrator/${selectedId}/verifications`),
+        ]);
+        setSelected(runResponse.data?.data || null);
+        setCheckpoints(checkpointResponse.data?.data || []);
+        setArtifacts(artifactResponse.data?.data || []);
+        setVerifications(verificationResponse.data?.data || []);
+      }
+    } catch (err) {
+      setError(axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Could not load Stack Orchestrator state');
+    }
+  }, [selectedId]);
+
+  useEffect(() => {
+    refresh();
+    const timer = window.setInterval(refresh, 2000);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
+
+  const createRun = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const response = await axios.post('/api/v1/stacks/orchestrator/create', {
+        mode,
+        objective,
+        selected_stack_id: mode === 'selected_stack' ? selectedStackId || null : null,
+        stack_template_id: mode === 'template' ? templateId || null : null,
+        success_criteria: [],
+        allowed_tools: [],
+        model_routing_profile: modelProfile,
+        max_runtime_minutes: 60,
+        max_iterations: 50,
+        max_retry_attempts_per_step: 2,
+        checkpoint_frequency: 'after_each_step',
+        context_compaction: 'enabled',
+        verification_required: true,
+        approval_policy: 'inherited',
+        artifact_policy: 'retain_all',
+        failure_policy: 'pause',
+      });
+      const run = response.data?.data;
+      if (run) {
+        setSelectedId(run.id);
+        setSelected(run);
+        setObjective('');
+        await refresh();
+      }
+    } catch (err) {
+      setError(axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Could not create Stack Orchestrator run');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const transition = async (action: 'start' | 'pause' | 'resume' | 'cancel') => {
+    if (!selectedId) return;
+    setBusy(true);
+    setError('');
+    try {
+      await axios.post(`/api/v1/stacks/orchestrator/${selectedId}/${action}`);
+      await refresh();
+    } catch (err) {
+      setError(axios.isAxiosError(err) ? err.response?.data?.detail || err.message : `Could not ${action} stack`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const approvePlan = async () => {
+    if (!selectedId || !selectedStackId) return;
+    setBusy(true);
+    try {
+      await axios.post(`/api/v1/stacks/orchestrator/${selectedId}/plan-decision`, {
+        approved: true,
+        selected_stack_id: selectedStackId,
+        reason: 'Reviewed and attached in Katana',
+      });
+      await refresh();
+    } catch (err) {
+      setError(axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Could not approve plan');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const statusColor = (status: string) => status === 'completed' || status === 'verified' ? '#22c55e'
+    : status === 'failed' || status === 'blocked' ? '#ef4444'
+    : status === 'running' || status === 'retrying' ? '#4a8cc7'
+    : status === 'waiting_approval' ? '#f59e0b'
+    : '#7a8899';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="flex h-[88vh] w-full max-w-7xl overflow-hidden rounded-xl border border-[#c084fc]/30 bg-[#080b18] shadow-2xl">
+        <aside className="w-72 shrink-0 border-r border-[#1a2040] bg-[#070914] flex flex-col">
+          <div className="border-b border-[#1a2040] p-4">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-[#c084fc]"><Network className="w-4 h-4" />Stack Orchestrator</h3>
+            <p className="mt-1 text-[8px] uppercase tracking-widest text-[#7a8899]">Long-horizon runtime control</p>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {runs.map((run) => (
+              <button key={run.id} onClick={() => setSelectedId(run.id)} className={cn("w-full rounded-lg border p-3 text-left transition-colors", selectedId === run.id ? "border-[#c084fc]/40 bg-[#c084fc]/10" : "border-transparent hover:bg-[#10152a]")}>
+                <p className="line-clamp-2 text-[10px] font-bold text-[#c8d0d8]">{run.objective}</p>
+                <div className="mt-2 flex items-center justify-between"><span className="text-[8px] uppercase text-[#7a8899]">{run.mode.replace('_', ' ')}</span><span className="text-[8px] font-bold uppercase" style={{ color: statusColor(run.status) }}>{run.status.replace('_', ' ')}</span></div>
+              </button>
+            ))}
+            {runs.length === 0 && <p className="p-5 text-center text-[9px] text-[#7a8899]">No orchestrated runs yet.</p>}
+          </div>
+        </aside>
+
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-center justify-between border-b border-[#1a2040] bg-[#0e1225] px-5 py-3">
+            <div><h2 className="text-sm font-bold text-[#c8d0d8]">Runtime Command View</h2><p className="text-[9px] text-[#7a8899]">State · checkpoints · verification · recovery</p></div>
+            <div className="flex items-center gap-2"><button onClick={refresh} className="p-2 text-[#7a8899] hover:text-[#c084fc]"><RefreshCw className="w-4 h-4" /></button><button onClick={onClose} className="p-2 text-[#7a8899] hover:text-white"><X className="w-4 h-4" /></button></div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-5">
+            {error && <div className="mb-4 rounded-lg border border-[#ef4444]/30 bg-[#ef4444]/5 p-3 text-[10px] text-[#ef4444]">{error}</div>}
+            {!selected ? (
+              <div className="mx-auto max-w-2xl space-y-4 rounded-xl border border-[#1a2040] bg-[#0e1225] p-5">
+                <div><h3 className="text-sm font-bold text-[#c8d0d8]">Create Stack Run</h3><p className="mt-1 text-[9px] text-[#7a8899]">Select a reusable stack, instantiate a template, or generate a reviewable goal plan.</p></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">Mode</label><select value={mode} onChange={(event) => setMode(event.target.value as typeof mode)} className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-2.5 text-xs text-[#c8d0d8]"><option value="selected_stack">Selected stack</option><option value="goal_driven">Goal-driven</option><option value="template">Template</option></select></div>
+                  <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">Model Profile</label><input value={modelProfile} onChange={(event) => setModelProfile(event.target.value)} className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-2.5 text-xs text-[#c8d0d8]" /></div>
+                </div>
+                {mode !== 'template' && <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">{mode === 'goal_driven' ? 'Attach after review' : 'Agent Stack'}</label><select value={selectedStackId} onChange={(event) => setSelectedStackId(event.target.value)} className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-2.5 text-xs text-[#c8d0d8]"><option value="">Select stack...</option>{flows.map((flow) => <option key={flow.id} value={flow.id}>{flow.name} · {flow.flow_type}</option>)}</select></div>}
+                {mode === 'template' && <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">Template ID</label><input value={templateId} onChange={(event) => setTemplateId(event.target.value)} placeholder="bug-fix-stack" className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-2.5 text-xs text-[#c8d0d8]" /></div>}
+                <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">Objective</label><textarea value={objective} onChange={(event) => setObjective(event.target.value)} rows={4} placeholder="What should this Agent Stack accomplish?" className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-3 text-xs text-[#c8d0d8] outline-none focus:border-[#c084fc]" /></div>
+                <button disabled={busy || !objective || (mode === 'selected_stack' && !selectedStackId) || (mode === 'template' && !templateId)} onClick={createRun} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#c084fc] px-4 py-3 text-xs font-bold text-[#090b15] disabled:opacity-40">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Network className="w-4 h-4" />}Create Runtime Plan</button>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="rounded-xl border border-[#1a2040] bg-[#0e1225] p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ background: statusColor(selected.status) }} /><span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: statusColor(selected.status) }}>{selected.status.replace('_', ' ')}</span></div><h3 className="mt-2 max-w-3xl text-lg font-bold text-[#c8d0d8]">{selected.objective}</h3><p className="mt-1 text-[9px] uppercase tracking-widest text-[#7a8899]">{selected.posture} posture · {selected.model_profile} · {selected.mode.replace('_', ' ')}</p></div><div className="flex gap-2">{selected.status === 'created' && <button onClick={() => transition('start')} className="rounded-lg bg-[#22c55e]/15 px-3 py-2 text-[9px] font-bold uppercase text-[#22c55e]">Start</button>}{selected.status === 'running' && <button onClick={() => transition('pause')} className="rounded-lg bg-[#f59e0b]/15 px-3 py-2 text-[9px] font-bold uppercase text-[#f59e0b]">Pause</button>}{selected.status === 'paused' && <button onClick={() => transition('resume')} className="rounded-lg bg-[#4a8cc7]/15 px-3 py-2 text-[9px] font-bold uppercase text-[#4a8cc7]">Resume checkpoint</button>}{!['completed', 'failed', 'cancelled'].includes(selected.status) && <button onClick={() => transition('cancel')} className="rounded-lg bg-[#ef4444]/10 px-3 py-2 text-[9px] font-bold uppercase text-[#ef4444]">Cancel</button>}</div></div>
+                  {selected.status === 'waiting_approval' && <div className="mt-4 flex items-center gap-3 rounded-lg border border-[#f59e0b]/25 bg-[#f59e0b]/5 p-3"><AlertTriangle className="w-4 h-4 text-[#f59e0b]" /><p className="flex-1 text-[10px] text-[#c8d0d8]">Generated or supervised plan requires review. Choose the concrete Agent Stack in the creation panel selection, then approve.</p><button disabled={!selectedStackId || busy} onClick={approvePlan} className="rounded bg-[#f59e0b] px-3 py-2 text-[9px] font-bold uppercase text-black disabled:opacity-40">Approve Plan</button></div>}
+                </div>
+
+                <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
+                  <section className="rounded-xl border border-[#1a2040] bg-[#0e1225] p-4"><h4 className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#c8d0d8]"><Network className="w-3.5 h-3.5 text-[#c084fc]" />Execution Tree</h4><div className="space-y-2">{selected.steps.map((step, index) => <div key={step.id} className="relative flex items-center gap-3 rounded-lg border border-[#1a2040] bg-[#090d1d] p-3"><div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold" style={{ borderColor: statusColor(step.status), color: statusColor(step.status) }}>{index + 1}</div><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><p className="truncate text-[10px] font-bold text-[#c8d0d8]">{step.name}</p><span className="text-[8px] font-bold uppercase" style={{ color: statusColor(step.status) }}>{step.status.replace('_', ' ')}</span></div><div className="mt-1 flex flex-wrap gap-3 text-[8px] text-[#7a8899]"><span>{step.model_used || 'model pending'}</span><span>{step.retry_count}/{step.max_retries} retries</span><span>verification: {step.verification_status}</span>{step.flow_run_id && <span>run {step.flow_run_id.slice(0, 8)}</span>}</div>{step.error_json?.message && <p className="mt-1 text-[8px] text-[#ef4444]">{step.error_json.message}</p>}</div></div>)}</div></section>
+                  <div className="space-y-5"><section className="rounded-xl border border-[#1a2040] bg-[#0e1225] p-4"><h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-[#c8d0d8]">Checkpoints</h4><div className="max-h-56 space-y-2 overflow-y-auto">{checkpoints.map((checkpoint) => <div key={checkpoint.id} className="rounded-lg border border-[#1a2040] p-3"><div className="flex justify-between gap-2"><span className="text-[9px] font-bold text-[#c8d0d8]">{checkpoint.summary}</span><span className="text-[8px] text-[#7a8899]">{formatRunTimestamp(checkpoint.created_at)}</span></div><p className="mt-1 line-clamp-3 text-[8px] text-[#7a8899]">{checkpoint.context_summary}</p><p className="mt-1 text-[8px] text-[#c084fc]">{checkpoint.resume_instruction}</p></div>)}{checkpoints.length === 0 && <p className="text-[9px] text-[#7a8899]">No checkpoints yet.</p>}</div></section><section className="rounded-xl border border-[#1a2040] bg-[#0e1225] p-4"><h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-[#c8d0d8]">Evidence</h4><div className="grid grid-cols-2 gap-2"><div className="rounded-lg bg-[#090d1d] p-3"><p className="text-xl font-bold text-[#c084fc]">{artifacts.length}</p><span className="text-[8px] uppercase text-[#7a8899]">Artifacts</span></div><div className="rounded-lg bg-[#090d1d] p-3"><p className="text-xl font-bold text-[#22c55e]">{verifications.filter((item) => item.status === 'passed').length}/{verifications.length}</p><span className="text-[8px] uppercase text-[#7a8899]">Verified</span></div></div></section></div>
+                </div>
+                {Object.keys(selected.final_summary || {}).length > 0 && <section className="rounded-xl border border-[#22c55e]/25 bg-[#22c55e]/5 p-4"><h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-[#22c55e]">Final Stack Summary</h4><pre className="max-h-72 overflow-auto whitespace-pre-wrap text-[9px] leading-relaxed text-[#c8d0d8]">{JSON.stringify(selected.final_summary, null, 2)}</pre></section>}
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+
+export function FlowStackModal({
+  flows,
+  onClose,
+  onCreate,
+}: {
+  flows: FlowListItem[];
+  onClose: () => void;
+  onCreate: (name: string, flowIds: string[], versionMode: string) => Promise<void>;
+}) {
+  const [name, setName] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
+  const [versionMode, setVersionMode] = useState('locked');
+  const [creating, setCreating] = useState(false);
+  const available = flows.filter((flow) => flow.allow_as_subflow);
+
+  const move = (index: number, direction: -1 | 1) => {
+    const next = [...selected];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    setSelected(next);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-[#8b5cf6]/30 bg-[#0a0e1a] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-[#1a2040] bg-[#0e1225] p-5">
+          <div>
+            <h3 className="flex items-center gap-2 text-lg font-bold text-[#a78bfa]"><Layers3 className="w-5 h-5" />Create Flow Stack</h3>
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-[#7a8899]">Each child output becomes the next child input</p>
+          </div>
+          <button onClick={onClose} className="p-2 text-[#7a8899] hover:text-[#c8d0d8]"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-5 p-5">
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold uppercase tracking-widest text-[#7a8899]">Stack Name</label>
+              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Board Report Orchestration" className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-2.5 text-xs text-[#c8d0d8] outline-none focus:border-[#8b5cf6]" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold uppercase tracking-widest text-[#7a8899]">Version Policy</label>
+              <select value={versionMode} onChange={(event) => setVersionMode(event.target.value)} className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-2.5 text-xs text-[#c8d0d8] outline-none">
+                <option value="locked">Lock current versions</option>
+                <option value="latest">Use latest at run time</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold uppercase tracking-widest text-[#7a8899]">Add Reusable Flow</label>
+              <div className="max-h-52 space-y-1 overflow-y-auto rounded-lg border border-[#1a2040] p-1.5">
+                {available.map((flow) => (
+                  <button key={flow.id} type="button" onClick={() => setSelected((items) => [...items, flow.id])} className="w-full rounded p-2 text-left hover:bg-[#8b5cf6]/10">
+                    <div className="flex items-center justify-between gap-2"><span className="truncate text-[10px] font-bold text-[#c8d0d8]">{flow.name}</span><Plus className="w-3 h-3 text-[#8b5cf6]" /></div>
+                    <span className="text-[8px] uppercase text-[#7a8899]">v{flow.version} · {flow.risk_tier}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div>
+            <label className="text-[9px] font-bold uppercase tracking-widest text-[#7a8899]">Execution Order ({selected.length})</label>
+            <div className="mt-2 min-h-64 space-y-2 rounded-lg border border-dashed border-[#8b5cf6]/25 p-2">
+              {selected.length === 0 && <p className="py-20 text-center text-[10px] text-[#7a8899]">Add at least two flows</p>}
+              {selected.map((id, index) => {
+                const flow = available.find((item) => item.id === id);
+                return (
+                  <div key={`${id}-${index}`} className="flex items-center gap-2 rounded-lg border border-[#1a2040] bg-[#0e1225] p-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#8b5cf6]/15 text-[9px] font-bold text-[#a78bfa]">{index + 1}</span>
+                    <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-[#c8d0d8]">{flow?.name || id}</span>
+                    <button onClick={() => move(index, -1)} disabled={index === 0} className="text-[10px] text-[#7a8899] disabled:opacity-20">↑</button>
+                    <button onClick={() => move(index, 1)} disabled={index === selected.length - 1} className="text-[10px] text-[#7a8899] disabled:opacity-20">↓</button>
+                    <button onClick={() => setSelected((items) => items.filter((_, itemIndex) => itemIndex !== index))}><X className="w-3 h-3 text-[#ef4444]" /></button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 border-t border-[#1a2040] p-4">
+          <button onClick={onClose} className="rounded-lg border border-[#1a2040] px-4 py-2 text-xs font-bold text-[#7a8899]">Cancel</button>
+          <button
+            disabled={!name.trim() || selected.length < 2 || creating}
+            onClick={async () => { setCreating(true); try { await onCreate(name, selected, versionMode); } finally { setCreating(false); } }}
+            className="flex items-center gap-2 rounded-lg bg-[#8b5cf6] px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
+          >
+            {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Layers3 className="w-3.5 h-3.5" />} Create Stack
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // TEMPLATE GALLERY MODAL
 // ═══════════════════════════════════════════════════════════════
 
@@ -3737,6 +4474,7 @@ export const AgentFlow = () => {
           onFlowUpdate={fetchFlows}
           agents={agents}
           routingProfiles={routingProfiles}
+          availableFlows={flows}
         />
       </ReactFlowProvider>
     );

@@ -165,6 +165,8 @@ async def get_posture_tool_filter() -> dict[str, Any]:
         "office_ppt_enabled": posture.get("office_ppt_enabled", True),
         "office_outlook_enabled": posture.get("office_outlook_enabled", True),
         "office_outlook_mode": posture.get("office_outlook_mode", "draft_only"),
+        # IDE Mode is an explicit capability; posture level alone never enables it.
+        "ide_enabled": posture.get("ide_enabled", False),
     }
 
 

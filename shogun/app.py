@@ -38,6 +38,51 @@ async def lifespan(app: FastAPI):
         from shogun.db.engine import async_session_factory, engine
         from sqlalchemy import text, inspect as sa_inspect
         async with engine.begin() as conn:
+            # Keep desktop installs compatible when they predate Alembic's Flow
+            # Stacking revisions. SQLite's create_all cannot add columns to an
+            # existing table, so add only the missing, backward-compatible fields.
+            table_names = await conn.run_sync(lambda c: sa_inspect(c).get_table_names())
+            if "agent_flows" in table_names:
+                flow_columns = set(await conn.run_sync(
+                    lambda c: [col["name"] for col in sa_inspect(c).get_columns("agent_flows")]
+                ))
+                flow_additions = {
+                    "version": "INTEGER NOT NULL DEFAULT 1",
+                    "flow_type": "VARCHAR(50) NOT NULL DEFAULT 'standard'",
+                    "input_contract": "TEXT NOT NULL DEFAULT '{}'",
+                    "output_contract": "TEXT NOT NULL DEFAULT '{}'",
+                    "risk_tier": "VARCHAR(20) NOT NULL DEFAULT 'low'",
+                    "default_timeout_seconds": "INTEGER NOT NULL DEFAULT 600",
+                    "allow_as_subflow": "BOOLEAN NOT NULL DEFAULT 1",
+                    "required_tools": "TEXT NOT NULL DEFAULT '[]'",
+                    "is_template": "BOOLEAN NOT NULL DEFAULT 0",
+                    "template_category": "VARCHAR(100)",
+                    "template_source": "VARCHAR(30)",
+                    "template_config": "TEXT NOT NULL DEFAULT '{}'",
+                }
+                for column, definition in flow_additions.items():
+                    if column not in flow_columns:
+                        await conn.execute(text(f"ALTER TABLE agent_flows ADD COLUMN {column} {definition}"))
+            if "agent_flow_runs" in table_names:
+                run_columns = set(await conn.run_sync(
+                    lambda c: [col["name"] for col in sa_inspect(c).get_columns("agent_flow_runs")]
+                ))
+                run_additions = {
+                    "flow_version": "INTEGER NOT NULL DEFAULT 1",
+                    "root_run_id": "VARCHAR(36) NOT NULL DEFAULT ''",
+                    "parent_run_id": "VARCHAR(36)",
+                    "parent_node_id": "VARCHAR(36)",
+                    "run_depth": "INTEGER NOT NULL DEFAULT 0",
+                    "input_payload": "TEXT NOT NULL DEFAULT '{}'",
+                    "output_payload": "TEXT NOT NULL DEFAULT '{}'",
+                    "artifacts": "TEXT NOT NULL DEFAULT '[]'",
+                    "governance_context": "TEXT NOT NULL DEFAULT '{}'",
+                }
+                for column, definition in run_additions.items():
+                    if column not in run_columns:
+                        await conn.execute(text(f"ALTER TABLE agent_flow_runs ADD COLUMN {column} {definition}"))
+                if "root_run_id" not in run_columns:
+                    await conn.execute(text("UPDATE agent_flow_runs SET root_run_id = id WHERE root_run_id = ''"))
             columns = await conn.run_sync(
                 lambda c: [col["name"] for col in sa_inspect(c).get_columns("execution_events")]
                 if "execution_events" in sa_inspect(c).get_table_names() else []
@@ -316,7 +361,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="0.1.0",
+        version="1.7.0",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,
@@ -356,6 +401,7 @@ def create_app() -> FastAPI:
     from shogun.api.calendar import router as calendar_router
     from shogun.api.comms import router as comms_router
     from shogun.api.agent_flow import router as agent_flow_router
+    from shogun.api.stack_orchestrator import router as stack_orchestrator_router
     from shogun.api.mado import router as mado_router
     from shogun.api.gensui_config import router as gensui_config_router
     from shogun.api.ronin import router as ronin_router
@@ -388,6 +434,7 @@ def create_app() -> FastAPI:
     app.include_router(calendar_router, prefix=prefix)
     app.include_router(comms_router, prefix=prefix)
     app.include_router(agent_flow_router, prefix=prefix)
+    app.include_router(stack_orchestrator_router, prefix=prefix)
     app.include_router(mado_router, prefix=prefix)
     app.include_router(gensui_config_router, prefix=prefix)
     app.include_router(ronin_router, prefix=prefix)

@@ -9,9 +9,8 @@ Three models:
 from __future__ import annotations
 
 import uuid
-from typing import List
 
-from sqlalchemy import Float, ForeignKey, String
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shogun.db.base import AuditMixin, Base, GUID, JSONType, SoftDeleteMixin, UUIDMixin
@@ -31,15 +30,27 @@ class AgentFlow(Base, UUIDMixin, AuditMixin, SoftDeleteMixin):
         JSONType(), nullable=False,
         default=lambda: {"x": 0, "y": 0, "zoom": 1},
     )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    flow_type: Mapped[str] = mapped_column(String(50), nullable=False, default="standard")
+    input_contract: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=dict)
+    output_contract: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=dict)
+    risk_tier: Mapped[str] = mapped_column(String(20), nullable=False, default="low")
+    default_timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=600)
+    allow_as_subflow: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    required_tools: Mapped[list] = mapped_column(JSONType(), nullable=False, default=list)
+    is_template: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    template_category: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    template_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    template_config: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=dict)
 
     # Relationships
-    nodes: Mapped[List["AgentFlowNode"]] = relationship(
+    nodes: Mapped[list[AgentFlowNode]] = relationship(
         "AgentFlowNode",
         back_populates="flow",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    edges: Mapped[List["AgentFlowEdge"]] = relationship(
+    edges: Mapped[list[AgentFlowEdge]] = relationship(
         "AgentFlowEdge",
         back_populates="flow",
         cascade="all, delete-orphan",
@@ -62,7 +73,7 @@ class AgentFlowNode(Base, UUIDMixin, AuditMixin):
     config: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=dict)
 
     # Relationships
-    flow: Mapped["AgentFlow"] = relationship("AgentFlow", back_populates="nodes")
+    flow: Mapped[AgentFlow] = relationship("AgentFlow", back_populates="nodes")
 
 
 class AgentFlowEdge(Base, UUIDMixin, AuditMixin):
@@ -86,4 +97,4 @@ class AgentFlowEdge(Base, UUIDMixin, AuditMixin):
     config: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=dict)
 
     # Relationships
-    flow: Mapped["AgentFlow"] = relationship("AgentFlow", back_populates="edges")
+    flow: Mapped[AgentFlow] = relationship("AgentFlow", back_populates="edges")
