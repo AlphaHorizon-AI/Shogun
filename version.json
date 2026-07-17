@@ -1,8 +1,8 @@
 {
-  "version": "1.13.0",
+  "version": "1.14.0",
   "name": "Shogun OS",
-  "build": 75,
+  "build": 76,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Adds Order 10 Skill Usage Logging and Trajectory Capture: redacted candidate, episode, tool, verification, outcome, scoring, improvement, export, and Katana trajectory evidence across chat, Telegram, AgentFlow, IDE, and Flow Stack execution."
+  "changelog": "Adds Order 11 Ronin Desktop Control: explicit Ronin-only enablement, granular permissions, protected-context blocking, Windows window and application controls, dynamic waits, action verification and recovery, audit trajectory, live desktop session view, visible active indicator, and kill switch."
 }

@@ -20,15 +20,42 @@ SETUP_JSON = Path(settings.config_path) / "setup.json"
 CONSTITUTION_PATH = Path(settings.config_path) / "constitution.yaml"
 MANDATE_PATH = Path(settings.config_path) / "mandate.md"
 
+RONIN_DESKTOP_DEFAULTS = {
+    "enabled": False,
+    "minimum_posture": "ronin",
+    "audit_all_actions": True,
+    "require_visible_indicator": True,
+    "kill_switch_enabled": True,
+    "default_action_timeout_seconds": 20,
+    "max_action_retries": 3,
+    "dynamic_waits_enabled": True,
+    "verification_required": True,
+    "allow_mouse": True,
+    "allow_keyboard": True,
+    "allow_window_management": True,
+    "allow_application_launch": True,
+    "allow_file_dialogs": True,
+    "allow_sensitive_apps": False,
+    "high_risk_requires_approval": True,
+    "critical_actions_blocked": True,
+    "protected_applications": ["1Password", "Bitwarden", "KeePass", "Windows Security", "Keychain Access"],
+    "blocked_keywords_in_window_titles": ["password", "bank", "payment", "security code", "two-factor", "2FA"],
+}
+
 
 def _read_setup() -> dict:
     """Read the setup.json config, or return defaults."""
     if SETUP_JSON.exists():
         try:
-            return json.loads(SETUP_JSON.read_text(encoding="utf-8"))
+            setup = json.loads(SETUP_JSON.read_text(encoding="utf-8"))
+            setup["ronin_desktop_control"] = {
+                **RONIN_DESKTOP_DEFAULTS,
+                **setup.get("ronin_desktop_control", {}),
+            }
+            return setup
         except Exception:
             pass
-    return {"language": "en", "setup_complete": False}
+    return {"language": "en", "setup_complete": False, "ronin_desktop_control": dict(RONIN_DESKTOP_DEFAULTS)}
 
 
 def _write_setup(data: dict) -> None:
@@ -501,5 +528,4 @@ async def install_single_ronin_dep(payload: RoninDepInstallPayload):
                 "message": f"Installation error: {str(exc)}",
             }
         )
-
 

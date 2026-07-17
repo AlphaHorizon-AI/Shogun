@@ -86,7 +86,7 @@ class RoninAuditLogger:
         posture: str | None = None,
     ) -> str:
         return await RoninAuditLogger.log_action(
-            event_type="ronin.session_start",
+            event_type="ronin.desktop.session_started",
             action=f"Ronin desktop session started (posture={posture})",
             agent_id=agent_id,
             session_id=session_id,
@@ -101,7 +101,7 @@ class RoninAuditLogger:
         reason: str = "normal",
     ) -> str:
         return await RoninAuditLogger.log_action(
-            event_type="ronin.session_close",
+            event_type="ronin.desktop.session_stopped",
             action=f"Ronin desktop session closed ({reason})",
             agent_id=agent_id,
             session_id=session_id,
@@ -118,7 +118,7 @@ class RoninAuditLogger:
         risk_level: str = "medium",
     ) -> str:
         return await RoninAuditLogger.log_action(
-            event_type="ronin.action_blocked",
+            event_type="ronin.desktop.action_blocked",
             action=f"Ronin action blocked: {action_type} — {reason}",
             agent_id=agent_id,
             session_id=session_id,
@@ -139,7 +139,7 @@ class RoninAuditLogger:
         risk_level: str = "high",
     ) -> str:
         return await RoninAuditLogger.log_action(
-            event_type="ronin.approval_requested",
+            event_type="ronin.desktop.approval_requested",
             action=f"Ronin approval requested: {action_type}",
             agent_id=agent_id,
             session_id=session_id,
@@ -157,7 +157,7 @@ class RoninAuditLogger:
         agent_id: str | None = None,
     ) -> str:
         return await RoninAuditLogger.log_action(
-            event_type=f"ronin.approval_{decision}",
+            event_type="ronin.desktop.approval_granted" if decision == "approved" else "ronin.desktop.approval_rejected",
             action=f"Ronin approval {decision}: {approval_id}",
             agent_id=agent_id,
             severity="warn" if decision == "denied" else "info",

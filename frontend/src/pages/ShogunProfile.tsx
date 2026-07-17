@@ -147,6 +147,8 @@ export const ShogunProfile = () => {
   const [fallbackModels, setFallbackModels] = useState<string[]>([]);
   const [customPermissions, setCustomPermissions] = useState<any>(null);
   const [customPolicyName, setCustomPolicyName] = useState('');
+  const [roninDesktopStatus, setRoninDesktopStatus] = useState<any>(null);
+  const [roninDesktopBusy, setRoninDesktopBusy] = useState(false);
 
   // Compute security risk score from permissions (keys are lowercase in DB)
   const computeRiskScore = (perms: any): number => {
@@ -294,6 +296,40 @@ export const ShogunProfile = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'permissions') return;
+    axios.get('/api/v1/ronin/desktop/status')
+      .then((response) => setRoninDesktopStatus(response.data?.data))
+      .catch(() => setRoninDesktopStatus(null));
+  }, [activeTab]);
+
+  const setRoninDesktopEnabled = async (enabled: boolean) => {
+    if (enabled && !confirm('Ronin Desktop Control can operate the real mouse, keyboard, windows, and applications. Actions remain visible, verified, audited, and protected by the kill switch. Enable it?')) return;
+    setRoninDesktopBusy(true);
+    try {
+      const response = enabled
+        ? await axios.post('/api/v1/ronin/desktop/enable', {
+            confirmation: 'ENABLE RONIN DESKTOP CONTROL',
+            ronin_screenshots_enabled: true,
+            ronin_mouse_enabled: true,
+            ronin_keyboard_enabled: true,
+            ronin_window_management_enabled: true,
+            ronin_native_apps_enabled: true,
+            ronin_require_verification: true,
+            ronin_require_high_risk_approval: true,
+            ronin_block_critical_actions: true,
+            ronin_visible_indicator: true,
+          })
+        : await axios.post('/api/v1/ronin/desktop/disable');
+      setRoninDesktopStatus(response.data?.data);
+      setStatusMessage({ type: 'success', text: `Ronin Desktop Control ${enabled ? 'enabled' : 'disabled'}.` });
+    } catch (error: any) {
+      setStatusMessage({ type: 'error', text: apiErrorText(error, 'Could not update Ronin Desktop Control.') });
+    } finally {
+      setRoninDesktopBusy(false);
+    }
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -1111,6 +1147,35 @@ delegation_rules:
                 <div className={cn('rounded-xl border p-3 text-[10px] leading-relaxed', workflowPostureEligible ? 'border-purple-500/25 bg-purple-500/5 text-purple-200' : 'border-amber-500/25 bg-amber-500/5 text-amber-200')}>
                   AgentFlow and Flow Stack permissions are explicit and disabled by default. They can only be enabled under Tactical, Campaign, or Ronin posture. Current policy: <b>{selectedPolicyTier ? selectedPolicyTier.toUpperCase() : 'UNKNOWN'}</b>.
                 </div>
+
+                {selectedPolicyTier === 'ronin' && (
+                  <div className="p-4 rounded-xl border border-orange-500/30 bg-orange-500/5 space-y-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2"><Crosshair className="w-4 h-4 text-orange-400" /><span className="text-xs font-bold uppercase tracking-wider text-orange-300">Ronin Desktop Control</span></div>
+                        <p className="text-[10px] leading-relaxed text-shogun-subdued mt-1">Explicit runtime permission for mouse, keyboard, window management, application launch, screenshots, and verification. It remains disabled by default even after selecting Ronin posture.</p>
+                      </div>
+                      <button
+                        disabled={roninDesktopBusy || !roninDesktopStatus?.available}
+                        onClick={() => setRoninDesktopEnabled(!roninDesktopStatus?.active)}
+                        className={cn('shrink-0 px-3 py-1.5 rounded-lg border text-[9px] font-bold uppercase tracking-wider disabled:opacity-40', roninDesktopStatus?.active ? 'border-red-500/40 bg-red-500/10 text-red-400' : 'border-orange-500/40 bg-orange-500/10 text-orange-300')}
+                      >
+                        {roninDesktopStatus?.active ? 'Disable desktop control' : roninDesktopStatus?.available ? 'Enable desktop control' : 'Switch Torii to Ronin'}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        ['Mouse actions', roninDesktopStatus?.ronin_mouse_enabled],
+                        ['Keyboard actions', roninDesktopStatus?.ronin_keyboard_enabled],
+                        ['Window management', roninDesktopStatus?.ronin_window_management_enabled],
+                        ['Application launch', roninDesktopStatus?.ronin_native_apps_enabled],
+                        ['Verification required', roninDesktopStatus?.ronin_require_verification],
+                        ['Critical actions blocked', roninDesktopStatus?.ronin_block_critical_actions],
+                      ].map(([label, active]) => <div key={String(label)} className="flex items-center justify-between rounded-lg border border-shogun-border bg-[#050508] px-2.5 py-2"><span className="text-[9px] text-shogun-subdued">{label}</span><span className={cn('w-2 h-2 rounded-full', active ? 'bg-green-400' : 'bg-red-400')} /></div>)}
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] text-orange-200/70"><span>High-risk actions require approval. Protected applications and credential contexts are blocked.</span><button onClick={() => navigate('/katana#ronin')} className="font-bold text-orange-300 hover:text-orange-200">Open session view →</button></div>
+                  </div>
+                )}
 
                 {activePermissions ? (
                   Object.entries(activePermissions).filter(([category]) => category !== 'ide_mode' || idePostureEligible).map(([category, perms]: [string, any], i) => (

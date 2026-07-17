@@ -39,6 +39,11 @@ interface RoninStatus {
   komainu: any;
   pending_approvals: number;
   capabilities_count: number;
+  active_tier: string;
+  desktop_available: boolean;
+  desktop_active: boolean;
+  visible_indicator: boolean;
+  runtime: any;
 }
 
 interface RoninSession {
@@ -169,6 +174,7 @@ export function Ronin() {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [controlBusy, setControlBusy] = useState(false);
 
   // Create session modal
   const [showCreate, setShowCreate] = useState(false);
@@ -315,6 +321,46 @@ export function Ronin() {
     } catch { /* ignore */ }
   };
 
+  const enableDesktopControl = async () => {
+    if (!confirm('Ronin Desktop Control can operate your real mouse, keyboard, windows, and applications. Every action remains visible, verified, and audited. Enable it now?')) return;
+    setControlBusy(true);
+    try {
+      await axios.post('/api/v1/ronin/desktop/enable', {
+        confirmation: 'ENABLE RONIN DESKTOP CONTROL',
+        ronin_screenshots_enabled: true,
+        ronin_mouse_enabled: true,
+        ronin_keyboard_enabled: true,
+        ronin_window_management_enabled: true,
+        ronin_native_apps_enabled: true,
+        ronin_require_verification: true,
+        ronin_require_high_risk_approval: true,
+        ronin_block_critical_actions: true,
+        ronin_visible_indicator: true,
+      });
+      await loadStatus();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Could not enable Ronin Desktop Control.');
+    } finally {
+      setControlBusy(false);
+    }
+  };
+
+  const disableDesktopControl = async () => {
+    setControlBusy(true);
+    try {
+      await axios.post('/api/v1/ronin/desktop/disable');
+      await loadStatus();
+    } finally {
+      setControlBusy(false);
+    }
+  };
+
+  const desktopKillSwitch = async () => {
+    if (!confirm('Stop all Ronin Desktop Control immediately?')) return;
+    await axios.post('/api/v1/ronin/desktop/kill-switch');
+    await loadStatus();
+  };
+
   // ── Render ────────────────────────────────────────────────
 
   if (loading) {
@@ -424,6 +470,17 @@ export function Ronin() {
         </div>
       )}
 
+      {status?.desktop_active && status.visible_indicator && (
+        <div className="px-6 py-2.5 bg-orange-500/10 border-b border-orange-500/30 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-orange-400">
+            <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
+            <span className="text-[10px] font-black tracking-[0.2em]">RONIN DESKTOP CONTROL ACTIVE</span>
+            <span className="text-[9px] text-orange-300/60">Visible, verified, and audited</span>
+          </div>
+          <button onClick={desktopKillSwitch} className="px-3 py-1 rounded border border-red-500/40 bg-red-500/10 text-[9px] font-bold text-red-400 hover:bg-red-500/20">KILL SWITCH</button>
+        </div>
+      )}
+
       {/* ── Tabs ────────────────────────────────────────────── */}
       <div className="px-6 pt-3 flex items-center gap-1 border-b border-[#1a2040]">
         {TABS.map((t) => (
@@ -449,6 +506,40 @@ export function Ronin() {
         {/* ═══ CONTROL TAB ═══ */}
         {tab === 'Control' && (
           <div className="space-y-6">
+            <div className="bg-[#0e1225] border border-[#1a2040] rounded-xl p-5 flex items-center justify-between gap-6">
+              <div>
+                <h3 className="text-sm font-bold text-[#c8d0d8]">Full Desktop Control</h3>
+                <p className="text-[10px] text-[#7a8899] mt-1 max-w-2xl">Available only in Ronin posture. Enabling grants governed mouse, keyboard, window, and application control with mandatory observation, verification, audit, protected-context blocking, and a kill switch.</p>
+              </div>
+              {status?.desktop_active ? (
+                <button disabled={controlBusy} onClick={disableDesktopControl} className="px-4 py-2 rounded-lg border border-orange-500/40 bg-orange-500/10 text-xs font-bold text-orange-400 whitespace-nowrap">DISABLE DESKTOP CONTROL</button>
+              ) : (
+                <button disabled={controlBusy || !status?.desktop_available} onClick={enableDesktopControl} className="px-4 py-2 rounded-lg bg-orange-500 text-[#0a0e1a] text-xs font-black disabled:opacity-30 whitespace-nowrap">{status?.desktop_available ? 'ENABLE DESKTOP CONTROL' : 'RONIN POSTURE REQUIRED'}</button>
+              )}
+            </div>
+
+            {status?.desktop_active && (
+              <div className="grid grid-cols-[1.5fr_1fr] gap-4">
+                <div className="bg-[#0e1225] border border-[#1a2040] rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[#1a2040] flex justify-between"><span className="text-[10px] font-bold uppercase tracking-widest text-[#7a8899]">Current Desktop</span><span className="text-[9px] text-orange-400">{status.runtime?.active_window?.title || 'No active window detected'}</span></div>
+                  <div className="aspect-video bg-[#080b14] flex items-center justify-center">
+                    {status.runtime?.screenshot_url ? <img src={status.runtime.screenshot_url} className="w-full h-full object-contain" alt="Current Ronin desktop" /> : <Monitor className="w-12 h-12 text-[#1a2040]" />}
+                  </div>
+                  <div className="grid grid-cols-3 gap-px bg-[#1a2040]">
+                    <RuntimeField label="Next action" value={status.runtime?.next_action?.action_type || 'Idle'} />
+                    <RuntimeField label="Verification" value={status.runtime?.verification?.passed === true ? 'Passed' : status.runtime?.verification?.passed === false ? 'Failed' : 'Pending'} />
+                    <RuntimeField label="Retries" value={String(status.runtime?.retry_count || 0)} />
+                  </div>
+                </div>
+                <div className="bg-[#0e1225] border border-[#1a2040] rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[#1a2040] text-[10px] font-bold uppercase tracking-widest text-[#7a8899]">Action Timeline</div>
+                  <div className="max-h-[360px] overflow-y-auto divide-y divide-[#1a2040]">
+                    {(status.runtime?.timeline || []).slice(0, 50).map((item: any, index: number) => <div key={`${item.timestamp}-${index}`} className="px-4 py-3"><div className="text-[9px] font-mono text-orange-400">{new Date(item.timestamp).toLocaleTimeString()}</div><div className="text-[10px] text-[#c8d0d8] mt-0.5">{item.message}</div></div>)}
+                    {!status.runtime?.timeline?.length && <div className="p-6 text-center text-[10px] text-[#555]">No desktop actions yet.</div>}
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Status Overview Cards */}
             <div className="grid grid-cols-4 gap-4">
               <StatusCard
@@ -1061,6 +1152,15 @@ function EnvField({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-[8px] font-bold text-[#7a8899] uppercase tracking-widest mb-0.5">{label}</p>
       <p className="text-xs text-[#c8d0d8] font-mono">{value}</p>
+    </div>
+  );
+}
+
+function RuntimeField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-[#0e1225] px-4 py-3">
+      <div className="text-[8px] uppercase tracking-widest text-[#555]">{label}</div>
+      <div className="text-[10px] font-bold text-[#c8d0d8] mt-1 truncate">{value}</div>
     </div>
   );
 }

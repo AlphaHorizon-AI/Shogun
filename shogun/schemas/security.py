@@ -163,6 +163,12 @@ class SecurityPostureResponse(ShogunBase):
     ronin_mouse_enabled: bool = False
     ronin_keyboard_enabled: bool = False
     ronin_native_apps_enabled: bool = False
+    ronin_window_management_enabled: bool = False
+    ronin_require_verification: bool = True
+    ronin_require_high_risk_approval: bool = True
+    ronin_block_critical_actions: bool = True
+    ronin_protected_applications: list[str] = Field(default_factory=list)
+    ronin_visible_indicator: bool = True
     ronin_shell_commands: bool = False
     ronin_admin_escalation: bool = False
     ronin_credential_entry: str = "blocked"

@@ -37,7 +37,12 @@ def _get_screenshots_dir() -> Path:
 async def take_screenshot(action: RoninAction) -> RoninResult:
     """Take a desktop screenshot — Ronin action handler."""
     try:
-        path = await take_screenshot_raw(prefix="ronin")
+        metadata = action.metadata or {}
+        path = await take_screenshot_raw(
+            prefix=str(metadata.get("prefix", "ronin")),
+            region=metadata.get("region"),
+            monitor=int(metadata.get("monitor", 0)),
+        )
         if path:
             return RoninResult(
                 status=RoninActionStatus.SUCCESS,

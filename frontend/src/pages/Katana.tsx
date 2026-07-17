@@ -287,6 +287,18 @@ const riskColor = (r: RiskLevelVal) => {
 
 export function Katana() {
   const [activeTab, setActiveTab] = useState<TabType>('providers');
+
+  useEffect(() => {
+    const syncTabFromHash = () => {
+      const requested = window.location.hash.replace('#', '') as TabType;
+      if (['providers', 'tools', 'routing', 'skills', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin'].includes(requested)) {
+        setActiveTab(requested);
+      }
+    };
+    syncTabFromHash();
+    window.addEventListener('hashchange', syncTabFromHash);
+    return () => window.removeEventListener('hashchange', syncTabFromHash);
+  }, []);
   const { t } = useTranslation();
 
   // ── Telegram state ──────────────────────────────────────────────

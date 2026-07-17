@@ -198,16 +198,20 @@ async def drag(action: RoninAction) -> RoninResult:
 
     x, y = coords
     duration = action.metadata.get("duration", 0.5) if action.metadata else 0.5
+    start_x = action.metadata.get("start_x") if action.metadata else None
+    start_y = action.metadata.get("start_y") if action.metadata else None
 
     try:
         def _do():
             pag = _get_pyautogui()
             with ronin_acting(expected_pos=(x, y)):
+                if start_x is not None and start_y is not None:
+                    pag.moveTo(int(start_x), int(start_y), duration=0.25)
                 pag.dragTo(x, y, duration=duration)
             set_expected_position(x, y)
 
         await asyncio.get_event_loop().run_in_executor(_executor, _do)
-        return RoninResult(status=RoninActionStatus.SUCCESS, action_type="desktop.drag", target=f"{x},{y}")
+        return RoninResult(status=RoninActionStatus.SUCCESS, action_type="desktop.drag", target=f"{x},{y}", result_data={"from": [start_x, start_y], "to": [x, y]})
     except Exception as exc:
         return RoninResult(status=RoninActionStatus.FAILED, action_type="desktop.drag", error=str(exc))
 

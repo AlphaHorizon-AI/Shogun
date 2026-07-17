@@ -114,3 +114,19 @@ async def hotkey(action: RoninAction) -> RoninResult:
             action_type="desktop.hotkey",
             error=str(exc),
         )
+
+
+async def key_event(action: RoninAction, *, down: bool) -> RoninResult:
+    """Press or release one key for explicit chord construction."""
+    key = action.value or action.target
+    if not key:
+        return RoninResult(status=RoninActionStatus.FAILED, action_type=action.action_type, error="No key provided")
+    try:
+        def _do():
+            pag = _get_pyautogui()
+            with ronin_acting():
+                (pag.keyDown if down else pag.keyUp)(key)
+        await asyncio.get_event_loop().run_in_executor(_executor, _do)
+        return RoninResult(status=RoninActionStatus.SUCCESS, action_type=action.action_type, result_data={"key": key, "down": down})
+    except Exception as exc:
+        return RoninResult(status=RoninActionStatus.FAILED, action_type=action.action_type, error=str(exc))

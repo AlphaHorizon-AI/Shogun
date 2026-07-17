@@ -42,6 +42,18 @@ class BaseOSAdapter(abc.ABC):
         """Get UI controls/elements of a window (stub in v1)."""
         ...
 
+    def open_application(self, application: str, arguments: list[str] | None = None) -> dict[str, Any]:
+        """Launch an application without invoking a command shell."""
+        raise NotImplementedError("Application launch is not supported on this platform")
+
+    def close_window(self, title_or_id: str) -> bool:
+        """Request a normal window close. Force termination is intentionally excluded."""
+        return False
+
+    def get_display_info(self) -> dict[str, Any]:
+        """Return monitor and DPI metadata used for coordinate normalization."""
+        return {"monitors": [], "dpi_aware": False}
+
 
 def get_adapter() -> BaseOSAdapter | None:
     """Factory: return the correct OS adapter for the current platform."""

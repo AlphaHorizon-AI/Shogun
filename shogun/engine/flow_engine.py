@@ -187,8 +187,8 @@ async def cancel_flow_run(run_id: uuid.UUID) -> bool:
 
 
 async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
-    launch_ready = _launch_events.get(str(run_id))
     """Main execution loop — loads flow, walks DAG, executes nodes."""
+    launch_ready = _launch_events.get(str(run_id))
     try:
         async with async_session_factory() as session:
             # ── 1. Load flow with nodes and edges ──────────────────

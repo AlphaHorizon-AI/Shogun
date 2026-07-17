@@ -18,10 +18,8 @@ from shogun.schemas.ronin import (
     RoninActionRequest,
     RoninActionResult,
     RoninApprovalRequest,
-    RoninApprovalResponse,
     RoninCapabilityResponse,
     RoninSessionCreate,
-    RoninSessionResponse,
     RoninStatusResponse,
 )
 
@@ -35,31 +33,34 @@ router = APIRouter(prefix="/ronin", tags=["Ronin"])
 async def get_ronin_status():
     """Get Ronin system status — enabled, posture, environment, Komainu."""
     try:
-        from shogun.ronin.core.ronin_controller import get_controller
-        from shogun.ronin.core.komainu import get_status as get_komainu_status
         from shogun.ronin.core.approval_gate import get_pending
         from shogun.ronin.core.capabilities_registry import list_capabilities
+        from shogun.ronin.core.komainu import get_status as get_komainu_status
+        from shogun.ronin.core.ronin_controller import get_controller
+        from shogun.ronin.desktop.observation_service import get_observer
 
         controller = get_controller()
-        env = controller.get_environment()
+        env = controller.get_environment() or await controller.initialize()
 
         # Get posture
         try:
             from shogun.api.security import _get_agent_posture
+
             posture = await _get_agent_posture()
         except Exception:
             posture = {}
 
         # Count active sessions
+        from sqlalchemy import func, select
+
         from shogun.db.engine import async_session_factory
-        from sqlalchemy import select, func
         from shogun.db.models.ronin_session import RoninSession
 
         async with async_session_factory() as session:
             result = await session.execute(
                 select(func.count(RoninSession.id)).where(
                     RoninSession.status.in_(["active", "paused", "idle"]),
-                    RoninSession.is_deleted == False,
+                    RoninSession.is_deleted.is_(False),
                 )
             )
             active_count = result.scalar() or 0
@@ -74,18 +75,26 @@ async def get_ronin_status():
                 komainu=get_komainu_status(),
                 pending_approvals=len(get_pending()),
                 capabilities_count=len(list_capabilities()),
+                active_tier=posture.get("active_tier", "tactical"),
+                desktop_available=posture.get("active_tier") == "ronin",
+                desktop_active=posture.get("active_tier") == "ronin" and posture.get("ronin_enabled", False),
+                visible_indicator=posture.get("ronin_visible_indicator", True),
+                runtime=get_observer().get_runtime_state(),
             ).model_dump(),
         )
-    except Exception as exc:
-        return ApiResponse(success=True, data={
-            "ronin_enabled": False,
-            "ronin_posture": "disabled",
-            "active_sessions": 0,
-            "environment": {},
-            "komainu": {"status": "inactive"},
-            "pending_approvals": 0,
-            "capabilities_count": 0,
-        })
+    except Exception:
+        return ApiResponse(
+            success=True,
+            data={
+                "ronin_enabled": False,
+                "ronin_posture": "disabled",
+                "active_sessions": 0,
+                "environment": {},
+                "komainu": {"status": "inactive"},
+                "pending_approvals": 0,
+                "capabilities_count": 0,
+            },
+        )
 
 
 # ── Sessions ─────────────────────────────────────────────────────────
@@ -94,10 +103,17 @@ async def get_ronin_status():
 @router.post("/sessions")
 async def create_session(body: RoninSessionCreate):
     """Create a new Ronin desktop session."""
-    from shogun.ronin.core.ronin_controller import get_controller
-    from shogun.ronin.core.audit_logger import RoninAuditLogger
+    from shogun.api.security import _get_agent_posture
     from shogun.db.engine import async_session_factory
     from shogun.db.models.ronin_session import RoninSession
+    from shogun.ronin.core.audit_logger import RoninAuditLogger
+    from shogun.ronin.core.ronin_controller import get_controller
+
+    posture = await _get_agent_posture()
+    if posture.get("active_tier") != "ronin" or not posture.get("ronin_enabled", False):
+        raise HTTPException(
+            status_code=403, detail="Enable Ronin Desktop Control in Ronin posture before starting a session"
+        )
 
     controller = get_controller()
     env = await controller.initialize()
@@ -135,15 +151,14 @@ async def create_session(body: RoninSessionCreate):
 @router.get("/sessions")
 async def list_sessions():
     """List all Ronin sessions."""
+    from sqlalchemy import select
+
     from shogun.db.engine import async_session_factory
     from shogun.db.models.ronin_session import RoninSession
-    from sqlalchemy import select
 
     async with async_session_factory() as session:
         result = await session.execute(
-            select(RoninSession)
-            .where(RoninSession.is_deleted == False)
-            .order_by(RoninSession.created_at.desc())
+            select(RoninSession).where(RoninSession.is_deleted.is_(False)).order_by(RoninSession.created_at.desc())
         )
         sessions = result.scalars().all()
 
@@ -156,14 +171,13 @@ async def list_sessions():
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: uuid.UUID):
     """Get a specific Ronin session."""
-    from shogun.db.engine import async_session_factory
-    from shogun.db.models.ronin_session import RoninSession
     from sqlalchemy import select
 
+    from shogun.db.engine import async_session_factory
+    from shogun.db.models.ronin_session import RoninSession
+
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(RoninSession).where(RoninSession.id == session_id)
-        )
+        result = await session.execute(select(RoninSession).where(RoninSession.id == session_id))
         ronin_session = result.scalar_one_or_none()
 
     if not ronin_session:
@@ -175,15 +189,14 @@ async def get_session(session_id: uuid.UUID):
 @router.delete("/sessions/{session_id}")
 async def close_session(session_id: uuid.UUID):
     """Close and destroy a Ronin session."""
+    from sqlalchemy import select
+
     from shogun.db.engine import async_session_factory
     from shogun.db.models.ronin_session import RoninSession
     from shogun.ronin.core.audit_logger import RoninAuditLogger
-    from sqlalchemy import select
 
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(RoninSession).where(RoninSession.id == session_id)
-        )
+        result = await session.execute(select(RoninSession).where(RoninSession.id == session_id))
         ronin_session = result.scalar_one_or_none()
 
         if not ronin_session:
@@ -242,6 +255,350 @@ async def execute_action(body: RoninActionRequest):
     )
 
 
+# Dedicated Order 11 desktop API -------------------------------------------------
+
+
+@router.get("/desktop/status")
+async def get_desktop_status():
+    """Return enablement, permissions, current observation, and action timeline."""
+    from shogun.api.security import _get_agent_posture
+    from shogun.ronin.desktop.observation_service import get_observer
+
+    posture = await _get_agent_posture()
+    keys = (
+        "active_tier",
+        "ronin_enabled",
+        "ronin_posture",
+        "ronin_screenshots_enabled",
+        "ronin_mouse_enabled",
+        "ronin_keyboard_enabled",
+        "ronin_window_management_enabled",
+        "ronin_native_apps_enabled",
+        "ronin_require_verification",
+        "ronin_require_high_risk_approval",
+        "ronin_block_critical_actions",
+        "ronin_protected_applications",
+        "ronin_visible_indicator",
+        "kill_switch_active",
+    )
+    return ApiResponse(
+        success=True,
+        data={
+            **{key: posture.get(key) for key in keys},
+            "available": posture.get("active_tier") == "ronin",
+            "active": posture.get("active_tier") == "ronin" and posture.get("ronin_enabled", False),
+            "runtime": get_observer().get_runtime_state(),
+        },
+    )
+
+
+@router.post("/desktop/enable")
+async def enable_desktop_control(body: dict[str, Any]):
+    """Explicitly enable full desktop control after a warning confirmation."""
+    from shogun.api.security import _get_agent_posture, _save_agent_posture
+    from shogun.ronin.core.audit_logger import RoninAuditLogger
+    from shogun.ronin.core.komainu import start_komainu
+    from shogun.ronin.desktop.observation_service import get_observer
+
+    posture = await _get_agent_posture()
+    if posture.get("active_tier") != "ronin":
+        raise HTTPException(status_code=403, detail="Ronin Desktop Control is only available in Ronin posture")
+    if body.get("confirmation") != "ENABLE RONIN DESKTOP CONTROL":
+        raise HTTPException(status_code=400, detail="Explicit warning confirmation is required")
+
+    bool_fields = (
+        "ronin_screenshots_enabled",
+        "ronin_mouse_enabled",
+        "ronin_keyboard_enabled",
+        "ronin_window_management_enabled",
+        "ronin_native_apps_enabled",
+        "ronin_require_verification",
+        "ronin_require_high_risk_approval",
+        "ronin_block_critical_actions",
+        "ronin_visible_indicator",
+    )
+    posture.update(
+        {
+            "ronin_enabled": True,
+            "ronin_posture": "desktop_full",
+            "ronin_max_sessions": max(1, int(body.get("ronin_max_sessions", 3))),
+            "kill_switch_active": False,
+        }
+    )
+    defaults = {
+        "ronin_screenshots_enabled": True,
+        "ronin_mouse_enabled": True,
+        "ronin_keyboard_enabled": True,
+        "ronin_window_management_enabled": True,
+        "ronin_native_apps_enabled": True,
+        "ronin_require_verification": True,
+        "ronin_require_high_risk_approval": True,
+        "ronin_block_critical_actions": True,
+        "ronin_visible_indicator": True,
+    }
+    for field in bool_fields:
+        posture[field] = bool(body.get(field, defaults[field]))
+    if isinstance(body.get("ronin_protected_applications"), list):
+        posture["ronin_protected_applications"] = [str(item) for item in body["ronin_protected_applications"]]
+    await _save_agent_posture(posture)
+    try:
+        from shogun.api.setup import _read_setup, _write_setup
+
+        setup = _read_setup()
+        config = dict(setup.get("ronin_desktop_control", {}))
+        config.update(
+            {
+                "enabled": True,
+                "minimum_posture": "ronin",
+                "allow_mouse": posture["ronin_mouse_enabled"],
+                "allow_keyboard": posture["ronin_keyboard_enabled"],
+                "allow_window_management": posture["ronin_window_management_enabled"],
+                "allow_application_launch": posture["ronin_native_apps_enabled"],
+                "verification_required": posture["ronin_require_verification"],
+                "high_risk_requires_approval": posture["ronin_require_high_risk_approval"],
+                "critical_actions_blocked": posture["ronin_block_critical_actions"],
+            }
+        )
+        setup["ronin_desktop_control"] = config
+        _write_setup(setup)
+    except Exception:
+        pass
+    started = start_komainu(level=int(posture.get("ronin_komainu_level", 1)))
+    get_observer().resume()
+    get_observer().record("ronin.desktop.enabled", "Ronin Desktop Control enabled by operator")
+    await RoninAuditLogger.log_action(
+        event_type="ronin.desktop.enabled",
+        action="Ronin Desktop Control explicitly enabled",
+        result="enabled",
+        severity="warn",
+        risk_level="high",
+        detail={"guardian_started": started},
+    )
+    return await get_desktop_status()
+
+
+@router.post("/desktop/disable")
+async def disable_desktop_control():
+    from shogun.api.security import _get_agent_posture, _save_agent_posture
+    from shogun.ronin.core.audit_logger import RoninAuditLogger
+    from shogun.ronin.core.komainu import stop_komainu
+    from shogun.ronin.desktop.observation_service import get_observer
+
+    posture = await _get_agent_posture()
+    posture.update(
+        {
+            "ronin_enabled": False,
+            "ronin_posture": "disabled",
+            "ronin_max_sessions": 0,
+            "ronin_screenshots_enabled": False,
+            "ronin_mouse_enabled": False,
+            "ronin_keyboard_enabled": False,
+            "ronin_window_management_enabled": False,
+            "ronin_native_apps_enabled": False,
+        }
+    )
+    await _save_agent_posture(posture)
+    try:
+        from shogun.api.setup import _read_setup, _write_setup
+
+        setup = _read_setup()
+        config = dict(setup.get("ronin_desktop_control", {}))
+        config["enabled"] = False
+        setup["ronin_desktop_control"] = config
+        _write_setup(setup)
+    except Exception:
+        pass
+    stop_komainu()
+    get_observer().pause("Desktop control disabled by operator")
+    await RoninAuditLogger.log_action(
+        event_type="ronin.desktop.disabled",
+        action="Ronin Desktop Control disabled",
+        result="disabled",
+        severity="warn",
+        risk_level="high",
+    )
+    return await get_desktop_status()
+
+
+async def _run_desktop(action_type: str, body: dict[str, Any] | None = None):
+    body = body or {}
+    request = RoninActionRequest(
+        action_type=action_type,
+        target=body.get("target"),
+        value=body.get("value"),
+        reason=body.get("reason", "Desktop API action"),
+        session_id=body.get("session_id"),
+        agent_id=body.get("agent_id"),
+        metadata=body.get("metadata", {}),
+    )
+    return await execute_action(request)
+
+
+@router.post("/desktop/screenshot")
+async def desktop_screenshot(body: dict[str, Any] | None = None):
+    return await _run_desktop("desktop.screenshot", body)
+
+
+@router.get("/desktop/state")
+async def desktop_state():
+    return await _run_desktop("desktop.state")
+
+
+@router.get("/desktop/windows")
+async def desktop_windows():
+    return await _run_desktop("os.list_windows")
+
+
+@router.post("/desktop/click")
+async def desktop_click(body: dict[str, Any]):
+    return await _run_desktop(
+        "desktop.click",
+        {
+            **body,
+            "target": body.get("target") or f"{body.get('x')},{body.get('y')}",
+            "metadata": {**body.get("metadata", {}), "x": body.get("x"), "y": body.get("y")},
+        },
+    )
+
+
+@router.post("/desktop/type")
+async def desktop_type(body: dict[str, Any]):
+    return await _run_desktop("desktop.type", {**body, "value": body.get("text") or body.get("value")})
+
+
+@router.post("/desktop/hotkey")
+async def desktop_hotkey(body: dict[str, Any]):
+    return await _run_desktop("desktop.hotkey", {**body, "value": body.get("keys") or body.get("value")})
+
+
+@router.post("/desktop/scroll")
+async def desktop_scroll(body: dict[str, Any]):
+    return await _run_desktop(
+        "desktop.scroll", {**body, "metadata": {**body.get("metadata", {}), "clicks": body.get("clicks", 3)}}
+    )
+
+
+@router.post("/desktop/drag")
+async def desktop_drag(body: dict[str, Any]):
+    return await _run_desktop(
+        "desktop.drag",
+        {
+            **body,
+            "metadata": {
+                **body.get("metadata", {}),
+                "start_x": body.get("start_x"),
+                "start_y": body.get("start_y"),
+                "x": body.get("x"),
+                "y": body.get("y"),
+            },
+        },
+    )
+
+
+@router.post("/desktop/focus-window")
+async def desktop_focus_window(body: dict[str, Any]):
+    return await _run_desktop("os.focus_window", {**body, "target": body.get("title") or body.get("target")})
+
+
+@router.post("/desktop/open-application")
+async def desktop_open_application(body: dict[str, Any]):
+    metadata = {
+        **body.get("metadata", {}),
+        "arguments": body.get("arguments", []),
+        "expected_window": body.get("expected_window"),
+    }
+    return await _run_desktop(
+        "os.app_launch", {**body, "target": body.get("application") or body.get("target"), "metadata": metadata}
+    )
+
+
+@router.post("/desktop/verify")
+async def desktop_verify(body: dict[str, Any]):
+    from shogun.ronin.desktop.observation_service import get_observer
+    from shogun.ronin.desktop.verification_service import get_verifier
+
+    state = await get_observer().capture_state(screenshot=False)
+    verification = await get_verifier().verify("desktop.verify", {}, state, state, body)
+    get_observer().set_verification(verification.model_dump())
+    return ApiResponse(success=verification.passed, data=verification.model_dump())
+
+
+@router.post("/desktop/wait-for-window")
+async def desktop_wait_for_window(body: dict[str, Any]):
+    from shogun.api.setup import _read_setup
+
+    default_timeout = _read_setup().get("ronin_desktop_control", {}).get("default_action_timeout_seconds", 20)
+    return await _run_desktop(
+        "os.wait_for_window",
+        {
+            **body,
+            "target": body.get("title") or body.get("target"),
+            "metadata": {**body.get("metadata", {}), "timeout": body.get("timeout", default_timeout)},
+        },
+    )
+
+
+@router.post("/desktop/wait-for-file")
+async def desktop_wait_for_file(body: dict[str, Any]):
+    from shogun.api.setup import _read_setup
+
+    default_timeout = _read_setup().get("ronin_desktop_control", {}).get("default_action_timeout_seconds", 20)
+    return await _run_desktop(
+        "os.wait_for_file",
+        {
+            **body,
+            "target": body.get("path") or body.get("target"),
+            "metadata": {**body.get("metadata", {}), "timeout": body.get("timeout", default_timeout)},
+        },
+    )
+
+
+@router.post("/desktop/kill-switch")
+async def desktop_kill_switch():
+    from shogun.api.security import _get_agent_posture, _save_agent_posture
+    from shogun.ronin.core.audit_logger import RoninAuditLogger
+    from shogun.ronin.core.komainu import stop_komainu
+    from shogun.ronin.desktop.observation_service import get_observer
+
+    posture = await _get_agent_posture()
+    posture["kill_switch_active"] = True
+    posture["ronin_enabled"] = False
+    posture["ronin_posture"] = "disabled"
+    await _save_agent_posture(posture)
+    try:
+        from shogun.api.setup import _read_setup, _write_setup
+
+        setup = _read_setup()
+        config = dict(setup.get("ronin_desktop_control", {}))
+        config["enabled"] = False
+        setup["ronin_desktop_control"] = config
+        _write_setup(setup)
+    except Exception:
+        pass
+    stop_komainu()
+    get_observer().pause("Ronin Desktop kill switch activated")
+    await RoninAuditLogger.log_action(
+        event_type="ronin.desktop.kill_switch_triggered",
+        action="Ronin Desktop kill switch activated",
+        result="stopped",
+        severity="critical",
+        risk_level="critical",
+    )
+    return ApiResponse(success=True, data={"stopped": True, "kill_switch_active": True})
+
+
+@router.post("/desktop/demo/word-hello-world")
+async def desktop_word_hello_world(body: dict[str, Any] | None = None):
+    """Run the canonical, fully governed Word acceptance demo."""
+    from shogun.ronin.desktop.demo_service import run_word_hello_world
+
+    body = body or {}
+    result = await run_word_hello_world(
+        output_path=body.get("output_path"), agent_id=str(body.get("agent_id", "operator"))
+    )
+    return ApiResponse(success=bool(result.get("success")), data=result)
+
+
 # ── Approvals ────────────────────────────────────────────────────────
 
 
@@ -249,6 +606,7 @@ async def execute_action(body: RoninActionRequest):
 async def list_approvals():
     """List pending approval requests."""
     from shogun.ronin.core.approval_gate import get_pending
+
     return ApiResponse(success=True, data=get_pending())
 
 
@@ -276,9 +634,9 @@ async def respond_approval(approval_id: str, body: RoninApprovalRequest):
 @router.post("/harakiri")
 async def ronin_harakiri():
     """Emergency stop all Ronin activity."""
-    from shogun.ronin.core.komainu import stop_komainu
     from shogun.ronin.core.approval_gate import cancel_all
     from shogun.ronin.core.audit_logger import RoninAuditLogger
+    from shogun.ronin.core.komainu import stop_komainu
 
     # Stop Komainu
     stop_komainu()
@@ -287,15 +645,14 @@ async def ronin_harakiri():
     cancel_all("harakiri")
 
     # Close all active sessions
+    from sqlalchemy import update
+
     from shogun.db.engine import async_session_factory
     from shogun.db.models.ronin_session import RoninSession
-    from sqlalchemy import select, update
 
     async with async_session_factory() as session:
         await session.execute(
-            update(RoninSession)
-            .where(RoninSession.status.in_(["active", "paused", "idle"]))
-            .values(status="closed")
+            update(RoninSession).where(RoninSession.status.in_(["active", "paused", "idle"])).values(status="closed")
         )
         await session.commit()
 
@@ -311,8 +668,9 @@ async def ronin_harakiri():
 async def get_audit_trail(limit: int = 50):
     """Get Ronin audit trail from execution events."""
     try:
+        from sqlalchemy import text
+
         from shogun.db.engine import async_session_factory
-        from sqlalchemy import select, text
 
         async with async_session_factory() as session:
             result = await session.execute(
@@ -353,6 +711,7 @@ async def get_audit_trail(limit: int = 50):
 async def get_screenshot(filename: str):
     """Serve a Ronin screenshot file."""
     from fastapi.responses import FileResponse
+
     from shogun.ronin.telemetry.screenshot_store import get_screenshots_dir
 
     filepath = get_screenshots_dir() / filename
@@ -435,11 +794,14 @@ async def update_trust_entry(body: dict[str, Any]):
         # Add as new entry
         from shogun.ronin.core.app_trust_registry import add_entry
         from shogun.ronin.policies.ronin_policy_schema import AppTrustEntry
-        add_entry(AppTrustEntry(
-            process=process,
-            name=body.get("name", process),
-            trust_level=trust_level,
-        ))
+
+        add_entry(
+            AppTrustEntry(
+                process=process,
+                name=body.get("name", process),
+                trust_level=trust_level,
+            )
+        )
 
     return ApiResponse(success=True, data={"process": process, "trust_level": level})
 
@@ -451,6 +813,7 @@ async def update_trust_entry(body: dict[str, Any]):
 async def get_environment():
     """Get detected execution environment info."""
     from shogun.ronin.core.ronin_controller import get_controller
+
     controller = get_controller()
     env = await controller.initialize()
 

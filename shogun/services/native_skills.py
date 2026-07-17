@@ -495,7 +495,7 @@ NATIVE_TOOLS = [
         "category": "desktop",
         "function": {
             "name": "desktop_click",
-            "description": "Click a position on the desktop screen. Requires Ronin desktop control with mouse enabled (TACTICAL tier or higher). Use desktop_screenshot first to see the screen and identify coordinates.",
+            "description": "Click a position on the desktop screen. Requires explicitly enabled Ronin Desktop Control in RONIN posture. Use desktop_screenshot first to identify coordinates.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -527,7 +527,7 @@ NATIVE_TOOLS = [
         "category": "desktop",
         "function": {
             "name": "desktop_type",
-            "description": "Type text using the keyboard on the desktop. Requires Ronin desktop control with keyboard enabled (TACTICAL tier or higher). Can also send hotkeys like 'ctrl+c', 'alt+tab', 'enter'.",
+            "description": "Type text using the keyboard on the desktop. Requires explicitly enabled Ronin Desktop Control in RONIN posture. Can also send hotkeys like 'ctrl+c', 'alt+tab', 'enter'.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -545,6 +545,33 @@ NATIVE_TOOLS = [
                     },
                 },
                 "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "low",
+        "category": "desktop",
+        "function": {
+            "name": "desktop_list_windows",
+            "description": "List visible desktop windows and owning processes. Ronin posture and explicit desktop enablement are required.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "risk": "high",
+        "category": "desktop",
+        "function": {
+            "name": "desktop_open_application",
+            "description": "Launch an application through the governed Ronin pipeline. High-risk operator approval is required.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "application": {"type": "string", "description": "Executable name or approved application path."},
+                    "expected_window": {"type": "string", "description": "Window title fragment for verification."},
+                },
+                "required": ["application"],
             },
         },
     },
@@ -2926,7 +2953,7 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
             })
 
         # ── Ronin Desktop Control ─────────────────────────────
-        elif name in ("desktop_screenshot", "desktop_click", "desktop_type"):
+        elif name in ("desktop_screenshot", "desktop_click", "desktop_type", "desktop_list_windows", "desktop_open_application"):
             from shogun.services.posture_guard import get_posture_tool_filter
             from shogun.ronin.core.ronin_controller import get_controller
 
@@ -2945,9 +2972,54 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
                 return json.dumps({"status": "error", "message": "Keyboard control is not enabled at the current posture level."})
             if name == "desktop_screenshot" and not posture.get("ronin_screenshots_enabled", True):
                 return json.dumps({"status": "error", "message": "Screenshots are not enabled at the current posture level."})
+            if name == "desktop_list_windows" and not posture.get("ronin_window_management_enabled", False):
+                return json.dumps({"status": "error", "message": "Window management is not enabled."})
+            if name == "desktop_open_application" and not posture.get("ronin_native_apps_enabled", False):
+                return json.dumps({"status": "error", "message": "Application launch is not enabled."})
 
             controller = get_controller()
             await controller.initialize()  # ensure environment detection ran
+
+            # Every native desktop tool must traverse the same governed
+            # observe/act/verify/retry/audit pipeline as the public API.
+            from shogun.ronin.policies.ronin_policy_schema import RoninAction as _RoninAction
+            action_type = "desktop.screenshot"
+            target = None
+            value = None
+            metadata: dict[str, Any] = {"max_retries": 2}
+            if name == "desktop_click":
+                action_type = "desktop.double_click" if int(args.get("clicks", 1)) > 1 else "desktop.click"
+                target = f"{int(args['x'])},{int(args['y'])}"
+                metadata.update({"x": int(args["x"]), "y": int(args["y"]), "button": args.get("button", "left")})
+            elif name == "desktop_type":
+                action_type = "desktop.hotkey" if args.get("is_hotkey", False) else "desktop.type"
+                value = str(args["text"])
+                metadata["interval"] = float(args.get("interval", 0.05))
+            elif name == "desktop_list_windows":
+                action_type = "os.list_windows"
+            elif name == "desktop_open_application":
+                action_type = "os.app_launch"
+                target = str(args["application"])
+                metadata["expected_window"] = args.get("expected_window")
+            elif args.get("region"):
+                parts = [int(part.strip()) for part in str(args["region"]).split(",")]
+                if len(parts) == 4:
+                    metadata["region"] = {"left": parts[0], "top": parts[1], "width": parts[2], "height": parts[3]}
+
+            governed_result = await controller.execute(_RoninAction(
+                action_type=action_type,
+                agent_id="shogun",
+                target=target,
+                value=value,
+                reason="Native Shogun desktop tool",
+                metadata=metadata,
+            ))
+            return json.dumps({
+                "status": governed_result.status.value,
+                "message": governed_result.error or f"{action_type} completed",
+                "verified": governed_result.verified,
+                **governed_result.result_data,
+            })
 
             if name == "desktop_screenshot":
                 from shogun.ronin.desktop.screenshot_controller import take_screenshot_raw

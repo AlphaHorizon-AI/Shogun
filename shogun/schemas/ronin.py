@@ -112,6 +112,11 @@ class RoninStatusResponse(ShogunBase):
     komainu: dict[str, Any] = Field(default_factory=dict)
     pending_approvals: int = 0
     capabilities_count: int = 0
+    active_tier: str = "tactical"
+    desktop_available: bool = False
+    desktop_active: bool = False
+    visible_indicator: bool = True
+    runtime: dict[str, Any] = Field(default_factory=dict)
 
 
 class EnvironmentInfoResponse(ShogunBase):

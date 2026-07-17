@@ -6,6 +6,8 @@ Full pywinauto integration deferred to v2.
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
 from typing import Any
 
 from shogun.ronin.adapters.base_adapter import BaseOSAdapter
@@ -34,15 +36,17 @@ class WindowsAdapter(BaseOSAdapter):
                         user32.GetWindowTextW(hwnd, buf, length + 1)
                         title = buf.value
                         if title.strip():
-                            windows.append({
-                                "hwnd": hwnd,
-                                "title": title,
-                                "process": self._get_process_name_for_hwnd(hwnd),
-                            })
+                            windows.append(
+                                {
+                                    "hwnd": hwnd,
+                                    "title": title,
+                                    "process": self._get_process_name_for_hwnd(hwnd),
+                                }
+                            )
                 return True
 
-            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
-            user32.EnumWindows(WNDENUMPROC(_enum_callback), 0)
+            window_enum_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+            user32.EnumWindows(window_enum_proc(_enum_callback), 0)
             return windows
         except Exception as exc:
             log.debug("Windows: list_windows failed: %s", exc)
@@ -52,6 +56,7 @@ class WindowsAdapter(BaseOSAdapter):
         """Get the currently focused window."""
         try:
             import ctypes
+
             user32 = ctypes.windll.user32
             hwnd = user32.GetForegroundWindow()
             if hwnd:
@@ -68,10 +73,72 @@ class WindowsAdapter(BaseOSAdapter):
         return None
 
     def focus_window(self, title_or_id: str) -> bool:
-        """Bring a window to the foreground (stub)."""
-        # TODO: implement via SetForegroundWindow
-        log.debug("Windows: focus_window stub called for '%s'", title_or_id)
+        """Bring a matching visible window to the foreground."""
+        try:
+            import ctypes
+
+            user32 = ctypes.windll.user32
+            target = str(title_or_id).strip().lower()
+            for window in self.list_windows():
+                if target == str(window.get("hwnd")) or target in str(window.get("title", "")).lower():
+                    hwnd = int(window["hwnd"])
+                    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                    return bool(user32.SetForegroundWindow(hwnd))
+        except Exception as exc:
+            log.debug("Windows: focus_window failed: %s", exc)
         return False
+
+    def open_application(self, application: str, arguments: list[str] | None = None) -> dict[str, Any]:
+        """Launch a Windows application with shell parsing disabled."""
+        application = application.strip()
+        if not application:
+            raise ValueError("Application is required")
+        args = [application, *(arguments or [])]
+        try:
+            process = subprocess.Popen(args, shell=False)
+            return {"pid": process.pid, "application": application}
+        except FileNotFoundError:
+            if arguments:
+                raise
+            os.startfile(application)  # type: ignore[attr-defined]
+            return {"pid": None, "application": application}
+
+    def close_window(self, title_or_id: str) -> bool:
+        try:
+            import ctypes
+
+            target = str(title_or_id).strip().lower()
+            for window in self.list_windows():
+                if target == str(window.get("hwnd")) or target in str(window.get("title", "")).lower():
+                    return bool(ctypes.windll.user32.PostMessageW(int(window["hwnd"]), 0x0010, 0, 0))
+        except Exception as exc:
+            log.debug("Windows: close_window failed: %s", exc)
+        return False
+
+    def get_display_info(self) -> dict[str, Any]:
+        try:
+            import ctypes
+
+            user32 = ctypes.windll.user32
+            try:
+                user32.SetProcessDpiAwarenessContext(-4)  # per-monitor aware v2
+            except Exception:
+                pass
+            return {
+                "virtual_screen": {
+                    "left": user32.GetSystemMetrics(76),
+                    "top": user32.GetSystemMetrics(77),
+                    "width": user32.GetSystemMetrics(78),
+                    "height": user32.GetSystemMetrics(79),
+                },
+                "primary": {
+                    "width": user32.GetSystemMetrics(0),
+                    "height": user32.GetSystemMetrics(1),
+                },
+                "dpi_aware": True,
+            }
+        except Exception:
+            return {"monitors": [], "dpi_aware": False}
 
     def get_foreground_process(self) -> str | None:
         """Get the process name of the foreground window."""
@@ -94,12 +161,13 @@ class WindowsAdapter(BaseOSAdapter):
                 return None
 
             # Open process and get name
-            PROCESS_QUERY_INFORMATION = 0x0400
-            PROCESS_VM_READ = 0x0010
+            process_query_information = 0x0400
+            process_vm_read = 0x0010
 
             handle = kernel32.OpenProcess(
-                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-                False, pid.value,
+                process_query_information | process_vm_read,
+                False,
+                pid.value,
             )
             if not handle:
                 return None
