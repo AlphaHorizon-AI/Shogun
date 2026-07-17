@@ -1965,6 +1965,7 @@ async def _call_llm(
     base_url: str,
     headers: dict,
     timeout: int = 120,
+    max_tokens: int | None = None,
 ) -> str:
     """Make a non-streaming chat completion call and return the response text."""
     url = f"{base_url.rstrip('/')}/chat/completions"
@@ -1974,6 +1975,8 @@ async def _call_llm(
         "stream": False,
         "temperature": 0.3,  # Low temperature for task execution
     }
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
 
     async with httpx.AsyncClient(timeout=float(timeout)) as client:
         resp = await client.post(url, headers=headers, json=payload)
@@ -2001,13 +2004,18 @@ async def _call_llm_chain(
     timeout: int,
     retry_count: int,
     context: str,
+    max_tokens: int | None = None,
 ) -> str:
     """Call each model in order, transparently notifying on every transition."""
     last_error: Exception | None = None
     for model_index, (_provider, model_name, base_url, headers) in enumerate(model_chain):
         for attempt in range(1 + retry_count):
             try:
-                return await _call_llm(messages, model_name, base_url, headers, timeout)
+                if max_tokens is None:
+                    return await _call_llm(messages, model_name, base_url, headers, timeout)
+                return await _call_llm(
+                    messages, model_name, base_url, headers, timeout, max_tokens=max_tokens
+                )
             except Exception as exc:
                 last_error = exc
                 log.warning(

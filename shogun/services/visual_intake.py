@@ -262,7 +262,14 @@ class VisualIntakeService:
                 ],
             }
         ]
-        result = await _call_llm_chain(messages, chain, timeout=120, retry_count=0, context="visual analysis")
+        result = await _call_llm_chain(
+            messages,
+            chain,
+            timeout=180,
+            retry_count=0,
+            context="visual analysis",
+            max_tokens=192,
+        )
         provider, model_name, _, _ = chain[0]
         analysis = ImageAnalysis(
             artifact_id=artifact.id,
@@ -305,7 +312,12 @@ class VisualIntakeService:
             encoded = base64.b64encode(Path(artifact.normalized_path).read_bytes()).decode("ascii")
             content.append({"type": "image_url", "image_url": {"url": f"data:image/webp;base64,{encoded}"}})
         result = await _call_llm_chain(
-            [{"role": "user", "content": content}], chain, timeout=120, retry_count=0, context="visual comparison"
+            [{"role": "user", "content": content}],
+            chain,
+            timeout=180,
+            retry_count=0,
+            context="visual comparison",
+            max_tokens=256,
         )
         provider, model_name, _, _ = chain[0]
         analysis = ImageAnalysis(

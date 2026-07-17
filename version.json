@@ -1,8 +1,8 @@
 {
-  "version": "1.10.1",
+  "version": "1.10.2",
   "name": "Shogun OS",
-  "build": 70,
+  "build": 71,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Fixes Telegram vision by routing images only to governed vision-capable models, then passing the visual analysis safely into Shogun chat."
+  "changelog": "Fixes Telegram vision routing and makes local vision reliable during cold model starts with bounded responses and a vision-specific timeout."
 }
