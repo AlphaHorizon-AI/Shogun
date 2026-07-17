@@ -1,8 +1,8 @@
 {
-  "version": "1.8.0",
+  "version": "1.8.1",
   "name": "Shogun OS",
-  "build": 65,
+  "build": 66,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Completes Flow Stacking runtime control with independent evidence-based verification, bounded durable context compaction, restart recovery, checkpoint continuity, and a live Orchestrator execution trace."
+  "changelog": "Adds Flow Stack activation and deactivation controls, contextual Orchestrator help, and fixes category filtering across the template gallery and Stack Builder."
 }

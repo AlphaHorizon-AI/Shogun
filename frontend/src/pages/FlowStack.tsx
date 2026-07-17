@@ -10,7 +10,7 @@ import '@xyflow/react/dist/style.css';
 import {
   Layers3, Search, Save, BookmarkPlus, Play, RefreshCw, Boxes, Route,
   ShieldCheck, Sparkles, Trash2, CircleStop, Pause, RotateCcw, Loader2, X, Eye,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Info, Power,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { AgentFlowCanvas } from './AgentFlow';
@@ -185,7 +185,8 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
   const [orchestratorOpen, setOrchestratorOpen] = useState(true);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('All');
+  const [templateCategory, setTemplateCategory] = useState('All');
+  const [stackCategory, setStackCategory] = useState('My Templates');
   const [name, setName] = useState('New Flow Stack');
   const [description, setDescription] = useState('');
   const [objective, setObjective] = useState('Complete the stack and verify every flow output.');
@@ -198,6 +199,9 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
   const [approvalPolicy, setApprovalPolicy] = useState('step_based');
   const [artifactPolicy, setArtifactPolicy] = useState('retain_all');
   const [saving, setSaving] = useState(false);
+  const [savedStackId, setSavedStackId] = useState('');
+  const [stackStatus, setStackStatus] = useState<'draft' | 'active' | 'paused'>('draft');
+  const [changingStatus, setChangingStatus] = useState(false);
   const [notice, setNotice] = useState('');
   const [editorFlow, setEditorFlow] = useState<AgentFlowData | null>(null);
   const [openingFlowId, setOpeningFlowId] = useState<string | null>(null);
@@ -284,7 +288,10 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
     setEdges(seededEdges);
     setName(seed.name);
     setDescription(seed.description);
-    setCategory(seed.category);
+    setStackCategory(seed.category || 'My Templates');
+    setTemplateCategory('All');
+    setSavedStackId('');
+    setStackStatus('draft');
     if (seed.orchestrator_config) {
       setObjective(seed.orchestrator_config.objective || objective);
       setModelProfile(seed.orchestrator_config.model_routing_profile || 'balanced');
@@ -303,9 +310,9 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
 
   const categories = useMemo(() => ['All', ...Array.from(new Set(templates.map((item) => item.category))).sort()], [templates]);
   const visible = useMemo(() => templates.filter((item) =>
-    (category === 'All' || item.category === category) &&
+    (templateCategory === 'All' || item.category === templateCategory) &&
     `${item.name} ${item.description}`.toLowerCase().includes(search.toLowerCase())
-  ), [templates, category, search]);
+  ), [templates, templateCategory, search]);
 
   const deleteStackNode = useCallback((nodeId: string) => {
     setNodes((current) => current.filter((node) => node.id !== nodeId));
@@ -389,7 +396,7 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
     setSaving(true); setNotice('');
     try {
       const response = await axios.post('/api/v1/agent-flows/flow-stacks/compose', {
-        name, description, category: category === 'All' ? 'My Templates' : category,
+        name, description, category: stackCategory,
         nodes: flowNodes.map((node) => ({
           id: node.id, template_id: node.data.templateId || undefined,
           flow_id: node.data.flowId || undefined, label: node.data.label,
@@ -406,6 +413,8 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
         },
         save_as_template: saveAsTemplate,
       });
+      setSavedStackId(String(response.data.data.id));
+      setStackStatus(response.data.data.status === 'active' ? 'active' : response.data.data.status === 'paused' ? 'paused' : 'draft');
       setNotice(saveAsTemplate
         ? `Stack and reusable template saved: ${response.data.data.name}`
         : `Flow Stack saved: ${response.data.data.name}`);
@@ -414,13 +423,26 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
     } finally { setSaving(false); }
   };
 
+  const changeStackStatus = async () => {
+    if (!savedStackId) return setNotice('Save the Flow Stack before activating it.');
+    const activate = stackStatus !== 'active';
+    setChangingStatus(true);
+    try {
+      const response = await axios.post(`/api/v1/agent-flows/${encodeURIComponent(savedStackId)}/${activate ? 'activate' : 'pause'}`);
+      setStackStatus(response.data?.data?.status === 'active' ? 'active' : 'paused');
+      setNotice(activate ? 'Flow Stack activated and available for execution.' : 'Flow Stack deactivated. Existing history is preserved.');
+    } catch (error: any) {
+      setNotice(error?.response?.data?.detail || `Could not ${activate ? 'activate' : 'deactivate'} the Flow Stack.`);
+    } finally { setChangingStatus(false); }
+  };
+
   return (
     <div className="grid grid-cols-[300px_minmax(0,1fr)] gap-4 min-h-[690px]">
       <aside className="shogun-card !p-4 overflow-hidden flex flex-col">
         <div className="flex items-center gap-2 mb-3"><Boxes className="w-4 h-4 text-shogun-blue" /><b className="text-xs">AGENTFLOW TEMPLATES</b></div>
         <div className="relative mb-2"><Search className="absolute w-3.5 h-3.5 left-2.5 top-2.5 text-shogun-subdued" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search templates" className="w-full bg-[#080b16] border border-shogun-border rounded pl-8 pr-2 py-2 text-xs" /></div>
-        <select value={category} onChange={(e) => setCategory(e.target.value)} className="bg-[#080b16] border border-shogun-border rounded p-2 text-xs mb-3">
-          {categories.map((item) => <option key={item}>{item}</option>)}
+        <select value={templateCategory} onChange={(e) => setTemplateCategory(e.target.value)} className="bg-[#080b16] border border-shogun-border rounded p-2 text-xs mb-3">
+          {categories.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
         <div className="space-y-2 overflow-y-auto pr-1 flex-1">
           {visible.map((template) => (
@@ -467,7 +489,9 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
       <aside className={cn('absolute z-30 top-3 right-3 w-[360px] rounded-xl border border-purple-400/30 bg-[#0b0e1c]/95 shadow-2xl backdrop-blur transition-all', orchestratorOpen ? 'max-h-[calc(100%-24px)] overflow-y-auto p-4 space-y-4' : 'w-auto p-2')}>
         <div className="flex items-center justify-between gap-4"><div className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-purple-400" /><b className="text-xs">STACK ORCHESTRATOR</b></div><button type="button" onClick={() => setOrchestratorOpen((current) => !current)} title={orchestratorOpen ? 'Collapse orchestrator' : 'Expand orchestrator'} className="rounded border border-purple-400/20 p-1 text-purple-300 hover:bg-purple-500/10">{orchestratorOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}</button></div>
         {orchestratorOpen && <>
+        <div className="group relative rounded-lg border border-purple-400/20 bg-purple-500/5 p-2.5 text-[9px] leading-relaxed text-shogun-subdued"><div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-purple-300"><Info className="h-3.5 w-3.5" /> How the Orchestrator works</div><p className="mt-1">It supervises the complete Stack: passing output between AgentFlows, saving checkpoints, retrying failures, compacting long-running context, and verifying results before completion.</p><div className="pointer-events-none absolute right-2 top-2 hidden w-64 rounded-lg border border-purple-400/30 bg-[#080b16] p-3 text-[9px] normal-case text-shogun-text shadow-2xl group-hover:block">Configure the goal and safety limits here. Activate the saved Stack when it is ready to run. Pausing a Stack prevents new executions without deleting it.</div></div>
         <label className="block text-[9px] uppercase text-shogun-subdued">Stack name<input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs text-shogun-text" /></label>
+        <label className="block text-[9px] uppercase text-shogun-subdued">Stack category<select value={stackCategory} onChange={(e) => setStackCategory(e.target.value)} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs text-shogun-text">{Object.keys(STACK_CATEGORY_COLORS).map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
         <label className="block text-[9px] uppercase text-shogun-subdued">Description<textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs text-shogun-text" /></label>
         <label className="block text-[9px] uppercase text-shogun-subdued">Objective<textarea value={objective} onChange={(e) => setObjective(e.target.value)} rows={4} className="mt-1 w-full bg-[#080b16] border border-purple-500/30 rounded p-2 text-xs text-shogun-text" /></label>
         <label className="block text-[9px] uppercase text-shogun-subdued">Model routing<select value={modelProfile} onChange={(e) => setModelProfile(e.target.value)} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs"><option>balanced</option><option>quality</option><option>speed</option><option>cost</option></select></label>
@@ -477,6 +501,7 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
         <div className="grid grid-cols-2 gap-2"><label className="block text-[9px] uppercase text-shogun-subdued">Retries<input type="number" min={0} max={10} value={maxRetries} onChange={(e) => setMaxRetries(Number(e.target.value))} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs" /></label><label className="block text-[9px] uppercase text-shogun-subdued">Approval<select value={approvalPolicy} onChange={(e) => setApprovalPolicy(e.target.value)} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs"><option value="step_based">Step based</option><option value="inherited">Inherited</option><option value="always_required_for_high_risk">High risk</option></select></label></div>
         <label className="block text-[9px] uppercase text-shogun-subdued">Artifacts<select value={artifactPolicy} onChange={(e) => setArtifactPolicy(e.target.value)} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs"><option value="retain_all">Retain all</option><option value="retain_final_only">Final only</option><option value="retain_selected">Selected</option></select></label>
         <div className="flex items-center justify-between text-[10px] text-shogun-subdued"><span>{nodes.length} flows</span><span>{edges.length} connections</span></div>
+        <button disabled={!savedStackId || changingStatus} onClick={changeStackStatus} title={!savedStackId ? 'Save the Stack before activating it' : stackStatus === 'active' ? 'Deactivate this Stack' : 'Activate this Stack'} className={cn('w-full flex justify-center items-center gap-2 py-2 rounded text-xs font-bold border disabled:cursor-not-allowed disabled:opacity-40', stackStatus === 'active' ? 'border-green-400/40 bg-green-500/15 text-green-300' : 'border-shogun-border bg-[#080b16] text-shogun-subdued')}><Power className="w-3.5 h-3.5" />{changingStatus ? 'UPDATING...' : stackStatus === 'active' ? 'ACTIVE — CLICK TO DEACTIVATE' : savedStackId ? 'ACTIVATE STACK' : 'SAVE STACK TO ACTIVATE'}</button>
         <button onClick={() => { setNodes([]); setEdges([]); setSelectedNodeIds([]); setSelectedEdgeIds([]); }} className="w-full flex justify-center items-center gap-2 py-2 border border-red-500/25 text-red-400 rounded text-xs"><Trash2 className="w-3.5 h-3.5" /> CLEAR CANVAS</button>
         <button disabled={saving} onClick={() => saveStack(false)} className="w-full flex justify-center items-center gap-2 py-2 bg-shogun-blue rounded text-white font-bold text-xs"><Save className="w-3.5 h-3.5" /> SAVE STACK</button>
         <button disabled={saving} onClick={() => saveStack(true)} className="w-full flex justify-center items-center gap-2 py-2 bg-purple-500/20 border border-purple-400/40 text-purple-300 rounded font-bold text-xs"><BookmarkPlus className="w-3.5 h-3.5" /> SAVE AS TEMPLATE</button>
@@ -522,7 +547,7 @@ function StackTemplateGallery({ onOpen }: { onOpen: (template: CatalogTemplate) 
   };
   void useTemplate;
   return <div className="space-y-4">
-    <div className="flex gap-3"><div className="relative flex-1"><Search className="absolute w-4 h-4 left-3 top-3 text-shogun-subdued" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search 180 Flow Stack templates" className="w-full bg-[#0e1225] border border-shogun-border rounded-lg pl-10 p-2.5 text-sm" /></div><select value={category} onChange={(e) => setCategory(e.target.value)} className="bg-[#0e1225] border border-shogun-border rounded-lg px-3 text-xs" style={{ color: category === 'All' ? '#c8d0d8' : STACK_CATEGORY_COLORS[category] || '#c8d0d8' }}>{categories.map((item) => <option key={item} style={{ color: item === 'All' ? '#c8d0d8' : STACK_CATEGORY_COLORS[item] || '#c8d0d8' }}>{item === 'All' ? 'All Flow Stack Categories' : `● ${item}`}</option>)}</select><button onClick={load} className="p-2.5 border border-shogun-border rounded-lg"><RefreshCw className="w-4 h-4" /></button></div>
+    <div className="flex gap-3"><div className="relative flex-1"><Search className="absolute w-4 h-4 left-3 top-3 text-shogun-subdued" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search 180 Flow Stack templates" className="w-full bg-[#0e1225] border border-shogun-border rounded-lg pl-10 p-2.5 text-sm" /></div><select value={category} onChange={(e) => setCategory(e.target.value)} className="bg-[#0e1225] border border-shogun-border rounded-lg px-3 text-xs" style={{ color: category === 'All' ? '#c8d0d8' : STACK_CATEGORY_COLORS[category] || '#c8d0d8' }}>{categories.map((item) => <option key={item} value={item} style={{ color: item === 'All' ? '#c8d0d8' : STACK_CATEGORY_COLORS[item] || '#c8d0d8' }}>{item === 'All' ? 'All Flow Stack Categories' : `● ${item}`}</option>)}</select><button onClick={load} className="p-2.5 border border-shogun-border rounded-lg"><RefreshCw className="w-4 h-4" /></button></div>
     <div className="text-xs text-shogun-subdued">{templates.length} reusable templates · {visible.length} shown</div>
     {notice && <div className="p-3 border border-shogun-blue/30 bg-shogun-blue/10 rounded text-xs">{notice}</div>}
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">{visible.map((template) => {
