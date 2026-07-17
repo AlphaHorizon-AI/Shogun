@@ -16,6 +16,15 @@ from shogun.db.models.skill_source import SkillSource
 from shogun.db.models.skill import Skill
 from shogun.db.models.skill_installation import SkillInstallation
 from shogun.db.models.active_skill_run import ActiveSkillRun
+from shogun.db.models.skill_trajectory import (
+    SkillCandidateRetrieval,
+    SkillEpisode,
+    SkillTrajectory,
+    SkillToolLink,
+    SkillVerificationLink,
+    SkillOutcomeScore,
+    SkillImprovementCandidate,
+)
 from shogun.db.models.bushido import BushidoJob, BushidoRecommendation, BushidoSchedule
 from shogun.db.models.mission import Mission
 from shogun.db.models.execution_event import ExecutionEvent
@@ -68,6 +77,13 @@ __all__ = [
     "Skill",
     "SkillInstallation",
     "ActiveSkillRun",
+    "SkillCandidateRetrieval",
+    "SkillEpisode",
+    "SkillTrajectory",
+    "SkillToolLink",
+    "SkillVerificationLink",
+    "SkillOutcomeScore",
+    "SkillImprovementCandidate",
     "BushidoJob",
     "BushidoRecommendation",
     "BushidoSchedule",

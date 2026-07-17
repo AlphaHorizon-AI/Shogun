@@ -40,6 +40,7 @@ log = logging.getLogger("shogun.flow_engine")
 
 # ── Active runs registry (for cancellation) ─────────────────
 _active_runs: dict[str, asyncio.Task] = {}
+_launch_events: dict[str, asyncio.Event] = {}
 _child_run_semaphore: asyncio.Semaphore | None = None
 
 
@@ -116,12 +117,23 @@ async def start_flow_run(
         await session.commit()
 
     # Launch as background task
+    launch_ready = asyncio.Event()
+    _launch_events[str(run_id)] = launch_ready
     task = asyncio.create_task(_execute_flow(run_id, flow_id))
     _active_runs[str(run_id)] = task
+
+    # Do not hand the run ID to an orchestrator until the executor has loaded
+    # the committed row. This prevents concurrent SQLite sessions from
+    # colliding during the launch hand-off.
+    try:
+        await asyncio.wait_for(launch_ready.wait(), timeout=0.25)
+    except TimeoutError:
+        log.warning("Flow run %s executor launch acknowledgement timed out", run_id)
 
     # Auto-cleanup when done
     def _cleanup(t: asyncio.Task):
         _active_runs.pop(str(run_id), None)
+        _launch_events.pop(str(run_id), None)
 
     task.add_done_callback(_cleanup)
 
@@ -175,6 +187,7 @@ async def cancel_flow_run(run_id: uuid.UUID) -> bool:
 
 
 async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
+    launch_ready = _launch_events.get(str(run_id))
     """Main execution loop — loads flow, walks DAG, executes nodes."""
     try:
         async with async_session_factory() as session:
@@ -200,8 +213,18 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                 return
 
             # ── 2. Mark run as running ─────────────────────────────
-            run_result = await session.execute(select(AgentFlowRun).where(AgentFlowRun.id == run_id))
-            run = run_result.scalar_one()
+            # The run is committed before this background task is launched. A
+            # short visibility retry keeps SQLite's single-connection test and
+            # desktop modes from treating a concurrent session hand-off as a
+            # permanently missing run.
+            run = None
+            for _ in range(20):
+                run = await session.get(AgentFlowRun, run_id, populate_existing=True)
+                if run is not None:
+                    break
+                await asyncio.sleep(0.01)
+            if run is None:
+                raise LookupError(f"Flow run {run_id} was not visible after launch")
             run_input = dict(run.input_payload or {})
             governance_context = dict(run.governance_context or {})
             run.status = "running"
@@ -219,6 +242,8 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                 }
             run.node_states = node_states
             await session.commit()
+            if launch_ready:
+                launch_ready.set()
 
         # ── 3. Topological sort ────────────────────────────────
         try:
@@ -345,6 +370,9 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
     except Exception as exc:
         log.exception("Flow run %s failed with unexpected error", run_id)
         await _fail_run(run_id, f"Unexpected error: {str(exc)[:500]}")
+    finally:
+        if launch_ready and not launch_ready.is_set():
+            launch_ready.set()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -387,6 +415,7 @@ async def _execute_single_node(
 
     # Order 9: node-level skill activation. Compact briefs influence execution
     # but never extend the node's tool or posture permissions.
+    active_skill_run_ids: list[str] = []
     if node_type not in {"input", "output", "logic", "shogun_approval"}:
         try:
             from shogun.schemas.skills import SkillActivationRequest
@@ -397,6 +426,9 @@ async def _execute_single_node(
             async with async_session_factory() as skill_session:
                 activation = await SkillActivationService(skill_session).activate(SkillActivationRequest(
                     run_id=str(run_id),
+                    flow_id=str(node.flow_id),
+                    node_id=node_id,
+                    agent_id="shogun",
                     objective=f"{node.label}: {config.get('prompt') or config.get('description') or node_type}",
                     context=context_str[-4000:],
                     posture=posture.get("active_tier", posture.get("posture", "guarded")),
@@ -408,50 +440,72 @@ async def _execute_single_node(
                     ide_enabled=bool(posture.get("ide_enabled", False)),
                 ))
                 await skill_session.commit()
+            active_skill_run_ids = [
+                str(item["active_skill_run_id"]) for item in activation["active_skills"]
+            ]
             if activation["context_block"]:
                 context_str += f"\n\n{activation['context_block']}"
         except Exception as exc:
             logging.getLogger("shogun.flow").warning("Active skill selection skipped: %s", exc)
 
-    if node_type == "input":
-        return await _exec_input(config, context_str, run_input or {})
-    elif node_type == "samurai":
-        return await _exec_samurai(config, context_str, governance_context or {})
-    elif node_type == "shogun_approval":
-        return await _exec_approval(config, predecessor_outputs)
-    elif node_type == "logic":
-        return await _exec_logic(config, predecessor_outputs)
-    elif node_type == "output":
-        return await _exec_output(
-            config,
-            context_str,
-            predecessor_outputs,
-            run_id,
-            node.label,
-            node_id,
-        )
-    elif node_type == "mado_browser":
-        return await _exec_mado_browser(config, context_str)
-    elif node_type == "email_send":
-        return await _exec_email_send(config, context_str)
-    elif node_type == "channel_send":
-        return await _exec_channel_send(config, context_str)
-    elif node_type == "workspace":
-        return await _exec_workspace(config, context_str)
-    elif node_type == "office":
-        return await _exec_office(config, context_str)
-    elif node_type == "subflow":
-        return await _exec_subflow(
-            run_id,
-            node,
-            predecessor_outputs,
-            run_input or {},
-            governance_context or {},
-        )
-    elif node_type == "stack_orchestrator":
-        return await _exec_stack_orchestrator(run_id, config, run_input or {})
-    else:
-        raise ValueError(f"Unknown node type: {node_type}")
+    try:
+        if node_type == "input":
+            result = await _exec_input(config, context_str, run_input or {})
+        elif node_type == "samurai":
+            result = await _exec_samurai(config, context_str, governance_context or {})
+        elif node_type == "shogun_approval":
+            result = await _exec_approval(config, predecessor_outputs)
+        elif node_type == "logic":
+            result = await _exec_logic(config, predecessor_outputs)
+        elif node_type == "output":
+            result = await _exec_output(
+                config, context_str, predecessor_outputs, run_id, node.label, node_id,
+            )
+        elif node_type == "mado_browser":
+            result = await _exec_mado_browser(config, context_str)
+        elif node_type == "email_send":
+            result = await _exec_email_send(config, context_str)
+        elif node_type == "channel_send":
+            result = await _exec_channel_send(config, context_str)
+        elif node_type == "workspace":
+            result = await _exec_workspace(config, context_str)
+        elif node_type == "office":
+            result = await _exec_office(config, context_str)
+        elif node_type == "subflow":
+            result = await _exec_subflow(
+                run_id, node, predecessor_outputs, run_input or {}, governance_context or {},
+            )
+        elif node_type == "stack_orchestrator":
+            result = await _exec_stack_orchestrator(run_id, config, run_input or {})
+        else:
+            raise ValueError(f"Unknown node type: {node_type}")
+    except Exception as exc:
+        await _finalize_node_skills(active_skill_run_ids, "failed", str(exc))
+        raise
+    await _finalize_node_skills(active_skill_run_ids, "success", f"Node '{node.label}' completed")
+    return result
+
+
+async def _finalize_node_skills(active_skill_run_ids: list[str], outcome: str, summary: str) -> None:
+    if not active_skill_run_ids:
+        return
+    try:
+        from shogun.services.active_skill_service import SkillActivationService
+        from shogun.services.skill_trajectory_service import SkillTrajectoryService
+
+        async with async_session_factory() as session:
+            await SkillTrajectoryService(session).link_output(
+                active_skill_run_ids,
+                output_summary=summary,
+                output_type="agent_flow_node",
+                metadata={"outcome": outcome},
+            )
+            service = SkillActivationService(session)
+            for active_id in active_skill_run_ids:
+                await service.outcome(uuid.UUID(active_id), outcome, summary)
+            await session.commit()
+    except Exception as exc:
+        logging.getLogger("shogun.flow").warning("Active skill outcome capture skipped: %s", exc)
 
 
 async def _exec_stack_orchestrator(

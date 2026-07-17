@@ -1,8 +1,8 @@
 {
-  "version": "1.12.1",
+  "version": "1.13.0",
   "name": "Shogun OS",
-  "build": 74,
+  "build": 75,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Adds Order 9 Active Skill Usage and fixes Telegram model routing by rejecting provider labels as model IDs, repairing registry discovery from configured model lists, and preventing stale primary-model/provider mismatches across chat lanes."
+  "changelog": "Adds Order 10 Skill Usage Logging and Trajectory Capture: redacted candidate, episode, tool, verification, outcome, scoring, improvement, export, and Katana trajectory evidence across chat, Telegram, AgentFlow, IDE, and Flow Stack execution."
 }

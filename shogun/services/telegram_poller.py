@@ -7,6 +7,7 @@ import mimetypes
 import re
 import time
 import traceback
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -669,6 +670,7 @@ async def process_telegram_message(
         return
 
     # ── Posture enforcement: kill switch gate ──────────────────
+    posture = {"active_tier": "guarded", "ide_enabled": False}
     try:
         from shogun.api.security import _get_agent_posture
         posture = await _get_agent_posture()
@@ -714,6 +716,27 @@ async def process_telegram_message(
             # Telegram has no graphical mode selector, so default to the
             # tool-capable Mission lane. Torii still gates every tool call.
             prompt_msg, mode, classification = _select_telegram_chat_mode(prompt_msg, history)
+            try:
+                from shogun.schemas.skills import SkillActivationRequest
+                from shogun.services.active_skill_service import SkillActivationService
+                from shogun.services.native_skills import NATIVE_TOOLS
+
+                skill_result = await SkillActivationService(session).activate(SkillActivationRequest(
+                    run_id=f"telegram:{chat_id}:{uuid.uuid4()}", objective=prompt_msg,
+                    context=" ".join(str(item.get("content", "")) for item in history[-4:] if isinstance(item, dict)),
+                    posture=posture.get("active_tier", "guarded"),
+                    available_tools=[item["function"]["name"] for item in NATIVE_TOOLS],
+                    usage_location="telegram", agent_id="shogun",
+                    ide_enabled=bool(posture.get("ide_enabled", False)),
+                ))
+                classification["_skill_context"] = skill_result["context_block"]
+                classification["_active_skill_run_ids"] = [
+                    str(item["active_skill_run_id"]) for item in skill_result["active_skills"]
+                ]
+                classification["active_skills"] = [item["name"] for item in skill_result["active_skills"]]
+                await session.commit()
+            except Exception as exc:
+                logger.warning("[Telegram] Active skill trajectory capture skipped: %s", exc)
             logger.info(
                 "[Telegram] Mode classified: %s (reason=%s, matched=%s)",
                 mode,

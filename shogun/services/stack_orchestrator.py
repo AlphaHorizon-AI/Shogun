@@ -697,6 +697,7 @@ class StackOrchestratorService:
 
             skill_activation = await SkillActivationService(self.session).activate(SkillActivationRequest(
                 run_id=str(stack.id), stack_run_id=stack.id, objective=stack.objective,
+                agent_id="shogun", model_profile=stack.model_profile,
                 context="Plan a governed long-running Agent Stack. " + " ".join(stack.success_criteria or []),
                 posture=stack.posture, available_tools=stack.allowed_tools or [],
                 max_skills=settings.active_skill_max_per_run, usage_location="stack_planning",
@@ -706,12 +707,17 @@ class StackOrchestratorService:
             stack_meta = dict(stack.metadata_json or {})
             stack_meta["active_skills"] = [
                 {"skill_id": str(item["skill_id"]), "name": item["name"],
-                 "reason": item["activation_reason"], "phase": "planning"}
+                 "reason": item["activation_reason"], "phase": "planning",
+                 "episode_id": str(item.get("skill_episode_id") or "") or None,
+                 "trajectory_id": str(item.get("trajectory_id") or "") or None}
                 for item in skill_activation["active_skills"]
             ]
             stack_meta["active_skill_constraints"] = [
                 check for item in skill_activation["active_skills"]
                 for check in item.get("verification_checklist", [])
+            ]
+            stack_meta["planning_active_skill_run_ids"] = [
+                str(item["active_skill_run_id"]) for item in skill_activation["active_skills"]
             ]
             stack_meta["skill_context"] = skill_activation["context_block"]
             stack.metadata_json = stack_meta
@@ -1200,6 +1206,8 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                     available_skill_tools = list(set((stack.allowed_tools or []) + (step.required_tools or [])))
                     skill_activation = await SkillActivationService(session).activate(SkillActivationRequest(
                         run_id=str(stack.id), stack_run_id=stack.id, step_run_id=step.id,
+                        flow_id=str(step.flow_id), node_id=step.step_id, agent_id="shogun",
+                        model_profile=stack.model_profile,
                         objective=f"{stack.objective}\nStep: {step.name}\nExpected: {step.expected_output or ''}",
                         context=context, posture=stack.posture, available_tools=available_skill_tools,
                         max_skills=settings.active_skill_max_per_step, usage_location="stack_step",
@@ -1214,7 +1222,9 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                     step_meta = dict(step.metadata_json or {})
                     step_meta["active_skills"] = [
                         {"skill_id": str(item["skill_id"]), "name": item["name"],
-                         "reason": item["activation_reason"], "score": item["relevance_score"]}
+                         "reason": item["activation_reason"], "score": item["relevance_score"],
+                         "episode_id": str(item.get("skill_episode_id") or "") or None,
+                         "trajectory_id": str(item.get("trajectory_id") or "") or None}
                         for item in skill_activation["active_skills"]
                     ]
                     step_meta["active_skill_run_ids"] = [
@@ -1229,7 +1239,9 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                     active_history = list(stack_meta.get("active_skills", []))
                     active_history.extend(
                         {"skill_id": str(item["skill_id"]), "name": item["name"],
-                         "reason": item["activation_reason"], "phase": f"step:{step.step_id}"}
+                         "reason": item["activation_reason"], "phase": f"step:{step.step_id}",
+                         "episode_id": str(item.get("skill_episode_id") or "") or None,
+                         "trajectory_id": str(item.get("trajectory_id") or "") or None}
                         for item in skill_activation["active_skills"]
                     )
                     stack_meta["active_skills"] = active_history[-50:]
@@ -1378,13 +1390,49 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                 )
                 try:
                     from shogun.services.active_skill_service import SkillActivationService
+                    from shogun.services.skill_trajectory_service import SkillTrajectoryService
 
+                    active_ids = (step.metadata_json or {}).get("active_skill_run_ids", [])
+                    verification_score = float((verification.metadata_json or {}).get("score", 0)) / 100.0
+                    await SkillTrajectoryService(session).link_verification(
+                        active_ids,
+                        verification_id=str(verification.id),
+                        verification_type=verification.verification_type,
+                        expected=verification.expected_result,
+                        observed=verification.observed_result,
+                        status=verification.status,
+                        score=verification_score,
+                    )
                     outcome_service = SkillActivationService(session)
-                    for active_id in (step.metadata_json or {}).get("active_skill_run_ids", []):
+                    for active_id in active_ids:
                         await outcome_service.outcome(
                             uuid.UUID(active_id), "success" if passed else "failed",
                             verification.observed_result,
                         )
+                    step_meta = dict(step.metadata_json or {})
+                    step_meta["active_skills"] = [
+                        {
+                            **item,
+                            "outcome": "success" if passed else "failed",
+                            "verification": verification.status,
+                            "unresolved_issue": None if passed else verification.observed_result,
+                            "next_usage_recommendation": (
+                                "Reuse for similar verified work" if passed
+                                else "Review the improvement candidate before reuse"
+                            ),
+                        }
+                        for item in step_meta.get("active_skills", [])
+                    ]
+                    step.metadata_json = step_meta
+                    stack_meta = dict(stack.metadata_json or {})
+                    stack_meta["active_skills"] = [
+                        *list(stack_meta.get("active_skills", []))[-40:],
+                        *[
+                            {**item, "phase": f"completed:{step.step_id}"}
+                            for item in step_meta["active_skills"]
+                        ],
+                    ][-50:]
+                    stack.metadata_json = stack_meta
                 except Exception as exc:
                     log.warning("Stack skill outcome recording skipped: %s", exc)
                 if passed:
@@ -1449,6 +1497,12 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                 stack.status = "paused" if stack.failure_policy == "pause" else "failed"
                 if stack.status == "failed":
                     stack.completed_at = datetime.now(timezone.utc)
+                    await _finalize_planning_skills(
+                        session,
+                        stack,
+                        "failed",
+                        f"Stack step '{step.name}' failed: {category}",
+                    )
                 await session.commit()
                 await _audit_step_evidence(stack, step, artifacts, verification)
                 await _audit(
@@ -1542,6 +1596,7 @@ async def _finalize(session: AsyncSession, stack: StackRun, steps: list[StackSte
         "pr_summary": f"Stack Orchestrator completed {len(stack.completed_steps)} governed steps.",
         "risk_notes": f"Executed under {stack.posture.upper()} posture with inherited tool permissions.",
     }
+    await _finalize_planning_skills(session, stack, "success" if stack.status == "completed" else "failed")
     await session.commit()
     await _audit(
         "stack.orchestrator.completed" if stack.status == "completed" else "stack.orchestrator.failed",
@@ -1558,6 +1613,7 @@ async def _fail_stack(session: AsyncSession, stack: StackRun, message: str) -> N
     metadata = dict(stack.metadata_json or {})
     metadata["last_error"] = message
     stack.metadata_json = metadata
+    await _finalize_planning_skills(session, stack, "failed", message)
     await session.commit()
     await _audit(
         "stack.orchestrator.failed",
@@ -1567,6 +1623,33 @@ async def _fail_stack(session: AsyncSession, stack: StackRun, message: str) -> N
         severity="error",
         detail={"error": message},
     )
+
+
+async def _finalize_planning_skills(
+    session: AsyncSession,
+    stack: StackRun,
+    outcome: str,
+    summary: str | None = None,
+) -> None:
+    active_ids = (stack.metadata_json or {}).get("planning_active_skill_run_ids", [])
+    if not active_ids:
+        return
+    try:
+        from shogun.services.active_skill_service import SkillActivationService
+        from shogun.services.skill_trajectory_service import SkillTrajectoryService
+
+        result_summary = summary or json.dumps(stack.final_summary or {}, default=str)
+        await SkillTrajectoryService(session).link_output(
+            active_ids,
+            output_summary=result_summary,
+            output_type="stack_final_summary",
+            metadata={"stack_status": stack.status},
+        )
+        service = SkillActivationService(session)
+        for active_id in active_ids:
+            await service.outcome(uuid.UUID(str(active_id)), outcome, result_summary[:1000])
+    except Exception as exc:
+        log.warning("Stack planning skill outcome capture skipped: %s", exc)
 
 
 async def recover_interrupted_stack_runs() -> int:

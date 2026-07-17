@@ -158,6 +158,11 @@ class SkillActivationRequest(ShogunBase):
     explicit_skill_ids: list[uuid.UUID] = Field(default_factory=list)
     ide_enabled: bool = False
     activation_phase: str = "execution"
+    flow_id: str | None = None
+    node_id: str | None = None
+    agent_id: str | None = None
+    model_id: str | None = None
+    model_profile: str | None = None
 
 
 class SkillOutcomeRequest(ShogunBase):
@@ -197,6 +202,8 @@ class SkillActivationItem(ShogunBase):
     injected_tokens: int
     verification_checklist: list[str] = Field(default_factory=list)
     model_hint: str | None = None
+    skill_episode_id: uuid.UUID | None = None
+    trajectory_id: uuid.UUID | None = None
 
 
 class SkillCandidateItem(ShogunBase):
@@ -215,3 +222,19 @@ class SkillActivationResponse(ShogunBase):
     considered_skills: list[SkillCandidateItem] = Field(default_factory=list)
     blocked_skills: list[SkillCandidateItem] = Field(default_factory=list)
     conflict_notes: list[str] = Field(default_factory=list)
+
+
+class SkillTrajectoryExportRequest(ShogunBase):
+    skill_ids: list[uuid.UUID] = Field(default_factory=list)
+    skill_version: str | None = None
+    task_type: str | None = None
+    format: str = "jsonl"
+    model_id: str | None = None
+    outcome: str | None = None
+    minimum_score: float | None = Field(default=None, ge=-1.0, le=1.0)
+    from_date: datetime | None = None
+    to_date: datetime | None = None
+    redact_sensitive: bool = True
+    include_raw_prompts: bool = False
+    include_full_tool_outputs: bool = False
+    include_artifacts: bool = False

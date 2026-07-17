@@ -351,6 +351,13 @@ class SkillActivationService:
         context_block, total_tokens = SkillContextComposer.compose(
             selected, settings.active_skill_max_total_context_tokens
         )
+        from shogun.services.skill_trajectory_service import SkillTrajectoryService
+
+        trajectory_service = SkillTrajectoryService(self.session)
+        await trajectory_service.log_candidates(
+            request=request, run_id=run_id, candidates=ranked, selected=selected,
+            blocked=blocked, conflict_notes=conflict_notes,
+        )
         active_items: list[dict[str, Any]] = []
         now = datetime.now(timezone.utc)
         for candidate in selected:
@@ -372,12 +379,20 @@ class SkillActivationService:
             await self.session.flush()
             skill.last_used_at = now
             skill.usage_count = (skill.usage_count or 0) + 1
+            episode_data = await trajectory_service.start_episode(
+                active_run=record, skill=skill, request=request,
+                selection_reason=candidate["reason"], retrieval_score=candidate["score"],
+                brief=candidate["brief"],
+            )
+            episode, trajectory = episode_data if episode_data else (None, None)
             active_items.append({
                 "active_skill_run_id": record.id, "skill_id": skill.id, "name": skill.name,
                 "skill_type": skill.skill_type, "relevance_score": candidate["score"],
                 "activation_reason": candidate["reason"], "activation_mode": skill.activation_mode,
                 "brief": candidate["brief"], "injected_tokens": candidate["injected_tokens"],
                 "verification_checklist": skill.verification_checklist or [], "model_hint": skill.model_hint,
+                "skill_episode_id": episode.id if episode else None,
+                "trajectory_id": trajectory.id if trajectory else None,
             })
             await self._emit("skill.activated", f"Skill '{skill.name}' activated", {
                 "run_id": run_id, "stack_run_id": str(request.stack_run_id) if request.stack_run_id else None,
@@ -430,6 +445,9 @@ class SkillActivationService:
             "active_skill_run_id": str(record.id), "run_id": record.run_id,
             "skill_id": str(record.skill_id), "outcome": outcome, "summary": summary,
         })
+        from shogun.services.skill_trajectory_service import SkillTrajectoryService
+
+        await SkillTrajectoryService(self.session).finalize_active_run(record, outcome, summary)
         return record
 
     async def rebuild_brief(self, skill: Skill) -> str:

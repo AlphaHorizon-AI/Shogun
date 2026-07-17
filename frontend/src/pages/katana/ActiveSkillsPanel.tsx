@@ -6,6 +6,7 @@ import {
   Target, XCircle,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import SkillTrajectoriesPanel from './SkillTrajectoriesPanel';
 
 type Skill = {
   id: string; name: string; slug: string; version: string; skill_type: string;
@@ -150,6 +151,8 @@ export default function ActiveSkillsPanel() {
         <div className="mt-2 text-xl font-bold text-shogun-text">{value}</div>
       </div>)}
     </div>
+
+    <SkillTrajectoriesPanel />
 
     <div className="shogun-card border-purple-500/20">
       <div className="flex flex-col lg:flex-row lg:items-end gap-3">
