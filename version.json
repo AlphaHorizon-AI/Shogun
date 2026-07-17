@@ -1,8 +1,8 @@
 {
-  "version": "1.7.1",
+  "version": "1.8.0",
   "name": "Shogun OS",
-  "build": 64,
+  "build": 65,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Adds color-coded Flow Stack categories and explicit, posture-governed Shogun permissions for creating, editing, activating, executing, templating, and deleting AgentFlows and Flow Stacks."
+  "changelog": "Completes Flow Stacking runtime control with independent evidence-based verification, bounded durable context compaction, restart recovery, checkpoint continuity, and a live Orchestrator execution trace."
 }

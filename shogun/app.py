@@ -96,6 +96,8 @@ async def lifespan(app: FastAPI):
             from shogun.db.base import Base
             import shogun.db.models  # noqa: F401
             await conn.run_sync(Base.metadata.create_all)
+        from shogun.services.stack_orchestrator import recover_interrupted_stack_runs
+        await recover_interrupted_stack_runs()
     except Exception:
         pass  # Non-fatal — table will be created on first use
 
@@ -361,7 +363,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.7.1",
+        version="1.8.0",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,

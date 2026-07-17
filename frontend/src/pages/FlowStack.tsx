@@ -532,14 +532,14 @@ function StackTemplateGallery({ onOpen }: { onOpen: (template: CatalogTemplate) 
   </div>;
 }
 
-function OrchestratorRuntime() {
+function LegacyOrchestratorRuntime() {
   const [stacks, setStacks] = useState<SavedFlow[]>([]);
   const [runs, setRuns] = useState<any[]>([]);
   const [selected, setSelected] = useState('');
   const [objective, setObjective] = useState('Execute the selected Flow Stack and verify the final output.');
   const [notice, setNotice] = useState('');
   const refresh = useCallback(async () => {
-    const [flowResponse, runResponse] = await Promise.all([axios.get('/api/v1/agent-flows'), axios.get('/api/v1/stack-orchestrator')]);
+    const [flowResponse, runResponse] = await Promise.all([axios.get('/api/v1/agent-flows'), axios.get('/api/v1/stacks/orchestrator')]);
     setStacks((flowResponse.data?.data || []).filter((item: SavedFlow) => item.flow_type === 'stack'));
     setRuns(runResponse.data?.data || []);
   }, []);
@@ -547,13 +547,113 @@ function OrchestratorRuntime() {
   const createRun = async () => {
     if (!selected) return setNotice('Select a saved Flow Stack first.');
     try {
-      const response = await axios.post('/api/v1/stack-orchestrator/create', { mode: 'selected_stack', selected_stack_id: selected, objective, verification_required: true, checkpoint_frequency: 'after_each_subflow', failure_policy: 'pause' });
-      await axios.post(`/api/v1/stack-orchestrator/${response.data.data.id}/start`);
+      const response = await axios.post('/api/v1/stacks/orchestrator/create', { mode: 'selected_stack', selected_stack_id: selected, objective, verification_required: true, checkpoint_frequency: 'after_each_subflow', failure_policy: 'pause' });
+      await axios.post(`/api/v1/stacks/orchestrator/${response.data.data.id}/start`);
       setNotice('Orchestrator run started.'); await refresh();
     } catch (error: any) { setNotice(error?.response?.data?.detail || 'Could not start the run.'); }
   };
-  const action = async (id: string, verb: string) => { await axios.post(`/api/v1/stack-orchestrator/${id}/${verb}`); await refresh(); };
+  const action = async (id: string, verb: string) => { await axios.post(`/api/v1/stacks/orchestrator/${id}/${verb}`); await refresh(); };
   return <div className="grid grid-cols-[360px_1fr] gap-4"><div className="shogun-card space-y-4"><div className="flex gap-2 items-center"><ShieldCheck className="w-5 h-5 text-purple-400" /><b>Stack Orchestrator</b></div><select value={selected} onChange={(e) => setSelected(e.target.value)} className="w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs"><option value="">Select Flow Stack</option>{stacks.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><textarea value={objective} onChange={(e) => setObjective(e.target.value)} rows={5} className="w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs" /><button onClick={createRun} className="w-full flex justify-center gap-2 items-center bg-purple-500/25 border border-purple-400/40 text-purple-200 py-2 rounded text-xs font-bold"><Play className="w-4 h-4" /> START ORCHESTRATOR</button>{notice && <div className="text-xs text-shogun-subdued">{notice}</div>}</div><div className="space-y-3"><div className="flex justify-between"><b className="text-sm">ORCHESTRATOR RUNS</b><button onClick={refresh}><RefreshCw className="w-4 h-4" /></button></div>{runs.length === 0 && <div className="shogun-card text-sm text-shogun-subdued">No stack runs yet.</div>}{runs.map((run) => <div key={run.id} className="shogun-card !p-4 flex justify-between items-center"><div><div className="font-bold text-sm">{run.objective}</div><div className="text-[10px] text-shogun-subdued uppercase mt-1">{run.status} · {run.posture || 'ready'}</div></div><div className="flex gap-2">{run.status === 'running' && <button onClick={() => action(run.id, 'pause')} title="Pause"><Pause className="w-4 h-4" /></button>}{run.status === 'paused' && <button onClick={() => action(run.id, 'resume')} title="Resume"><RotateCcw className="w-4 h-4" /></button>}{!['completed','cancelled','failed'].includes(run.status) && <button onClick={() => action(run.id, 'cancel')} title="Cancel"><CircleStop className="w-4 h-4 text-red-400" /></button>}</div></div>)}</div></div>;
+}
+
+void LegacyOrchestratorRuntime;
+
+function OrchestratorRuntime() {
+  const baseUrl = '/api/v1/stacks/orchestrator';
+  const [stacks, setStacks] = useState<SavedFlow[]>([]);
+  const [runs, setRuns] = useState<any[]>([]);
+  const [selectedStack, setSelectedStack] = useState('');
+  const [selectedRunId, setSelectedRunId] = useState('');
+  const [selectedRun, setSelectedRun] = useState<any | null>(null);
+  const [checkpoints, setCheckpoints] = useState<any[]>([]);
+  const [artifacts, setArtifacts] = useState<any[]>([]);
+  const [verifications, setVerifications] = useState<any[]>([]);
+  const [objective, setObjective] = useState('Execute the selected Flow Stack and verify the final output.');
+  const [criteria, setCriteria] = useState('Every AgentFlow produces a non-empty result\nAll required verification checks pass');
+  const [notice, setNotice] = useState('');
+
+  const refresh = useCallback(async () => {
+    const [flowResponse, runResponse] = await Promise.all([axios.get('/api/v1/agent-flows'), axios.get(baseUrl)]);
+    setStacks((flowResponse.data?.data || []).filter((item: SavedFlow) => item.flow_type === 'stack'));
+    const nextRuns = runResponse.data?.data || [];
+    setRuns(nextRuns);
+    setSelectedRunId((current) => current || nextRuns[0]?.id || '');
+  }, []);
+  const loadRun = useCallback(async (runId: string) => {
+    if (!runId) return;
+    try {
+      const [runResponse, checkpointResponse, artifactResponse, verificationResponse] = await Promise.all([
+        axios.get(`${baseUrl}/${runId}`), axios.get(`${baseUrl}/${runId}/checkpoints`),
+        axios.get(`${baseUrl}/${runId}/artifacts`), axios.get(`${baseUrl}/${runId}/verifications`),
+      ]);
+      setSelectedRun(runResponse.data?.data || null);
+      setCheckpoints(checkpointResponse.data?.data || []);
+      setArtifacts(artifactResponse.data?.data || []);
+      setVerifications(verificationResponse.data?.data || []);
+    } catch (error: any) { setNotice(error?.response?.data?.detail || 'Could not load the runtime trace.'); }
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    if (!selectedRunId) return;
+    loadRun(selectedRunId);
+    const timer = window.setInterval(() => { loadRun(selectedRunId); refresh(); }, 2000);
+    return () => window.clearInterval(timer);
+  }, [selectedRunId, loadRun, refresh]);
+
+  const createRun = async () => {
+    if (!selectedStack) return setNotice('Select a saved Flow Stack first.');
+    try {
+      const response = await axios.post(`${baseUrl}/create`, {
+        mode: 'selected_stack', selected_stack_id: selectedStack, objective,
+        success_criteria: criteria.split('\n').map((item) => item.trim()).filter(Boolean),
+        verification_required: true, context_compaction: 'enabled',
+        checkpoint_frequency: 'after_each_subflow', failure_policy: 'pause',
+      });
+      const runId = response.data.data.id;
+      await axios.post(`${baseUrl}/${runId}/start`);
+      setSelectedRunId(runId);
+      setNotice('Run started with durable checkpoints and independent verification.');
+      await refresh();
+    } catch (error: any) { setNotice(error?.response?.data?.detail || 'Could not start the run.'); }
+  };
+  const action = async (id: string, verb: string) => {
+    try { await axios.post(`${baseUrl}/${id}/${verb}`); await loadRun(id); await refresh(); }
+    catch (error: any) { setNotice(error?.response?.data?.detail || `Could not ${verb} this run.`); }
+  };
+  const statusColor = (status: string) => ({
+    completed: '#22c55e', passed: '#22c55e', running: '#38bdf8', retrying: '#f59e0b',
+    paused: '#f59e0b', waiting_approval: '#c084fc', failed: '#ef4444', cancelled: '#7a8899',
+    completed_with_errors: '#f97316',
+  }[status] || '#7a8899');
+  const terminal = ['completed', 'completed_with_errors', 'cancelled', 'failed'];
+
+  return <div className="grid grid-cols-[340px_minmax(0,1fr)] gap-4">
+    <div className="space-y-4">
+      <div className="shogun-card space-y-3">
+        <div className="flex gap-2 items-center"><ShieldCheck className="w-5 h-5 text-purple-400" /><b>Start governed run</b></div>
+        <select value={selectedStack} onChange={(e) => setSelectedStack(e.target.value)} className="w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs"><option value="">Select Flow Stack</option>{stacks.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
+        <label className="block text-[9px] uppercase text-shogun-subdued">Objective<textarea value={objective} onChange={(e) => setObjective(e.target.value)} rows={4} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs normal-case" /></label>
+        <label className="block text-[9px] uppercase text-shogun-subdued">Success criteria — one per line<textarea value={criteria} onChange={(e) => setCriteria(e.target.value)} rows={3} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs normal-case" /></label>
+        <button onClick={createRun} className="w-full flex justify-center gap-2 items-center bg-purple-500/25 border border-purple-400/40 text-purple-200 py-2 rounded text-xs font-bold"><Play className="w-4 h-4" /> START ORCHESTRATOR</button>
+        {notice && <div className="text-[10px] text-shogun-subdued">{notice}</div>}
+      </div>
+      <div className="space-y-2"><div className="flex justify-between"><b className="text-xs">CURRENT & RECENT RUNS</b><button onClick={refresh}><RefreshCw className="w-4 h-4" /></button></div>{runs.length === 0 && <div className="shogun-card text-xs text-shogun-subdued">No stack runs yet.</div>}{runs.map((run) => <button key={run.id} onClick={() => setSelectedRunId(run.id)} className={cn('shogun-card !p-3 w-full text-left border transition-colors', selectedRunId === run.id && 'border-purple-400/60')}><div className="font-bold text-xs line-clamp-2">{run.objective}</div><div className="flex items-center justify-between mt-2 text-[9px] uppercase"><span style={{ color: statusColor(run.status) }}>{run.status.replaceAll('_', ' ')}</span><span className="text-shogun-subdued">{run.posture || 'ready'}</span></div></button>)}</div>
+    </div>
+    <div className="space-y-4 min-w-0">
+      {!selectedRun && <div className="shogun-card text-sm text-shogun-subdued">Select a run to inspect its live execution trace.</div>}
+      {selectedRun && <>
+        <div className="shogun-card !p-4"><div className="flex items-start justify-between gap-4"><div><div className="text-[9px] uppercase text-shogun-subdued">Runtime command view</div><h3 className="mt-1 font-bold">{selectedRun.objective}</h3><div className="mt-2 flex flex-wrap gap-2 text-[9px]"><span className="rounded border px-2 py-1 uppercase" style={{ color: statusColor(selectedRun.status), borderColor: `${statusColor(selectedRun.status)}55` }}>{selectedRun.status.replaceAll('_', ' ')}</span><span className="rounded border border-shogun-border px-2 py-1 text-shogun-subdued">{selectedRun.completed_steps?.length || 0}/{selectedRun.steps?.length || 0} steps</span><span className="rounded border border-shogun-border px-2 py-1 text-shogun-subdued">{selectedRun.model_profile}</span></div></div><div className="flex gap-2">{selectedRun.status === 'running' && <button onClick={() => action(selectedRun.id, 'pause')} title="Pause" className="rounded border border-amber-400/30 p-2 text-amber-300"><Pause className="w-4 h-4" /></button>}{selectedRun.status === 'paused' && <button onClick={() => action(selectedRun.id, 'resume')} title="Resume" className="rounded border border-green-400/30 p-2 text-green-300"><RotateCcw className="w-4 h-4" /></button>}{!terminal.includes(selectedRun.status) && <button onClick={() => action(selectedRun.id, 'cancel')} title="Cancel" className="rounded border border-red-400/30 p-2 text-red-300"><CircleStop className="w-4 h-4" /></button>}</div></div></div>
+        <div className="grid grid-cols-[minmax(0,1.45fr)_minmax(280px,0.8fr)] gap-4">
+          <section className="shogun-card !p-4"><h4 className="text-[10px] font-bold uppercase tracking-widest">Live execution tree</h4><div className="mt-3 space-y-2">{(selectedRun.steps || []).map((step: any, index: number) => <div key={step.id} className="rounded-lg border border-shogun-border bg-[#080b16] p-3"><div className="flex gap-3"><div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold" style={{ color: statusColor(step.status), borderColor: statusColor(step.status) }}>{index + 1}</div><div className="min-w-0 flex-1"><div className="flex justify-between gap-2"><b className="truncate text-[10px]">{step.name}</b><span className="text-[8px] uppercase" style={{ color: statusColor(step.status) }}>{step.status.replaceAll('_', ' ')}</span></div><div className="mt-1 flex flex-wrap gap-3 text-[8px] text-shogun-subdued"><span>{step.model_used || 'model pending'}</span><span>retry {step.retry_count}/{step.max_retries}</span><span style={{ color: statusColor(step.verification_status) }}>verification {step.verification_status}</span></div>{step.error_json?.message && <p className="mt-2 text-[8px] text-red-400">{step.error_json.message}</p>}</div></div></div>)}</div></section>
+          <div className="space-y-4">
+            <section className="shogun-card !p-4"><h4 className="text-[10px] font-bold uppercase tracking-widest">Independent verification</h4><div className="mt-3 space-y-2 max-h-64 overflow-y-auto">{verifications.map((item) => <div key={item.id} className="rounded border border-shogun-border p-2"><div className="flex justify-between gap-2 text-[8px] uppercase"><b>{item.verification_type.replaceAll('_', ' ')}</b><span style={{ color: statusColor(item.status) }}>{item.status}</span></div><p className="mt-1 text-[8px] text-shogun-subdued">{item.observed_result}</p><div className="mt-1 text-[8px] text-purple-300">{item.metadata_json?.verifier_mode || 'evidence'} · score {item.metadata_json?.score ?? '—'}</div></div>)}{verifications.length === 0 && <p className="text-[9px] text-shogun-subdued">No verification evidence yet.</p>}</div></section>
+            <section className="shogun-card !p-4"><h4 className="text-[10px] font-bold uppercase tracking-widest">Evidence & continuity</h4><div className="mt-3 grid grid-cols-3 gap-2 text-center"><div className="rounded bg-[#080b16] p-2"><b className="text-purple-300">{checkpoints.length}</b><div className="text-[7px] uppercase text-shogun-subdued">checkpoints</div></div><div className="rounded bg-[#080b16] p-2"><b className="text-blue-300">{artifacts.length}</b><div className="text-[7px] uppercase text-shogun-subdued">artifacts</div></div><div className="rounded bg-[#080b16] p-2"><b className="text-green-300">{verifications.filter((item) => item.status === 'passed').length}</b><div className="text-[7px] uppercase text-shogun-subdued">passed</div></div></div>{checkpoints[0] && <div className="mt-3 rounded border border-shogun-border p-2"><b className="text-[8px]">Latest durable checkpoint</b><p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[8px] text-shogun-subdued">{checkpoints[0].context_summary}</p><p className="mt-1 text-[8px] text-purple-300">{checkpoints[0].resume_instruction}</p></div>}</section>
+          </div>
+        </div>
+        {Object.keys(selectedRun.final_summary || {}).length > 0 && <section className="shogun-card !p-4"><h4 className="text-[10px] font-bold uppercase tracking-widest">Final verified summary</h4><div className="mt-3 grid grid-cols-2 gap-3 text-[9px]"><div><span className="text-shogun-subdued">Status</span><p style={{ color: statusColor(selectedRun.final_summary.final_status) }}>{selectedRun.final_summary.final_status?.replaceAll('_', ' ')}</p></div><div><span className="text-shogun-subdued">Files changed</span><p>{selectedRun.final_summary.files_changed?.length || 0}</p></div><div className="col-span-2"><span className="text-shogun-subdued">Known issues</span><pre className="mt-1 whitespace-pre-wrap text-[8px] text-amber-300">{JSON.stringify(selectedRun.final_summary.known_issues || [], null, 2)}</pre></div></div></section>}
+      </>}
+    </div>
+  </div>;
 }
 
 export const FlowStack = () => {

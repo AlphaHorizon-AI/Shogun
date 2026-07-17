@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     stack_orchestrator_default_runtime_minutes: int = 60
     stack_orchestrator_poll_interval_seconds: float = 0.25
     stack_orchestrator_max_steps: int = 100
+    stack_orchestrator_context_budget_chars: int = 16000
+    stack_orchestrator_verifier_timeout_seconds: int = 90
 
     # ── Telegram ─────────────────────────────────────────────
     telegram_bot_token: str | None = None

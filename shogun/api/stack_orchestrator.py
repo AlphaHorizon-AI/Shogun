@@ -107,6 +107,11 @@ async def cancel_stack_run(stack_run_id: uuid.UUID, db: AsyncSession = Depends(g
     return await _transition(stack_run_id, "cancel", db)
 
 
+@router.post("/{stack_run_id}/recover", response_model=ApiResponse)
+async def recover_stack_run(stack_run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    return await _transition(stack_run_id, "recover", db)
+
+
 async def _transition(stack_run_id: uuid.UUID, action: str, db: AsyncSession) -> ApiResponse:
     service = StackOrchestratorService(db)
     try:

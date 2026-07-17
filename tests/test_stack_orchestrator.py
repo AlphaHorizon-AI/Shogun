@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from unittest.mock import AsyncMock
 
@@ -21,7 +22,11 @@ from shogun.engine import flow_engine
 from shogun.schemas.stack_orchestrator import StackOrchestratorCreate, StackPlanDecision
 from shogun.services import posture_guard
 from shogun.services import stack_orchestrator as orchestrator_module
-from shogun.services.stack_orchestrator import StackOrchestratorService
+from shogun.services.stack_orchestrator import (
+    StackCompactionService,
+    StackOrchestratorService,
+    StackVerificationService,
+)
 
 
 @pytest.fixture
@@ -303,3 +308,127 @@ async def test_pause_and_resume_continue_current_step_not_whole_stack(stack_sess
         current, steps = await StackOrchestratorService(session).get(run_id)
     assert current.status == "completed"
     assert steps[0].status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_independent_verifier_rejects_explicit_failed_evidence(stack_sessions, monkeypatch):
+    monkeypatch.setattr(StackVerificationService, "_semantic_judgement", AsyncMock(return_value=None))
+    async with stack_sessions() as session:
+        stack = StackRun(
+            mode="selected_stack", status="running", objective="Ship a verified change", posture="campaign",
+            success_criteria=["Tests pass"], metadata_json={},
+        )
+        session.add(stack)
+        await session.flush()
+        step = StackStepRun(
+            stack_run_id=stack.id, step_id="step_001", sequence=1, name="Implement and test",
+            status="running", expected_output="Working implementation with passing tests",
+        )
+        flow = AgentFlow(name="Verifier fixture", status="active", schedule_config={}, viewport={})
+        session.add_all([step, flow])
+        await session.flush()
+        flow_run = AgentFlowRun(
+            flow_id=flow.id, flow_version=1, root_run_id=uuid.uuid4(), status="completed",
+            trigger_type="stack_orchestrator", node_states={}, result_summary={}, input_payload={},
+            output_payload={"result": "implemented", "tests": [{"name": "unit tests", "status": "failed"}]},
+            artifacts=[], governance_context={},
+        )
+        session.add(flow_run)
+        await session.flush()
+        verification = await StackVerificationService.verify(session, stack, step, flow_run)
+
+    assert verification.status == "failed"
+    assert verification.verification_type == "independent_quality_gate"
+    assert any(item["name"] == "unit tests" and not item["passed"] for item in verification.metadata_json["checks"])
+
+
+@pytest.mark.asyncio
+async def test_final_step_cannot_claim_success_without_acceptance_evidence(stack_sessions, monkeypatch):
+    monkeypatch.setattr(StackVerificationService, "_semantic_judgement", AsyncMock(return_value=None))
+    async with stack_sessions() as session:
+        flow = AgentFlow(name="Evidence fixture", status="active", schedule_config={}, viewport={})
+        stack = StackRun(
+            mode="selected_stack", status="running", objective="Prove the result", posture="campaign",
+            success_criteria=["The requested behavior is demonstrated"], metadata_json={},
+        )
+        session.add_all([flow, stack])
+        await session.flush()
+        step = StackStepRun(
+            stack_run_id=stack.id, step_id="step_001", sequence=1, name="Final delivery",
+            status="running", expected_output="Verified delivery",
+        )
+        session.add(step)
+        await session.flush()
+        flow_run = AgentFlowRun(
+            flow_id=flow.id, flow_version=1, root_run_id=uuid.uuid4(), status="completed",
+            trigger_type="stack_orchestrator", node_states={}, result_summary={}, input_payload={},
+            output_payload={"result": "done"}, artifacts=[], governance_context={},
+        )
+        session.add(flow_run)
+        await session.flush()
+        verification = await StackVerificationService.verify(session, stack, step, flow_run)
+
+    assert verification.status == "failed"
+    evidence_check = next(
+        item for item in verification.metadata_json["checks"] if item["name"] == "success_criteria_evidence_present"
+    )
+    assert evidence_check["passed"] is False
+
+
+def test_context_compaction_is_structured_and_budgeted(monkeypatch):
+    monkeypatch.setattr(orchestrator_module.settings, "stack_orchestrator_context_budget_chars", 2400)
+    stack = StackRun(
+        mode="selected_stack", status="running", objective="Maintain continuity", posture="campaign",
+        success_criteria=["Preserve decisions"], metadata_json={"decisions": ["Use the durable contract"]},
+    )
+    steps = [
+        StackStepRun(
+            stack_run_id=uuid.uuid4(), step_id=f"step_{index:03d}", sequence=index, name=f"Step {index}",
+            status="completed", verification_status="passed", output_json={"output": {"detail": "x" * 1800}},
+        )
+        for index in range(1, 8)
+    ]
+    next_step = StackStepRun(
+        stack_run_id=uuid.uuid4(), step_id="step_008", sequence=8, name="Continue safely", status="pending",
+        expected_output="Verified final result",
+    )
+    steps.append(next_step)
+
+    compacted = StackCompactionService.compact(stack, steps, next_step)
+    payload = json.loads(compacted)
+
+    assert len(compacted) <= 2400
+    assert payload["continuity_version"] == 2
+    assert payload["next_action"]["step_id"] == "step_008"
+    assert payload["important_decisions"] == ["Use the durable contract"]
+
+
+@pytest.mark.asyncio
+async def test_recovery_resets_orphaned_child_run_to_checkpoint_boundary(stack_sessions, monkeypatch):
+    stack_id, child_ids = await _seed_stack(stack_sessions, child_count=1)
+    async with stack_sessions() as session:
+        service = StackOrchestratorService(session)
+        stack = await service.create(StackOrchestratorCreate(
+            mode="selected_stack", selected_stack_id=stack_id, objective="Recover after restart",
+        ))
+        stack.status = "running"
+        _, steps = await service.get(stack.id)
+        orphan = AgentFlowRun(
+            flow_id=child_ids[0], flow_version=1, root_run_id=uuid.uuid4(), status="running",
+            trigger_type="stack_orchestrator", node_states={}, result_summary={}, input_payload={},
+            output_payload={}, artifacts=[], governance_context={},
+        )
+        session.add(orphan)
+        await session.flush()
+        steps[0].status = "running"
+        steps[0].flow_run_id = orphan.id
+        await session.commit()
+        await service._prepare_recovery(stack)
+        await session.commit()
+        recovered_step = await session.get(StackStepRun, steps[0].id)
+        recovered_orphan = await session.get(AgentFlowRun, orphan.id)
+
+    assert recovered_step.status == "pending"
+    assert recovered_step.flow_run_id is None
+    assert recovered_orphan.status == "cancelled"
+    assert stack.metadata_json["recovery_events"][-1]["steps"] == ["step_001"]

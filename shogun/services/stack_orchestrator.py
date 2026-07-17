@@ -35,7 +35,7 @@ from shogun.services.event_logger import EventLogger
 
 log = logging.getLogger(__name__)
 _active_stack_runs: dict[str, asyncio.Task] = {}
-_TERMINAL = {"completed", "failed", "cancelled"}
+_TERMINAL = {"completed", "completed_with_errors", "failed", "cancelled"}
 
 
 async def _audit(event_type: str, action: str, stack_run_id: uuid.UUID, **kwargs: Any) -> None:
@@ -167,27 +167,103 @@ class StackPlannerService:
 
 
 class StackCompactionService:
-    """Create continuity-focused context, not a generic transcript summary."""
+    """Build a bounded, durable hand-off for the next execution horizon."""
+
+    @staticmethod
+    def _bounded(value: Any, *, depth: int = 0) -> Any:
+        if depth >= 5:
+            return "[nested content compacted]"
+        if isinstance(value, str):
+            return value if len(value) <= 2000 else f"{value[:1800]}\n...[{len(value) - 1800} chars compacted]"
+        if isinstance(value, dict):
+            items = list(value.items())
+            result = {
+                str(key): StackCompactionService._bounded(item, depth=depth + 1)
+                for key, item in items[:30]
+            }
+            if len(items) > 30:
+                result["_compacted_keys"] = len(items) - 30
+            return result
+        if isinstance(value, list):
+            result = [StackCompactionService._bounded(item, depth=depth + 1) for item in value[-20:]]
+            if len(value) > 20:
+                result.insert(0, f"[{len(value) - 20} earlier items compacted]")
+            return result
+        return value
+
+    @staticmethod
+    def _fit_budget(payload: dict[str, Any]) -> str:
+        budget = max(2000, settings.stack_orchestrator_context_budget_chars)
+        encoded = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+        if len(encoded) <= budget:
+            return encoded
+        completed = payload.get("completed_steps", [])
+        while len(encoded) > budget and len(completed) > 1:
+            completed.pop(0)
+            payload["earlier_completed_steps_compacted"] = payload.get("earlier_completed_steps_compacted", 0) + 1
+            encoded = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+        if len(encoded) > budget:
+            payload["completed_steps"] = [
+                {"name": item.get("name"), "status": item.get("status"), "verification": item.get("verification")}
+                for item in completed
+            ]
+            encoded = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+        if len(encoded) > budget:
+            payload["goal"] = str(payload.get("goal", ""))[:800]
+            payload["success_criteria"] = [str(item)[:300] for item in payload.get("success_criteria", [])[:10]]
+            payload["important_decisions"] = [
+                str(item)[:300] for item in payload.get("important_decisions", [])[-10:]
+            ]
+            encoded = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+        if len(encoded) > budget:
+            payload = {
+                "continuity_version": 2,
+                "goal": str(payload.get("goal", ""))[:500],
+                "stack_status": payload.get("stack_status"),
+                "completed_step_count": len(completed),
+                "failures": payload.get("failures", [])[-3:],
+                "next_action": payload.get("next_action"),
+                "compaction_notice": "Context exceeded the budget; full evidence remains in durable checkpoints.",
+            }
+            encoded = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+        return encoded
 
     @staticmethod
     def compact(stack: StackRun, steps: list[StackStepRun], next_step: StackStepRun | None) -> str:
-        completed = [step.name for step in steps if step.status == "completed"]
-        failed = [
-            f"{step.name}: {step.error_json.get('message', 'failed')}" for step in steps if step.status == "failed"
+        completed = [
+            {
+                "step_id": step.step_id,
+                "name": step.name,
+                "status": step.status,
+                "verification": step.verification_status,
+                "output": StackCompactionService._bounded((step.output_json or {}).get("output", step.output_json)),
+            }
+            for step in steps if step.status == "completed"
         ]
-        pending = [step.name for step in steps if step.status in {"pending", "paused"}]
-        decisions = (stack.metadata_json or {}).get("decisions", [])
-        return "\n".join(
-            [
-                f"Goal: {stack.objective}",
-                f"Current status: {stack.status}",
-                f"Completed steps: {', '.join(completed) or 'none'}",
-                f"Pending steps: {', '.join(pending) or 'none'}",
-                f"Important decisions: {'; '.join(decisions) or 'none recorded'}",
-                f"Errors encountered: {'; '.join(failed) or 'none'}",
-                f"Next action: {next_step.name if next_step else 'produce final summary'}",
-            ]
-        )
+        failed = [
+            {"step_id": step.step_id, "name": step.name, "error": StackCompactionService._bounded(step.error_json)}
+            for step in steps if step.status in {"failed", "blocked"}
+        ]
+        pending = [
+            {"step_id": step.step_id, "name": step.name, "status": step.status}
+            for step in steps if step.status in {"pending", "paused", "waiting_approval"}
+        ]
+        payload = {
+            "continuity_version": 2,
+            "goal": stack.objective,
+            "success_criteria": stack.success_criteria or [],
+            "stack_status": stack.status,
+            "completed_steps": completed,
+            "pending_steps": pending,
+            "failures": failed,
+            "important_decisions": (stack.metadata_json or {}).get("decisions", []),
+            "next_action": {
+                "step_id": next_step.step_id if next_step else None,
+                "name": next_step.name if next_step else "produce final summary",
+                "expected_output": next_step.expected_output if next_step else None,
+            },
+        }
+        return StackCompactionService._fit_budget(payload)
 
 
 class StackCheckpointService:
@@ -205,11 +281,14 @@ class StackCheckpointService:
             resume_instruction=(f"Continue with '{next_step.name}'." if next_step else "Finalize the stack run."),
             artifacts_json=artifacts,
             state_json={
+                "continuity_version": 2,
                 "current_step_id": step.step_id,
                 "completed_steps": [item.step_id for item in steps if item.status == "completed"],
                 "pending_steps": [item.step_id for item in steps if item.status == "pending"],
                 "failed_steps": [item.step_id for item in steps if item.status == "failed"],
                 "last_output": step.output_json,
+                "model_usage": stack.model_usage or [],
+                "success_criteria": stack.success_criteria or [],
             },
         )
         session.add(checkpoint)
@@ -254,22 +333,148 @@ class StackArtifactService:
 
 class StackVerificationService:
     @staticmethod
+    def _explicit_checks(output: Any) -> list[dict[str, Any]]:
+        checks: list[dict[str, Any]] = []
+        if not isinstance(output, dict):
+            return checks
+        candidates = []
+        for key in ("verification", "quality_gate", "success_criteria", "checks", "tests"):
+            if key in output:
+                candidates.append((key, output[key]))
+        for group, value in candidates:
+            if isinstance(value, dict):
+                for name, result in value.items():
+                    status = result.get("status") if isinstance(result, dict) else result
+                    passed = result.get("passed") if isinstance(result, dict) else None
+                    if passed is None:
+                        passed = str(status).lower() in {"true", "passed", "pass", "approved", "success", "completed"}
+                    checks.append({"name": f"{group}.{name}", "passed": bool(passed), "observed": str(status)})
+            elif isinstance(value, list):
+                for index, result in enumerate(value):
+                    if isinstance(result, dict):
+                        status = result.get("status", result.get("passed"))
+                        name = result.get("name", f"{group}[{index}]")
+                    else:
+                        status, name = result, f"{group}[{index}]"
+                    checks.append({
+                        "name": str(name),
+                        "passed": status is True or str(status).lower() in {"passed", "pass", "approved", "success"},
+                        "observed": str(status),
+                    })
+            elif isinstance(value, (bool, str)):
+                checks.append({
+                    "name": group,
+                    "passed": value is True or str(value).lower() in {"passed", "pass", "approved", "success"},
+                    "observed": str(value),
+                })
+        return checks
+
+    @staticmethod
+    async def _semantic_judgement(
+        session: AsyncSession,
+        stack: StackRun,
+        step: StackStepRun,
+        output: Any,
+    ) -> dict[str, Any] | None:
+        """Use an independently-routed judge when a model is configured."""
+        try:
+            from shogun.engine.flow_engine import _call_llm_chain, _resolve_llm_chain
+
+            chain = await _resolve_llm_chain(session, stack.model_profile)
+            if not chain:
+                return None
+            prompt = {
+                "objective": stack.objective,
+                "stack_success_criteria": stack.success_criteria or [],
+                "step": step.name,
+                "expected_result": step.expected_output,
+                "observed_output": StackCompactionService._bounded(output),
+            }
+            response = await _call_llm_chain(
+                [
+                    {"role": "system", "content": (
+                        "You are an independent execution verifier. Judge evidence, not task completion. "
+                        "Return JSON only with passed (boolean), score (0-100), reasons (array), and checks (array). "
+                        "Fail missing, contradictory, placeholder, or unsupported results."
+                    )},
+                    {"role": "user", "content": json.dumps(prompt, ensure_ascii=False, default=str)},
+                ],
+                chain,
+                timeout=settings.stack_orchestrator_verifier_timeout_seconds,
+                retry_count=0,
+                context="Stack independent verifier",
+            )
+            cleaned = response.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            result = json.loads(cleaned)
+            if not isinstance(result.get("passed"), bool):
+                return None
+            return result
+        except Exception as exc:
+            log.info("Independent model verifier unavailable; using deterministic evidence gate: %s", exc)
+            return None
+
+    @staticmethod
     async def verify(
         session: AsyncSession, stack: StackRun, step: StackStepRun, flow_run: AgentFlowRun
     ) -> StackVerification:
-        passed = flow_run.status == "completed"
+        output = flow_run.output_payload or flow_run.result_summary or {}
+        base_checks = [
+            {"name": "flow_completed", "passed": flow_run.status == "completed", "observed": flow_run.status},
+            {
+                "name": "no_runtime_error",
+                "passed": not bool(flow_run.error_message),
+                "observed": flow_run.error_message or "none",
+            },
+            {
+                "name": "non_empty_output",
+                "passed": bool(output),
+                "observed": f"{len(json.dumps(output, default=str))} chars",
+            },
+        ]
+        explicit_checks = StackVerificationService._explicit_checks(output)
+        semantic = await StackVerificationService._semantic_judgement(session, stack, step, output)
+        checks = [*base_checks, *explicit_checks]
+        later_step = await session.scalar(
+            select(StackStepRun.id)
+            .where(StackStepRun.stack_run_id == stack.id, StackStepRun.sequence > step.sequence)
+            .limit(1)
+        )
+        if not later_step and stack.success_criteria and semantic is None:
+            checks.append({
+                "name": "success_criteria_evidence_present",
+                "passed": bool(explicit_checks),
+                "observed": (
+                    "machine-readable success-criteria evidence found"
+                    if explicit_checks else "no independent model or machine-readable acceptance evidence available"
+                ),
+            })
+        if semantic:
+            checks.append({
+                "name": "independent_semantic_judge",
+                "passed": semantic["passed"],
+                "observed": "; ".join(str(item) for item in semantic.get("reasons", [])) or str(semantic.get("score")),
+            })
+        passed = all(item["passed"] for item in checks)
+        mode = "model_and_evidence" if semantic else "deterministic_evidence"
+        failures = [item for item in checks if not item["passed"]]
         verification = StackVerification(
             stack_run_id=stack.id,
             step_run_id=step.id,
-            verification_type="agent_flow_completion",
+            verification_type="independent_quality_gate",
             expected_result=step.expected_output or "Step completes successfully",
             observed_result=(
-                f"Agent Flow run {flow_run.id} completed with structured output"
-                if passed
-                else flow_run.error_message or f"Agent Flow ended as {flow_run.status}"
+                f"{mode} passed {len(checks)} independent checks"
+                if passed else "; ".join(f"{item['name']}: {item['observed']}" for item in failures)
             ),
             status="passed" if passed else "failed",
-            metadata_json={"flow_run_id": str(flow_run.id), "flow_status": flow_run.status},
+            metadata_json={
+                "flow_run_id": str(flow_run.id), "flow_status": flow_run.status,
+                "verifier_mode": mode, "checks": checks,
+                "score": semantic.get("score") if semantic else round(
+                    100 * sum(item["passed"] for item in checks) / len(checks)
+                ),
+                "reasons": semantic.get("reasons", []) if semantic else [item["observed"] for item in failures],
+            },
         )
         session.add(verification)
         step.verification_status = verification.status
@@ -542,10 +747,15 @@ class StackOrchestratorService:
         steps = await StackStateService.steps(self.session, stack.id)
         if not any(step.flow_id for step in steps):
             raise ValueError("The reviewed plan has no executable Agent Stack attached.")
+        failed_restart = stack.status == "failed"
         for step in steps:
             if step.status in {"paused", "running", "retrying"}:
                 step.status = "pending"
                 step.flow_run_id = None
+            elif failed_restart and step.status == "failed":
+                step.status = "pending"
+                step.flow_run_id = None
+                step.completed_at = None
         stack.status = "running"
         stack.started_at = stack.started_at or datetime.now(timezone.utc)
         stack.completed_at = None
@@ -604,6 +814,19 @@ class StackOrchestratorService:
         )
         if latest:
             await _audit("stack.checkpoint.loaded", "Latest checkpoint loaded for resume", stack.id)
+        return stack
+
+    async def recover(self, stack_run_id: uuid.UUID) -> StackRun:
+        """Recover a run whose in-process worker disappeared unexpectedly."""
+        stack = await self._get(stack_run_id)
+        await self._assert_live_posture(stack)
+        if stack.status not in {"running", "paused"}:
+            raise ValueError("Only running or paused stacks can be recovered.")
+        await self._prepare_recovery(stack)
+        stack.status = "running"
+        await self.session.commit()
+        self._launch(stack.id)
+        await _audit("stack.orchestrator.recovered", "Interrupted Stack Orchestrator run recovered", stack.id)
         return stack
 
     async def cancel(self, stack_run_id: uuid.UUID) -> StackRun:
@@ -669,6 +892,28 @@ class StackOrchestratorService:
         if not stack:
             raise ValueError("Stack Orchestrator run not found.")
         return stack
+
+    async def _prepare_recovery(self, stack: StackRun) -> None:
+        steps = await StackStateService.steps(self.session, stack.id)
+        now = datetime.now(timezone.utc).isoformat()
+        recovered_steps = []
+        for step in steps:
+            if step.status in {"running", "retrying", "paused"}:
+                recovered_steps.append(step.step_id)
+                if step.flow_run_id:
+                    flow_run = await self.session.get(AgentFlowRun, step.flow_run_id)
+                    if flow_run and flow_run.status not in _TERMINAL:
+                        flow_run.status = "cancelled"
+                        flow_run.completed_at = datetime.now(timezone.utc)
+                        flow_run.error_message = "Interrupted by process restart; recovered from durable checkpoint."
+                step.status = "pending"
+                step.flow_run_id = None
+        metadata = dict(stack.metadata_json or {})
+        recoveries = list(metadata.get("recovery_events", []))
+        recoveries.append({"recovered_at": now, "steps": recovered_steps})
+        metadata["recovery_events"] = recoveries[-20:]
+        stack.metadata_json = metadata
+        stack.completed_at = None
 
     async def _replace_steps(self, stack: StackRun, plan: list[dict[str, Any]]) -> None:
         await self.session.execute(delete(StackStepRun).where(StackStepRun.stack_run_id == stack.id))
@@ -813,6 +1058,18 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
     try:
         iterations = 0
         previous_output: dict[str, Any] = {}
+        async with async_session_factory() as session:
+            latest = (
+                await session.execute(
+                    select(StackCheckpoint)
+                    .where(StackCheckpoint.stack_run_id == stack_run_id)
+                    .order_by(StackCheckpoint.created_at.desc())
+                    .limit(1)
+                )
+            ).scalars().first()
+            if latest:
+                last_output = (latest.state_json or {}).get("last_output", {})
+                previous_output = last_output.get("output", last_output) if isinstance(last_output, dict) else {}
         while True:
             async with async_session_factory() as session:
                 stack = await session.get(StackRun, stack_run_id)
@@ -955,10 +1212,15 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                     )
                     continue
 
-                category = StackRetryService.failure_category(flow_run)
+                category = (
+                    "verification_failure"
+                    if flow_run.status == "completed" and verification.status == "failed"
+                    else StackRetryService.failure_category(flow_run)
+                )
                 step.error_json = {
-                    "message": flow_run.error_message or "Step verification failed",
+                    "message": flow_run.error_message or verification.observed_result or "Step verification failed",
                     "category": category,
+                    "verification_id": str(verification.id),
                 }
                 if step.retry_count < step.max_retries and stack.failure_policy in {"retry", "pause"}:
                     step.retry_count += 1
@@ -1042,8 +1304,16 @@ async def _finalize(session: AsyncSession, stack: StackRun, steps: list[StackSte
     verifications = await session.execute(select(StackVerification).where(StackVerification.stack_run_id == stack.id))
     artifact_rows = list(artifacts.scalars().all())
     verification_rows = list(verifications.scalars().all())
-    failed = [step for step in steps if step.status == "failed"]
-    stack.status = "completed" if not failed or stack.failure_policy == "continue_with_error" else "failed"
+    failed = [step for step in steps if step.status in {"failed", "blocked", "cancelled"}]
+    required_unverified = [
+        step for step in steps if step.requires_verification and step.verification_status != "passed"
+    ]
+    if failed and stack.failure_policy == "continue_with_error":
+        stack.status = "completed_with_errors"
+    elif failed or required_unverified:
+        stack.status = "failed"
+    else:
+        stack.status = "completed"
     stack.completed_at = datetime.now(timezone.utc)
     stack.current_step_id = None
     StackStateService.refresh_lists(stack, steps)
@@ -1052,6 +1322,7 @@ async def _finalize(session: AsyncSession, stack: StackRun, steps: list[StackSte
         "final_status": stack.status,
         "steps_completed": [step.name for step in steps if step.status == "completed"],
         "steps_failed": [{"name": step.name, "error": step.error_json} for step in failed],
+        "unverified_steps": [step.name for step in required_unverified],
         "files_changed": [item.path for item in artifact_rows if item.path],
         "artifacts_created": [
             {"id": str(item.id), "type": item.artifact_type, "summary": item.summary} for item in artifact_rows
@@ -1062,7 +1333,10 @@ async def _finalize(session: AsyncSession, stack: StackRun, steps: list[StackSte
         ],
         "approvals_requested": stack.approval_events or [],
         "models_used": stack.model_usage or [],
-        "known_issues": [step.error_json for step in failed],
+        "known_issues": [step.error_json for step in failed] + [
+            {"step": step.name, "issue": "required independent verification did not pass"}
+            for step in required_unverified
+        ],
         "recommended_next_steps": ["Review artifacts and verification evidence before publishing changes."],
         "commit_message_suggestion": f"feat: complete {stack.objective[:72]}",
         "pr_summary": f"Stack Orchestrator completed {len(stack.completed_steps)} governed steps.",
@@ -1093,3 +1367,21 @@ async def _fail_stack(session: AsyncSession, stack: StackRun, message: str) -> N
         severity="error",
         detail={"error": message},
     )
+
+
+async def recover_interrupted_stack_runs() -> int:
+    """Rehydrate durable running stacks after an application restart."""
+    recovered: list[uuid.UUID] = []
+    async with async_session_factory() as session:
+        rows = await session.execute(select(StackRun).where(StackRun.status == "running"))
+        service = StackOrchestratorService(session)
+        for stack in rows.scalars().all():
+            if str(stack.id) in _active_stack_runs:
+                continue
+            await service._prepare_recovery(stack)
+            recovered.append(stack.id)
+        await session.commit()
+    for stack_id in recovered:
+        StackOrchestratorService._launch(stack_id)
+        await _audit("stack.orchestrator.recovered", "Stack run rehydrated after application restart", stack_id)
+    return len(recovered)
