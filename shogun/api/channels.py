@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from shogun.schemas.channels import TelegramConnectRequest, TelegramStatusResponse
 from shogun.schemas.common import ApiResponse
@@ -28,8 +28,10 @@ async def connect_telegram(body: TelegramConnectRequest):
     )
     try:
         from shogun.services.event_logger import EventLogger
+
         await EventLogger.emit_auth_event(
-            "auth.channel_connected", "Telegram bot connected",
+            "auth.channel_connected",
+            "Telegram bot connected",
             detail={"channel": "telegram", "mode": body.mode},
         )
     except Exception:
@@ -52,13 +54,35 @@ async def detect_chat_id():
     return ApiResponse(data=result)
 
 
+@router.get("/telegram/topics", response_model=ApiResponse)
+async def list_telegram_topics():
+    """List every observed forum thread and its durable local topic name."""
+    from shogun.services.telegram_poller import list_telegram_topic_mappings
+
+    return ApiResponse(data=list_telegram_topic_mappings())
+
+
+@router.put("/telegram/topics/{chat_id}/{thread_id}", response_model=ApiResponse)
+async def update_telegram_topic(chat_id: str, thread_id: int, body: dict):
+    """Set the name for a pre-existing Telegram forum topic."""
+    from shogun.services.telegram_poller import set_telegram_topic_mapping
+
+    try:
+        topic = set_telegram_topic_mapping(chat_id, thread_id, str(body.get("name") or ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return ApiResponse(data=topic)
+
+
 @router.delete("/telegram/disconnect", response_model=ApiResponse)
 async def disconnect_telegram():
     result = await channel_svc.disconnect_telegram()
     try:
         from shogun.services.event_logger import EventLogger
+
         await EventLogger.emit_auth_event(
-            "auth.channel_disconnected", "Telegram bot disconnected",
+            "auth.channel_disconnected",
+            "Telegram bot disconnected",
             detail={"channel": "telegram"},
         )
     except Exception:

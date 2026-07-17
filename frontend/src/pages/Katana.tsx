@@ -298,6 +298,9 @@ export function Katana() {
   const [tgTestResult, setTgTestResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
   const [tgDetecting, setTgDetecting]   = useState(false);
   const [tgShowToken, setTgShowToken]   = useState(false);
+  const [tgTopicGroups, setTgTopicGroups] = useState<any[]>([]);
+  const [tgTopicDrafts, setTgTopicDrafts] = useState<Record<string, string>>({});
+  const [tgTopicSaving, setTgTopicSaving] = useState<string | null>(null);
 
   // ── Mail & Calendar state ──────────────────────────────────────
   const [mailAccount, setMailAccount] = useState<any>(null);
@@ -587,13 +590,40 @@ export function Katana() {
   // ── Telegram handlers ────────────────────────────────────────
   const fetchTgStatus = async () => {
     try {
-      const res = await axios.get('/api/v1/channels/telegram/status');
+      const [res, topicsRes] = await Promise.all([
+        axios.get('/api/v1/channels/telegram/status'),
+        axios.get('/api/v1/channels/telegram/topics'),
+      ]);
       const d = res.data.data;
       setTgStatus(d);
       if (d?.mode) setTgMode(d.mode);
       if (d?.allowed_chat_ids?.length) setTgChatIds(d.allowed_chat_ids.join(', '));
       if (d?.webhook_url) setTgWebhook(d.webhook_url || '');
+      const groups = topicsRes.data.data || [];
+      setTgTopicGroups(groups);
+      const drafts: Record<string, string> = {};
+      groups.forEach((group: any) => (group.topics || []).forEach((topic: any) => {
+        drafts[`${group.chat_id}:${topic.message_thread_id}`] = topic.name || '';
+      }));
+      setTgTopicDrafts(drafts);
     } catch { /* ignore */ }
+  };
+
+  const handleSaveTgTopic = async (chatId: string, threadId: number) => {
+    const key = `${chatId}:${threadId}`;
+    const name = (tgTopicDrafts[key] || '').trim();
+    if (!name) return;
+    setTgTopicSaving(key);
+    try {
+      await axios.put(`/api/v1/channels/telegram/topics/${encodeURIComponent(chatId)}/${threadId}`, { name });
+      await fetchTgStatus();
+      setStatusMessage({ type: 'success', text: `Telegram topic ${threadId} mapped to “${name}”.` });
+    } catch (error: any) {
+      setStatusMessage({ type: 'error', text: error?.response?.data?.detail || 'Topic mapping could not be saved.' });
+    } finally {
+      setTgTopicSaving(null);
+      setTimeout(() => setStatusMessage(null), 4000);
+    }
   };
 
   const handleTgConnect = async (e: React.FormEvent) => {
@@ -3356,6 +3386,50 @@ export function Katana() {
         )}
 
         {/* ══ MAIL & CALENDAR TAB ═══════════════════════════════════ */}
+        {activeTab === 'telegram' && tgTopicGroups.length > 0 && (
+          <div className="shogun-card space-y-4 mt-6">
+            <div>
+              <h4 className="text-sm font-bold text-shogun-text flex items-center gap-2">
+                <MessageCircle className="w-4 h-4 text-sky-400" /> Forum Topic Mapping
+              </h4>
+              <p className="text-[10px] text-shogun-subdued mt-1">
+                Thread IDs are captured automatically. Name older topics here, or send <b>*strategy</b>, <b>*research</b>, <b>*shogun</b>, <b>*personal</b>, <b>*education</b>, <b>*general</b>, or <b>*news</b> inside a topic to teach Shogun automatically.
+              </p>
+            </div>
+            {tgTopicGroups.map((group: any) => (
+              <div key={group.chat_id} className="rounded-lg border border-shogun-border bg-[#050508] p-3 space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <b>{group.chat_title || 'Telegram group'}</b>
+                  <span className="font-mono text-[9px] text-shogun-subdued">{group.chat_id}</span>
+                </div>
+                {(group.topics || []).length === 0 ? (
+                  <p className="text-[10px] text-shogun-subdued">No forum threads observed yet. Send one message in each topic.</p>
+                ) : (group.topics || []).map((topic: any) => {
+                  const key = `${group.chat_id}:${topic.message_thread_id}`;
+                  return (
+                    <div key={key} className="grid grid-cols-[90px_minmax(0,1fr)_90px] items-center gap-2">
+                      <span className="text-[10px] font-mono text-sky-400">Thread {topic.message_thread_id}</span>
+                      <input
+                        value={tgTopicDrafts[key] || ''}
+                        onChange={event => setTgTopicDrafts(prev => ({ ...prev, [key]: event.target.value }))}
+                        placeholder="Enter topic name"
+                        className="w-full bg-shogun-bg border border-shogun-border rounded-lg px-3 py-2 text-xs focus:border-sky-400 outline-none"
+                      />
+                      <button
+                        onClick={() => handleSaveTgTopic(group.chat_id, topic.message_thread_id)}
+                        disabled={tgTopicSaving === key || !(tgTopicDrafts[key] || '').trim()}
+                        className="rounded-lg border border-sky-400/30 bg-sky-400/10 px-3 py-2 text-[10px] font-bold text-sky-300 disabled:opacity-40"
+                      >
+                        {tgTopicSaving === key ? 'SAVING' : 'SAVE'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+
         {activeTab === 'mail_calendar' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="flex items-center justify-between">

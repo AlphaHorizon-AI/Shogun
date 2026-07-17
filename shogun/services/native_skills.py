@@ -1624,6 +1624,22 @@ NATIVE_TOOLS = [
     },
     {
         "type": "function",
+        "risk": "high",
+        "category": "workflow",
+        "function": {
+            "name": "delete_agent_flow",
+            "description": "Soft-delete an existing AgentFlow after operator confirmation. Requires the explicit AgentFlow delete permission.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "flow_id": {"type": "string", "description": "ID of the AgentFlow to delete."},
+                },
+                "required": ["flow_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
         "risk": "medium",
         "category": "workflow",
         "function": {
@@ -1639,6 +1655,22 @@ NATIVE_TOOLS = [
                     "version_mode": {"type": "string", "enum": ["locked", "latest"], "description": "Child version policy. Defaults to locked."},
                     "timeout_seconds": {"type": "integer", "description": "Timeout for each phase."},
                     "activate": {"type": "boolean", "description": "Activate after editing. Requires the separate Flow Stack activation permission."},
+                },
+                "required": ["flow_stack_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "high",
+        "category": "workflow",
+        "function": {
+            "name": "delete_flow_stack",
+            "description": "Soft-delete an existing Flow Stack after operator confirmation. Requires the explicit Flow Stack delete permission.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "flow_stack_id": {"type": "string", "description": "ID of the Flow Stack to delete."},
                 },
                 "required": ["flow_stack_id"],
             },
@@ -1871,6 +1903,16 @@ def generate_tool_prompt(tools: list[dict]) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+WORKFLOW_TOOL_PERMISSIONS = {
+    "create_agent_flow": ("agentflow", "allow_create"),
+    "edit_agent_flow": ("agentflow", "allow_edit"),
+    "delete_agent_flow": ("agentflow", "allow_delete"),
+    "create_flow_stack": ("flow_stack", "allow_create"),
+    "edit_flow_stack": ("flow_stack", "allow_edit"),
+    "delete_flow_stack": ("flow_stack", "allow_delete"),
+}
 
 
 async def _shogun_workflow_permission(db_session, category: str, permission: str) -> bool:
@@ -2410,6 +2452,42 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
                 "version": updated.version,
             })
 
+        elif name == "delete_agent_flow":
+            try:
+                from shogun.services.posture_guard import get_posture_permissions
+
+                posture = await get_posture_permissions()
+                if not posture.get("agentflow_create", False):
+                    return json.dumps({
+                        "status": "error",
+                        "message": "AgentFlow deletion is only available in Tactical, Campaign, or Ronin posture.",
+                    })
+            except Exception:
+                return json.dumps({"status": "error", "message": "Could not verify the AgentFlow posture permission."})
+            if not await _shogun_workflow_permission(db_session, "agentflow", "allow_delete"):
+                return json.dumps({"status": "error", "message": "Shogun's AgentFlow deletion permission is disabled."})
+
+            import uuid as _uuid
+            from shogun.services.agent_flow_service import AgentFlowService
+
+            flow_svc = AgentFlowService(db_session)
+            try:
+                flow_id = _uuid.UUID(args["flow_id"])
+            except (KeyError, ValueError):
+                return json.dumps({"status": "error", "message": "flow_id must be a valid UUID."})
+            flow = await flow_svc.get_flow_full(flow_id)
+            if not flow or flow.flow_type == "stack" or flow.is_template:
+                return json.dumps({"status": "error", "message": "Deletable AgentFlow not found."})
+            flow_name = flow.name
+            await flow_svc.delete(flow_id)
+            await db_session.commit()
+            return json.dumps({
+                "status": "success",
+                "message": f"AgentFlow '{flow_name}' deleted.",
+                "flow_id": str(flow_id),
+                "deleted": True,
+            })
+
         elif name == "edit_flow_stack":
             try:
                 from shogun.services.posture_guard import get_posture_permissions
@@ -2478,6 +2556,42 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
                 "status": "success", "message": f"Flow Stack '{updated.name}' updated.",
                 "flow_stack_id": str(stack_id), "flow_stack_status": updated.status,
                 "version": updated.version,
+            })
+
+        elif name == "delete_flow_stack":
+            try:
+                from shogun.services.posture_guard import get_posture_permissions
+
+                posture = await get_posture_permissions()
+                if not posture.get("flowstack_create", False):
+                    return json.dumps({
+                        "status": "error",
+                        "message": "Flow Stack deletion is only available in Tactical, Campaign, or Ronin posture.",
+                    })
+            except Exception:
+                return json.dumps({"status": "error", "message": "Could not verify the Flow Stack posture permission."})
+            if not await _shogun_workflow_permission(db_session, "flow_stack", "allow_delete"):
+                return json.dumps({"status": "error", "message": "Shogun's Flow Stack deletion permission is disabled."})
+
+            import uuid as _uuid
+            from shogun.services.agent_flow_service import AgentFlowService
+
+            flow_svc = AgentFlowService(db_session)
+            try:
+                stack_id = _uuid.UUID(args["flow_stack_id"])
+            except (KeyError, ValueError):
+                return json.dumps({"status": "error", "message": "flow_stack_id must be a valid UUID."})
+            stack = await flow_svc.get_flow_full(stack_id)
+            if not stack or stack.flow_type != "stack" or stack.is_template:
+                return json.dumps({"status": "error", "message": "Deletable Flow Stack not found."})
+            stack_name = stack.name
+            await flow_svc.delete(stack_id)
+            await db_session.commit()
+            return json.dumps({
+                "status": "success",
+                "message": f"Flow Stack '{stack_name}' deleted.",
+                "flow_stack_id": str(stack_id),
+                "deleted": True,
             })
 
         elif name == "create_flow_stack":

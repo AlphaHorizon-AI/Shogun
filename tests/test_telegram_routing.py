@@ -5,6 +5,8 @@ from shogun.services.telegram_poller import (
     _select_telegram_chat_mode,
     _telegram_context_from_message,
     _telegram_context_text,
+    list_telegram_topic_mappings,
+    set_telegram_topic_mapping,
     _update_topic_registry_from_message,
 )
 
@@ -42,12 +44,14 @@ def test_telegram_auto_override_uses_classifier():
 def test_telegram_attachment_context_mentions_workspace_path():
     message = _attachment_context_text(
         "What is in this?",
-        [{
-            "filename": "photo.jpg",
-            "mime_type": "image/jpeg",
-            "size": 123,
-            "workspace_path": "Telegram/2026-07-07/123/photo.jpg",
-        }],
+        [
+            {
+                "filename": "photo.jpg",
+                "mime_type": "image/jpeg",
+                "size": 123,
+                "workspace_path": "Telegram/2026-07-07/123/photo.jpg",
+            }
+        ],
     )
 
     assert "What is in this?" in message
@@ -80,27 +84,33 @@ def test_telegram_topic_registry_remembers_forum_topic(monkeypatch):
     monkeypatch.setattr(telegram_poller, "_topic_registry_cache", {})
     monkeypatch.setattr(telegram_poller, "_save_topic_registry", lambda registry: None)
 
-    _update_topic_registry_from_message({
-        "chat": {"id": -100123, "type": "supergroup", "title": "Max Workspace"},
-        "message_thread_id": 42,
-        "forum_topic_created": {"name": "Operations", "icon_color": 7322096},
-    })
+    _update_topic_registry_from_message(
+        {
+            "chat": {"id": -100123, "type": "supergroup", "title": "Max Workspace"},
+            "message_thread_id": 42,
+            "forum_topic_created": {"name": "Operations", "icon_color": 7322096},
+        }
+    )
 
-    context = _telegram_context_from_message({
-        "chat": {"id": -100123, "type": "supergroup", "title": "Max Workspace"},
-        "message_thread_id": 42,
-        "is_topic_message": True,
-        "text": "Can you see this topic?",
-    })
+    context = _telegram_context_from_message(
+        {
+            "chat": {"id": -100123, "type": "supergroup", "title": "Max Workspace"},
+            "message_thread_id": 42,
+            "is_topic_message": True,
+            "text": "Can you see this topic?",
+        }
+    )
 
     assert context["chat_title"] == "Max Workspace"
     assert context["message_thread_id"] == 42
     assert context["topic_name"] == "Operations"
-    assert context["known_topics"] == [{
-        "message_thread_id": 42,
-        "name": "Operations",
-        "status": "open",
-    }]
+    assert context["known_topics"] == [
+        {
+            "message_thread_id": 42,
+            "name": "Operations",
+            "status": "open",
+        }
+    ]
 
 
 def test_telegram_context_text_includes_group_and_topic():
@@ -119,3 +129,41 @@ def test_telegram_context_text_includes_group_and_topic():
     assert "Chat: Max Workspace (supergroup)" in message
     assert "Topic/thread id: 42" in message
     assert "Known topics in this chat: Operations [42]" in message
+
+
+def test_ordinary_forum_message_registers_thread_and_tag_name(monkeypatch):
+    monkeypatch.setattr(telegram_poller, "_topic_registry_cache", {})
+    monkeypatch.setattr(telegram_poller, "_save_topic_registry", lambda registry: None)
+
+    _update_topic_registry_from_message(
+        {
+            "chat": {"id": -1001, "type": "supergroup", "title": "Alpha Horizon"},
+            "message_thread_id": 73,
+            "is_topic_message": True,
+            "text": "*strategy Review the quarterly plan",
+        }
+    )
+
+    context = _telegram_context_from_message(
+        {
+            "chat": {"id": -1001, "type": "supergroup", "title": "Alpha Horizon"},
+            "message_thread_id": 73,
+            "is_topic_message": True,
+            "text": "What did we decide?",
+        }
+    )
+    assert context["message_thread_id"] == 73
+    assert context["topic_name"] == "Alpha Horizon Strategy"
+    assert context["topic_name_source"] == "tag:strategy"
+
+
+def test_manual_topic_mapping_is_durable_in_registry(monkeypatch):
+    monkeypatch.setattr(telegram_poller, "_topic_registry_cache", {})
+    monkeypatch.setattr(telegram_poller, "_save_topic_registry", lambda registry: None)
+
+    set_telegram_topic_mapping("-1002", 99, "Education and Skills")
+    groups = list_telegram_topic_mappings()
+
+    assert groups[0]["chat_id"] == "-1002"
+    assert groups[0]["topics"][0]["message_thread_id"] == 99
+    assert groups[0]["topics"][0]["name"] == "Education and Skills"

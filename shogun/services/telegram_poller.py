@@ -42,6 +42,16 @@ _tg_config_cache: dict = {"data": None, "ts": 0.0}
 _TG_CONFIG_TTL = 60  # seconds
 _topic_registry_cache: dict | None = None
 
+_TOPIC_TAG_NAMES = {
+    "general": "General",
+    "strategy": "Alpha Horizon Strategy",
+    "shogun": "Shogun AFM",
+    "research": "Research",
+    "personal": "Personal",
+    "education": "Education and Skills",
+    "news": "News & current events",
+}
+
 
 def _select_telegram_chat_mode(user_msg: str, history: list) -> tuple[str, str, dict]:
     """Choose a lane for Telegram, which has no graphical mode selector.
@@ -132,6 +142,64 @@ def _save_topic_registry(registry: dict) -> None:
         logger.warning("[Telegram] Could not save topic registry: %s", exc)
 
 
+def _topic_name_hint(msg: dict) -> tuple[str, str] | None:
+    """Extract an explicit topic name from Telegram service data or operator tags."""
+    created = msg.get("forum_topic_created")
+    edited = msg.get("forum_topic_edited")
+    if isinstance(created, dict) and created.get("name"):
+        return str(created["name"]).strip(), "telegram_topic_created"
+    if isinstance(edited, dict) and edited.get("name"):
+        return str(edited["name"]).strip(), "telegram_topic_edited"
+
+    text = str(msg.get("text") or msg.get("caption") or "").strip()
+    command = re.match(r"^/topic(?:@\w+)?\s+(.+)$", text, re.IGNORECASE)
+    if command:
+        return command.group(1).strip()[:200], "topic_command"
+    tag = re.match(r"^\*(general|strategy|shogun|research|personal|education|news)\b", text, re.IGNORECASE)
+    if tag:
+        key = tag.group(1).lower()
+        return _TOPIC_TAG_NAMES[key], f"tag:{key}"
+    return None
+
+
+def set_telegram_topic_mapping(chat_id: str, thread_id: int, name: str, *, source: str = "manual") -> dict:
+    """Persist an operator-confirmed mapping from Telegram thread ID to topic name."""
+    clean_name = str(name or "").strip()
+    if not clean_name:
+        raise ValueError("Topic name cannot be empty.")
+    registry = _load_topic_registry()
+    chat_key = str(chat_id)
+    chat_entry = registry.setdefault(chat_key, {
+        "chat_id": chat_key, "chat_title": "", "chat_type": "supergroup", "topics": {},
+    })
+    topic = chat_entry.setdefault("topics", {}).setdefault(str(int(thread_id)), {})
+    topic.update({
+        "message_thread_id": int(thread_id),
+        "name": clean_name[:200],
+        "name_source": source,
+        "status": topic.get("status") or "open",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+    _save_topic_registry(registry)
+    return topic
+
+
+def list_telegram_topic_mappings() -> list[dict]:
+    """Return every discovered Telegram chat and its durable topic mappings."""
+    registry = _load_topic_registry()
+    return [
+        {
+            **chat,
+            "chat_id": chat.get("chat_id") or chat_id,
+            "topics": sorted(
+                (chat.get("topics") or {}).values(),
+                key=lambda item: int(item.get("message_thread_id") or 0),
+            ),
+        }
+        for chat_id, chat in registry.items()
+    ]
+
+
 def _update_topic_registry_from_message(msg: dict) -> None:
     """Remember group/forum topic names Telegram reveals in service messages."""
     chat = msg.get("chat") or {}
@@ -154,10 +222,10 @@ def _update_topic_registry_from_message(msg: dict) -> None:
         _save_topic_registry(registry)
         return
 
-    topic_entry = chat_entry.setdefault("topics", {}).setdefault(str(thread_id), {
-        "message_thread_id": thread_id,
-    })
+    topic_entry = chat_entry.setdefault("topics", {}).setdefault(str(thread_id), {"message_thread_id": thread_id})
     topic_entry["message_thread_id"] = thread_id
+    topic_entry["last_seen_at"] = datetime.now(timezone.utc).isoformat()
+    topic_entry["status"] = topic_entry.get("status") or "open"
 
     created = msg.get("forum_topic_created")
     edited = msg.get("forum_topic_edited")
@@ -166,6 +234,9 @@ def _update_topic_registry_from_message(msg: dict) -> None:
         topic_entry["icon_color"] = created.get("icon_color")
     if isinstance(edited, dict) and edited.get("name"):
         topic_entry["name"] = edited["name"]
+    hint = _topic_name_hint(msg)
+    if hint:
+        topic_entry["name"], topic_entry["name_source"] = hint
     if msg.get("forum_topic_closed") is not None:
         topic_entry["status"] = "closed"
     if msg.get("forum_topic_reopened") is not None:
@@ -230,6 +301,7 @@ def _telegram_context_from_message(msg: dict) -> dict:
         "message_thread_id": thread_id,
         "is_topic_message": bool(msg.get("is_topic_message")),
         "topic_name": topic_entry.get("name") or "",
+        "topic_name_source": topic_entry.get("name_source") or "",
         "known_topics": [
             {
                 "message_thread_id": value.get("message_thread_id") or key,
@@ -736,7 +808,10 @@ async def telegram_poller_task():
             params = {
                 "timeout": "30",
                 "offset": str(offset),
-                "allowed_updates": json.dumps(["message", "my_chat_member", "chat_member"]),
+                "allowed_updates": json.dumps([
+                    "message", "edited_message", "channel_post", "edited_channel_post",
+                    "my_chat_member", "chat_member",
+                ]),
             }
 
             client = _get_tg_client()
@@ -790,7 +865,12 @@ async def telegram_poller_task():
                 if member_update:
                     _register_group_from_member_update(member_update)
 
-                msg = update.get("message")
+                msg = (
+                    update.get("message")
+                    or update.get("edited_message")
+                    or update.get("channel_post")
+                    or update.get("edited_channel_post")
+                )
                 if not msg:
                     continue
 

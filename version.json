@@ -1,8 +1,8 @@
 {
-  "version": "1.9.0",
+  "version": "1.9.1",
   "name": "Shogun OS",
-  "build": 67,
+  "build": 68,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Adds governed image viewing in chat and Telegram, secure visual artifact storage, thumbnails, follow-up visual context, vision routing, retention controls, and Flow Stack image inputs."
+  "changelog": "Adds governed AgentFlow and Flow Stack deletion tools, captures Telegram forum thread metadata, learns topic names from events and tags, and adds editable topic mapping in Katana."
 }

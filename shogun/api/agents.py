@@ -1038,7 +1038,7 @@ async def _shogun_chat_internal(
     from shogun.db.models.model_routing import ModelRoutingProfile
     from shogun.db.models.operator import Operator
     from shogun.api.deps import get_db
-    from shogun.services.native_skills import NATIVE_TOOLS, execute_native_tool
+    from shogun.services.native_skills import NATIVE_TOOLS, WORKFLOW_TOOL_PERMISSIONS, execute_native_tool
     from shogun.services.posture_guard import check_kill_switch, get_posture_tool_filter, filter_tools_by_posture
     from shogun.config import settings
     from sqlalchemy import select
@@ -1497,7 +1497,8 @@ YOUR CAPABILITIES:
 - **Cron Jobs**: List, create, and delete Bushido schedules (cron jobs) using the schedule tools (list_cron_jobs, create_cron_job, delete_cron_job)
 - **Web Browsing (Mado)**: Browse any web page, extract content, and take screenshots using the browse_web and take_screenshot tools. You have a REAL browser.
 - **Desktop Control (Ronin)**: {'ENABLED ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â You can take desktop screenshots, click anywhere on screen, and type on the keyboard using desktop_screenshot, desktop_click, and desktop_type tools. Use desktop_screenshot FIRST to see the screen, then act on what you see.' if _posture_filter.get('ronin_enabled') else 'DISABLED ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Desktop control is ONLY available at the Ronin security posture. The user must switch to Ronin tier in the Torii to enable this.'}
-- **Agent Flow**: Create visual AI workflows using the create_agent_flow tool
+- **Agent Flow**: Create, edit, and delete governed visual workflows using create_agent_flow, edit_agent_flow, and delete_agent_flow
+- **Flow Stack**: Create, edit, and delete long-running stacks using create_flow_stack, edit_flow_stack, and delete_flow_stack
 - **Workspace**: {'ENABLED — You have a dedicated workspace folder at ' + str(settings.workspace_path.resolve()) + '. Use workspace_info, workspace_list, workspace_read, workspace_write, workspace_mkdir, and workspace_delete to manage files. This is your persistent working directory for saving outputs, notes, data, and any files you create.' if _posture_filter.get('workspace_enabled', True) else 'DISABLED — Workspace access is blocked at SHRINE posture.'}
 
 CRITICAL ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â TOOL USAGE RULES (MANDATORY):
@@ -1571,12 +1572,6 @@ BEHAVIOUR:
                     # Determine which native skills are allowed based on policy limits
                     allow_skills = not perms.get("skills", {}).get("require_approval", True)
                     allow_auto_spawn = perms.get("subagents", {}).get("allow_auto_spawn", False)
-                    workflow_tool_permissions = {
-                        "create_agent_flow": ("agentflow", "allow_create"),
-                        "edit_agent_flow": ("agentflow", "allow_edit"),
-                        "create_flow_stack": ("flow_stack", "allow_create"),
-                        "edit_flow_stack": ("flow_stack", "allow_edit"),
-                    }
                     _denied_tools = []
                     for tool in NATIVE_TOOLS:
                         tool_name = tool["function"]["name"]
@@ -1586,7 +1581,7 @@ BEHAVIOUR:
                         if tool_name in ["list_available_models", "update_model_settings"] and not allow_skills:
                             _denied_tools.append(tool_name)
                             continue
-                        workflow_permission = workflow_tool_permissions.get(tool_name)
+                        workflow_permission = WORKFLOW_TOOL_PERMISSIONS.get(tool_name)
                         if workflow_permission and not perms.get(workflow_permission[0], {}).get(workflow_permission[1], False):
                             _denied_tools.append(tool_name)
                             continue

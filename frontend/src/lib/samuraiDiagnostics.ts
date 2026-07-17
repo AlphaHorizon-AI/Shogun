@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'shogun.samuraiDiagnostics';
 const MAX_EVENTS = 250;
-const DIAGNOSTIC_BUILD = '1.9.0-build67';
+const DIAGNOSTIC_BUILD = '1.9.1-build68';
 
 type DiagnosticEvent = {
   ts: string;
