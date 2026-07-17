@@ -1,8 +1,8 @@
 {
-  "version": "1.15.0",
+  "version": "1.16.0",
   "name": "Shogun OS",
-  "build": 77,
+  "build": 78,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Adds Order 12 Mado Hardening: governed persistent browser sessions, profile locks, structured hybrid page observation, reliable navigation and actions, controlled uploads/downloads, verification and retry recovery, Stack artifacts and audit trajectories, live session viewer, explicit permissions, global activity indicator, kill switch, and canonical portal demo."
+  "changelog": "Adds ALE benchmark mode with full runtime, deployer, trajectory mapper, artifact exporter, verification, redaction, and CLI. Adds CUA integration adapter with tool mapping. Adds MCP client with typed protocol. Adds benchmark API endpoints and setup defaults. Extends Stack Orchestrator with external run lifecycle (create, step, finalize) for benchmark harness."
 }
