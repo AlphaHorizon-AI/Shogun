@@ -1,14 +1,56 @@
+import uuid
+from types import SimpleNamespace
+
+import pytest
+
 from shogun.api.agents import _chat_attachment_content
 from shogun.services import telegram_poller
 from shogun.services.telegram_poller import (
     _attachment_context_text,
+    _prepare_telegram_visual_context,
     _select_telegram_chat_mode,
     _telegram_context_from_message,
     _telegram_context_text,
+    _update_topic_registry_from_message,
     list_telegram_topic_mappings,
     set_telegram_topic_mapping,
-    _update_topic_registry_from_message,
 )
+
+
+@pytest.mark.asyncio
+async def test_telegram_image_is_analyzed_then_removed_from_text_model_payload(monkeypatch):
+    artifact_id = uuid.uuid4()
+
+    async def fake_get(self, requested_id):
+        assert requested_id == artifact_id
+        return SimpleNamespace(id=artifact_id)
+
+    async def fake_analyze(self, artifact, prompt, analysis_type, allow_cloud):
+        assert "What is in this image?" in prompt
+        assert analysis_type == "telegram_vision"
+        assert allow_cloud is True
+        return SimpleNamespace(result_text="A person is visible in a portrait photograph.")
+
+    monkeypatch.setattr("shogun.services.visual_intake.VisualIntakeService.get", fake_get)
+    monkeypatch.setattr("shogun.services.visual_intake.VisualIntakeService.analyze", fake_analyze)
+
+    prompt, safe_attachments = await _prepare_telegram_visual_context(
+        object(),
+        "What is in this image?",
+        [
+            {
+                "artifact_id": str(artifact_id),
+                "filename": "portrait.jpg",
+                "mime_type": "image/jpeg",
+                "is_image": True,
+            },
+            {"filename": "notes.txt", "mime_type": "text/plain"},
+        ],
+    )
+
+    assert "Governed visual analysis for portrait.jpg" in prompt
+    assert "A person is visible" in prompt
+    assert safe_attachments == [{"filename": "notes.txt", "mime_type": "text/plain"}]
 
 
 def test_telegram_defaults_to_tool_capable_mission_mode():

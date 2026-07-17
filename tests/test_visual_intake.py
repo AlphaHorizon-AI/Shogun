@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import shogun.db.models  # noqa: F401 - registers all tables
 from shogun.config import settings
 from shogun.db.base import Base
+from shogun.db.models.model_provider import ModelProvider
+from shogun.engine.flow_engine import _resolve_vision_chain
 from shogun.services.visual_intake import VisualIntakeError, VisualIntakeService
 
 
@@ -55,3 +57,30 @@ async def test_deleted_image_is_not_returned(visual_service):
     artifact = await visual_service.ingest(_png(), filename="screen.png")
     await visual_service.delete(artifact)
     assert await visual_service.get(artifact.id) is None
+
+
+@pytest.mark.asyncio
+async def test_vision_chain_skips_text_model_and_selects_connected_local_vision_model(visual_service):
+    text_provider = ModelProvider(
+        provider_type="openrouter",
+        name="qwen/qwen3-next-80b",
+        slug="text-only",
+        status="connected",
+        is_local=False,
+        config={"model_id": "qwen/qwen3-next-80b"},
+    )
+    vision_provider = ModelProvider(
+        provider_type="ollama",
+        name="gemma3:12b-it-qat",
+        slug="local-vision",
+        status="connected",
+        is_local=True,
+        base_url="http://127.0.0.1:11434",
+        config={"model_id": "gemma3:12b-it-qat"},
+    )
+    visual_service.session.add_all([text_provider, vision_provider])
+    await visual_service.session.flush()
+
+    chain = await _resolve_vision_chain(visual_service.session)
+
+    assert [target[1] for target in chain] == ["gemma3:12b-it-qat"]

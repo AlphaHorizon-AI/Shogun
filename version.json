@@ -1,8 +1,8 @@
 {
-  "version": "1.10.0",
+  "version": "1.10.1",
   "name": "Shogun OS",
-  "build": 69,
+  "build": 70,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Adds Shogun IDE Mode with a governed VS Code bridge, Campaign/Ronin permission gates, one-time pairing, approved workspaces, structured file/search/task/Git tools, snapshots and rollback, diagnostics, audit events, Katana controls, and five coding Agent Stack templates."
+  "changelog": "Fixes Telegram vision by routing images only to governed vision-capable models, then passing the visual analysis safely into Shogun chat."
 }

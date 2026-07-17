@@ -228,11 +228,11 @@ class VisualIntakeService:
     async def analyze(
         self, artifact: ImageArtifact, prompt: str, analysis_type: str = "describe", allow_cloud: bool = False
     ) -> ImageAnalysis:
-        from shogun.engine.flow_engine import _call_llm_chain, _resolve_llm_chain
+        from shogun.engine.flow_engine import _call_llm_chain, _resolve_vision_chain
 
         permissions = await self.permissions()
         allow_cloud = bool(allow_cloud and permissions.get("allow_cloud_vision", False))
-        chain = await _resolve_llm_chain(self.session)
+        chain = await _resolve_vision_chain(self.session)
         if not permissions.get("allow_local_vision", True):
             chain = [
                 entry
@@ -280,11 +280,11 @@ class VisualIntakeService:
     async def compare(
         self, first: ImageArtifact, second: ImageArtifact, prompt: str, allow_cloud: bool = False
     ) -> ImageAnalysis:
-        from shogun.engine.flow_engine import _call_llm_chain, _resolve_llm_chain
+        from shogun.engine.flow_engine import _call_llm_chain, _resolve_vision_chain
 
         permissions = await self.permissions()
         allow_cloud = bool(allow_cloud and permissions.get("allow_cloud_vision", False))
-        chain = await _resolve_llm_chain(self.session)
+        chain = await _resolve_vision_chain(self.session)
         if not permissions.get("allow_local_vision", True):
             chain = [
                 entry

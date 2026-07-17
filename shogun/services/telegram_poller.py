@@ -88,6 +88,62 @@ def _select_telegram_chat_mode(user_msg: str, history: list) -> tuple[str, str, 
     }
 
 
+async def _prepare_telegram_visual_context(
+    session, prompt: str, attachments: list[dict]
+) -> tuple[str, list[dict]]:
+    """Analyze Telegram images with the governed vision router before chat.
+
+    The regular chat model may be text-only. Passing raw image bytes to it
+    caused OpenRouter's "No endpoints found that support image input" error.
+    """
+    import uuid
+
+    from shogun.services.visual_intake import VisualIntakeError, VisualIntakeService
+
+    visual = VisualIntakeService(session)
+    safe_attachments: list[dict] = []
+    visual_context: list[str] = []
+    for attachment in attachments:
+        is_image = bool(attachment.get("is_image")) or str(
+            attachment.get("mime_type", "")
+        ).startswith("image/")
+        if not is_image:
+            safe_attachments.append(attachment)
+            continue
+
+        artifact_id = attachment.get("artifact_id")
+        filename = attachment.get("filename") or "Telegram image"
+        if not artifact_id:
+            visual_context.append(
+                f"[Visual analysis unavailable for {filename}: image artifact was not created.]"
+            )
+            continue
+        try:
+            artifact = await visual.get(uuid.UUID(str(artifact_id)))
+            if not artifact:
+                raise VisualIntakeError("image artifact was not found")
+            analysis = await visual.analyze(
+                artifact,
+                (
+                    "Analyze this Telegram image accurately so another assistant can answer the user's request. "
+                    "Describe visible people, objects, text, layout, and other relevant details. "
+                    f"User request and chat context: {prompt}"
+                ),
+                analysis_type="telegram_vision",
+                allow_cloud=True,
+            )
+            visual_context.append(
+                f"[Governed visual analysis for {filename}]\n{analysis.result_text}"
+            )
+        except Exception as exc:
+            logger.warning("[Telegram] Vision analysis unavailable for %s: %s", filename, exc)
+            visual_context.append(f"[Visual analysis unavailable for {filename}: {exc}]")
+
+    if visual_context:
+        prompt = f"{prompt}\n\n" + "\n\n".join(visual_context)
+    return prompt, safe_attachments
+
+
 async def _get_cached_telegram_config() -> tuple[dict, dict]:
     """Return (bushido_settings, telegram_config) with 60s caching.
 
@@ -634,6 +690,9 @@ async def process_telegram_message(
                 append_chat_message,
                 get_chat_context,
             )
+            prompt_msg, chat_attachments = await _prepare_telegram_visual_context(
+                session, prompt_msg, attachments
+            )
             history = await get_chat_context(session, limit=20)
             await append_chat_message(
                 session,
@@ -689,7 +748,7 @@ async def process_telegram_message(
                 logger.info("[Telegram] Routing to Mission lane...")
                 response_stream = await _shogun_chat_internal(
                     user_msg=prompt_msg, history=history, svc=svc,
-                    classification=classification, attachments=attachments,
+                    classification=classification, attachments=chat_attachments,
                 )
 
             # 4. Aggregate the SSE chunks and update Telegram periodically

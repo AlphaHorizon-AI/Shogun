@@ -1871,6 +1871,94 @@ async def _resolve_llm_chain(
     return chain
 
 
+_VISION_MODEL_MARKERS = (
+    "gemma3",
+    "llava",
+    "bakllava",
+    "minicpm-v",
+    "moondream",
+    "qwen-vl",
+    "qwen2-vl",
+    "qwen2.5-vl",
+    "qwen3-vl",
+    "pixtral",
+    "llama3.2-vision",
+    "llama-3.2-vision",
+    "gemini",
+    "gpt-4o",
+    "gpt-4.1",
+    "gpt-5",
+    "claude-3",
+    "claude-sonnet",
+)
+
+
+def _model_supports_vision(model_name: str, provider: ModelProvider | None = None) -> bool:
+    """Conservatively identify provider models known to accept image input."""
+    config = (provider.config or {}) if provider else {}
+    if config.get("supports_vision") is True:
+        return True
+    normalized = model_name.lower().replace("_", "-")
+    return any(marker in normalized for marker in _VISION_MODEL_MARKERS)
+
+
+async def _resolve_vision_chain(
+    session: AsyncSession,
+    routing_profile_id: str | None = None,
+) -> list[tuple[ModelProvider, str, str, dict]]:
+    """Resolve only endpoints that are explicitly or reliably vision-capable.
+
+    The normal routing profile may intentionally point at a fast text model.
+    Images must never be sent to that endpoint unless it supports vision.
+    """
+    chain: list[tuple[ModelProvider, str, str, dict]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(target: tuple[ModelProvider, str, str, dict]) -> None:
+        key = (str(target[0].id), target[1])
+        if key not in seen:
+            seen.add(key)
+            chain.append(target)
+
+    # Preserve the configured routing order for any vision-capable entries.
+    for target in await _resolve_llm_chain(session, routing_profile_id):
+        if _model_supports_vision(target[1], target[0]):
+            add(target)
+
+    # Model definitions are authoritative capability declarations.
+    definitions = (
+        await session.execute(
+            select(ModelDefinition)
+            .where(
+                ModelDefinition.status == "available",
+                ModelDefinition.supports_vision.is_(True),
+            )
+            .order_by(ModelDefinition.created_at)
+        )
+    ).scalars().unique().all()
+    for definition in definitions:
+        if definition.provider and definition.provider.status == "connected":
+            add(_provider_connection(definition.provider, definition.model_key))
+
+    # Older installations store their model directly on the provider.
+    providers = (
+        await session.execute(
+            select(ModelProvider)
+            .where(ModelProvider.status == "connected")
+            .order_by(ModelProvider.created_at)
+        )
+    ).scalars().all()
+    for provider in providers:
+        vision_model = (provider.config or {}).get("vision_model")
+        if vision_model:
+            add(_provider_connection(provider, str(vision_model)))
+        default_target = _provider_connection(provider)
+        if _model_supports_vision(default_target[1], provider):
+            add(default_target)
+
+    return chain
+
+
 async def _call_llm(
     messages: list[dict],
     model_name: str,
