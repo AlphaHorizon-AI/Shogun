@@ -44,6 +44,15 @@ Most AI tools give you a chat box. Shogun gives you an **entire operating system
 | 📊 **Compliance Dashboard** | NIS2, SOC2, and EU AI Act-ready logging. Tamper-proof HMAC audit chain, trace reconstruction, and compliance exports. |
 | 🎓 **4,000+ Skills (Dojo)** | Browse and certify your agents on specialized skills from [OpenClaw College](https://www.openclawcollege.com). Training literature, exams, and achievement tracking. |
 | 🔄 **Self-Improvement (Bushido)** | Automated reflection cycles where the AI analyzes its own performance and generates optimization insights. |
+| 📐 **Flow Stacking** | Chain multiple Agent Flows into governed, long-horizon execution pipelines with planning, checkpoints, verification gates, retries, and artifact capture — all managed by the Stack Orchestrator. |
+| 📸 **Visual Intake** | Secure image upload and vision analysis — SHA-256 dedup, EXIF stripping, OCR, AI describe/inspect/compare, thumbnail generation, and governed cloud vs local vision permissions. |
+| 💻 **VS Code IDE Mode** | Connect your VS Code editor via a governed WebSocket bridge. File reads, patches, terminal commands, Git operations, and diagnostics — all enforced server-side with posture gates, workspace boundaries, and protected file patterns. |
+| 🧭 **Model Router** | Provider-agnostic, task-aware model selection with 5 built-in routing profiles (ultra_economy → premium). Model registry, routing decisions, usage telemetry, and per-task complexity scoring. |
+| 🥋 **Active Skills** | Runtime skill retrieval from the Dojo — automatic selection, policy gating, LLM context injection, and outcome tracking. Skills are live during agent execution, not just catalog entries. |
+| 📊 **Skill Trajectory Capture** | Structured evidence collection for every skill invocation — episodes, tool links, verification links, outcome scores, and improvement candidates for continuous skill optimization. |
+| 🖥️ **Ronin Desktop Control** | Full desktop automation — screenshots, mouse, keyboard, window management, app trust levels, and Komainu guardian system. Requires the highest security tier. |
+| 🔬 **ALE Benchmark** | Headless Agent-Level Evaluation harness for benchmarking Shogun in governed conditions — task validation, subprocess execution, trajectory/artifact export, and secret redaction. |
+| 🧬 **SkillOpt** | Automated skill optimization pipeline — version management, training runs, candidate generation, validation scoring, and governed promotion/rejection. Evolve your skills through data-driven feedback loops. |
 | 💾 **Backup & Auto-Updates** | Scheduled backups with configurable retention. One-click updates that preserve all your data and settings. |
 | 🌍 **14 Languages** | The entire interface is fully translated. Switch anytime from the dashboard. |
 | 🏗️ **Setup Wizard** | 8-step guided onboarding gets you operational in minutes. |
@@ -563,6 +572,409 @@ Shogun runs on `localhost:8000` by default. For enterprise agents to reach it ov
 
 ---
 
+## 📐 Flow Stacking & Stack Orchestrator
+
+Shogun's **Stack Orchestrator** is the persistent, governed runtime layer above the Agent Flow engine. While individual Agent Flows handle single-pipeline execution, Flow Stacking chains multiple flows into **long-horizon execution pipelines** with full lifecycle management.
+
+### What the Stack Orchestrator Does
+
+| Capability | Description |
+|---|---|
+| 🎯 **Goal-Driven Planning** | Describe an objective in natural language — the planner builds an execution plan from available flows |
+| 💾 **Durable Checkpoints** | Context summaries and state snapshots after each step — resume where you left off after restarts |
+| ✅ **Verification Gates** | Independent quality checks (deterministic + semantic model judging) before proceeding to the next phase |
+| 🔄 **Governed Retries** | Automatic failure categorization (permission, runtime, verification, tool/flow) with configurable retry policies |
+| ⏸️ **Pause / Resume** | Pause a running stack mid-execution and resume later — checkpoints preserve full context |
+| 📦 **Artifact Capture** | Automatically collect and catalog outputs from each phase (files, reports, analysis results) |
+| 📊 **Execution Trees** | Visual tree representation of multi-step execution with per-node status, timing, and model usage |
+| 🧠 **Context Compaction** | Budget-aware context management for hand-offs between phases — keeps token usage under control |
+| 🛡️ **Approval Policies** | Configurable human-in-the-loop gates — approve the plan, approve individual steps, or run fully autonomous |
+
+### Four Operating Modes
+
+| Mode | Description |
+|------|-------------|
+| `goal_driven` | Describe what you want — the planner selects and sequences flows automatically |
+| `selected_stack` | Pick a specific Flow Stack to execute with governed lifecycle |
+| `template` | Instantiate a stack from a reusable template |
+| `benchmark` | Headless execution for ALE benchmark harness integration |
+
+### API Endpoints
+
+All endpoints live under `/api/v1/stacks/orchestrator`:
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/create` | Create a new stack run |
+| `GET` | `/` | List all stack runs |
+| `GET` | `/{id}` | Get run with steps |
+| `GET` | `/{id}/tree` | Execution tree view |
+| `GET` | `/{id}/checkpoints` | List checkpoints |
+| `GET` | `/{id}/artifacts` | List artifacts |
+| `GET` | `/{id}/verifications` | List verifications |
+| `GET` | `/{id}/summary` | Final summary |
+| `POST` | `/{id}/plan-decision` | Approve or reject the plan |
+| `POST` | `/{id}/step-decision` | Approve or reject a step |
+| `POST` | `/{id}/start` | Start execution |
+| `POST` | `/{id}/pause` | Pause execution |
+| `POST` | `/{id}/resume` | Resume from checkpoint |
+| `POST` | `/{id}/cancel` | Cancel execution |
+| `POST` | `/{id}/recover` | Recover from failure |
+
+### Governed Workflow Permissions
+
+The security posture system enforces workflow permissions at both the capability and per-invocation level:
+
+| Permission | Required Posture | Controls |
+|---|---|---|
+| `agentflow_create` | Tactical+ | Creating and editing Agent Flows |
+| `agentflow_execute` | Tactical+ | Running Agent Flows |
+| `agentflow_autonomous` | Tactical+ | Autonomous flow operation |
+| `flowstack_create` | Tactical+ | Creating and editing Flow Stacks |
+| `flowstack_execute` | Tactical+ | Running Flow Stacks |
+| `flowstack_autonomous` | Tactical+ | Autonomous stack operation |
+
+---
+
+## 📸 Visual Intake — Governed Image Analysis
+
+The **Visual Intake** system provides secure, source-neutral image processing with full governance. Upload images from any source (chat, Telegram, email, browser) — Shogun normalizes, deduplicates, and analyzes them with configurable vision permissions.
+
+### Capabilities
+
+| Feature | Description |
+|---|---|
+| 📤 **Upload & Normalize** | Accept JPEG, PNG, WebP, GIF — normalize to WebP with automatic thumbnail generation |
+| 🔍 **SHA-256 Dedup** | Same image uploaded twice? Reuses the existing artifact instead of duplicating |
+| 🧹 **EXIF Stripping** | All EXIF metadata (GPS, camera info, timestamps) is automatically stripped for privacy |
+| 🤖 **AI Describe** | Generate natural language descriptions of images using your configured vision model |
+| 🔎 **AI Inspect** | Deep inspection with custom prompts — ask specific questions about image content |
+| 📝 **OCR / Text Extract** | Extract text from screenshots, documents, and photos |
+| ⚖️ **Compare** | Side-by-side comparison of two images with AI-generated analysis |
+| 📌 **Pin** | Pin important images to prevent automatic retention expiry |
+| 🔗 **Stack Attach** | Attach images as artifacts to Stack Orchestrator runs |
+
+### API Endpoints
+
+All endpoints live under `/api/v1/visual`:
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/intake` | Upload an image |
+| `GET` | `/recent` | List recent images |
+| `GET` | `/{id}` | Image metadata |
+| `GET` | `/{id}/content` | Normalized WebP content |
+| `GET` | `/{id}/thumbnail` | 640×640 thumbnail |
+| `POST` | `/{id}/describe` | AI description |
+| `POST` | `/{id}/inspect` | Custom prompt inspection |
+| `POST` | `/{id}/extract-text` | OCR / text extraction |
+| `POST` | `/compare` | Compare two images |
+| `POST` | `/{id}/pin` | Pin image |
+| `POST` | `/{id}/attach-to-stack/{run_id}` | Attach to stack run |
+| `DELETE` | `/{id}` | Soft-delete image |
+
+### Security
+
+7 independent permission flags control Visual Intake behavior:
+
+| Permission | Default | Purpose |
+|---|---|---|
+| `allow_image_intake` | ✅ On | Accept image uploads |
+| `allow_local_vision` | ✅ On | Analyze with local models |
+| `allow_cloud_vision` | ❌ Off | Analyze with cloud models (privacy-sensitive) |
+| `allow_ocr` | ✅ On | Text extraction |
+| `allow_attach_to_stack` | ✅ On | Link to stack runs |
+| `allow_auto_memory` | ❌ Off | Auto-store analyses in memory (privacy-sensitive) |
+| `allow_delete` | ✅ On | Soft-delete images |
+
+---
+
+## 💻 VS Code IDE Mode
+
+The **IDE Mode** connects Shogun to your VS Code editor via a governed WebSocket bridge. Your AI agent can read files, apply patches, run terminal commands, execute Git operations, and access diagnostics — all enforced server-side with workspace boundaries and protected file patterns.
+
+### How It Works
+
+```
+┌──────────────┐         WebSocket (localhost only)         ┌──────────────┐
+│   VS Code    │ ◄──────────────────────────────────────── │   Shogun     │
+│  Extension   │    One-time pairing token (SHG-*)          │  IDE Service │
+│              │    File ops, terminal, git, diagnostics    │              │
+└──────────────┘                                            └──────────────┘
+```
+
+### Capabilities
+
+| Category | Operations |
+|---|---|
+| 📂 **File Operations** | Read, create, list, search, apply patches, delete (with automatic snapshots for rollback) |
+| 💻 **Terminal** | Run approved commands (allowlisted per posture tier) |
+| 🔀 **Git** | Status, diff, branch, create-branch, commit (push disabled by default) |
+| 🔍 **Diagnostics** | Read VS Code errors, warnings, and info messages |
+| 📋 **Editor Context** | Access currently open file, selection, and cursor position |
+| ↩️ **Rollback** | Restore files to pre-edit snapshots |
+
+### Security Model
+
+| Layer | Enforcement |
+|---|---|
+| **Posture Gate** | Requires Campaign or Ronin tier + explicit `ide_enabled` flag |
+| **Pairing Tokens** | `SHG-` prefixed, SHA-256 verified, 10-minute expiry, one-time use |
+| **WebSocket Binding** | Localhost only (`127.0.0.1` / `::1`) — no remote connections |
+| **Workspace Boundaries** | Operations restricted to approved workspace paths — path traversal blocked |
+| **Protected Files** | `.env`, `*.pem`, `*.key`, `id_rsa*`, `credentials*`, `secrets.*` — always blocked |
+| **Denied Directories** | `.ssh`, `.aws`, `.azure`, `.gnupg`, `.kube` — access forbidden |
+| **Symlink Detection** | Symlinks that escape workspace boundaries are rejected |
+| **Command Allowlist** | Campaign tier: `pytest`, `python`, `npm`, `npx`, `ruff`, `mypy`, `tsc`, `cargo`, `go` |
+| **Git Restrictions** | Push disabled by default; mutations require Ronin + explicit approval |
+| **File Snapshots** | Automatic SHA-256 snapshots before every write (rollback support) |
+| **Kill Switch** | Emergency disable endpoint instantly terminates all IDE connections |
+
+### VS Code Extension
+
+Install the `shogun-ide-bridge` extension (`bridge/vscode/`):
+
+| Setting | Default |
+|---|---|
+| `shogun.bridgeUrl` | `ws://127.0.0.1:8000/api/v1/ide/bridge` |
+
+Commands: **Shogun: Connect**, **Shogun: Disconnect**, **Shogun: Open Dashboard**
+
+---
+
+## 🧭 Model Router — Intelligent Model Selection
+
+The **Model Router** provides provider-agnostic, task-aware model selection. Instead of hardcoding which model handles each request, the router evaluates the task type, complexity, and your active routing profile to select the optimal model automatically.
+
+### 5 Built-In Routing Profiles
+
+| Profile | Strategy | Best For |
+|---|---|---|
+| `ultra_economy` | Strongly prefers local models, minimizes API calls | Cost-conscious, privacy-first |
+| `economy` | Low-cost daily work, escalates only for complex tasks | General daily usage |
+| `balanced` | Recommended balance of quality and cost (**default**) | Most users |
+| `high_capability` | Uses stronger models earlier in the complexity curve | Development, coding |
+| `premium` | Maximum quality, always picks the best available model | Critical tasks, production |
+
+### Task Type Classification
+
+The router classifies every request into one of 20+ task types across 5 complexity tiers:
+
+| Tier | Example Task Types |
+|---|---|
+| **Simple** | `simple_chat`, `classification`, `extraction`, `memory_write` |
+| **Moderate** | `summarization`, `productivity_task`, `browser_task`, `skill_selection` |
+| **Complex** | `planning`, `coding_plan`, `coding_edit`, `stack_planning` |
+| **Critical** | `complex_reasoning`, `test_failure_analysis`, `self_verification` |
+| **Vision** | `visual_understanding`, `screenshot_analysis`, `photo_understanding` |
+
+### API Endpoints
+
+All endpoints live under `/api/v1/models`:
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/routing/profiles` | List all routing profiles |
+| `GET` | `/routing/profiles/active` | Get active profile |
+| `POST` | `/routing/profiles/active` | Set active profile |
+| `GET` | `/registry` | List model registry |
+| `POST` | `/registry` | Add model to registry |
+| `POST` | `/registry/{id}/test` | Test model connection |
+| `POST` | `/route` | Route a task (persisted) |
+| `POST` | `/route/preview` | Preview routing (no persist) |
+| `GET` | `/routing/decisions` | List routing decisions |
+| `GET` | `/usage/summary` | Usage summary |
+| `GET` | `/routing/task-types` | List known task types |
+
+---
+
+## 🖥️ Ronin — Desktop Automation
+
+**Ronin** gives your AI agent full desktop control — screenshots, mouse clicks, keyboard input, window management, and application trust levels. It operates under the strictest security tier and includes the **Komainu** guardian system for continuous monitoring.
+
+### Capabilities
+
+| Feature | Description |
+|---|---|
+| 📸 **Screenshots** | Capture full-desktop or window-specific screenshots |
+| 🖱️ **Mouse Control** | Click, drag, scroll at specific coordinates |
+| ⌨️ **Keyboard Input** | Type text, press hotkeys, send key combinations |
+| 🪟 **Window Management** | List windows, focus by title, manage window states |
+| 🏷️ **App Trust Levels** | Classify applications as trusted, restricted, sensitive, or forbidden |
+| 🐕 **Komainu Guardian** | Continuous monitoring system — watches for anomalies during desktop sessions |
+
+### API Endpoints
+
+All endpoints live under `/api/v1/ronin`:
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/status` | Ronin system status |
+| `POST` | `/sessions` | Create desktop session |
+| `GET` | `/sessions` | List sessions |
+| `POST` | `/execute` | Execute Ronin action |
+| `POST` | `/desktop/enable` | Enable desktop control |
+| `POST` | `/desktop/disable` | Disable desktop control |
+| `POST` | `/desktop/screenshot` | Take screenshot |
+| `GET` | `/desktop/state` | Current desktop state |
+| `GET` | `/desktop/windows` | List windows |
+| `POST` | `/desktop/click` | Mouse click |
+| `POST` | `/desktop/type` | Keyboard input |
+| `POST` | `/desktop/hotkey` | Hotkey press |
+| `POST` | `/desktop/scroll` | Scroll |
+| `POST` | `/desktop/drag` | Drag operation |
+| `POST` | `/desktop/focus-window` | Focus window by title |
+
+### Security
+
+Ronin requires the **highest security tier** (Ronin posture) and an explicit confirmation string to enable:
+
+| Control | Description |
+|---|---|
+| **Posture Requirement** | Ronin tier only — not available in Campaign, Tactical, or lower |
+| **Explicit Confirmation** | Must type `ENABLE RONIN DESKTOP CONTROL` to activate |
+| **10+ Permission Flags** | `ronin_screenshots_enabled`, `ronin_mouse_enabled`, `ronin_keyboard_enabled`, `ronin_window_management_enabled`, `ronin_native_apps_enabled`, `ronin_require_verification`, `ronin_require_high_risk_approval`, `ronin_block_critical_actions`, `ronin_visible_indicator` |
+| **Protected Applications** | Configurable list of apps that cannot be interacted with |
+| **ToolGate Risk Rating** | `desktop_click` and `desktop_type` rated **high** risk — triggers confirmation modals |
+
+---
+
+## 🔬 ALE Benchmark Mode
+
+The **ALE (Agent-Level Evaluation)** benchmark harness lets you evaluate Shogun's performance in headless, governed conditions. Run standardized tasks, capture trajectories and artifacts, and export results — all integrated with the Stack Orchestrator.
+
+### API Endpoints
+
+All endpoints live under `/api/v1/benchmark`:
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/config` | Benchmark configuration |
+| `PATCH` | `/config` | Update benchmark settings |
+| `GET` | `/runs` | List benchmark runs |
+| `GET` | `/runs/{id}` | Get specific run |
+| `POST` | `/validate` | Validate task + sandbox config |
+| `POST` | `/runs` | Start benchmark run (subprocess) |
+| `POST` | `/runs/{id}/cancel` | Cancel active run |
+
+### Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Enable benchmark mode |
+| `default_posture` | `tactical` | Security posture for benchmark runs |
+| `default_model_profile` | `balanced` | Model routing profile |
+| `max_runtime_minutes` | `30` | Maximum runtime per run |
+| `trajectory_export` | `true` | Export execution trajectories |
+| `artifact_export` | `true` | Export captured artifacts |
+| `redact_secrets` | `true` | Redact secrets from exports |
+
+---
+
+## 🧬 SkillOpt — Automated Skill Optimization
+
+**SkillOpt** closes the loop between skill usage and skill improvement. It captures how skills perform at runtime, generates optimized candidate versions, validates them against held-out tasks, and promotes successful candidates — all governed by the same security model as the rest of Shogun.
+
+### The Optimization Pipeline
+
+```
+ Usage Events ──► Training Run ──► Candidate Generation ──► Validation ──► Promote / Reject
+      │                                                          │               │
+      └── Telemetry from Active Skill usage                      │               └── New active version
+                                                                 └── Safety checks + scoring
+```
+
+### API Endpoints
+
+All endpoints live under `/api/v1/skillopt`:
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/runs` | Start a training run |
+| `GET` | `/skills/{id}/versions` | List all versions for a skill |
+| `POST` | `/candidates/{id}/promote` | Promote candidate to active version |
+| `POST` | `/candidates/{id}/reject` | Reject candidate with reason |
+| `GET` | `/skills/{id}/usage` | Get usage events for a skill |
+
+### Data Model
+
+| Table | Purpose |
+|---|---|
+| `skill_versions` | Immutable snapshots — version number, content hash, validation score, status (candidate/active/retired) |
+| `skill_usage_events` | Runtime telemetry — model, posture, task type, outcome, score |
+| `skillopt_training_runs` | Parent record for optimization jobs — base version, optimizer model, target profile |
+| `skillopt_candidates` | Proposed modifications — content diff, validation score, promotion/rejection status |
+| `skillopt_eval_results` | Per-task validation outcomes — baseline vs candidate score, safety status, runtime cost |
+
+### Katana Integration
+
+The SkillOpt dashboard is accessible from the **Katana** configuration page as a dedicated tab. It provides:
+- Real-time tracking of active optimization runs
+- Interactive diff viewer for comparing candidate vs baseline content
+- One-click promote/reject controls with loading states
+- Metrics for average improvement scores
+
+---
+
+## 🥋 Active Skills & Trajectory Capture
+
+### Active Skills at Runtime
+
+When a Shogun agent processes a request, the **Active Skill** system automatically:
+
+1. **Retrieves** relevant skills from the Dojo catalog based on the task context
+2. **Gates** each skill against the current security posture and exam requirements
+3. **Injects** skill content into the LLM context (advisory or context_block mode)
+4. **Tracks** the outcome (success, partial, failed, not_used, blocked)
+
+### Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `active_skill_usage_enabled` | `true` | Enable active skill retrieval |
+| `active_skill_auto_activate` | `true` | Auto-activate matching skills |
+| `active_skill_max_per_run` | `5` | Max skills per execution run |
+| `active_skill_max_per_step` | `3` | Max skills per step |
+| `active_skill_max_total_context_tokens` | `2500` | Total token budget for injected skills |
+| `active_skill_require_exam_pass` | `true` | Only use skills the agent has passed exams for |
+| `active_skill_preserve_during_compaction` | `true` | Keep skill content during context compaction |
+
+### Trajectory Capture
+
+Every skill invocation generates a structured evidence trail across 7 tables:
+
+| Component | What It Records |
+|---|---|
+| **Candidate Retrievals** | Which skills were considered, their relevance scores, which were selected/rejected |
+| **Episodes** | Full skill usage lifecycle — selection reason, injection mode, status, timestamps |
+| **Trajectories** | Outcome with conservative scoring — contribution level and final score |
+| **Tool Links** | Which tools were called during skill usage, with input/output summaries |
+| **Verification Links** | How the outcome was verified — type, expected vs observed result |
+| **Outcome Scores** | Per-skill scoring with deterministic scoring method and explanation |
+| **Improvement Candidates** | Suggested improvements — issue type, observed problem, suggested fix, priority |
+
+All trajectory data is **secret-redacted** (API keys, tokens, private keys, bearer tokens, env values are automatically stripped).
+
+---
+
+## 🛡️ Mado Browser Hardening
+
+The Mado browser automation layer received significant hardening with governed reliability features:
+
+| Feature | Description |
+|---|---|
+| **Profile Isolation** | Persistent browser profiles with exclusive per-profile locks and path sanitization |
+| **Runtime State Tracking** | Per-session state: status, current URL, title, last action, retry count, timeline (last 200 events) |
+| **Permission Guard** | Comprehensive checks: posture, kill switch, headless/visible mode, downloads/uploads, form operations, domain allowlist/blocklist |
+| **Artifact Management** | JSON artifact storage with SHA-256 file descriptions, per-session listing |
+| **Structured Observation** | JavaScript observer scripts for page content extraction + screenshot capture |
+| **Page Verification** | Automated verification of page state after actions |
+| **Secret Redaction** | All events and artifacts are scrubbed of sensitive data |
+| **Domain Controls** | URL allowlist/blocklist enforcement, scheme restriction (http/https/file only) |
+| **Upload/Download Validation** | Upload paths restricted to workspace; download paths restricted to Mado directory |
+
+---
+
 ## 🚀 Install Shogun (One Click)
 
 **Prerequisites:** [Python 3.10+](https://www.python.org/downloads/) and [Node.js v18+](https://nodejs.org/en/download) must be installed.
@@ -636,6 +1048,13 @@ Shogun is built around a clear hierarchy of interconnected systems:
 | 🪟 **Mado** | Browser automation layer — web browsing, screenshots, content extraction via Playwright |
 | 🔗 **Nexus** | Agent-to-Agent collaboration — peer-to-peer shared workspaces **and** external enterprise agent gateway (A2A, Webhook, MCP) |
 | 🔄 **Agent Flow** | Visual workflow builder — drag-and-drop multi-agent pipelines |
+| 📐 **Stack Orchestrator** | Long-horizon Flow Stacking runtime — checkpoints, verification gates, retries, artifacts, and governed execution |
+| 📸 **Visual Intake** | Secure image processing — upload, normalize, deduplicate, analyze, and govern vision operations |
+| 💻 **IDE Mode** | VS Code integration via governed WebSocket bridge — file ops, terminal, Git, diagnostics |
+| 🧭 **Model Router** | Task-aware, provider-agnostic model selection with routing profiles and usage telemetry |
+| 🖥️ **Ronin** | Desktop automation — screenshots, mouse, keyboard, window management, with Komainu guardian |
+| 🔬 **ALE Benchmark** | Headless agent evaluation harness with trajectory capture and artifact export |
+| 🧬 **SkillOpt** | Automated skill optimization — versioning, training runs, candidate validation, and promotion |
 | 🎖️ **Gensui** | Agent Fleet Management — central command for monitoring and securing fleets of Shogun agents |
 
 ---
