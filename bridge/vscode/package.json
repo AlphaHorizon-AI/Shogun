@@ -1,0 +1,25 @@
+{
+  "name": "shogun-ide-bridge",
+  "displayName": "Shogun IDE Bridge",
+  "description": "Governed local VS Code adapter for Shogun IDE Mode.",
+  "version": "0.1.0",
+  "publisher": "shogun-afm",
+  "engines": { "vscode": "^1.95.0" },
+  "categories": ["Other", "Programming Languages"],
+  "activationEvents": ["onCommand:shogun.connect", "onView:shogun.ideBridge"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "shogun.connect", "title": "Shogun: Connect IDE Bridge" },
+      { "command": "shogun.disconnect", "title": "Shogun: Disconnect IDE Bridge" },
+      { "command": "shogun.openDashboard", "title": "Shogun: Open Dashboard" }
+    ],
+    "viewsContainers": { "activitybar": [{ "id": "shogun", "title": "Shogun", "icon": "media/shogun.svg" }] },
+    "views": { "shogun": [{ "id": "shogun.ideBridge", "name": "Shogun IDE Bridge" }] },
+    "configuration": { "title": "Shogun IDE Bridge", "properties": {
+      "shogun.bridgeUrl": { "type": "string", "default": "ws://127.0.0.1:8000/api/v1/ide/bridge", "description": "Local Shogun WebSocket endpoint." }
+    }}
+  },
+  "scripts": { "compile": "tsc -p ./", "package": "vsce package" },
+  "devDependencies": { "@types/vscode": "^1.95.0", "typescript": "^5.7.0", "@vscode/vsce": "^3.2.0" }
+}

@@ -1835,6 +1835,30 @@ NATIVE_TOOLS = [
             },
         },
     },
+    {
+        "type": "function", "risk": "low", "category": "ide",
+        "function": {"name": "ide_list_workspaces", "description": "List approved VS Code workspaces available to Shogun IDE Mode.", "parameters": {"type": "object", "properties": {}}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "ide",
+        "function": {"name": "ide_list_files", "description": "List files in an approved VS Code workspace.", "parameters": {"type": "object", "properties": {"workspace_id": {"type": "string"}, "glob": {"type": "string"}}, "required": ["workspace_id"]}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "ide",
+        "function": {"name": "ide_read_file", "description": "Read a file inside an approved VS Code workspace.", "parameters": {"type": "object", "properties": {"workspace_id": {"type": "string"}, "path": {"type": "string"}}, "required": ["workspace_id", "path"]}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "ide",
+        "function": {"name": "ide_search", "description": "Search text across an approved VS Code workspace.", "parameters": {"type": "object", "properties": {"workspace_id": {"type": "string"}, "query": {"type": "string"}, "glob": {"type": "string"}}, "required": ["workspace_id", "query"]}},
+    },
+    {
+        "type": "function", "risk": "high", "category": "ide",
+        "function": {"name": "ide_apply_patch", "description": "Apply reviewed resulting file content in an approved VS Code workspace. A rollback snapshot and unified diff are created automatically.", "parameters": {"type": "object", "properties": {"workspace_id": {"type": "string"}, "path": {"type": "string"}, "content": {"type": "string"}, "approved": {"type": "boolean"}}, "required": ["workspace_id", "path", "content"]}},
+    },
+    {
+        "type": "function", "risk": "high", "category": "ide",
+        "function": {"name": "ide_run_task", "description": "Run an approved test, lint, or build command in a VS Code workspace and return its verified output.", "parameters": {"type": "object", "properties": {"workspace_id": {"type": "string"}, "command": {"type": "string"}, "approved": {"type": "boolean"}}, "required": ["workspace_id", "command"]}},
+    },
 ]
 
 
@@ -2940,6 +2964,9 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
         elif name.startswith("workspace_"):
             return await _execute_workspace_tool(name, args)
 
+        elif name.startswith("ide_"):
+            return await _execute_ide_tool(name, args)
+
         # ── Telegram Tools ────────────────────────────────────────────
         elif name == "telegram_list_groups":
             return await _execute_telegram_list_groups()
@@ -3584,6 +3611,30 @@ def _validate_workspace_path(workspace_root: str, relative_path: str) -> str:
         raise ValueError(f"Path escape blocked: '{relative_path}' resolves outside the workspace boundary")
 
     return str(target)
+
+
+async def _execute_ide_tool(name: str, args: dict[str, Any]) -> str:
+    """Route agent calls through the same governed IDE service as the API/bridge."""
+    from shogun.services.ide_service import ide_service
+    try:
+        workspace_id = str(args.get("workspace_id", ""))
+        if name == "ide_list_workspaces":
+            result = [ide_service.public_workspace(item) for item in ide_service.workspaces.values() if item.approved]
+        elif name == "ide_list_files":
+            result = await ide_service.list_files(workspace_id, str(args.get("glob") or "*"))
+        elif name == "ide_read_file":
+            result = await ide_service.read_file(workspace_id, str(args.get("path") or ""))
+        elif name == "ide_search":
+            result = await ide_service.search(workspace_id, str(args.get("query") or ""), str(args.get("glob") or "*"))
+        elif name == "ide_apply_patch":
+            result = await ide_service.write(workspace_id, str(args.get("path") or ""), str(args.get("content") or ""), approval=bool(args.get("approved")))
+        elif name == "ide_run_task":
+            result = await ide_service.run_command(workspace_id, str(args.get("command") or ""), approval=bool(args.get("approved")))
+        else:
+            return json.dumps({"status": "error", "message": f"Unknown IDE tool: {name}"})
+        return json.dumps({"status": "success", "result": result}, default=str)
+    except Exception as exc:
+        return json.dumps({"status": "error", "message": str(exc.detail if hasattr(exc, "detail") else exc)})
 
 
 async def _execute_workspace_tool(name: str, args: dict[str, Any]) -> str:

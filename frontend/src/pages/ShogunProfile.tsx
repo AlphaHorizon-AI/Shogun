@@ -73,6 +73,27 @@ const WORKFLOW_PERMISSION_DEFAULTS = {
     retention_days: 30,
     max_upload_mb: 20,
   },
+  ide_mode: {
+    enabled: false,
+    file_read: true,
+    file_search: true,
+    file_create: true,
+    file_patch: true,
+    file_delete: false,
+    diagnostics: true,
+    approved_tasks_only: true,
+    terminal_approved_only: true,
+    package_install: false,
+    git_status: true,
+    git_diff: true,
+    git_branch_create: false,
+    git_commit: false,
+    git_push: false,
+    secrets_access: false,
+    require_snapshot: true,
+    audit_all_actions: true,
+    self_verification_required: true,
+  },
 };
 
 export const ShogunProfile = () => {
@@ -233,6 +254,19 @@ export const ShogunProfile = () => {
       retention_days: 'Days to retain unpinned images before automatic cleanup.',
       max_upload_mb: 'Maximum size of one accepted image.',
     },
+    ide_mode: {
+      _category: 'Controls governed access to approved VS Code workspaces. This entire section is unavailable below Campaign posture.',
+      enabled: 'Master permission for Shogun IDE Mode. Runtime enablement still requires explicit confirmation.',
+      file_read: 'Read files inside an approved workspace.', file_search: 'Search inside an approved workspace.',
+      file_create: 'Create files after a restore point is made.', file_patch: 'Apply reviewed patches and retain a unified diff.',
+      file_delete: 'Delete files. Campaign also requires explicit approval.', diagnostics: 'Read VS Code Problems and diagnostics.',
+      approved_tasks_only: 'Restrict automatic execution to approved development tasks.', terminal_approved_only: 'Only allow allowlisted or explicitly approved commands.',
+      package_install: 'Allow dependency installation. Keep disabled unless the repository is trusted.',
+      git_status: 'Inspect Git status.', git_diff: 'Inspect Git diffs.', git_branch_create: 'Create local branches.',
+      git_commit: 'Create commits after approval.', git_push: 'Push to remotes. Disabled by default, including Ronin.',
+      secrets_access: 'Read protected secret files. Disabled by default.', require_snapshot: 'Create a rollback point before every write.',
+      audit_all_actions: 'Send all IDE actions through EventLogger.', self_verification_required: 'Require tests/build/diagnostic verification before completion.',
+    },
   };
 
   const getTooltip = (category: string, prop?: string): string => {
@@ -244,12 +278,14 @@ export const ShogunProfile = () => {
   const selectedPolicy = securityPolicies.find(p => p.id === shogunData.security_policy_id);
   const selectedPolicyTier = String(selectedPolicy?.tier || '').toLowerCase();
   const workflowPostureEligible = ['tactical', 'campaign', 'ronin'].includes(selectedPolicyTier);
+  const idePostureEligible = ['campaign', 'ronin'].includes(selectedPolicyTier);
   const rawActivePermissions = customPermissions || selectedPolicy?.permissions || null;
   const activePermissions = rawActivePermissions ? {
     ...rawActivePermissions,
     agentflow: { ...WORKFLOW_PERMISSION_DEFAULTS.agentflow, ...(rawActivePermissions.agentflow || {}) },
     flow_stack: { ...WORKFLOW_PERMISSION_DEFAULTS.flow_stack, ...(rawActivePermissions.flow_stack || {}) },
     visual_intake: { ...WORKFLOW_PERMISSION_DEFAULTS.visual_intake, ...(rawActivePermissions.visual_intake || {}) },
+    ide_mode: { ...WORKFLOW_PERMISSION_DEFAULTS.ide_mode, ...(rawActivePermissions.ide_mode || {}) },
   } : null;
   const basePermissions = selectedPolicy?.permissions || null;
   const isCustomPolicy = customPermissions !== null && JSON.stringify(customPermissions) !== JSON.stringify(basePermissions);
@@ -1077,7 +1113,7 @@ delegation_rules:
                 </div>
 
                 {activePermissions ? (
-                  Object.entries(activePermissions).map(([category, perms]: [string, any], i) => (
+                  Object.entries(activePermissions).filter(([category]) => category !== 'ide_mode' || idePostureEligible).map(([category, perms]: [string, any], i) => (
                     <div key={i} className="p-3 bg-[#050508] rounded-xl border border-shogun-border space-y-2">
                       <div className="flex items-center gap-2 pb-1 border-b border-shogun-border/50 group/cat">
                         <Shield className="w-3.5 h-3.5 text-shogun-gold" />
@@ -1091,6 +1127,7 @@ delegation_rules:
                           )}
                         </div>
                         {(category === 'agentflow' || category === 'flow_stack') && <span className={cn('ml-auto rounded border px-1.5 py-0.5 text-[8px] font-bold uppercase', workflowPostureEligible ? 'border-purple-500/30 bg-purple-500/10 text-purple-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300')}>{workflowPostureEligible ? 'Tactical+ available' : 'Posture locked'}</span>}
+                        {category === 'ide_mode' && <span className="ml-auto rounded border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase text-purple-300">Campaign / Ronin</span>}
                       </div>
                       {typeof perms === 'object' && perms !== null && !Array.isArray(perms) ? (
                         <div className="grid gap-1">
@@ -1121,7 +1158,7 @@ delegation_rules:
                                   {isBool ? (
                                     <button
                                       onClick={() => togglePermission(!propVal)}
-                                      disabled={(category === 'agentflow' || category === 'flow_stack') && !workflowPostureEligible}
+                                      disabled={((category === 'agentflow' || category === 'flow_stack') && !workflowPostureEligible) || (category === 'ide_mode' && !idePostureEligible)}
                                       className={cn(
                                         "w-10 h-5 rounded-full relative transition-all duration-300 border",
                                         (category === 'agentflow' || category === 'flow_stack') && !workflowPostureEligible && "cursor-not-allowed opacity-35",

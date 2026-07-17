@@ -334,6 +334,43 @@ def _flow_stack_templates() -> list[dict]:
                     "artifact_policy": "retain_all", "failure_policy": "retry",
                 },
             })
+            if len(recipes) == 175:
+                break
+        if len(recipes) == 175:
+            break
+    # Purpose-built coding programs. These use existing reusable flows for
+    # planning/reporting while their runtime metadata binds the steps to IDE tools.
+    coding_programs = [
+        ("feature-build", "Feature Build Stack", "implement a complete feature across backend, frontend, tests, verification, and review"),
+        ("bug-fix", "Bug Fix Stack", "reproduce a defect, locate its root cause, patch it, and run targeted plus regression verification"),
+        ("refactor", "Refactor Stack", "map affected modules, apply small reversible patches, and verify behavior after each stage"),
+        ("test-generation", "Test Generation Stack", "identify coverage gaps, generate meaningful tests, execute them, and report remaining risk"),
+        ("documentation", "Documentation Stack", "inspect implemented behavior, update documentation and changelog, and verify consistency"),
+    ]
+    coding_members = [next(item for item in role_pools[role] if item in by_id) for role in role_names]
+    coding_labels = ["Frame requirement and repository scope", "Inspect architecture and dependencies", "Analyze implementation risks",
+                     "Confirm governance and change boundaries", "Create implementation plan", "Apply reversible code patches",
+                     "Run tests, build, and diagnostics", "Produce verified review package"]
+    for index, (slug, name, objective) in enumerate(coding_programs):
+        node_ids = [f"ide-{slug}-{i+1}" for i in range(len(coding_members))]
+        recipes.append({
+            "id": f"coding-{slug}", "name": name,
+            "description": f"A governed, resumable coding Agent Stack to {objective}.",
+            "category": "Coding Agent Stacks", "icon": "code", "difficulty": "long-running",
+            "duration_label": "1–12 hours, resumable", "flow_template_ids": coding_members,
+            "flow_count": len(coding_members), "source": "built-in",
+            "builder_nodes": [{"id": node_id, "label": coding_labels[i],
+                               "template_id": template_id, "position_x": positions[i][0], "position_y": positions[i][1]}
+                              for i, (node_id, template_id) in enumerate(zip(node_ids, coding_members))],
+            "builder_edges": [{"source": node_ids[source], "target": node_ids[target]} for source, target in topology],
+            "orchestrator_config": {"mode": "template", "objective": objective,
+                "success_criteria": ["Required implementation exists", "Tests/build complete successfully", "Diagnostics are clear or explained", "Final diff and review package are produced"],
+                "required_tools": ["ide_list_workspaces", "ide_list_files", "ide_read_file", "ide_search", "ide_apply_patch", "ide_run_task"],
+                "model_routing_profile": "balanced", "max_runtime_minutes": 720, "max_iterations": 100,
+                "max_retry_attempts_per_step": 3, "timeout_seconds": 7200, "checkpoint_frequency": "after_each_subflow",
+                "context_compaction": "enabled", "verification_required": True, "approval_policy": "step_based",
+                "artifact_policy": "retain_all", "failure_policy": "retry"},
+        })
     return recipes
 
 

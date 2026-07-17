@@ -56,6 +56,7 @@ def test_stack_catalog_has_exactly_180_valid_categorized_recipes():
         "Growth & Brand", "Customer Operations", "Data & Executive Operations",
         "Risk & Compliance", "People & Capability", "Incident & Resilience",
         "Knowledge & Publishing",
+        "Coding Agent Stacks",
     }
 
 

@@ -1,8 +1,8 @@
 {
-  "version": "1.9.1",
+  "version": "1.10.0",
   "name": "Shogun OS",
-  "build": 68,
+  "build": 69,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Adds governed AgentFlow and Flow Stack deletion tools, captures Telegram forum thread metadata, learns topic names from events and tags, and adds editable topic mapping in Katana."
+  "changelog": "Adds Shogun IDE Mode with a governed VS Code bridge, Campaign/Ronin permission gates, one-time pairing, approved workspaces, structured file/search/task/Git tools, snapshots and rollback, diagnostics, audit events, Katana controls, and five coding Agent Stack templates."
 }

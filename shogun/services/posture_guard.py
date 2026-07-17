@@ -403,6 +403,14 @@ def filter_tools_by_posture(tools: list[dict], posture: dict) -> tuple[list[dict
             denied.append(name)
             continue
 
+        # IDE tools require both Campaign/Ronin eligibility and explicit runtime enablement.
+        if name.startswith("ide_") and (
+            posture.get("active_tier") not in {"campaign", "ronin"}
+            or not posture.get("ide_enabled", False)
+        ):
+            denied.append(name)
+            continue
+
         # ── Ronin: Desktop control tools ──
         if name in ("desktop_screenshot", "desktop_click", "desktop_type") and not posture.get("ronin_enabled", False):
             denied.append(name)

@@ -53,8 +53,9 @@ import { useTranslation } from '../i18n';
 import { MicrosoftTeamsAdapterTab } from './katana/MicrosoftTeamsAdapterTab';
 import { Mado } from './Mado';
 import { Ronin } from './Ronin';
+import { IdeModeTab } from './katana/IdeModeTab';
 
-type TabType = 'providers' | 'tools' | 'routing' | 'telegram' | 'teams' | 'mail_calendar' | 'office' | 'mado' | 'ronin';
+type TabType = 'providers' | 'tools' | 'routing' | 'telegram' | 'teams' | 'mail_calendar' | 'office' | 'ide' | 'mado' | 'ronin';
 type RegisterMode = 'quick' | 'manual';
 
 // ── Documentation links for cloud providers ─────────────────────
@@ -1370,7 +1371,7 @@ export function Katana() {
 
       {/* ── Tab bar ────────────────────────────────────────────── */}
       <div className="flex border-b border-shogun-border">
-        {(['providers', 'tools', 'routing', 'telegram', 'teams', 'mail_calendar', 'office', 'mado', 'ronin'] as TabType[]).map((tab) => (
+        {(['providers', 'tools', 'routing', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin'] as TabType[]).filter(tab => tab !== 'ide' || ['campaign', 'ronin'].includes(officePosture)).map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -1419,6 +1420,9 @@ export function Katana() {
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
                 )}
               </span>
+            )}
+            {tab === 'ide' && (
+              <span className="flex items-center gap-1.5"><Monitor className="w-3.5 h-3.5" /> IDE Mode</span>
             )}
             {tab === 'mado'      && (
               <span className="flex items-center gap-1.5">
@@ -2687,7 +2691,6 @@ export function Katana() {
                 </form>
               </div>
             )}
-
             {/* ── MCP cards grid ───────────────────────────────── */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {loading ? (
@@ -4088,6 +4091,8 @@ export function Katana() {
             <Mado />
           </div>
         )}
+
+        {activeTab === 'ide' && <IdeModeTab />}
 
         {/* ════════════════════════════════════════════════════════
             RONIN TAB

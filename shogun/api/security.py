@@ -71,6 +71,8 @@ _DEFAULT_POSTURE = {
     "office_outlook_mode": "draft_only",
     # Agent Workspace
     "workspace_enabled": True,
+    # Shogun IDE Mode is always opt-in and only valid in Campaign/Ronin.
+    "ide_enabled": False,
 }
 
 # Constraint values that each tier enforces when selected
@@ -98,6 +100,7 @@ TIER_CONSTRAINTS: dict[str, dict] = {
         "ronin_max_sessions": 0,
         "office_enabled": False,
         "workspace_enabled": False,
+        "ide_enabled": False,
     },
     "guarded": {
         "filesystem_mode": "allowlist",
@@ -123,6 +126,7 @@ TIER_CONSTRAINTS: dict[str, dict] = {
         "office_enabled": True,
         "office_outlook_mode": "draft_only",
         "workspace_enabled": True,
+        "ide_enabled": False,
     },
     "tactical": {
         "filesystem_mode": "scoped",
@@ -148,6 +152,7 @@ TIER_CONSTRAINTS: dict[str, dict] = {
         "office_enabled": True,
         "office_outlook_mode": "confirmed_send",
         "workspace_enabled": True,
+        "ide_enabled": False,
     },
     "campaign": {
         "filesystem_mode": "full",
@@ -173,6 +178,7 @@ TIER_CONSTRAINTS: dict[str, dict] = {
         "office_enabled": True,
         "office_outlook_mode": "confirmed_send",
         "workspace_enabled": True,
+        "ide_enabled": False,
     },
     "ronin": {
         "filesystem_mode": "full",
@@ -210,6 +216,7 @@ TIER_CONSTRAINTS: dict[str, dict] = {
         "office_enabled": True,
         "office_outlook_mode": "confirmed_send",
         "workspace_enabled": True,
+        "ide_enabled": False,
     },
 }
 

@@ -65,6 +65,10 @@ class PolicyPermissions(ShogunBase):
     subagents: SubagentPermissions = Field(default_factory=SubagentPermissions)
     memory: MemoryPermissions = Field(default_factory=MemoryPermissions)
     comms: CommsPermissions = Field(default_factory=CommsPermissions)
+    agentflow: dict[str, Any] = Field(default_factory=dict)
+    flow_stack: dict[str, Any] = Field(default_factory=dict)
+    visual_intake: dict[str, Any] = Field(default_factory=dict)
+    ide_mode: dict[str, Any] = Field(default_factory=dict)
 
 
 class SecurityPolicyCreate(ShogunBase):
@@ -137,6 +141,7 @@ class SecurityPostureResponse(ShogunBase):
     max_active_subagents: int
     kill_switch_enabled: bool
     kill_switch_active: bool = False
+    ide_enabled: bool = False
     comms_read_email: bool = True
     comms_send_email: bool = True
     comms_read_calendar: bool = True
