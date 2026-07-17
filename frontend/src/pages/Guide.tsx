@@ -51,6 +51,13 @@ import {
   Power,
   List,
   Clock,
+  Route as RouteIcon,
+  Scale,
+
+  BrainCircuit,
+  Eye,
+  GitMerge,
+
 } from "lucide-react";
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
@@ -85,6 +92,13 @@ export function Guide() {
     { id: 'ref-gensui', label: 'Gensui', icon: ShieldAlert, color: 'text-indigo-400' },
     { id: 'ref-logs', label: 'Logs', icon: Terminal, color: 'text-shogun-subdued' },
     { id: 'ref-maintenance', label: 'Maintenance', icon: HardDrive, color: 'text-shogun-gold' },
+    { id: 'ref-flowstack', label: 'Flow Stacking', icon: Layers, color: 'text-violet-400' },
+    { id: 'ref-visual-intake', label: 'Visual Intake', icon: Eye, color: 'text-cyan-400' },
+    { id: 'ref-ide-mode', label: 'IDE Mode', icon: MonitorIcon, color: 'text-emerald-400' },
+    { id: 'ref-model-router', label: 'Model Router', icon: RouteIcon, color: 'text-blue-400' },
+    { id: 'ref-active-skills', label: 'Active Skills', icon: Sparkles, color: 'text-amber-400' },
+    { id: 'ref-benchmark', label: 'ALE Benchmark', icon: Scale, color: 'text-lime-400' },
+    { id: 'ref-skillopt', label: 'SkillOpt', icon: BrainCircuit, color: 'text-fuchsia-400' },
   ];
 
   const scrollToSection = useCallback((sectionId: string) => {
@@ -2132,6 +2146,259 @@ npm start`}</pre>
                    </div>
                 </div>
              </section>
+
+              {/* ─── FLOW STACKING ─── */}
+              <section id="ref-flowstack" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-violet-400/40 pb-3">
+                    <Layers className="w-6 h-6 text-violet-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">Flow Stacking — Stack Orchestrator</h4>
+                       <p className="text-xs text-shogun-subdued">The governed runtime layer above Agent Flow — long-horizon execution with checkpoints, verification gates, retries, and artifact capture.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card space-y-3">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-violet-400" /> What Is Flow Stacking?</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">While individual <strong>Agent Flows</strong> handle single-pipeline execution, <strong>Flow Stacking</strong> chains multiple flows into long-horizon execution pipelines. The <strong>Stack Orchestrator</strong> manages the entire lifecycle: planning, checkpointing, verification, retries, and artifact collection. Navigate to <strong>Flow Stack</strong> in the sidebar to access it.</p>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Play className="w-4 h-4 text-violet-400" /> Four Operating Modes</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Goal-Driven:</strong> Describe what you want — the planner selects and sequences flows automatically. <strong>Selected Stack:</strong> Pick a specific Flow Stack to execute. <strong>Template:</strong> Instantiate from a reusable template. <strong>Benchmark:</strong> Headless execution for ALE harness integration.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-violet-400" /> Verification Gates</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">After each step, independent quality checks run (deterministic + semantic model judging). If a step fails verification, the retry service categorizes the failure (permission, runtime, verification, tool/flow) and applies the configured retry policy.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-violet-400" /> Durable Checkpoints</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Context summaries and state snapshots are saved after each step. If a run is paused or interrupted, it can be resumed from the last checkpoint — no lost progress. Use <strong>Pause</strong> and <strong>Resume</strong> buttons in the Flow Stack dashboard.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Package className="w-4 h-4 text-violet-400" /> Artifact Capture</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Outputs from each phase (files, reports, analysis results) are automatically captured and cataloged. View all artifacts for a run from the <strong>Artifacts</strong> tab in the execution detail view.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card space-y-2">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-violet-400" /> Governed Permissions</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">Flow Stacking is gated by 6 posture-level permissions: <code className="text-violet-400">agentflow_create</code>, <code className="text-violet-400">agentflow_execute</code>, <code className="text-violet-400">agentflow_autonomous</code>, <code className="text-violet-400">flowstack_create</code>, <code className="text-violet-400">flowstack_execute</code>, <code className="text-violet-400">flowstack_autonomous</code>. All require <strong>Tactical</strong> tier or above. Configure approval policies: approve the entire plan, approve individual steps, or run fully autonomous.</p>
+                 </div>
+              </section>
+
+              {/* ─── VISUAL INTAKE ─── */}
+              <section id="ref-visual-intake" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-cyan-400/40 pb-3">
+                    <Eye className="w-6 h-6 text-cyan-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">Visual Intake — Image Analysis</h4>
+                       <p className="text-xs text-shogun-subdued">Secure, source-neutral image upload, processing, and AI-powered vision analysis with full governance.</p>
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Camera className="w-4 h-4 text-cyan-400" /> Upload & Process</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Upload images from chat, Telegram, email, or browser. Shogun normalizes them to WebP, generates 640×640 thumbnails, strips all EXIF metadata (GPS, camera info, timestamps) for privacy, and deduplicates via SHA-256 hashing. Supported formats: JPEG, PNG, WebP, static GIF (max 20 MB).</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-cyan-400" /> AI Vision</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Describe:</strong> Generate natural language descriptions. <strong>Inspect:</strong> Deep inspection with custom prompts — ask specific questions about content. <strong>OCR:</strong> Extract text from screenshots, documents, and photos. <strong>Compare:</strong> Side-by-side comparison of two images with AI analysis.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-cyan-400" /> 7 Permission Flags</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><code className="text-cyan-400">allow_image_intake</code> (on), <code className="text-cyan-400">allow_local_vision</code> (on), <code className="text-cyan-400">allow_cloud_vision</code> (off — privacy-sensitive), <code className="text-cyan-400">allow_ocr</code> (on), <code className="text-cyan-400">allow_attach_to_stack</code> (on), <code className="text-cyan-400">allow_auto_memory</code> (off — privacy-sensitive), <code className="text-cyan-400">allow_delete</code> (on). Configure in <strong>Katana → Visual Intake</strong>.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Link2 className="w-4 h-4 text-cyan-400" /> Stack Integration</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Pin important images to prevent retention expiry (default: 30 days). Attach images as artifacts to Stack Orchestrator runs for evidence trails. Images can be linked to chat sessions and messages for context tracking.</p>
+                    </div>
+                 </div>
+              </section>
+
+              {/* ─── IDE MODE ─── */}
+              <section id="ref-ide-mode" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-emerald-400/40 pb-3">
+                    <MonitorIcon className="w-6 h-6 text-emerald-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">IDE Mode — VS Code Integration</h4>
+                       <p className="text-xs text-shogun-subdued">Connect your VS Code editor via a governed WebSocket bridge for AI-assisted development.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card bg-amber-500/10 border-amber-500/30 border-l-4 border-l-amber-500">
+                    <h5 className="text-sm font-bold text-amber-400 flex items-center gap-2 mb-3">
+                       <ShieldAlert className="w-5 h-5" />
+                       Requires Campaign or Ronin Posture
+                    </h5>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">IDE Mode is gated behind Campaign or Ronin security tier plus the explicit <code className="text-amber-400">ide_enabled</code> posture flag. The WebSocket bridge only accepts connections from localhost (<code className="text-amber-400">127.0.0.1</code> / <code className="text-amber-400">::1</code>) — remote connections are rejected.</p>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-emerald-400" /> File Operations</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Read, create, list, search, and apply patches to files within approved workspaces. Every write creates an automatic SHA-256 snapshot for rollback. <strong>Protected files</strong> (<code className="text-emerald-400">.env</code>, <code className="text-emerald-400">*.pem</code>, <code className="text-emerald-400">*.key</code>, <code className="text-emerald-400">id_rsa*</code>, <code className="text-emerald-400">credentials*</code>) are always blocked.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Terminal className="w-4 h-4 text-emerald-400" /> Terminal & Git</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Run approved commands (allowlisted per posture: <code className="text-emerald-400">pytest</code>, <code className="text-emerald-400">python</code>, <code className="text-emerald-400">npm</code>, <code className="text-emerald-400">ruff</code>, <code className="text-emerald-400">mypy</code>, <code className="text-emerald-400">tsc</code>, <code className="text-emerald-400">cargo</code>, <code className="text-emerald-400">go</code>). Git operations: status, diff, branch, create-branch, commit. <strong>Push is disabled by default</strong>; git mutations require Ronin + explicit approval.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Key className="w-4 h-4 text-emerald-400" /> Pairing System</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Pairing uses one-time <code className="text-emerald-400">SHG-</code> prefixed tokens with SHA-256 digest comparison and 10-minute expiry. Generate a token in the Katana IDE tab, enter it in VS Code, and the bridge connects. Revoke all pairings instantly from the dashboard.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Zap className="w-4 h-4 text-emerald-400" /> Workspace Boundaries</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">All file operations are restricted to approved workspace paths. Path traversal is blocked. Symlinks that escape boundaries are rejected. Denied directories: <code className="text-emerald-400">.ssh</code>, <code className="text-emerald-400">.aws</code>, <code className="text-emerald-400">.azure</code>, <code className="text-emerald-400">.gnupg</code>, <code className="text-emerald-400">.kube</code>. Emergency <strong>Kill Switch</strong> endpoint terminates all IDE connections instantly.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card space-y-2">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-emerald-400" /> VS Code Extension</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">Install the <strong>shogun-ide-bridge</strong> extension from <code className="text-emerald-400">bridge/vscode/</code>. Configure <code className="text-emerald-400">shogun.bridgeUrl</code> (default: <code className="text-emerald-400">ws://127.0.0.1:8000/api/v1/ide/bridge</code>). Commands: <strong>Shogun: Connect</strong>, <strong>Shogun: Disconnect</strong>, <strong>Shogun: Open Dashboard</strong>.</p>
+                 </div>
+              </section>
+
+              {/* ─── MODEL ROUTER ─── */}
+              <section id="ref-model-router" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-blue-400/40 pb-3">
+                    <RouteIcon className="w-6 h-6 text-blue-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">Model Router — Intelligent Model Selection</h4>
+                       <p className="text-xs text-shogun-subdued">Provider-agnostic, task-aware model selection with routing profiles, registry, and usage telemetry.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card space-y-3">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Compass className="w-4 h-4 text-blue-400" /> How It Works</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">Instead of hardcoding which model handles each request, the Model Router evaluates the <strong>task type</strong>, <strong>complexity</strong>, and your <strong>active routing profile</strong> to select the optimal model automatically. Navigate to <strong>Katana → Model Routing</strong> to configure profiles and view the model registry.</p>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-blue-400" /> 5 Routing Profiles</div>
+                       <div className="bg-shogun-bg rounded-lg p-3 space-y-2">
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-green-400 bg-green-400/10 px-2 py-0.5 rounded">ULTRA ECONOMY</span><span className="text-xs text-shogun-subdued">Strongly prefers local models, minimizes API calls.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">ECONOMY</span><span className="text-xs text-shogun-subdued">Low-cost daily work, escalates only for complex tasks.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded">BALANCED</span><span className="text-xs text-shogun-subdued">Recommended balance of quality and cost. Default profile.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded">HIGH CAPABILITY</span><span className="text-xs text-shogun-subdued">Uses stronger models earlier in the complexity curve.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded">PREMIUM</span><span className="text-xs text-shogun-subdued">Maximum quality, always picks the best available model.</span></div>
+                       </div>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-blue-400" /> Task Classification</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every request is classified into one of 20+ task types across 5 complexity tiers:</p>
+                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5 text-xs text-shogun-subdued">
+                          <p><strong className="text-green-400">Simple:</strong> simple_chat, classification, extraction, memory_write</p>
+                          <p><strong className="text-emerald-400">Moderate:</strong> summarization, browser_task, skill_selection</p>
+                          <p><strong className="text-blue-400">Complex:</strong> planning, coding_plan, coding_edit, stack_planning</p>
+                          <p><strong className="text-amber-400">Critical:</strong> complex_reasoning, test_failure_analysis, self_verification</p>
+                          <p><strong className="text-cyan-400">Vision:</strong> visual_understanding, screenshot_analysis, photo_understanding</p>
+                       </div>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-blue-400" /> Model Registry</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every model available to Shogun is registered with its provider, capabilities, quality/cost/latency tiers, context window, and role tags. Test connections directly from the registry. Add cloud providers or local Ollama models.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-blue-400" /> Decision & Usage Logs</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every routing decision is persisted: which task type, complexity score, selected model, fallback model, and reason. Usage telemetry tracks input/output tokens, cost estimates, and latency. View summaries and per-stack breakdowns.</p>
+                    </div>
+                 </div>
+              </section>
+
+              {/* ─── ACTIVE SKILLS & TRAJECTORY ─── */}
+              <section id="ref-active-skills" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-amber-400/40 pb-3">
+                    <Sparkles className="w-6 h-6 text-amber-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">Active Skills & Trajectory Capture</h4>
+                       <p className="text-xs text-shogun-subdued">Runtime skill retrieval from the Dojo — automatic selection, context injection, outcome tracking, and improvement candidates.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card space-y-3">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Flame className="w-4 h-4 text-amber-400" /> How Active Skills Work</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">When a Shogun agent processes a request, the Active Skill system automatically <strong>retrieves</strong> relevant skills from the Dojo, <strong>gates</strong> them against the current security posture and exam requirements, <strong>injects</strong> skill content into the LLM context (advisory or context_block mode), and <strong>tracks</strong> the outcome (success, partial, failed, not_used, blocked). Skills are live during execution — not just catalog entries.</p>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2 border-l-2 border-amber-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-amber-400" /> Configuration</div>
+                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5 text-xs text-shogun-subdued">
+                          <p><code className="text-amber-400">active_skill_max_per_run</code>: 5 — max skills per execution run</p>
+                          <p><code className="text-amber-400">active_skill_max_per_step</code>: 3 — max skills per step</p>
+                          <p><code className="text-amber-400">active_skill_max_total_context_tokens</code>: 2,500 — token budget</p>
+                          <p><code className="text-amber-400">active_skill_require_exam_pass</code>: true — only use passed skills</p>
+                          <p><code className="text-amber-400">active_skill_preserve_during_compaction</code>: true — keep during context compaction</p>
+                       </div>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-amber-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-amber-400" /> Trajectory Capture</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every skill invocation generates a structured evidence trail: <strong>Candidate Retrievals</strong> (which skills were considered), <strong>Episodes</strong> (full lifecycle), <strong>Trajectories</strong> (outcome scoring), <strong>Tool Links</strong> (tools called during usage), <strong>Verification Links</strong> (how outcomes were verified), <strong>Outcome Scores</strong> (deterministic scoring), and <strong>Improvement Candidates</strong> (suggested fixes). All data is secret-redacted automatically.</p>
+                    </div>
+                 </div>
+              </section>
+
+              {/* ─── ALE BENCHMARK ─── */}
+              <section id="ref-benchmark" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-lime-400/40 pb-3">
+                    <Scale className="w-6 h-6 text-lime-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">ALE Benchmark — Agent-Level Evaluation</h4>
+                       <p className="text-xs text-shogun-subdued">Headless benchmarking harness for evaluating Shogun in governed conditions with trajectory and artifact export.</p>
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2 border-l-2 border-lime-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Play className="w-4 h-4 text-lime-400" /> Running Benchmarks</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Enable benchmark mode in the Katana configuration. Validate your task definition and sandbox config, then start a run. Benchmark runs execute as subprocesses and integrate with the Stack Orchestrator for persistence. Monitor progress, view results, and cancel active runs from the <strong>Benchmark</strong> dashboard.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-lime-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-lime-400" /> Configuration</div>
+                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5 text-xs text-shogun-subdued">
+                          <p><code className="text-lime-400">enabled</code>: false — must be explicitly enabled</p>
+                          <p><code className="text-lime-400">default_posture</code>: tactical — security posture for runs</p>
+                          <p><code className="text-lime-400">default_model_profile</code>: balanced — routing profile</p>
+                          <p><code className="text-lime-400">max_runtime_minutes</code>: 30 — timeout per run</p>
+                          <p><code className="text-lime-400">trajectory_export</code>: true — export execution trajectories</p>
+                          <p><code className="text-lime-400">artifact_export</code>: true — export captured artifacts</p>
+                          <p><code className="text-lime-400">redact_secrets</code>: true — scrub secrets from exports</p>
+                       </div>
+                    </div>
+                 </div>
+              </section>
+
+              {/* ─── SKILLOPT ─── */}
+              <section id="ref-skillopt" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-fuchsia-400/40 pb-3">
+                    <BrainCircuit className="w-6 h-6 text-fuchsia-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">SkillOpt — Automated Skill Optimization</h4>
+                       <p className="text-xs text-shogun-subdued">Data-driven skill improvement pipeline — version management, training runs, candidate generation, validation, and promotion.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card space-y-3">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-fuchsia-400" /> The Optimization Pipeline</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Usage Events</strong> are captured from Active Skill runs. A <strong>Training Run</strong> uses these to generate optimized <strong>Candidates</strong>. Each candidate is <strong>Validated</strong> against held-out tasks with safety checks and scoring. Successful candidates are <strong>Promoted</strong> to become the new active version; failing ones are <strong>Rejected</strong> with a reason.</p>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2 border-l-2 border-fuchsia-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-fuchsia-400" /> Version Management</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every skill change creates an immutable version: version number, content hash, validation score, and status (<code className="text-fuchsia-400">candidate</code> → <code className="text-fuchsia-400">active</code> → <code className="text-fuchsia-400">retired</code>). Browse all versions for any skill from the SkillOpt tab in <strong>Katana</strong>. Compare candidate vs baseline content with the interactive diff viewer.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-fuchsia-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-fuchsia-400" /> Katana Dashboard</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">The SkillOpt tab in <strong>Katana</strong> provides real-time tracking of optimization runs, interactive diff viewer for candidates vs baseline, one-click promote/reject controls, and metrics for average improvement scores. Start training runs, view all skill versions, and monitor usage events.</p>
+                    </div>
+                 </div>
+              </section>
+
+
 
             </div>
           </div>
