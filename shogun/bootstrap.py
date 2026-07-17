@@ -135,6 +135,16 @@ async def _seed_defaults():
                         "shell": {"enabled": tier not in ("shrine", "guarded", "tactical")},
                         "skills": {"require_approval": tier in ("shrine", "guarded")},
                         "subagents": {"allow_spawn": tier != "shrine"},
+                        "agentflow": {
+                            "allow_create": False, "allow_edit": False,
+                            "allow_activate": False, "allow_execute": False,
+                            "allow_save_as_template": False, "allow_delete": False,
+                        },
+                        "flow_stack": {
+                            "allow_create": False, "allow_edit": False,
+                            "allow_activate": False, "allow_execute": False,
+                            "allow_save_as_template": False, "allow_delete": False,
+                        },
                     },
                     kill_switch_enabled=tier != "ronin",
                     dry_run_supported=True,

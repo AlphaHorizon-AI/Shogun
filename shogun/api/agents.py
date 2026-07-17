@@ -1561,13 +1561,24 @@ BEHAVIOUR:
                     # Determine which native skills are allowed based on policy limits
                     allow_skills = not perms.get("skills", {}).get("require_approval", True)
                     allow_auto_spawn = perms.get("subagents", {}).get("allow_auto_spawn", False)
+                    workflow_tool_permissions = {
+                        "create_agent_flow": ("agentflow", "allow_create"),
+                        "edit_agent_flow": ("agentflow", "allow_edit"),
+                        "create_flow_stack": ("flow_stack", "allow_create"),
+                        "edit_flow_stack": ("flow_stack", "allow_edit"),
+                    }
                     _denied_tools = []
                     for tool in NATIVE_TOOLS:
-                        if tool["function"]["name"] == "spawn_samurai" and not allow_auto_spawn:
-                            _denied_tools.append(tool["function"]["name"])
+                        tool_name = tool["function"]["name"]
+                        if tool_name == "spawn_samurai" and not allow_auto_spawn:
+                            _denied_tools.append(tool_name)
                             continue
-                        if tool["function"]["name"] in ["list_available_models", "update_model_settings"] and not allow_skills:
-                            _denied_tools.append(tool["function"]["name"])
+                        if tool_name in ["list_available_models", "update_model_settings"] and not allow_skills:
+                            _denied_tools.append(tool_name)
+                            continue
+                        workflow_permission = workflow_tool_permissions.get(tool_name)
+                        if workflow_permission and not perms.get(workflow_permission[0], {}).get(workflow_permission[1], False):
+                            _denied_tools.append(tool_name)
                             continue
                         active_tools.append(tool)
 

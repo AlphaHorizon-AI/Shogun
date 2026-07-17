@@ -381,6 +381,10 @@ NATIVE_TOOLS = [
                         "type": "string",
                         "description": "Brief description of the workflow's purpose.",
                     },
+                    "activate": {
+                        "type": "boolean",
+                        "description": "Activate the AgentFlow immediately after creation. Defaults to false and requires the separate AgentFlow activation permission.",
+                    },
                     "nodes": {
                         "type": "array",
                         "items": {
@@ -1532,6 +1536,75 @@ NATIVE_TOOLS = [
     },
     {
         "type": "function",
+        "risk": "medium",
+        "category": "workflow",
+        "function": {
+            "name": "edit_agent_flow",
+            "description": "Edit an existing AgentFlow's metadata and optionally replace its nodes and connections. Activation is governed separately.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "flow_id": {"type": "string", "description": "ID of the existing AgentFlow."},
+                    "name": {"type": "string", "description": "Optional new name."},
+                    "description": {"type": "string", "description": "Optional new description."},
+                    "nodes": {"type": "array", "items": {"type": "object"}, "description": "Optional complete replacement list of AgentFlow nodes."},
+                    "edges": {"type": "array", "items": {"type": "object"}, "description": "Optional complete replacement list of AgentFlow connections."},
+                    "activate": {"type": "boolean", "description": "Activate after editing. Requires the separate AgentFlow activation permission."},
+                },
+                "required": ["flow_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "medium",
+        "category": "workflow",
+        "function": {
+            "name": "edit_flow_stack",
+            "description": "Edit an existing Flow Stack's metadata and optionally replace its ordered AgentFlow phases. Activation is governed separately.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "flow_stack_id": {"type": "string", "description": "ID of the existing Flow Stack."},
+                    "name": {"type": "string", "description": "Optional new stack name."},
+                    "description": {"type": "string", "description": "Optional new stack description."},
+                    "flow_ids": {"type": "array", "items": {"type": "string"}, "minItems": 2, "description": "Optional ordered replacement phases."},
+                    "version_mode": {"type": "string", "enum": ["locked", "latest"], "description": "Child version policy. Defaults to locked."},
+                    "timeout_seconds": {"type": "integer", "description": "Timeout for each phase."},
+                    "activate": {"type": "boolean", "description": "Activate after editing. Requires the separate Flow Stack activation permission."},
+                },
+                "required": ["flow_stack_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "medium",
+        "category": "workflow",
+        "function": {
+            "name": "create_flow_stack",
+            "description": "Create a connected Flow Stack from two or more existing AgentFlows. The stack remains a draft unless activation is explicitly requested and permitted.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Name of the Flow Stack."},
+                    "description": {"type": "string", "description": "Purpose of the Flow Stack."},
+                    "flow_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 2,
+                        "description": "Ordered IDs of existing AgentFlows to connect as stack phases.",
+                    },
+                    "version_mode": {"type": "string", "enum": ["locked", "latest"], "description": "Lock child versions or follow latest. Defaults to locked."},
+                    "timeout_seconds": {"type": "integer", "description": "Timeout for each child flow. Defaults to 600."},
+                    "activate": {"type": "boolean", "description": "Activate the Flow Stack immediately. Defaults to false and requires the separate Flow Stack activation permission."},
+                },
+                "required": ["name", "flow_ids"],
+            },
+        },
+    },
+    {
+        "type": "function",
         "risk": "high",
         "category": "dojo",
         "function": {
@@ -1731,6 +1804,26 @@ def generate_tool_prompt(tools: list[dict]) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+async def _shogun_workflow_permission(db_session, category: str, permission: str) -> bool:
+    """Read an explicit Shogun workflow permission; missing always means denied."""
+    from sqlalchemy import select
+    from shogun.db.models.agent import Agent
+    from shogun.db.models.security_policy import SecurityPolicy
+
+    result = await db_session.execute(
+        select(Agent).where(Agent.agent_type == "shogun", Agent.is_deleted == False)
+    )
+    shogun = result.scalars().first()
+    if not shogun:
+        return False
+    custom = (shogun.bushido_settings or {}).get("custom_permissions")
+    permissions = custom
+    if permissions is None and shogun.security_policy_id:
+        policy = await db_session.get(SecurityPolicy, shogun.security_policy_id)
+        permissions = policy.permissions if policy else None
+    return bool((permissions or {}).get(category, {}).get(permission, False))
 
 
 async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> str:
@@ -2083,13 +2176,18 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
             try:
                 from shogun.services.posture_guard import get_posture_permissions
                 perms = await get_posture_permissions()
-                if not perms.get("agentflow_autonomous", False):
+                if not perms.get("agentflow_create", False):
                     return json.dumps({
                         "status": "error",
-                        "message": "Autonomous Agent Flow creation requires CAMPAIGN or RONIN security tier. Current tier does not permit agentflow_autonomous."
+                        "message": "AgentFlow creation is only available in Tactical, Campaign, or Ronin posture."
                     })
             except Exception:
-                pass  # If posture guard unavailable, allow
+                return json.dumps({"status": "error", "message": "Could not verify the AgentFlow posture permission."})
+            if not await _shogun_workflow_permission(db_session, "agentflow", "allow_create"):
+                return json.dumps({"status": "error", "message": "Shogun's AgentFlow creation permission is disabled."})
+            activate = bool(args.get("activate", False))
+            if activate and not await _shogun_workflow_permission(db_session, "agentflow", "allow_activate"):
+                return json.dumps({"status": "error", "message": "Shogun may create this AgentFlow as a draft, but AgentFlow activation permission is disabled."})
 
             from shogun.services.agent_flow_service import AgentFlowService
             flow_svc = AgentFlowService(db_session)
@@ -2135,6 +2233,8 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
                 edges_data=edges_data,
                 viewport={"x": 0, "y": 0, "zoom": 0.8},
             )
+            if activate:
+                await flow_svc.update_status(flow.id, "active")
 
             await db_session.commit()
 
@@ -2142,6 +2242,155 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
                 "status": "success",
                 "message": f"Agent Flow '{flow_name}' created with {len(nodes_data)} nodes and {len(edges_data)} edges. Open the Samurai Network → Agent Flow tab to view and run it.",
                 "flow_id": str(flow.id),
+                "flow_status": "active" if activate else "draft",
+            })
+
+        elif name == "edit_agent_flow":
+            try:
+                from shogun.services.posture_guard import get_posture_permissions
+                posture = await get_posture_permissions()
+                if not posture.get("agentflow_create", False):
+                    return json.dumps({"status": "error", "message": "AgentFlow editing is only available in Tactical, Campaign, or Ronin posture."})
+            except Exception:
+                return json.dumps({"status": "error", "message": "Could not verify the AgentFlow posture permission."})
+            if not await _shogun_workflow_permission(db_session, "agentflow", "allow_edit"):
+                return json.dumps({"status": "error", "message": "Shogun's AgentFlow editing permission is disabled."})
+            activate = bool(args.get("activate", False))
+            if activate and not await _shogun_workflow_permission(db_session, "agentflow", "allow_activate"):
+                return json.dumps({"status": "error", "message": "AgentFlow activation permission is disabled."})
+
+            import uuid as _uuid
+            from shogun.services.agent_flow_service import AgentFlowService
+            flow_svc = AgentFlowService(db_session)
+            flow_id = _uuid.UUID(args["flow_id"])
+            flow = await flow_svc.get_flow_full(flow_id)
+            if not flow or flow.flow_type == "stack" or flow.is_template:
+                return json.dumps({"status": "error", "message": "Editable AgentFlow not found."})
+            metadata = {key: args[key] for key in ("name", "description") if key in args}
+            if metadata:
+                await flow_svc.update(flow_id, **metadata)
+            graph_requested = "nodes" in args or "edges" in args
+            if graph_requested:
+                if "nodes" not in args or "edges" not in args:
+                    return json.dumps({"status": "error", "message": "Provide both nodes and edges when replacing an AgentFlow graph."})
+                await flow_svc.save_flow_graph(flow_id, args["nodes"], args["edges"], flow.viewport)
+            if activate:
+                await flow_svc.update_status(flow_id, "active")
+            await db_session.commit()
+            updated = await flow_svc.get_flow_full(flow_id)
+            return json.dumps({
+                "status": "success", "message": f"AgentFlow '{updated.name}' updated.",
+                "flow_id": str(flow_id), "flow_status": updated.status,
+                "version": updated.version,
+            })
+
+        elif name == "edit_flow_stack":
+            try:
+                from shogun.services.posture_guard import get_posture_permissions
+                posture = await get_posture_permissions()
+                if not posture.get("flowstack_create", False):
+                    return json.dumps({"status": "error", "message": "Flow Stack editing is only available in Tactical, Campaign, or Ronin posture."})
+            except Exception:
+                return json.dumps({"status": "error", "message": "Could not verify the Flow Stack posture permission."})
+            if not await _shogun_workflow_permission(db_session, "flow_stack", "allow_edit"):
+                return json.dumps({"status": "error", "message": "Shogun's Flow Stack editing permission is disabled."})
+            activate = bool(args.get("activate", False))
+            if activate and not await _shogun_workflow_permission(db_session, "flow_stack", "allow_activate"):
+                return json.dumps({"status": "error", "message": "Flow Stack activation permission is disabled."})
+
+            import uuid as _uuid
+            from sqlalchemy import select
+            from shogun.config import settings
+            from shogun.db.models.agent_flow import AgentFlow
+            from shogun.services.agent_flow_service import AgentFlowService
+
+            flow_svc = AgentFlowService(db_session)
+            stack_id = _uuid.UUID(args["flow_stack_id"])
+            stack = await flow_svc.get_flow_full(stack_id)
+            if not stack or stack.flow_type != "stack" or stack.is_template:
+                return json.dumps({"status": "error", "message": "Editable Flow Stack not found."})
+            metadata = {key: args[key] for key in ("name", "description") if key in args}
+            if "timeout_seconds" in args:
+                metadata["default_timeout_seconds"] = int(args["timeout_seconds"])
+            if metadata:
+                await flow_svc.update(stack_id, **metadata)
+
+            if "flow_ids" in args:
+                flow_ids = [_uuid.UUID(flow_id) for flow_id in args["flow_ids"]]
+                if len(flow_ids) < 2:
+                    return json.dumps({"status": "error", "message": "A Flow Stack requires at least two AgentFlows."})
+                version_mode = args.get("version_mode", "locked")
+                if version_mode == "latest" and not settings.flow_stacking_allow_latest_version:
+                    return json.dumps({"status": "error", "message": "Latest-version Flow Stack references are disabled."})
+                result = await db_session.execute(select(AgentFlow).where(AgentFlow.id.in_(flow_ids), AgentFlow.is_deleted == False))
+                selected = {flow.id: flow for flow in result.scalars().all()}
+                if any(flow_id not in selected for flow_id in flow_ids):
+                    return json.dumps({"status": "error", "message": "One or more AgentFlows could not be found."})
+                if any(not selected[flow_id].allow_as_subflow for flow_id in flow_ids):
+                    return json.dumps({"status": "error", "message": "One or more AgentFlows cannot be used as a subflow."})
+                timeout = int(args.get("timeout_seconds", stack.default_timeout_seconds or 600))
+                nodes, edges = [], []
+                input_id = str(_uuid.uuid4())
+                nodes.append({"id": input_id, "node_type": "input", "label": "Stack Input", "position_x": 0, "position_y": 120, "config": {"input_type": "subflow"}})
+                previous_id = input_id
+                for index, child_id in enumerate(flow_ids, start=1):
+                    child = selected[child_id]
+                    node_id = str(_uuid.uuid4())
+                    nodes.append({"id": node_id, "node_type": "subflow", "label": child.name, "position_x": index * 280, "position_y": 120, "config": {"child_flow_id": str(child.id), "child_flow_version_mode": version_mode, "child_flow_version": child.version if version_mode == "locked" else None, "execution_mode": "sequential", "timeout_seconds": timeout, "on_failure": "fail_parent", "input_mapping": {}, "output_mapping": {}}})
+                    edges.append({"source_node_id": previous_id, "target_node_id": node_id})
+                    previous_id = node_id
+                output_id = str(_uuid.uuid4())
+                nodes.append({"id": output_id, "node_type": "output", "label": "Stack Output", "position_x": (len(flow_ids) + 1) * 280, "position_y": 120, "config": {"output_type": "artifact", "format": "json"}})
+                edges.append({"source_node_id": previous_id, "target_node_id": output_id})
+                await flow_svc.update(stack_id, required_tools=sorted({tool for flow_id in flow_ids for tool in (selected[flow_id].required_tools or [])}))
+                await flow_svc.save_flow_graph(stack_id, nodes, edges, stack.viewport)
+            if activate:
+                await flow_svc.update_status(stack_id, "active")
+            await db_session.commit()
+            updated = await flow_svc.get_flow_full(stack_id)
+            return json.dumps({
+                "status": "success", "message": f"Flow Stack '{updated.name}' updated.",
+                "flow_stack_id": str(stack_id), "flow_stack_status": updated.status,
+                "version": updated.version,
+            })
+
+        elif name == "create_flow_stack":
+            try:
+                from shogun.services.posture_guard import get_posture_permissions
+                posture = await get_posture_permissions()
+                if not posture.get("flowstack_create", False):
+                    return json.dumps({"status": "error", "message": "Flow Stack creation is only available in Tactical, Campaign, or Ronin posture."})
+            except Exception:
+                return json.dumps({"status": "error", "message": "Could not verify the Flow Stack posture permission."})
+            if not await _shogun_workflow_permission(db_session, "flow_stack", "allow_create"):
+                return json.dumps({"status": "error", "message": "Shogun's Flow Stack creation permission is disabled."})
+            activate = bool(args.get("activate", False))
+            if activate and not await _shogun_workflow_permission(db_session, "flow_stack", "allow_activate"):
+                return json.dumps({"status": "error", "message": "Shogun may create this Flow Stack as a draft, but Flow Stack activation permission is disabled."})
+
+            import uuid as _uuid
+            from shogun.api.agent_flow import create_flow_stack
+            from shogun.schemas.agent_flow import FlowStackCreate
+            from shogun.services.agent_flow_service import AgentFlowService
+
+            body = FlowStackCreate(
+                name=args.get("name", "Untitled Flow Stack"),
+                description=args.get("description"),
+                flow_ids=[_uuid.UUID(flow_id) for flow_id in args.get("flow_ids", [])],
+                version_mode=args.get("version_mode", "locked"),
+                timeout_seconds=int(args.get("timeout_seconds", 600)),
+            )
+            flow_svc = AgentFlowService(db_session)
+            response = await create_flow_stack(body=body, svc=flow_svc, db=db_session)
+            stack_id = response.data.id
+            if activate:
+                await flow_svc.update_status(stack_id, "active")
+            await db_session.commit()
+            return json.dumps({
+                "status": "success",
+                "message": f"Flow Stack '{body.name}' created as {'active' if activate else 'draft'} with {len(body.flow_ids)} AgentFlow phases.",
+                "flow_stack_id": str(stack_id),
+                "flow_stack_status": "active" if activate else "draft",
             })
 
         elif name == "browse_web":

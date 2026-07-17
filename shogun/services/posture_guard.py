@@ -126,10 +126,9 @@ async def get_posture_tool_filter() -> dict[str, Any]:
     posture = await _get_agent_posture()
     tier = posture.get("active_tier", "tactical")
 
-    # Derive Agent Flow permissions from tier
-    agentflow_create = tier in ("tactical", "campaign", "ronin")
-    agentflow_execute = tier in ("tactical", "campaign", "ronin")
-    agentflow_autonomous = tier in ("campaign", "ronin")
+    # Posture is a ceiling only. The Shogun profile must still explicitly
+    # enable each AgentFlow / Flow Stack capability; those toggles default off.
+    workflow_eligible = tier in ("tactical", "campaign", "ronin")
 
     return {
         "kill_switch_active": posture.get("kill_switch_active", False),
@@ -143,9 +142,12 @@ async def get_posture_tool_filter() -> dict[str, Any]:
         "comms_create_events": posture.get("comms_create_events", True),
         "comms_list_cron": posture.get("comms_list_cron", True),
         "comms_manage_cron": posture.get("comms_manage_cron", False),
-        "agentflow_create": agentflow_create,
-        "agentflow_execute": agentflow_execute,
-        "agentflow_autonomous": agentflow_autonomous,
+        "agentflow_create": workflow_eligible,
+        "agentflow_execute": workflow_eligible,
+        "agentflow_autonomous": workflow_eligible,
+        "flowstack_create": workflow_eligible,
+        "flowstack_execute": workflow_eligible,
+        "flowstack_autonomous": workflow_eligible,
         # Mado browser automation
         "mado_enabled": posture.get("mado_enabled", False),
         "mado_headless_only": posture.get("mado_headless_only", True),
@@ -360,6 +362,15 @@ def filter_tools_by_posture(tools: list[dict], posture: dict) -> tuple[list[dict
             denied.append(name)
             continue
         if name in ("create_cron_job", "delete_cron_job") and not posture.get("comms_manage_cron", False):
+            denied.append(name)
+            continue
+
+        # AgentFlow and Flow Stack tools are only posture-eligible at Tactical+.
+        # Per-Shogun toggles are enforced before this global ceiling.
+        if name in ("create_agent_flow", "edit_agent_flow") and not posture.get("agentflow_create", False):
+            denied.append(name)
+            continue
+        if name in ("create_flow_stack", "edit_flow_stack") and not posture.get("flowstack_create", False):
             denied.append(name)
             continue
 

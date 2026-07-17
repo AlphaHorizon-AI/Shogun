@@ -490,6 +490,20 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
   );
 }
 
+const STACK_CATEGORY_COLORS: Record<string, string> = {
+  'Continuous Intelligence': '#22c55e',
+  'Strategy & Transformation': '#3b82f6',
+  'Product & Innovation': '#f59e0b',
+  'Growth & Brand': '#ec4899',
+  'Customer Operations': '#06b6d4',
+  'Data & Executive Operations': '#8b5cf6',
+  'Risk & Compliance': '#ef4444',
+  'People & Capability': '#14b8a6',
+  'Incident & Resilience': '#f97316',
+  'Knowledge & Publishing': '#6366f1',
+  'My Templates': '#d4a017',
+};
+
 function StackTemplateGallery({ onOpen }: { onOpen: (template: CatalogTemplate) => void }) {
   const [templates, setTemplates] = useState<CatalogTemplate[]>([]);
   const [search, setSearch] = useState('');
@@ -508,10 +522,13 @@ function StackTemplateGallery({ onOpen }: { onOpen: (template: CatalogTemplate) 
   };
   void useTemplate;
   return <div className="space-y-4">
-    <div className="flex gap-3"><div className="relative flex-1"><Search className="absolute w-4 h-4 left-3 top-3 text-shogun-subdued" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search 180 Flow Stack templates" className="w-full bg-[#0e1225] border border-shogun-border rounded-lg pl-10 p-2.5 text-sm" /></div><select value={category} onChange={(e) => setCategory(e.target.value)} className="bg-[#0e1225] border border-shogun-border rounded-lg px-3 text-xs">{categories.map((item) => <option key={item}>{item}</option>)}</select><button onClick={load} className="p-2.5 border border-shogun-border rounded-lg"><RefreshCw className="w-4 h-4" /></button></div>
+    <div className="flex gap-3"><div className="relative flex-1"><Search className="absolute w-4 h-4 left-3 top-3 text-shogun-subdued" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search 180 Flow Stack templates" className="w-full bg-[#0e1225] border border-shogun-border rounded-lg pl-10 p-2.5 text-sm" /></div><select value={category} onChange={(e) => setCategory(e.target.value)} className="bg-[#0e1225] border border-shogun-border rounded-lg px-3 text-xs" style={{ color: category === 'All' ? '#c8d0d8' : STACK_CATEGORY_COLORS[category] || '#c8d0d8' }}>{categories.map((item) => <option key={item} style={{ color: item === 'All' ? '#c8d0d8' : STACK_CATEGORY_COLORS[item] || '#c8d0d8' }}>{item === 'All' ? 'All Flow Stack Categories' : `● ${item}`}</option>)}</select><button onClick={load} className="p-2.5 border border-shogun-border rounded-lg"><RefreshCw className="w-4 h-4" /></button></div>
     <div className="text-xs text-shogun-subdued">{templates.length} reusable templates · {visible.length} shown</div>
     {notice && <div className="p-3 border border-shogun-blue/30 bg-shogun-blue/10 rounded text-xs">{notice}</div>}
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">{visible.map((template) => <div key={template.id} onClick={() => onOpen(template)} className="shogun-card !p-4 flex flex-col min-h-[210px] cursor-pointer hover:border-purple-400/50 transition-colors"><div className="flex justify-between"><Layers3 className="w-5 h-5 text-purple-400" /><span className="text-[9px] uppercase text-shogun-blue">{template.category}</span></div><h3 className="font-bold text-sm mt-3">{template.name}</h3><p className="text-[11px] text-shogun-subdued mt-2 flex-1">{template.description}</p><div className="flex gap-2 my-3"><span className="text-[9px] px-2 py-1 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">{template.flow_count || 0} PHASES</span><span className="text-[9px] px-2 py-1 rounded bg-shogun-blue/10 text-shogun-blue border border-shogun-blue/20">{template.duration_label || 'RESUMABLE'}</span></div><button onClick={(event) => { event.stopPropagation(); onOpen(template); }} className="w-full px-3 py-2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold">OPEN LONG-RUNNING PROGRAM</button></div>)}</div>
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">{visible.map((template) => {
+      const color = STACK_CATEGORY_COLORS[template.category] || '#7a8899';
+      return <div key={template.id} onClick={() => onOpen(template)} className="shogun-card relative !p-4 flex flex-col min-h-[210px] cursor-pointer hover:border-purple-400/50 transition-colors overflow-hidden"><div className="absolute inset-x-0 top-0 h-0.5" style={{ backgroundColor: color }} /><div className="flex justify-between"><Layers3 className="w-5 h-5" style={{ color }} /><span className="text-[9px] uppercase rounded px-2 py-1 font-bold" style={{ color, backgroundColor: `${color}18` }}>{template.category}</span></div><h3 className="font-bold text-sm mt-3">{template.name}</h3><p className="text-[11px] text-shogun-subdued mt-2 flex-1">{template.description}</p><div className="flex gap-2 my-3"><span className="text-[9px] px-2 py-1 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">{template.flow_count || 0} PHASES</span><span className="text-[9px] px-2 py-1 rounded bg-shogun-blue/10 text-shogun-blue border border-shogun-blue/20">{template.duration_label || 'RESUMABLE'}</span></div><button onClick={(event) => { event.stopPropagation(); onOpen(template); }} className="w-full px-3 py-2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold">OPEN LONG-RUNNING PROGRAM</button></div>;
+    })}</div>
   </div>;
 }
 

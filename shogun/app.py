@@ -361,7 +361,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.7.0",
+        version="1.7.1",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,

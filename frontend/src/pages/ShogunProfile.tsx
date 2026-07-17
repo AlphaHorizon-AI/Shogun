@@ -45,6 +45,25 @@ const apiErrorText = (error: any, fallback: string): string => {
   return typeof detail === 'string' ? detail : fallback;
 };
 
+const WORKFLOW_PERMISSION_DEFAULTS = {
+  agentflow: {
+    allow_create: false,
+    allow_edit: false,
+    allow_activate: false,
+    allow_execute: false,
+    allow_save_as_template: false,
+    allow_delete: false,
+  },
+  flow_stack: {
+    allow_create: false,
+    allow_edit: false,
+    allow_activate: false,
+    allow_execute: false,
+    allow_save_as_template: false,
+    allow_delete: false,
+  },
+};
+
 export const ShogunProfile = () => {
   const [activeTab, setActiveTab] = useState<TabType>('general');
   const [loading, setLoading] = useState(true);
@@ -120,6 +139,14 @@ export const ShogunProfile = () => {
     check('subagents', 'allow_spawn', [true], 5);
     check('subagents', 'allow_auto_spawn', [true], 10);
     check('memory', 'allow_bulk_delete', [true], 10);
+    check('agentflow', 'allow_create', [true], 5);
+    check('agentflow', 'allow_activate', [true], 5);
+    check('agentflow', 'allow_execute', [true], 5);
+    check('agentflow', 'allow_delete', [true], 5);
+    check('flow_stack', 'allow_create', [true], 5);
+    check('flow_stack', 'allow_activate', [true], 5);
+    check('flow_stack', 'allow_execute', [true], 10);
+    check('flow_stack', 'allow_delete', [true], 5);
     // Restrictive permissions (reduce risk)
     check('filesystem', 'mode', ['scoped', 'SCOPED', 'disabled', 'DISABLED'], -5);
     check('network', 'mode', ['disabled', 'DISABLED'], -10);
@@ -165,6 +192,24 @@ export const ShogunProfile = () => {
       allow_write: 'Whether the agent can save new information to its long-term memory.',
       allow_bulk_delete: 'Whether the agent can erase large amounts of its stored knowledge at once.',
     },
+    agentflow: {
+      _category: 'Controls what Shogun may do autonomously with individual AgentFlows. All capabilities are disabled by default and remain limited to Tactical, Campaign, and Ronin posture.',
+      allow_create: 'Allow Shogun to create a new AgentFlow without the operator building it manually.',
+      allow_edit: 'Allow Shogun to change nodes, connectors, and configuration in an existing AgentFlow.',
+      allow_activate: 'Allow Shogun to activate a created AgentFlow. When disabled, Shogun-created flows remain drafts.',
+      allow_execute: 'Allow Shogun to start an AgentFlow run autonomously.',
+      allow_save_as_template: 'Allow Shogun to save AgentFlows as reusable templates.',
+      allow_delete: 'Allow Shogun to delete AgentFlows.',
+    },
+    flow_stack: {
+      _category: 'Controls what Shogun may do autonomously with multi-flow stacks and their orchestrators. All capabilities are disabled by default and require Tactical, Campaign, or Ronin posture.',
+      allow_create: 'Allow Shogun to compose connected AgentFlows into a new Flow Stack.',
+      allow_edit: 'Allow Shogun to change stack phases, connectors, and orchestrator configuration.',
+      allow_activate: 'Allow Shogun to activate a created Flow Stack. When disabled, Shogun-created stacks remain drafts.',
+      allow_execute: 'Allow Shogun to start a Flow Stack orchestrator run autonomously.',
+      allow_save_as_template: 'Allow Shogun to save Flow Stacks as reusable templates.',
+      allow_delete: 'Allow Shogun to delete Flow Stacks.',
+    },
   };
 
   const getTooltip = (category: string, prop?: string): string => {
@@ -173,8 +218,16 @@ export const ShogunProfile = () => {
     return permissionTooltips[catKey]?.[prop.toLowerCase()] || permissionTooltips[catKey]?.[prop] || '';
   };
 
-  const activePermissions = customPermissions || securityPolicies.find(p => p.id === shogunData.security_policy_id)?.permissions || null;
-  const basePermissions = securityPolicies.find(p => p.id === shogunData.security_policy_id)?.permissions || null;
+  const selectedPolicy = securityPolicies.find(p => p.id === shogunData.security_policy_id);
+  const selectedPolicyTier = String(selectedPolicy?.tier || '').toLowerCase();
+  const workflowPostureEligible = ['tactical', 'campaign', 'ronin'].includes(selectedPolicyTier);
+  const rawActivePermissions = customPermissions || selectedPolicy?.permissions || null;
+  const activePermissions = rawActivePermissions ? {
+    ...rawActivePermissions,
+    agentflow: { ...WORKFLOW_PERMISSION_DEFAULTS.agentflow, ...(rawActivePermissions.agentflow || {}) },
+    flow_stack: { ...WORKFLOW_PERMISSION_DEFAULTS.flow_stack, ...(rawActivePermissions.flow_stack || {}) },
+  } : null;
+  const basePermissions = selectedPolicy?.permissions || null;
   const isCustomPolicy = customPermissions !== null && JSON.stringify(customPermissions) !== JSON.stringify(basePermissions);
   const riskScore = computeRiskScore(activePermissions);
 
@@ -995,13 +1048,17 @@ delegation_rules:
                   </div>
                 )}
                 
+                <div className={cn('rounded-xl border p-3 text-[10px] leading-relaxed', workflowPostureEligible ? 'border-purple-500/25 bg-purple-500/5 text-purple-200' : 'border-amber-500/25 bg-amber-500/5 text-amber-200')}>
+                  AgentFlow and Flow Stack permissions are explicit and disabled by default. They can only be enabled under Tactical, Campaign, or Ronin posture. Current policy: <b>{selectedPolicyTier ? selectedPolicyTier.toUpperCase() : 'UNKNOWN'}</b>.
+                </div>
+
                 {activePermissions ? (
                   Object.entries(activePermissions).map(([category, perms]: [string, any], i) => (
                     <div key={i} className="p-3 bg-[#050508] rounded-xl border border-shogun-border space-y-2">
                       <div className="flex items-center gap-2 pb-1 border-b border-shogun-border/50 group/cat">
                         <Shield className="w-3.5 h-3.5 text-shogun-gold" />
                         <div className="relative">
-                          <span className="text-xs font-bold uppercase tracking-wider text-shogun-text cursor-help">{t(`profile.perm_cat_${category}`, category.replace(/_/g, ' '))}</span>
+                          <span className="text-xs font-bold uppercase tracking-wider text-shogun-text cursor-help">{t(`profile.perm_cat_${category}`, category === 'agentflow' ? 'AgentFlow' : category === 'flow_stack' ? 'Flow Stack' : category.replace(/_/g, ' '))}</span>
                           {getTooltip(category) && (
                             <div className="absolute left-0 bottom-full mb-2 w-64 p-2.5 bg-[#0a0e1a] border border-shogun-gold/30 rounded-lg text-[10px] text-shogun-text leading-relaxed shadow-xl opacity-0 pointer-events-none group-hover/cat:opacity-100 transition-opacity duration-200 z-50">
                               <div className="absolute -bottom-1 left-4 w-2 h-2 bg-[#0a0e1a] border-r border-b border-shogun-gold/30 rotate-45" />
@@ -1009,6 +1066,7 @@ delegation_rules:
                             </div>
                           )}
                         </div>
+                        {(category === 'agentflow' || category === 'flow_stack') && <span className={cn('ml-auto rounded border px-1.5 py-0.5 text-[8px] font-bold uppercase', workflowPostureEligible ? 'border-purple-500/30 bg-purple-500/10 text-purple-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300')}>{workflowPostureEligible ? 'Tactical+ available' : 'Posture locked'}</span>}
                       </div>
                       {typeof perms === 'object' && perms !== null && !Array.isArray(perms) ? (
                         <div className="grid gap-1">
@@ -1039,8 +1097,10 @@ delegation_rules:
                                   {isBool ? (
                                     <button
                                       onClick={() => togglePermission(!propVal)}
+                                      disabled={(category === 'agentflow' || category === 'flow_stack') && !workflowPostureEligible}
                                       className={cn(
                                         "w-10 h-5 rounded-full relative transition-all duration-300 border",
+                                        (category === 'agentflow' || category === 'flow_stack') && !workflowPostureEligible && "cursor-not-allowed opacity-35",
                                         propVal 
                                           ? "bg-green-500/20 border-green-500/40" 
                                           : "bg-red-500/10 border-red-500/30"
