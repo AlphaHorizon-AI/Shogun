@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Activity, Beaker, GitCommit, GitMerge, FileDiff, CheckCircle, XCircle, ArrowRight, Play, Loader2, RefreshCw, Cpu, Star } from 'lucide-react';
+import { useState } from 'react';
+import { Activity, Beaker, GitCommit, GitMerge, FileDiff, CheckCircle, XCircle, Play, Loader2, RefreshCw, Cpu, Star } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useTranslation } from '../../i18n';
 
@@ -10,14 +10,6 @@ interface Skill {
   description: string;
   status: 'optimized' | 'needs_opt' | 'optimizing';
   lastRun: string;
-}
-
-interface OptRun {
-  id: string;
-  skillId: string;
-  status: 'running' | 'completed' | 'failed';
-  improvementScore?: number;
-  timeStarted: string;
 }
 
 const mockSkills: Skill[] = [
