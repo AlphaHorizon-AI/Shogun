@@ -28,16 +28,27 @@ class AgentFlowService(BaseService[AgentFlow]):
         self,
         *,
         status: str | None = None,
+        search: str | None = None,
         offset: int = 0,
         limit: int = 50,
         include_templates: bool = False,
     ) -> tuple[Sequence[AgentFlow], int]:
-        """List flows with optional status filter, excluding soft-deleted."""
+        """List flows with optional status/search filter, excluding soft-deleted."""
+        from sqlalchemy import or_
+
         filters = [AgentFlow.is_deleted == False]
         if not include_templates:
             filters.append(AgentFlow.is_template == False)
         if status:
             filters.append(AgentFlow.status == status)
+        if search:
+            pattern = f"%{search}%"
+            filters.append(
+                or_(
+                    AgentFlow.name.ilike(pattern),
+                    AgentFlow.description.ilike(pattern),
+                )
+            )
         return await self.get_all(offset=offset, limit=limit, filters=filters)
 
     async def list_saved_templates(

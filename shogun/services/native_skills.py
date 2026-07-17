@@ -365,6 +365,38 @@ NATIVE_TOOLS = [
     },
     {
         "type": "function",
+        "risk": "low",
+        "category": "workflow",
+        "function": {
+            "name": "list_agent_flows",
+            "description": "List all existing Agent Flows in the system. Use this to discover available workflows, find a flow ID before editing or deleting, check if a flow already exists, or audit active vs draft flows.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["all", "active", "draft"],
+                        "description": "Filter by status. Defaults to 'all'.",
+                    },
+                    "search": {
+                        "type": "string",
+                        "description": "Case-insensitive substring match on flow name or description.",
+                    },
+                    "page": {
+                        "type": "integer",
+                        "description": "Pagination page number (1-based). Defaults to 1.",
+                    },
+                    "per_page": {
+                        "type": "integer",
+                        "description": "Results per page. Defaults to 20.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
         "risk": "medium",
         "category": "workflow",
         "function": {
@@ -2040,6 +2072,7 @@ def generate_tool_prompt(tools: list[dict]) -> str:
 
 
 WORKFLOW_TOOL_PERMISSIONS = {
+    "list_agent_flows": ("agentflow", "allow_list"),
     "create_agent_flow": ("agentflow", "allow_create"),
     "edit_agent_flow": ("agentflow", "allow_edit"),
     "delete_agent_flow": ("agentflow", "allow_delete"),
@@ -2502,6 +2535,53 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
             return json.dumps({
                 "status": "success",
                 "message": f"Cron job '{record.name}' deleted successfully.",
+            })
+
+        elif name == "list_agent_flows":
+            # ── Read-only: list existing flows ──
+            from shogun.services.agent_flow_service import AgentFlowService
+
+            flow_svc = AgentFlowService(db_session)
+
+            # Parse parameters
+            status_filter = args.get("status", "all")
+            if status_filter == "all":
+                status_filter = None
+            search_filter = args.get("search") or None
+            page = max(1, int(args.get("page", 1)))
+            per_page = max(1, min(100, int(args.get("per_page", 20))))
+            offset = (page - 1) * per_page
+
+            records, total = await flow_svc.list_flows(
+                status=status_filter,
+                search=search_filter,
+                offset=offset,
+                limit=per_page,
+            )
+
+            flows_out = []
+            for r in records:
+                # Determine stack membership by checking subflow nodes that reference this flow
+                is_stack_member = r.flow_type == "standard" and any(
+                    n.node_type == "subflow" for n in (r.nodes or [])
+                )
+                flows_out.append({
+                    "flow_id": str(r.id),
+                    "name": r.name,
+                    "description": r.description or "",
+                    "status": r.status,
+                    "node_count": len(r.nodes) if r.nodes else 0,
+                    "edge_count": len(r.edges) if r.edges else 0,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+                    "is_stack_member": is_stack_member,
+                })
+
+            return json.dumps({
+                "flows": flows_out,
+                "total": total,
+                "page": page,
+                "per_page": per_page,
             })
 
         elif name == "create_agent_flow":

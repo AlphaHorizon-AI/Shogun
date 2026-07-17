@@ -1,8 +1,8 @@
 {
-  "version": "1.17.0",
+  "version": "1.17.1",
   "name": "Shogun OS",
-  "build": 79,
+  "build": 80,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Implements Order 14: SkillOpt Integration. Adds skill versioning, usage tracking, generation, and validation services. Includes UI integration in Katana for managing skill optimization runs and promoting candidates."
+  "changelog": "Adds list_agent_flows native tool for discovering, searching, and paginating existing Agent Flows. Enhances list_flows API and service with search support."
 }

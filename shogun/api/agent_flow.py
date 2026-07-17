@@ -41,13 +41,22 @@ router = APIRouter(prefix="/agent-flows", tags=["Agent Flows"])
 @router.get("", response_model=ApiResponse)
 async def list_flows(
     status: str | None = None,
+    search: str | None = None,
+    page: int = 1,
+    per_page: int = 50,
     svc: AgentFlowService = Depends(get_agent_flow_service),
 ):
     """List all Agent Flows (lightweight, without nodes/edges)."""
-    records, total = await svc.list_flows(status=status)
+    offset = max(0, (page - 1) * per_page)
+    records, total = await svc.list_flows(
+        status=status,
+        search=search,
+        offset=offset,
+        limit=per_page,
+    )
     return ApiResponse(
         data=[AgentFlowListItem.model_validate(r) for r in records],
-        meta={"total": total},
+        meta={"total": total, "page": page, "per_page": per_page},
     )
 
 
