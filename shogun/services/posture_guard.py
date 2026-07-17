@@ -25,6 +25,7 @@ log = logging.getLogger("shogun.posture_guard")
 
 # ── Kill-switch gate ─────────────────────────────────────────────────
 
+
 async def check_kill_switch() -> None:
     """Raise HTTP 503 if the global kill switch (HARAKIRI) is active.
 
@@ -40,25 +41,28 @@ async def check_kill_switch() -> None:
         raise HTTPException(
             status_code=503,
             detail="⛩️ HARAKIRI active — all AI operations are suspended. "
-                   "Deactivate the kill switch via the Torii to resume.",
+            "Deactivate the kill switch via the Torii to resume.",
         )
 
     # ── Gensui external posture enforcement ──────────────────
     from shogun.services.gensui_policy_guard import check_gensui_model_call
+
     await check_gensui_model_call()
 
 
 # ── Subagent limit gate ─────────────────────────────────────────────
+
 
 async def check_subagent_limit() -> None:
     """Raise HTTP 403 if creating another Samurai would exceed the tier limit.
 
     Call this before any Samurai agent creation (API endpoint + native skill).
     """
+    from sqlalchemy import func, select
+
     from shogun.api.security import _get_agent_posture
     from shogun.db.engine import async_session_factory
     from shogun.db.models.agent import Agent
-    from sqlalchemy import select, func
 
     posture = await _get_agent_posture()
     max_agents = posture.get("max_active_subagents", 5)
@@ -66,7 +70,9 @@ async def check_subagent_limit() -> None:
 
     async with async_session_factory() as db:
         result = await db.execute(
-            select(func.count()).select_from(Agent).where(
+            select(func.count())
+            .select_from(Agent)
+            .where(
                 Agent.agent_type == "samurai",
                 Agent.status.in_(["active", "idle", "running"]),
                 Agent.is_deleted == False,
@@ -77,7 +83,9 @@ async def check_subagent_limit() -> None:
     if current_count >= max_agents:
         log.warning(
             "[PostureGuard] Subagent limit reached: %d/%d (tier=%s)",
-            current_count, max_agents, tier,
+            current_count,
+            max_agents,
+            tier,
         )
         _emit_block_event(
             "subagent_limit",
@@ -87,8 +95,8 @@ async def check_subagent_limit() -> None:
         raise HTTPException(
             status_code=403,
             detail=f"Security posture [{tier.upper()}] allows a maximum of "
-                   f"{max_agents} active Samurai agents. Currently {current_count} "
-                   f"are active. Change the security tier in the Torii to allow more.",
+            f"{max_agents} active Samurai agents. Currently {current_count} "
+            f"are active. Change the security tier in the Torii to allow more.",
         )
 
 
@@ -102,6 +110,7 @@ async def check_subagent_limit_soft() -> str | None:
 
 
 # ── Tool filtering based on posture ──────────────────────────────────
+
 
 async def get_posture_tool_filter() -> dict[str, Any]:
     """Return the current posture constraints relevant to tool gating.
@@ -155,6 +164,14 @@ async def get_posture_tool_filter() -> dict[str, Any]:
         "mado_autonomous_browsing": posture.get("mado_autonomous_browsing", False),
         "mado_downloads_enabled": posture.get("mado_downloads_enabled", False),
         "mado_uploads_enabled": posture.get("mado_uploads_enabled", False),
+        "mado_login_profiles_enabled": posture.get("mado_login_profiles_enabled", False),
+        "mado_authenticated_sessions_enabled": posture.get("mado_authenticated_sessions_enabled", False),
+        "mado_form_submit_enabled": posture.get("mado_form_submit_enabled", False),
+        "mado_external_urls_enabled": posture.get("mado_external_urls_enabled", False),
+        "mado_capture_screenshots": posture.get("mado_capture_screenshots", True),
+        "mado_require_verification": posture.get("mado_require_verification", True),
+        "mado_max_runtime_seconds": posture.get("mado_max_runtime_seconds", 1800),
+        "mado_allowed_domains": posture.get("mado_allowed_domains", []),
         # Ronin desktop control
         "ronin_enabled": posture.get("ronin_enabled", False),
         "ronin_mouse_enabled": posture.get("ronin_mouse_enabled", False),
@@ -174,6 +191,7 @@ async def get_posture_tool_filter() -> dict[str, Any]:
 
 # ── Office App Mode access gate ─────────────────────────────────────
 
+
 async def check_office_access() -> None:
     """Raise HTTP 403 if Office App Mode is disabled at current tier.
 
@@ -192,11 +210,12 @@ async def check_office_access() -> None:
         raise HTTPException(
             status_code=403,
             detail=f"Security posture [{tier.upper()}] does not permit Office automation. "
-                   "Enable Office App Mode in the Katana settings.",
+            "Enable Office App Mode in the Katana settings.",
         )
 
 
 # ── Workspace access gate ────────────────────────────────────────────
+
 
 async def check_workspace_access() -> str:
     """Check if workspace access is allowed at the current posture tier.
@@ -218,7 +237,7 @@ async def check_workspace_access() -> str:
         raise HTTPException(
             status_code=403,
             detail=f"Security posture [{tier.upper()}] does not permit workspace access. "
-                   "Raise the security tier above SHRINE in the Torii to use the workspace.",
+            "Raise the security tier above SHRINE in the Torii to use the workspace.",
         )
 
     workspace_dir = settings.workspace_path
@@ -227,6 +246,7 @@ async def check_workspace_access() -> str:
 
 
 # ── Mado browser access gate ────────────────────────────────────────
+
 
 async def check_mado_access() -> None:
     """Raise HTTP 403 if Mado browser access is disabled at current tier.
@@ -246,11 +266,12 @@ async def check_mado_access() -> None:
         raise HTTPException(
             status_code=403,
             detail=f"Security posture [{tier.upper()}] does not permit browser automation. "
-                   "Change the security tier in the Torii to enable Mado.",
+            "Change the security tier in the Torii to enable Mado.",
         )
 
     # ── Gensui external Mado enforcement ─────────────────────
     from shogun.services.gensui_policy_guard import check_gensui_mado
+
     await check_gensui_mado()
 
 
@@ -285,16 +306,15 @@ async def check_mado_session_limit() -> None:
 
     # AgentFlow sessions are runtime-only and use ``flow_`` IDs. API/native
     # sessions are persisted and use UUID IDs, even while they are open.
-    runtime_only_count = sum(
-        1 for session_id in _active_contexts
-        if str(session_id).startswith("flow_")
-    )
+    runtime_only_count = sum(1 for session_id in _active_contexts if str(session_id).startswith("flow_"))
     current_count = persisted_count + runtime_only_count
 
     if current_count >= max_sessions:
         log.warning(
             "[PostureGuard] Mado session limit reached: %d/%d (tier=%s)",
-            current_count, max_sessions, tier,
+            current_count,
+            max_sessions,
+            tier,
         )
         _emit_block_event(
             "mado_session_limit",
@@ -304,8 +324,8 @@ async def check_mado_session_limit() -> None:
         raise HTTPException(
             status_code=403,
             detail=f"Security posture [{tier.upper()}] allows a maximum of "
-                   f"{max_sessions} browser sessions. Currently {current_count} "
-                   "are active. Close sessions or change tier in the Torii.",
+            f"{max_sessions} browser sessions. Currently {current_count} "
+            "are active. Close sessions or change tier in the Torii.",
         )
 
 
@@ -367,15 +387,13 @@ def filter_tools_by_posture(tools: list[dict], posture: dict) -> tuple[list[dict
 
         # AgentFlow and Flow Stack tools are only posture-eligible at Tactical+.
         # Per-Shogun toggles are enforced before this global ceiling.
-        if (
-            name in ("create_agent_flow", "edit_agent_flow", "delete_agent_flow")
-            and not posture.get("agentflow_create", False)
+        if name in ("create_agent_flow", "edit_agent_flow", "delete_agent_flow") and not posture.get(
+            "agentflow_create", False
         ):
             denied.append(name)
             continue
-        if (
-            name in ("create_flow_stack", "edit_flow_stack", "delete_flow_stack")
-            and not posture.get("flowstack_create", False)
+        if name in ("create_flow_stack", "edit_flow_stack", "delete_flow_stack") and not posture.get(
+            "flowstack_create", False
         ):
             denied.append(name)
             continue
@@ -405,8 +423,7 @@ def filter_tools_by_posture(tools: list[dict], posture: dict) -> tuple[list[dict
 
         # IDE tools require both Campaign/Ronin eligibility and explicit runtime enablement.
         if name.startswith("ide_") and (
-            posture.get("active_tier") not in {"campaign", "ronin"}
-            or not posture.get("ide_enabled", False)
+            posture.get("active_tier") not in {"campaign", "ronin"} or not posture.get("ide_enabled", False)
         ):
             denied.append(name)
             continue
@@ -423,10 +440,12 @@ def filter_tools_by_posture(tools: list[dict], posture: dict) -> tuple[list[dict
 
 # ── Event emission helper ────────────────────────────────────────────
 
+
 def _emit_block_event(block_type: str, message: str) -> None:
     """Fire-and-forget compliance event for blocked operations."""
     try:
         import asyncio
+
         from shogun.services.event_logger import EventLogger
 
         try:
@@ -434,20 +453,24 @@ def _emit_block_event(block_type: str, message: str) -> None:
         except RuntimeError:
             return
 
-        loop.create_task(EventLogger.emit_policy_event(
-            "policy.posture_blocked",
-            message,
-            severity="warn",
-            policy_ref=f"posture_guard:{block_type}",
-            policy_decision="denied",
-            policy_reason=message,
-        ))
-        loop.create_task(EventLogger.emit_risk_event(
-            "risk.posture_enforcement",
-            message,
-            severity="warn",
-            risk_score="medium",
-            detail={"block_type": block_type},
-        ))
+        loop.create_task(
+            EventLogger.emit_policy_event(
+                "policy.posture_blocked",
+                message,
+                severity="warn",
+                policy_ref=f"posture_guard:{block_type}",
+                policy_decision="denied",
+                policy_reason=message,
+            )
+        )
+        loop.create_task(
+            EventLogger.emit_risk_event(
+                "risk.posture_enforcement",
+                message,
+                severity="warn",
+                risk_score="medium",
+                detail={"block_type": block_type},
+            )
+        )
     except Exception:
         pass

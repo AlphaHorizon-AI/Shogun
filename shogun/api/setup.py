@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from shogun.config import settings, PROJECT_ROOT
+from shogun.config import PROJECT_ROOT, settings
 from shogun.db.engine import async_session_factory
 from shogun.schemas.common import ApiResponse
 
@@ -42,6 +42,47 @@ RONIN_DESKTOP_DEFAULTS = {
     "blocked_keywords_in_window_titles": ["password", "bank", "payment", "security code", "two-factor", "2FA"],
 }
 
+MADO_DEFAULTS = {
+    "enabled": True,
+    "default_mode": "visible",
+    "headless_allowed": True,
+    "visible_allowed": True,
+    "profiles_root": "./data/mado/profiles",
+    "downloads_root": "./data/mado/downloads",
+    "screenshots_root": "./data/mado/screenshots",
+    "artifacts_root": "./data/mado/artifacts",
+    "allowed_domains": [],
+    "blocked_domains": [],
+    "allow_external_urls": False,
+    "allow_persistent_profiles": True,
+    "allow_authenticated_sessions": False,
+    "allow_file_downloads": "approval",
+    "allow_file_uploads": "approval",
+    "allow_form_submit": "approval",
+    "require_verification": True,
+    "max_pages_per_run": 50,
+    "max_runtime_seconds": 1800,
+    "default_navigation_timeout_ms": 30000,
+    "default_action_timeout_ms": 10000,
+    "retry": {"max_attempts": 3, "backoff_seconds": [1, 3, 8]},
+    "page_readiness": {
+        "wait_for_dom_content_loaded": True,
+        "wait_for_network_idle": True,
+        "network_idle_timeout_ms": 1500,
+        "stability_check_enabled": True,
+    },
+    "dialog_policy": {
+        "cookie_banner_policy": "accept_necessary_only",
+        "confirm_dialog_policy": "dismiss",
+        "permission_prompt_policy": "deny",
+    },
+    "audit": {
+        "log_all_actions": True,
+        "capture_screenshots_on_error": True,
+        "capture_screenshots_on_verification": True,
+    },
+}
+
 
 def _read_setup() -> dict:
     """Read the setup.json config, or return defaults."""
@@ -52,10 +93,16 @@ def _read_setup() -> dict:
                 **RONIN_DESKTOP_DEFAULTS,
                 **setup.get("ronin_desktop_control", {}),
             }
+            setup["mado"] = {**MADO_DEFAULTS, **setup.get("mado", {})}
             return setup
         except Exception:
             pass
-    return {"language": "en", "setup_complete": False, "ronin_desktop_control": dict(RONIN_DESKTOP_DEFAULTS)}
+    return {
+        "language": "en",
+        "setup_complete": False,
+        "ronin_desktop_control": dict(RONIN_DESKTOP_DEFAULTS),
+        "mado": dict(MADO_DEFAULTS),
+    }
 
 
 def _write_setup(data: dict) -> None:
@@ -70,7 +117,7 @@ async def get_setup_status():
     setup = _read_setup()
     return ApiResponse(
         data={
-        "setup_complete": setup.get("setup_complete", False),
+            "setup_complete": setup.get("setup_complete", False),
             "language": setup.get("language", "en"),
             "operator_name": setup.get("operator_name", "Daimyo"),
             "data_path": setup.get("data_path", str(PROJECT_ROOT / "data")),
@@ -124,9 +171,10 @@ class SetupCompletePayload(BaseModel):
 @router.post("/complete", response_model=ApiResponse)
 async def complete_setup(payload: SetupCompletePayload):
     """Process the full wizard payload — creates everything in one go."""
+    from sqlalchemy import select
+
     from shogun.db.models.agent import Agent
     from shogun.db.models.model_provider import ModelProvider
-    from sqlalchemy import select
 
     created_provider_ids: list[str] = []
     # Map frontend-generated provider UUIDs → actual DB UUIDs so model
@@ -135,6 +183,7 @@ async def complete_setup(payload: SetupCompletePayload):
 
     async with async_session_factory() as session:
         from shogun.db.models.operator import Operator
+
         # ── 0. Create/update Operator ────────────────────────────────
         op_result = await session.execute(select(Operator).limit(1))
         op = op_result.scalar_one_or_none()
@@ -148,9 +197,7 @@ async def complete_setup(payload: SetupCompletePayload):
         for idx, prov in enumerate(payload.providers):
             slug = f"{prov.provider_type}-{prov.name}".lower().replace(" ", "-")
             # Check if provider with this slug already exists
-            existing = await session.execute(
-                select(ModelProvider).where(ModelProvider.slug == slug)
-            )
+            existing = await session.execute(select(ModelProvider).where(ModelProvider.slug == slug))
             existing_record = existing.scalar_one_or_none()
 
             if existing_record:
@@ -206,10 +253,7 @@ async def complete_setup(payload: SetupCompletePayload):
             # Find which provider index this frontend UUID belongs to
             # by checking which provider's models list contains the
             # model names referenced with this frontend UUID
-            model_names_for_fe = [
-                ref.split("::")[1] for ref in all_model_refs
-                if ref.startswith(f"{fe_id}::")
-            ]
+            model_names_for_fe = [ref.split("::")[1] for ref in all_model_refs if ref.startswith(f"{fe_id}::")]
             for idx, prov in enumerate(payload.providers):
                 if idx < len(created_provider_ids):
                     # Check if any of the model names match this provider's models
@@ -327,8 +371,8 @@ def _check_module(module_name: str) -> dict:
 
 def _detect_os_info() -> dict:
     """Detect the current OS and display server."""
-    import platform
     import os
+    import platform
 
     system = platform.system()
     os_name = "Windows" if system == "Windows" else "macOS" if system == "Darwin" else "Linux"
@@ -405,8 +449,7 @@ async def install_ronin_deps():
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", ".[ronin]",
-             "--quiet", "--disable-pip-version-check"],
+            [sys.executable, "-m", "pip", "install", ".[ronin]", "--quiet", "--disable-pip-version-check"],
             capture_output=True,
             text=True,
             timeout=120,
@@ -460,10 +503,10 @@ async def install_ronin_deps():
 
 # Map display names to pip package names
 _RONIN_DEP_MAP: dict[str, tuple[str, str]] = {
-    "mss":       ("mss",                     "mss"),
-    "pyautogui": ("pyautogui",               "pyautogui"),
-    "pynput":    ("pynput",                   "pynput"),
-    "opencv":    ("opencv-python-headless",   "cv2"),
+    "mss": ("mss", "mss"),
+    "pyautogui": ("pyautogui", "pyautogui"),
+    "pynput": ("pynput", "pynput"),
+    "opencv": ("opencv-python-headless", "cv2"),
 }
 
 
@@ -490,8 +533,7 @@ async def install_single_ronin_dep(payload: RoninDepInstallPayload):
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", pip_package,
-             "--quiet", "--disable-pip-version-check"],
+            [sys.executable, "-m", "pip", "install", pip_package, "--quiet", "--disable-pip-version-check"],
             capture_output=True,
             text=True,
             timeout=120,
@@ -528,4 +570,3 @@ async def install_single_ronin_dep(payload: RoninDepInstallPayload):
                 "message": f"Installation error: {str(exc)}",
             }
         )
-

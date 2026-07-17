@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Mado Test Portal</title>
+  <style>body{font:16px system-ui;background:#09111f;color:#dbeafe;padding:40px}main{max-width:680px;margin:auto}input,button,a{display:block;margin:12px 0;padding:10px}#dashboard{display:none}.ok{color:#34d399}</style>
+</head>
+<body>
+  <main>
+    <h1>Mado Hardening Test Portal</h1>
+    <form id="login-form">
+      <label>Email <input id="email" name="email" type="email" required></label>
+      <label>Password <input id="password" name="password" type="password" required></label>
+      <button id="login-button" type="submit">Sign in</button>
+    </form>
+    <section id="dashboard">
+      <h2 class="ok">Portal ready</h2>
+      <p>Latest report is available.</p>
+      <a id="download-report" download="mado_demo_report.csv" href="data:text/csv,period%2Cstatus%0A2026-07%2Cverified">Download report</a>
+      <table><thead><tr><th>Period</th><th>Status</th></tr></thead><tbody><tr><td>2026-07</td><td>Verified</td></tr></tbody></table>
+    </section>
+  </main>
+  <script>document.querySelector('#login-form').addEventListener('submit',event=>{event.preventDefault();event.target.style.display='none';document.querySelector('#dashboard').style.display='block';});</script>
+</body>
+</html>

@@ -1,8 +1,8 @@
 {
-  "version": "1.14.0",
+  "version": "1.15.0",
   "name": "Shogun OS",
-  "build": 76,
+  "build": 77,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Adds Order 11 Ronin Desktop Control: explicit Ronin-only enablement, granular permissions, protected-context blocking, Windows window and application controls, dynamic waits, action verification and recovery, audit trajectory, live desktop session view, visible active indicator, and kill switch."
+  "changelog": "Adds Order 12 Mado Hardening: governed persistent browser sessions, profile locks, structured hybrid page observation, reliable navigation and actions, controlled uploads/downloads, verification and retry recovery, Stack artifacts and audit trajectories, live session viewer, explicit permissions, global activity indicator, kill switch, and canonical portal demo."
 }

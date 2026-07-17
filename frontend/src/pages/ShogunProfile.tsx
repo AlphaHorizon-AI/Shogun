@@ -62,6 +62,20 @@ const WORKFLOW_PERMISSION_DEFAULTS = {
     allow_save_as_template: false,
     allow_delete: false,
   },
+  mado_browser: {
+    enabled: false,
+    allow_external_urls: false,
+    allow_login_profiles: false,
+    allow_authenticated_sessions: false,
+    allow_file_downloads: false,
+    allow_file_uploads: false,
+    allow_form_submit: false,
+    allow_headless_mode: true,
+    allow_visible_mode: true,
+    capture_screenshots: true,
+    require_verification: true,
+    audit_all_actions: true,
+  },
   visual_intake: {
     allow_image_intake: true,
     allow_local_vision: true,
@@ -286,6 +300,7 @@ export const ShogunProfile = () => {
     ...rawActivePermissions,
     agentflow: { ...WORKFLOW_PERMISSION_DEFAULTS.agentflow, ...(rawActivePermissions.agentflow || {}) },
     flow_stack: { ...WORKFLOW_PERMISSION_DEFAULTS.flow_stack, ...(rawActivePermissions.flow_stack || {}) },
+    mado_browser: { ...WORKFLOW_PERMISSION_DEFAULTS.mado_browser, ...(rawActivePermissions.mado_browser || {}) },
     visual_intake: { ...WORKFLOW_PERMISSION_DEFAULTS.visual_intake, ...(rawActivePermissions.visual_intake || {}) },
     ide_mode: { ...WORKFLOW_PERMISSION_DEFAULTS.ide_mode, ...(rawActivePermissions.ide_mode || {}) },
   } : null;

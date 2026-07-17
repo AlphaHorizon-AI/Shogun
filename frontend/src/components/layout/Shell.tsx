@@ -10,6 +10,7 @@ interface ShellProps {
 export const Shell = ({ children }: ShellProps) => {
   const { t } = useTranslation();
   const [roninDesktopActive, setRoninDesktopActive] = useState(false);
+  const [madoActive, setMadoActive] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -17,8 +18,13 @@ export const Shell = ({ children }: ShellProps) => {
       .then(response => response.json())
       .then(payload => { if (mounted) setRoninDesktopActive(Boolean(payload?.data?.active && payload?.data?.ronin_visible_indicator)); })
       .catch(() => {});
+    const pollMado = () => fetch('/api/v1/mado/status')
+      .then(response => response.json())
+      .then(payload => { if (mounted) setMadoActive((payload?.data?.active_sessions || 0) > 0); })
+      .catch(() => {});
     poll();
-    const timer = window.setInterval(poll, 5000);
+    pollMado();
+    const timer = window.setInterval(() => { poll(); pollMado(); }, 5000);
     return () => { mounted = false; window.clearInterval(timer); };
   }, []);
 
@@ -27,6 +33,11 @@ export const Shell = ({ children }: ShellProps) => {
     await fetch('/api/v1/ronin/desktop/kill-switch', { method: 'POST' });
     setRoninDesktopActive(false);
   };
+  const killMado = async () => {
+    if (!confirm('Stop all active Mado browser sessions immediately?')) return;
+    await fetch('/api/v1/mado/kill-switch', { method: 'POST' });
+    setMadoActive(false);
+  };
   return (
     <div className="flex flex-col h-screen w-screen bg-shogun-bg overflow-hidden text-shogun-text font-sans">
       <TopBar />
@@ -34,6 +45,12 @@ export const Shell = ({ children }: ShellProps) => {
         <div className="h-8 shrink-0 px-4 flex items-center justify-between border-b border-orange-500/40 bg-orange-500/10 text-orange-300">
           <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" /><span className="text-[9px] font-black tracking-[0.2em]">RONIN DESKTOP CONTROL ACTIVE</span></div>
           <button onClick={killRoninDesktop} className="rounded border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[8px] font-black text-red-400 hover:bg-red-500/20">KILL SWITCH</button>
+        </div>
+      )}
+      {madoActive && (
+        <div className="h-8 shrink-0 px-4 flex items-center justify-between border-b border-cyan-500/40 bg-cyan-500/10 text-cyan-300">
+          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" /><span className="text-[9px] font-black tracking-[0.2em]">MADO BROWSER ACTIVE</span></div>
+          <button onClick={killMado} className="rounded border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[8px] font-black text-red-400 hover:bg-red-500/20">STOP MADO</button>
         </div>
       )}
       <div className="flex flex-1 overflow-hidden">

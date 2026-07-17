@@ -14,7 +14,6 @@ import concurrent.futures
 import logging
 import re
 import shutil
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,9 +24,10 @@ from shogun.config import settings
 log = logging.getLogger("shogun.mado")
 
 # ── Active browser contexts (in-memory registry) ────────────────
-_active_browsers: dict[str, Any] = {}       # session_id → Browser
-_active_contexts: dict[str, Any] = {}       # session_id → BrowserContext
-_active_pages: dict[str, Any] = {}          # session_id → Page
+_active_browsers: dict[str, Any] = {}  # session_id → Browser
+_active_contexts: dict[str, Any] = {}  # session_id → BrowserContext
+_active_pages: dict[str, Any] = {}  # session_id → Page
+_active_profiles: dict[str, str] = {}
 _playwright_instance: Any = None
 
 # Single-thread executor: Playwright's sync API binds to the thread where
@@ -41,6 +41,7 @@ async def _run_in_pw_thread(fn, *args, **kwargs):
     loop = asyncio.get_event_loop()
     if kwargs:
         import functools
+
         fn = functools.partial(fn, *args, **kwargs)
         args = ()
     return await loop.run_in_executor(_pw_executor, fn, *args)
@@ -69,10 +70,7 @@ async def get_chromium_status() -> dict[str, Any]:
             browsers_path = Path.home() / ".cache" / "ms-playwright"
 
         if browsers_path.exists():
-            chromium_dirs = [
-                d for d in browsers_path.iterdir()
-                if d.is_dir() and "chromium" in d.name.lower()
-            ]
+            chromium_dirs = [d for d in browsers_path.iterdir() if d.is_dir() and "chromium" in d.name.lower()]
             if chromium_dirs:
                 installed = True
                 version = chromium_dirs[0].name
@@ -103,6 +101,7 @@ async def install_chromium() -> dict[str, Any]:
         # Step 1: Ensure playwright Python package is installed
         try:
             import playwright  # noqa: F401
+
             steps.append({"step": "pip_install", "status": "skipped", "message": "playwright already installed"})
         except ImportError:
             log.info("Mado: Installing playwright Python package...")
@@ -171,6 +170,7 @@ def _get_playwright_sync():
     global _playwright_instance
     if _playwright_instance is None:
         from playwright.sync_api import sync_playwright
+
         _playwright_instance = sync_playwright().start()
         log.info("Mado: sync Playwright instance started")
     return _playwright_instance
@@ -186,8 +186,12 @@ async def launch_browser(
     Uses the *sync* Playwright API inside a thread to work around the
     Windows / Python 3.14 asyncio subprocess limitation.
     """
+    from shogun.services.mado_hardening import permission_guard, profile_manager, runtime_registry
+
+    await permission_guard.check("mado.session.create", mode=mode, persistent_profile=profile_name != "ephemeral")
     if session_id in _active_contexts:
         return {"status": "already_active", "session_id": session_id}
+    profile_manager.lock(profile_name, session_id)
 
     def _do_launch():
         pw = _get_playwright_sync()
@@ -213,8 +217,6 @@ async def launch_browser(
             java_script_enabled=True,
             locale="en-US",
             timezone_id="America/New_York",
-            geolocation={"latitude": 40.7128, "longitude": -74.0060},
-            permissions=["geolocation"],
             args=[
                 "--disable-blink-features=AutomationControlled",
             ],
@@ -223,15 +225,31 @@ async def launch_browser(
         pages = context.pages
         page = pages[0] if pages else context.new_page()
 
+        def _dismiss_dialog(dialog):
+            state = runtime_registry.get(session_id)
+            state.record(
+                "mado.dialog.detected",
+                f"Browser {dialog.type} dialog detected",
+                dialog_type=dialog.type,
+            )
+            dialog.dismiss()
+            state.record(
+                "mado.dialog.handled",
+                "Browser dialog dismissed by safe default policy",
+                dialog_type=dialog.type,
+            )
+
+        page.on("dialog", _dismiss_dialog)
+
         _active_contexts[session_id] = context
         _active_pages[session_id] = page
+        _active_profiles[session_id] = profile_name
         return True
 
     try:
         await _run_in_pw_thread(_do_launch)
 
-        log.info("Mado: browser launched for session %s (profile=%s, mode=%s)",
-                 session_id, profile_name, mode)
+        log.info("Mado: browser launched for session %s (profile=%s, mode=%s)", session_id, profile_name, mode)
 
         await _emit_browser_event(
             "browser.launch",
@@ -239,9 +257,26 @@ async def launch_browser(
             detail={"session_id": session_id, "profile": profile_name, "mode": mode},
         )
 
+        state = runtime_registry.register(session_id, profile_id=profile_name, mode=mode)
+        state.status = "active"
+        from shogun.services.mado_hardening import emit_mado_event
+
+        await emit_mado_event(
+            "mado.profile.selected",
+            f"Mado profile selected: {profile_name}",
+            session_id=session_id,
+            detail={"profile": profile_name},
+        )
+        await emit_mado_event(
+            "mado.profile.locked",
+            f"Mado profile locked: {profile_name}",
+            session_id=session_id,
+            detail={"profile": profile_name},
+        )
         return {"status": "launched", "session_id": session_id, "mode": mode}
 
     except Exception as exc:
+        profile_manager.release(profile_name, session_id)
         log.error("Mado: failed to launch browser for session %s: %s", session_id, exc, exc_info=True)
         return {"status": "error", "error": str(exc)[:500]}
 
@@ -251,12 +286,30 @@ async def close_browser(session_id: str) -> dict[str, Any]:
     context = _active_contexts.pop(session_id, None)
     _active_pages.pop(session_id, None)
     _active_browsers.pop(session_id, None)
+    profile_name = _active_profiles.pop(session_id, None)
 
     if context is None:
+        if profile_name:
+            from shogun.services.mado_hardening import profile_manager
+
+            profile_manager.release(profile_name, session_id)
         return {"status": "not_found", "session_id": session_id}
 
     try:
         await _run_in_pw_thread(context.close)
+        from shogun.services.mado_hardening import profile_manager, runtime_registry
+
+        if profile_name:
+            profile_manager.release(profile_name, session_id)
+        runtime_registry.close(session_id)
+        from shogun.services.mado_hardening import emit_mado_event
+
+        await emit_mado_event(
+            "mado.profile.released",
+            f"Mado profile released: {profile_name}",
+            session_id=session_id,
+            detail={"profile": profile_name},
+        )
         log.info("Mado: browser closed for session %s", session_id)
 
         await _emit_browser_event(
@@ -266,6 +319,10 @@ async def close_browser(session_id: str) -> dict[str, Any]:
         )
         return {"status": "closed", "session_id": session_id}
     except Exception as exc:
+        if profile_name:
+            from shogun.services.mado_hardening import profile_manager
+
+            profile_manager.release(profile_name, session_id)
         log.error("Mado: error closing browser for session %s: %s", session_id, exc)
         return {"status": "error", "error": str(exc)[:500]}
 
@@ -294,43 +351,35 @@ def _get_page(session_id: str):
 # Ordered from most specific (platform IDs) to generic (text matching).
 _CONSENT_SELECTORS: list[str] = [
     # ── Google / YouTube consent ──
-    "#L2AGLb",                                          # Google "Accept all" button
+    "#L2AGLb",  # Google "Accept all" button
     "button[aria-label*='Accept all']",
     "form[action*='consent'] button",
-
     # ── Cookiebot (very common in Scandinavia / EU) ──
     "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll",
     "#CybotCookiebotDialogBodyButtonAccept",
     "#CybotCookiebotDialogBodyLevelButtonAccept",
     "a#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll",
-
     # ── OneTrust (enterprise-grade CMP) ──
     "#onetrust-accept-btn-handler",
     ".onetrust-accept-btn-handler",
     "button[id*='onetrust-accept']",
-
     # ── Didomi ──
     "#didomi-notice-agree-button",
     "button[class*='didomi-agree']",
-
     # ── Quantcast / TCF ──
     ".qc-cmp2-summary-buttons button[mode='primary']",
     "button.qc-cmp-button",
     "#qc-cmp2-ui button[mode='primary']",
-
     # ── TrustArc / TrustE ──
     ".trustarc-agree-btn",
     "#truste-consent-button",
-    "a.call",                                           # TrustArc "Agree" link
-
+    "a.call",  # TrustArc "Agree" link
     # ── Klaro consent manager ──
     "button.cm-btn-accept",
     ".klaro .cm-btn-accept-all",
-
     # ── Borlabs Cookie (WordPress) ──
     "#BorlabsCookieBox a[data-cookie-accept-all]",
     "a._brlbs-btn-accept-all",
-
     # ── Generic EU cookie banners (text-based matching, multi-language) ──
     # English
     "button:has-text('Accept all')",
@@ -345,7 +394,6 @@ _CONSENT_SELECTORS: list[str] = [
     "button:has-text('OK')",
     "a:has-text('Accept all')",
     "a:has-text('Accept cookies')",
-
     # Danish (eb.dk, jp.dk, dr.dk, bt.dk, etc.)
     "button:has-text('Acceptér alle')",
     "button:has-text('Accepter alle')",
@@ -357,48 +405,39 @@ _CONSENT_SELECTORS: list[str] = [
     "button:has-text('Godkend')",
     "a:has-text('Acceptér alle')",
     "a:has-text('Accepter alle')",
-
     # German
     "button:has-text('Alle akzeptieren')",
     "button:has-text('Akzeptieren')",
     "button:has-text('Alle zulassen')",
     "button:has-text('Zustimmen')",
-
     # French
     "button:has-text('Tout accepter')",
     "button:has-text('Accepter tout')",
     "button:has-text('J\\'accepte')",
     "button:has-text('Accepter')",
-
     # Spanish
     "button:has-text('Aceptar todo')",
     "button:has-text('Aceptar todas')",
     "button:has-text('Aceptar')",
-
     # Italian
     "button:has-text('Accetta tutto')",
     "button:has-text('Accetta tutti')",
     "button:has-text('Accetto')",
-
     # Dutch
     "button:has-text('Alles accepteren')",
     "button:has-text('Accepteren')",
     "button:has-text('Alle toestaan')",
-
     # Norwegian / Swedish
     "button:has-text('Godta alle')",
     "button:has-text('Aksepter alle')",
     "button:has-text('Acceptera alla')",
     "button:has-text('Godkänn alla')",
-
     # Portuguese
     "button:has-text('Aceitar tudo')",
     "button:has-text('Aceitar todos')",
-
     # Polish
     "button:has-text('Zaakceptuj wszystkie')",
     "button:has-text('Akceptuję')",
-
     # ── Generic fallback: aria-label / data attributes ──
     "button[aria-label*='accept']",
     "button[aria-label*='Accept']",
@@ -410,13 +449,39 @@ _CONSENT_SELECTORS: list[str] = [
 ]
 
 
-def _auto_dismiss_consent(page: Any, timeout_ms: int = 3000) -> bool:
-    """Try to find and click a cookie consent "Accept" button on the page.
+_NECESSARY_CONSENT_SELECTORS = [
+    "button:has-text('Reject all')",
+    "button:has-text('Reject All')",
+    "button:has-text('Decline all')",
+    "button:has-text('Decline All')",
+    "button:has-text('Necessary only')",
+    "button:has-text('Only necessary')",
+    "button:has-text('Essential only')",
+    "button:has-text('Afvis alle')",
+    "button:has-text('Kun nødvendige')",
+    "button:has-text('Nur notwendige')",
+    "button:has-text('Alle ablehnen')",
+    "button:has-text('Tout refuser')",
+    "button:has-text('Rechazar todo')",
+    "button:has-text('Rifiuta tutto')",
+    "button:has-text('Alles weigeren')",
+    "button:has-text('Avvis alle')",
+    "button:has-text('Avvisa alla')",
+    "button[aria-label*='reject' i]",
+    "button[data-testid*='reject' i]",
+    "[data-action='reject']",
+    "[data-cookiefirst-action='reject']",
+    "[data-gdpr='reject']",
+]
 
-    Works on both the main frame and inside iframes (many CMPs use an iframe).
-    Returns True if a consent button was clicked, False otherwise.
+
+def _auto_dismiss_consent(page: Any, timeout_ms: int = 3000) -> bool:
+    """Resolve cookie consent using the privacy-preserving safe default.
+
+    Mado only selects reject-all or necessary-only choices. It never grants
+    optional consent through a page's JavaScript API and leaves the banner in
+    place when no safe choice can be identified.
     """
-    import time
 
     # Short wait for consent banners to render (they often load async)
     try:
@@ -425,7 +490,7 @@ def _auto_dismiss_consent(page: Any, timeout_ms: int = 3000) -> bool:
         pass
 
     # ── Pass 1: try selectors on the main page ──
-    if _try_consent_selectors(page, "main page"):
+    if _try_consent_selectors(page, "main page", _NECESSARY_CONSENT_SELECTORS):
         return True
 
     # ── Pass 2: try inside iframes (Cookiebot, OneTrust, etc.) ──
@@ -437,47 +502,46 @@ def _auto_dismiss_consent(page: Any, timeout_ms: int = 3000) -> bool:
             frame_url = frame.url or ""
             # Only check frames that look like consent managers
             consent_hints = [
-                "consent", "cookie", "gdpr", "privacy", "cmp",
-                "onetrust", "cookiebot", "didomi", "quantcast",
-                "trustarc", "klaro", "borlabs",
+                "consent",
+                "cookie",
+                "gdpr",
+                "privacy",
+                "cmp",
+                "onetrust",
+                "cookiebot",
+                "didomi",
+                "quantcast",
+                "trustarc",
+                "klaro",
+                "borlabs",
             ]
             if any(h in frame_url.lower() for h in consent_hints):
-                if _try_consent_selectors(frame, f"iframe ({frame_url[:60]})"):
+                if _try_consent_selectors(
+                    frame,
+                    f"iframe ({frame_url[:60]})",
+                    _NECESSARY_CONSENT_SELECTORS,
+                ):
                     return True
     except Exception as exc:
         log.debug("Mado: iframe consent check error: %s", exc)
 
-    # ── Pass 3: JavaScript-based CMP API calls (Cookiebot, TCF) ──
-    try:
-        # Cookiebot JS API
-        result = page.evaluate("""() => {
-            if (typeof Cookiebot !== 'undefined' && Cookiebot.consent) {
-                Cookiebot.submitCustomConsent(true, true, true);
-                return 'cookiebot';
-            }
-            if (typeof __tcfapi !== 'undefined') {
-                __tcfapi('setConsent', 2, () => {}, {purpose: {consents: true}});
-                return 'tcf';
-            }
-            return null;
-        }""")
-        if result:
-            log.info("Mado: Consent accepted via JS API (%s)", result)
-            return True
-    except Exception:
-        pass
-
+    # Deliberately avoid JavaScript consent APIs: they can silently grant
+    # optional tracking consent instead of enforcing the configured safe policy.
     return False
 
 
-def _try_consent_selectors(frame: Any, label: str) -> bool:
+def _try_consent_selectors(
+    frame: Any,
+    label: str,
+    selectors: list[str] | None = None,
+) -> bool:
     """Try each consent selector on a frame/page. Returns True on first click."""
-    for selector in _CONSENT_SELECTORS:
+    for selector in selectors or _NECESSARY_CONSENT_SELECTORS:
         try:
             btn = frame.query_selector(selector)
             if btn and btn.is_visible():
                 btn.click()
-                log.info("Mado: Cookie consent accepted on %s via '%s'", label, selector)
+                log.info("Mado: Optional cookie consent rejected on %s via '%s'", label, selector)
                 try:
                     frame.wait_for_timeout(500)
                 except Exception:
@@ -500,6 +564,9 @@ async def navigate(
     domain_allowlist: list[str] | None = None,
 ) -> dict[str, Any]:
     """Navigate to a URL with domain validation."""
+    from shogun.services.mado_hardening import permission_guard
+
+    await permission_guard.check("mado.navigation.open_url", url=url)
     # Domain validation
     if domain_allowlist:
         parsed = urlparse(url)
@@ -519,13 +586,38 @@ async def navigate(
         response = page.goto(url, wait_until=wait_until, timeout=30000)
         status_code = response.status if response else None
 
+        load_state = wait_until
+        try:
+            page.wait_for_load_state("networkidle", timeout=5000)
+            load_state = "networkidle"
+        except Exception:
+            pass
+
         # ── Auto-dismiss cookie / GDPR consent popups ────────────
         # Handles: Google, Cookiebot, OneTrust, Didomi, Quantcast,
         #          TrustArc, generic EU cookie banners, iframed CMPs
         _auto_dismiss_consent(page)
 
         title = page.title()
-        return {"url": page.url, "title": title, "status_code": status_code}
+        body_text = page.locator("body").inner_text(timeout=3000).strip()[:1000]
+        errors = []
+        if status_code and status_code >= 400:
+            errors.append(f"HTTP {status_code}")
+        if not title and not body_text:
+            errors.append("Blank page detected")
+        redirect_chain: list[str] = []
+        request = response.request if response else None
+        while request and request.redirected_from:
+            request = request.redirected_from
+            redirect_chain.insert(0, request.url)
+        return {
+            "url": page.url,
+            "title": title,
+            "status_code": status_code,
+            "load_state": load_state,
+            "redirect_chain": redirect_chain,
+            "errors": errors,
+        }
 
     try:
         result = await _run_in_pw_thread(_do_nav)
@@ -533,10 +625,11 @@ async def navigate(
         await _emit_browser_event(
             "browser.navigate",
             f"Navigated to {url}",
-            detail={"session_id": session_id, "url": url,
-                    "status": result["status_code"], "title": result["title"]},
+            detail={"session_id": session_id, "url": url, "status": result["status_code"], "title": result["title"]},
         )
 
+        if result["errors"]:
+            return {"status": "error", **result, "error": "; ".join(result["errors"])}
         return {"status": "ok", **result}
     except Exception as exc:
         return {"status": "error", "error": str(exc)[:500]}
@@ -560,8 +653,7 @@ async def extract_content(
         if selector:
             elements = page.query_selector_all(selector)
             if not elements:
-                log.warning("Mado: selector '%s' matched 0 elements on %s, falling back to body",
-                            selector, page.url)
+                log.warning("Mado: selector '%s' matched 0 elements on %s, falling back to body", selector, page.url)
                 body_text = page.inner_text("body")
                 body_text = body_text[:50000] if body_text else ""
                 return {
@@ -610,8 +702,13 @@ async def extract_content(
         await _emit_browser_event(
             "browser.extract",
             f"Extracted {extract_type} content ({result['length']} chars)",
-            detail={"session_id": session_id, "selector": selector, "type": extract_type,
-                    "length": result["length"], "elements_found": result.get("elements_found")},
+            detail={
+                "session_id": session_id,
+                "selector": selector,
+                "type": extract_type,
+                "length": result["length"],
+                "elements_found": result.get("elements_found"),
+            },
         )
 
         return result
@@ -649,8 +746,12 @@ async def screenshot(
             await _emit_browser_event(
                 "browser.screenshot",
                 f"Screenshot captured: {result['filename']}",
-                detail={"session_id": session_id, "path": result["path"],
-                        "full_page": full_page, "url": result.get("url")},
+                detail={
+                    "session_id": session_id,
+                    "path": result["path"],
+                    "full_page": full_page,
+                    "url": result.get("url"),
+                },
             )
         return result
     except Exception as exc:
@@ -692,21 +793,23 @@ async def fill_form(
         errors = []
         for field in fields:
             sel = field.get("selector", "")
+            label = field.get("label", "") or field.get("name", "")
             value = field.get("value", "")
             field_type = field.get("type", "text")
             try:
+                target = page.locator(sel) if sel else page.get_by_label(label, exact=False)
                 if field_type == "select":
-                    page.select_option(sel, value)
+                    target.select_option(value)
                 elif field_type == "checkbox":
                     if value.lower() in ("true", "1", "yes"):
-                        page.check(sel)
+                        target.check()
                     else:
-                        page.uncheck(sel)
+                        target.uncheck()
                 else:
-                    page.fill(sel, value)
+                    target.fill(value)
                 filled += 1
             except Exception as exc:
-                errors.append({"selector": sel, "error": str(exc)[:200]})
+                errors.append({"selector": sel or f"label={label}", "error": str(exc)[:200]})
         return {"filled": filled, "errors": errors}
 
     try:
@@ -714,8 +817,13 @@ async def fill_form(
         await _emit_browser_event(
             "browser.form",
             f"Filled {result['filled']}/{len(fields)} form fields",
-            detail={"session_id": session_id, "filled": result["filled"],
-                    "total": len(fields), "errors": result["errors"], "url": page.url},
+            detail={
+                "session_id": session_id,
+                "filled": result["filled"],
+                "total": len(fields),
+                "errors": result["errors"],
+                "url": page.url,
+            },
         )
         return {
             "status": "ok" if not result["errors"] else "partial",
@@ -788,14 +896,17 @@ async def upload_file(
     file_path: str,
 ) -> dict[str, Any]:
     """Upload a file to a file input element."""
+    from shogun.services.mado_hardening import validate_upload_path
+
+    approved_path = validate_upload_path(file_path)
     page = _get_page(session_id)
 
     def _do_upload():
         file_input = page.query_selector(selector)
         if file_input is None:
             return {"status": "not_found", "selector": selector}
-        file_input.set_input_files(file_path)
-        return {"status": "ok", "file": Path(file_path).name}
+        file_input.set_input_files(str(approved_path))
+        return {"status": "ok", "file": approved_path.name, "size_bytes": approved_path.stat().st_size}
 
     try:
         result = await _run_in_pw_thread(_do_upload)
@@ -803,8 +914,7 @@ async def upload_file(
             await _emit_browser_event(
                 "browser.upload",
                 f"Uploaded file: {result['file']}",
-                detail={"session_id": session_id, "selector": selector,
-                        "file": result["file"], "url": page.url},
+                detail={"session_id": session_id, "selector": selector, "file": result["file"], "url": page.url},
             )
         return result
     except Exception as exc:
@@ -814,6 +924,7 @@ async def upload_file(
 async def download_file(
     session_id: str,
     profile_name: str,
+    selector: str | None = None,
 ) -> dict[str, Any]:
     """Wait for and save a download triggered by a previous action."""
     context = _active_contexts.get(session_id)
@@ -823,8 +934,13 @@ async def download_file(
     page = _get_page(session_id)
 
     def _do_download():
+        if not selector:
+            return {
+                "status": "error",
+                "error": "A download-trigger selector is required so Mado can capture the browser download event.",
+            }
         with page.expect_download(timeout=30000) as download_info:
-            pass
+            page.click(selector, timeout=10000)
         download = download_info.value
         dest_dir = settings.mado_path / "downloads" / _sanitize_name(profile_name)
         dest_dir.mkdir(parents=True, exist_ok=True)
@@ -838,11 +954,12 @@ async def download_file(
 
     try:
         result = await _run_in_pw_thread(_do_download)
+        if result.get("status") != "ok":
+            return result
         await _emit_browser_event(
             "browser.download",
             f"Downloaded file: {result['filename']}",
-            detail={"session_id": session_id, "filename": result["filename"],
-                    "path": result["path"]},
+            detail={"session_id": session_id, "filename": result["filename"], "path": result["path"]},
         )
         return result
     except Exception as exc:
@@ -862,6 +979,111 @@ async def get_page_info(session_id: str) -> dict[str, Any]:
         return {"status": "error", "error": str(exc)[:500]}
 
 
+async def reload_page(session_id: str) -> dict[str, Any]:
+    page = _get_page(session_id)
+
+    def _reload():
+        response = page.reload(wait_until="domcontentloaded", timeout=30000)
+        return {
+            "status": "ok",
+            "url": page.url,
+            "title": page.title(),
+            "status_code": response.status if response else None,
+        }
+
+    try:
+        return await _run_in_pw_thread(_reload)
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)[:500]}
+
+
+async def go_back(session_id: str) -> dict[str, Any]:
+    page = _get_page(session_id)
+
+    def _back():
+        page.go_back(wait_until="domcontentloaded", timeout=30000)
+        return {"status": "ok", "url": page.url, "title": page.title()}
+
+    try:
+        return await _run_in_pw_thread(_back)
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)[:500]}
+
+
+async def go_forward(session_id: str) -> dict[str, Any]:
+    page = _get_page(session_id)
+
+    def _forward():
+        page.go_forward(wait_until="domcontentloaded", timeout=30000)
+        return {"status": "ok", "url": page.url, "title": page.title()}
+
+    try:
+        return await _run_in_pw_thread(_forward)
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)[:500]}
+
+
+async def select_option(session_id: str, selector: str, value: str) -> dict[str, Any]:
+    page = _get_page(session_id)
+    try:
+        selected = await _run_in_pw_thread(page.select_option, selector, value, timeout=10000)
+        return {"status": "ok", "selector": selector, "selected": selected, "url": page.url}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)[:500]}
+
+
+async def scroll_page(session_id: str, delta_x: int = 0, delta_y: int = 600) -> dict[str, Any]:
+    page = _get_page(session_id)
+    try:
+        await _run_in_pw_thread(page.mouse.wheel, delta_x, delta_y)
+        return {"status": "ok", "delta_x": delta_x, "delta_y": delta_y, "url": page.url}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)[:500]}
+
+
+async def press_key(session_id: str, key: str, selector: str | None = None) -> dict[str, Any]:
+    page = _get_page(session_id)
+
+    def _press():
+        if selector:
+            page.locator(selector).press(key, timeout=10000)
+        else:
+            page.keyboard.press(key)
+
+    try:
+        await _run_in_pw_thread(_press)
+        return {"status": "ok", "key": key, "selector": selector, "url": page.url}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)[:500]}
+
+
+async def hover_element(session_id: str, selector: str) -> dict[str, Any]:
+    page = _get_page(session_id)
+    try:
+        await _run_in_pw_thread(page.hover, selector, timeout=10000)
+        return {"status": "ok", "selector": selector, "url": page.url}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)[:500]}
+
+
+async def wait_for_ready(session_id: str, timeout: int = 30000) -> dict[str, Any]:
+    page = _get_page(session_id)
+
+    def _wait():
+        page.wait_for_load_state("domcontentloaded", timeout=timeout)
+        try:
+            page.wait_for_load_state("networkidle", timeout=min(timeout, 5000))
+            load_state = "networkidle"
+        except Exception:
+            load_state = "domcontentloaded"
+        page.wait_for_timeout(250)
+        return {"status": "ok", "load_state": load_state, "url": page.url, "title": page.title()}
+
+    try:
+        return await _run_in_pw_thread(_wait)
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)[:500]}
+
 
 # ═══════════════════════════════════════════════════════════════
 # SESSION PROFILE MANAGEMENT
@@ -878,12 +1100,14 @@ def list_profiles() -> list[dict[str, Any]]:
     for p in sorted(profiles_dir.iterdir()):
         if p.is_dir():
             size = sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
-            profiles.append({
-                "name": p.name,
-                "path": str(p),
-                "size_bytes": size,
-                "active": p.name in [_active_contexts.get(sid) for sid in _active_contexts],
-            })
+            profiles.append(
+                {
+                    "name": p.name,
+                    "path": str(p),
+                    "size_bytes": size,
+                    "active": p.name in [_active_contexts.get(sid) for sid in _active_contexts],
+                }
+            )
     return profiles
 
 
@@ -905,14 +1129,14 @@ def list_screenshots() -> list[dict[str, Any]]:
     screenshots = []
     for f in sorted(screenshots_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
         if f.is_file() and f.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
-            screenshots.append({
-                "filename": f.name,
-                "path": str(f),
-                "size_bytes": f.stat().st_size,
-                "created_at": datetime.fromtimestamp(
-                    f.stat().st_mtime, tz=timezone.utc
-                ).isoformat(),
-            })
+            screenshots.append(
+                {
+                    "filename": f.name,
+                    "path": str(f),
+                    "size_bytes": f.stat().st_size,
+                    "created_at": datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).isoformat(),
+                }
+            )
     return screenshots
 
 
@@ -965,6 +1189,7 @@ async def _emit_browser_event(
     """Emit a browser action audit event via EventLogger."""
     try:
         from shogun.services.event_logger import EventLogger
+
         await EventLogger.emit_tool_event(
             event_type,
             action,

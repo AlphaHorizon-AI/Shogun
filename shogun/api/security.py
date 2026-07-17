@@ -6,15 +6,14 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from shogun.api.deps import get_security_service, get_db
+from shogun.api.deps import get_security_service
 from shogun.schemas.common import ApiResponse
 from shogun.schemas.security import (
+    PermissionSimulateRequest,
+    PermissionSimulateResponse,
     SecurityPolicyCreate,
     SecurityPolicyResponse,
     SecurityPolicyUpdate,
-    PermissionSimulateRequest,
-    PermissionSimulateResponse,
-    SecurityAssignRequest,
     SecurityPostureResponse,
 )
 from shogun.services.security_service import SecurityService
@@ -32,7 +31,7 @@ _DEFAULT_POSTURE = {
     "skill_auto_install": False,
     "max_active_subagents": 5,
     "kill_switch_enabled": True,
-    "kill_switch_active": False,   # True when the kill switch has been triggered
+    "kill_switch_active": False,  # True when the kill switch has been triggered
     "comms_read_email": True,
     "comms_send_email": True,
     "comms_read_calendar": True,
@@ -46,6 +45,14 @@ _DEFAULT_POSTURE = {
     "mado_autonomous_browsing": False,
     "mado_downloads_enabled": True,
     "mado_uploads_enabled": True,
+    "mado_login_profiles_enabled": False,
+    "mado_authenticated_sessions_enabled": False,
+    "mado_form_submit_enabled": False,
+    "mado_external_urls_enabled": False,
+    "mado_capture_screenshots": True,
+    "mado_require_verification": True,
+    "mado_max_runtime_seconds": 1800,
+    "mado_allowed_domains": [],
     # Ronin desktop automation
     "ronin_enabled": False,
     "ronin_posture": "disabled",
@@ -58,7 +65,15 @@ _DEFAULT_POSTURE = {
     "ronin_require_verification": True,
     "ronin_require_high_risk_approval": True,
     "ronin_block_critical_actions": True,
-    "ronin_protected_applications": ["1Password", "Bitwarden", "KeePass", "Credential Manager", "Windows Security", "banking", "wallet"],
+    "ronin_protected_applications": [
+        "1Password",
+        "Bitwarden",
+        "KeePass",
+        "Credential Manager",
+        "Windows Security",
+        "banking",
+        "wallet",
+    ],
     "ronin_visible_indicator": True,
     "ronin_shell_commands": False,
     "ronin_admin_escalation": False,
@@ -101,6 +116,10 @@ TIER_CONSTRAINTS: dict[str, dict] = {
         "mado_autonomous_browsing": False,
         "mado_downloads_enabled": False,
         "mado_uploads_enabled": False,
+        "mado_login_profiles_enabled": False,
+        "mado_authenticated_sessions_enabled": False,
+        "mado_form_submit_enabled": False,
+        "mado_external_urls_enabled": False,
         "ronin_enabled": False,
         "ronin_posture": "disabled",
         "ronin_max_sessions": 0,
@@ -126,6 +145,10 @@ TIER_CONSTRAINTS: dict[str, dict] = {
         "mado_autonomous_browsing": False,
         "mado_downloads_enabled": False,
         "mado_uploads_enabled": False,
+        "mado_login_profiles_enabled": False,
+        "mado_authenticated_sessions_enabled": False,
+        "mado_form_submit_enabled": False,
+        "mado_external_urls_enabled": False,
         "ronin_enabled": False,
         "ronin_posture": "disabled",
         "ronin_max_sessions": 0,
@@ -152,6 +175,10 @@ TIER_CONSTRAINTS: dict[str, dict] = {
         "mado_autonomous_browsing": False,
         "mado_downloads_enabled": True,
         "mado_uploads_enabled": True,
+        "mado_login_profiles_enabled": False,
+        "mado_authenticated_sessions_enabled": False,
+        "mado_form_submit_enabled": False,
+        "mado_external_urls_enabled": False,
         "ronin_enabled": False,
         "ronin_posture": "disabled",
         "ronin_max_sessions": 0,
@@ -178,6 +205,10 @@ TIER_CONSTRAINTS: dict[str, dict] = {
         "mado_autonomous_browsing": True,
         "mado_downloads_enabled": True,
         "mado_uploads_enabled": True,
+        "mado_login_profiles_enabled": True,
+        "mado_authenticated_sessions_enabled": True,
+        "mado_form_submit_enabled": True,
+        "mado_external_urls_enabled": True,
         "ronin_enabled": False,
         "ronin_posture": "disabled",
         "ronin_max_sessions": 0,
@@ -204,6 +235,10 @@ TIER_CONSTRAINTS: dict[str, dict] = {
         "mado_autonomous_browsing": True,
         "mado_downloads_enabled": True,
         "mado_uploads_enabled": True,
+        "mado_login_profiles_enabled": True,
+        "mado_authenticated_sessions_enabled": True,
+        "mado_form_submit_enabled": True,
+        "mado_external_urls_enabled": True,
         # Entering Ronin posture makes desktop control available, but does not
         # silently enable it. The operator must confirm enablement separately.
         "ronin_enabled": False,
@@ -236,17 +271,20 @@ TIER_CONSTRAINTS: dict[str, dict] = {
 
 async def _get_agent_posture() -> dict:
     """Read security posture from primary Shogun agent's bushido_settings."""
+    from sqlalchemy import select
+
     from shogun.db.engine import async_session_factory
     from shogun.db.models.agent import Agent
-    from sqlalchemy import select
 
     async with async_session_factory() as db:
         result = await db.execute(
-            select(Agent).where(
+            select(Agent)
+            .where(
                 Agent.agent_type == "shogun",
                 Agent.is_primary == True,
                 Agent.is_deleted == False,
-            ).limit(1)
+            )
+            .limit(1)
         )
         agent = result.scalar_one_or_none()
         if not agent:
@@ -258,18 +296,21 @@ async def _get_agent_posture() -> dict:
 
 async def _save_agent_posture(posture: dict) -> None:
     """Persist security posture into primary Shogun agent's bushido_settings."""
+
+    from sqlalchemy import select
+
     from shogun.db.engine import async_session_factory
     from shogun.db.models.agent import Agent
-    from sqlalchemy import select
-    import json
 
     async with async_session_factory() as db:
         result = await db.execute(
-            select(Agent).where(
+            select(Agent)
+            .where(
                 Agent.agent_type == "shogun",
                 Agent.is_primary == True,
                 Agent.is_deleted == False,
-            ).limit(1)
+            )
+            .limit(1)
         )
         agent = result.scalar_one_or_none()
         if not agent:
@@ -281,6 +322,7 @@ async def _save_agent_posture(posture: dict) -> None:
 
 
 # ── Posture endpoints ────────────────────────────────────────────────
+
 
 @router.get("/posture", response_model=ApiResponse)
 async def get_security_posture():
@@ -304,6 +346,7 @@ async def update_security_posture(body: dict):
     # ── EVENT: Auth — Posture Changed ──────────────────
     try:
         from shogun.services.event_logger import EventLogger
+
         await EventLogger.emit_auth_event(
             "auth.posture_changed",
             f"Security posture changed: {old_tier.upper()} → {new_tier.upper()}",
@@ -316,6 +359,7 @@ async def update_security_posture(body: dict):
 
 
 # ── Policy endpoints ─────────────────────────────────────────────────
+
 
 @router.get("/policies", response_model=ApiResponse)
 async def list_policies(svc: SecurityService = Depends(get_security_service)):
@@ -340,7 +384,9 @@ async def create_policy(
     svc: SecurityService = Depends(get_security_service),
 ):
     data = body.model_dump()
-    data["permissions"] = data["permissions"] if isinstance(data["permissions"], dict) else data["permissions"].model_dump()
+    data["permissions"] = (
+        data["permissions"] if isinstance(data["permissions"], dict) else data["permissions"].model_dump()
+    )
     record = await svc.create(**data)
     return ApiResponse(data=SecurityPolicyResponse.model_validate(record))
 
@@ -353,7 +399,11 @@ async def update_policy(
 ):
     update_data = body.model_dump(exclude_unset=True)
     if "permissions" in update_data and update_data["permissions"] is not None:
-        update_data["permissions"] = update_data["permissions"].model_dump() if hasattr(update_data["permissions"], "model_dump") else update_data["permissions"]
+        update_data["permissions"] = (
+            update_data["permissions"].model_dump()
+            if hasattr(update_data["permissions"], "model_dump")
+            else update_data["permissions"]
+        )
     record = await svc.update(policy_id, **update_data)
     if not record:
         raise HTTPException(status_code=404, detail="Policy not found")
@@ -372,11 +422,11 @@ async def delete_policy(
         raise HTTPException(status_code=403, detail="Cannot delete built-in policies")
 
     # ── Unassign from any agents that reference this policy ──────
-    from shogun.db.models.agent import Agent
     from sqlalchemy import select
-    result = await svc.session.execute(
-        select(Agent).where(Agent.security_policy_id == str(policy_id))
-    )
+
+    from shogun.db.models.agent import Agent
+
+    result = await svc.session.execute(select(Agent).where(Agent.security_policy_id == str(policy_id)))
     agents = result.scalars().all()
     for agent in agents:
         agent.security_policy_id = None
@@ -393,7 +443,9 @@ async def delete_policy(
 @router.post("/simulate", response_model=ApiResponse)
 async def simulate_permissions(body: PermissionSimulateRequest):
     return ApiResponse(
-        data=PermissionSimulateResponse(allowed=True, warnings=["Simulation not yet implemented"], denials=[]).model_dump()
+        data=PermissionSimulateResponse(
+            allowed=True, warnings=["Simulation not yet implemented"], denials=[]
+        ).model_dump()
     )
 
 
@@ -406,7 +458,14 @@ async def activate_kill_switch():
     posture["kill_switch_active"] = True
     await _save_agent_posture(posture)
     try:
+        from shogun.services.mado_hardening import kill_all_mado_sessions
+
+        await kill_all_mado_sessions("Global HARAKIRI kill switch activated")
+    except Exception:
+        pass
+    try:
         from shogun.services.event_logger import EventLogger
+
         await EventLogger.emit_auth_event(
             "auth.kill_switch_activated",
             "HARAKIRI: Kill switch activated — all operations suspended",
@@ -416,7 +475,8 @@ async def activate_kill_switch():
         await EventLogger.emit_incident_event(
             "incident.kill_switch",
             "HARAKIRI: Emergency kill switch activated by operator",
-            severity="critical", risk_score="critical",
+            severity="critical",
+            risk_score="critical",
             detail={"posture": "shrine", "trigger": "manual"},
         )
         await EventLogger.emit_oversight_event(
@@ -439,6 +499,7 @@ async def reset_kill_switch():
     await _save_agent_posture(posture)
     try:
         from shogun.services.event_logger import EventLogger
+
         await EventLogger.emit_auth_event(
             "auth.kill_switch_reset",
             "Kill switch deactivated — posture restored to TACTICAL",
@@ -452,10 +513,12 @@ async def reset_kill_switch():
 
 # ── Campaign Preset endpoints ────────────────────────────────────────
 
+
 @router.get("/campaign-presets", response_model=ApiResponse)
 async def list_campaign_presets():
     """List all available campaign presets (built-in + custom)."""
     from shogun.services.campaign_presets import list_presets
+
     presets = list_presets()
     return ApiResponse(data=presets)
 
@@ -464,6 +527,7 @@ async def list_campaign_presets():
 async def get_campaign_preset(preset_key: str):
     """Get a specific campaign preset by key."""
     from shogun.services.campaign_presets import get_preset
+
     preset = get_preset(preset_key)
     if preset is None:
         raise HTTPException(status_code=404, detail=f"Campaign preset '{preset_key}' not found")
@@ -474,6 +538,7 @@ async def get_campaign_preset(preset_key: str):
 async def create_campaign_preset(body: dict):
     """Create a new custom campaign preset."""
     from shogun.services.campaign_presets import create_custom_preset
+
     key = body.get("key", "").strip()
     name = body.get("name", "").strip()
     if not key or not name:
@@ -491,6 +556,7 @@ async def create_campaign_preset(body: dict):
     # ── Audit ──
     try:
         from shogun.services.event_logger import EventLogger
+
         await EventLogger.emit_policy_event(
             "policy.campaign_preset_created",
             f"Custom campaign preset created: {name} ({key})",
@@ -507,6 +573,7 @@ async def create_campaign_preset(body: dict):
 async def delete_campaign_preset(preset_key: str):
     """Delete a custom campaign preset."""
     from shogun.services.campaign_presets import delete_custom_preset
+
     try:
         deleted = delete_custom_preset(preset_key)
     except ValueError as e:
@@ -521,6 +588,7 @@ async def delete_campaign_preset(preset_key: str):
     # ── Audit ──
     try:
         from shogun.services.event_logger import EventLogger
+
         await EventLogger.emit_policy_event(
             "policy.campaign_preset_deleted",
             f"Custom campaign preset deleted: {preset_key}",
@@ -561,6 +629,7 @@ async def toolgate_confirm(body: ToolGateConfirmRequest):
     # ── Audit ──
     try:
         from shogun.services.event_logger import EventLogger
+
         await EventLogger.emit_policy_event(
             "policy.toolgate_confirmation_resolved",
             f"ToolGate confirmation {body.confirm_id}: {'approved' if body.approved else 'denied'}",
@@ -570,8 +639,9 @@ async def toolgate_confirm(body: ToolGateConfirmRequest):
     except Exception:
         pass
 
-    return ApiResponse(data={
-        "confirm_id": body.confirm_id,
-        "approved": body.approved,
-    })
-
+    return ApiResponse(
+        data={
+            "confirm_id": body.confirm_id,
+            "approved": body.approved,
+        }
+    )

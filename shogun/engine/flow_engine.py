@@ -424,25 +424,25 @@ async def _execute_single_node(
 
             posture = governance_context or await get_posture_permissions()
             async with async_session_factory() as skill_session:
-                activation = await SkillActivationService(skill_session).activate(SkillActivationRequest(
-                    run_id=str(run_id),
-                    flow_id=str(node.flow_id),
-                    node_id=node_id,
-                    agent_id="shogun",
-                    objective=f"{node.label}: {config.get('prompt') or config.get('description') or node_type}",
-                    context=context_str[-4000:],
-                    posture=posture.get("active_tier", posture.get("posture", "guarded")),
-                    available_tools=list(set(
-                        (config.get("required_tools") or []) + (posture.get("allowed_tools") or [])
-                    )),
-                    max_skills=3,
-                    usage_location="agent_flow",
-                    ide_enabled=bool(posture.get("ide_enabled", False)),
-                ))
+                activation = await SkillActivationService(skill_session).activate(
+                    SkillActivationRequest(
+                        run_id=str(run_id),
+                        flow_id=str(node.flow_id),
+                        node_id=node_id,
+                        agent_id="shogun",
+                        objective=f"{node.label}: {config.get('prompt') or config.get('description') or node_type}",
+                        context=context_str[-4000:],
+                        posture=posture.get("active_tier", posture.get("posture", "guarded")),
+                        available_tools=list(
+                            set((config.get("required_tools") or []) + (posture.get("allowed_tools") or []))
+                        ),
+                        max_skills=3,
+                        usage_location="agent_flow",
+                        ide_enabled=bool(posture.get("ide_enabled", False)),
+                    )
+                )
                 await skill_session.commit()
-            active_skill_run_ids = [
-                str(item["active_skill_run_id"]) for item in activation["active_skills"]
-            ]
+            active_skill_run_ids = [str(item["active_skill_run_id"]) for item in activation["active_skills"]]
             if activation["context_block"]:
                 context_str += f"\n\n{activation['context_block']}"
         except Exception as exc:
@@ -459,10 +459,15 @@ async def _execute_single_node(
             result = await _exec_logic(config, predecessor_outputs)
         elif node_type == "output":
             result = await _exec_output(
-                config, context_str, predecessor_outputs, run_id, node.label, node_id,
+                config,
+                context_str,
+                predecessor_outputs,
+                run_id,
+                node.label,
+                node_id,
             )
         elif node_type == "mado_browser":
-            result = await _exec_mado_browser(config, context_str)
+            result = await _exec_mado_browser(config, context_str, run_id, node_id, governance_context or {})
         elif node_type == "email_send":
             result = await _exec_email_send(config, context_str)
         elif node_type == "channel_send":
@@ -473,7 +478,11 @@ async def _execute_single_node(
             result = await _exec_office(config, context_str)
         elif node_type == "subflow":
             result = await _exec_subflow(
-                run_id, node, predecessor_outputs, run_input or {}, governance_context or {},
+                run_id,
+                node,
+                predecessor_outputs,
+                run_input or {},
+                governance_context or {},
             )
         elif node_type == "stack_orchestrator":
             result = await _exec_stack_orchestrator(run_id, config, run_input or {})
@@ -1283,7 +1292,13 @@ async def _exec_output(
     return final_content
 
 
-async def _exec_mado_browser(config: dict, context_str: str) -> str:
+async def _exec_mado_browser(
+    config: dict,
+    context_str: str,
+    run_id: uuid.UUID | None = None,
+    node_id: str | None = None,
+    governance_context: dict[str, Any] | None = None,
+) -> str:
     """Mado Browser node — executes browser automation actions.
 
     Supports: navigate, extract_content, screenshot, fill_form,
@@ -1292,6 +1307,7 @@ async def _exec_mado_browser(config: dict, context_str: str) -> str:
     from fastapi import HTTPException
 
     from shogun.services import mado_service
+    from shogun.services.mado_hardening import governed_action, permission_guard, runtime_registry
     from shogun.services.posture_guard import (
         check_mado_access,
         check_mado_browser_mode,
@@ -1307,6 +1323,7 @@ async def _exec_mado_browser(config: dict, context_str: str) -> str:
 
     # Use a deterministic session ID for the flow to allow session reuse
     flow_session_id = f"flow_{session_name}"
+    governance_context = governance_context or {}
 
     # Enforce the same local Torii, Harakiri, Gensui, browser-mode, and
     # session-limit rules used by chat and the Mado API.
@@ -1329,6 +1346,29 @@ async def _exec_mado_browser(config: dict, context_str: str) -> str:
     if launch_result.get("status") == "error":
         return f"[ERROR] Failed to launch browser: {launch_result.get('error', 'Unknown')}"
 
+    runtime_registry.register(
+        flow_session_id,
+        profile_id=f"flow_{session_name}",
+        posture=posture.get("active_tier"),
+        mode=browser_mode,
+        stack_run_id=governance_context.get("stack_run_id"),
+        step_run_id=governance_context.get("step_run_id"),
+        agent_id=governance_context.get("agent_id"),
+    )
+
+    async def run_governed(action_type: str, operation, verification: dict | None = None):
+        result = await governed_action(
+            flow_session_id,
+            action_type,
+            operation,
+            detail={"flow_run_id": str(run_id) if run_id else None},
+            verification=verification,
+        )
+        artifact_path = result.get("verification", {}).get("artifact", {}).get("path") or result.get("path")
+        if run_id and node_id and artifact_path:
+            await _record_node_artifact(run_id, node_id, artifact_path)
+        return result
+
     try:
         if action == "navigate":
             # Use URL from config first; fall back to context string
@@ -1336,10 +1376,13 @@ async def _exec_mado_browser(config: dict, context_str: str) -> str:
             if not target_url:
                 return "[ERROR] No URL specified for navigation"
 
+            await permission_guard.check("mado.navigation.open_url", url=target_url)
+
             log.info("[Mado/Flow] navigate → %s (session=%s)", target_url, flow_session_id)
-            result = await mado_service.navigate(
-                session_id=flow_session_id,
-                url=target_url,
+            result = await run_governed(
+                "mado.navigation.open_url",
+                lambda: mado_service.navigate(session_id=flow_session_id, url=target_url),
+                {"verification_type": "no_error_banner"},
             )
             if result.get("status") == "error":
                 log.error("[Mado/Flow] navigate FAILED: %s", result.get("error"))
@@ -1352,10 +1395,11 @@ async def _exec_mado_browser(config: dict, context_str: str) -> str:
         elif action == "extract_content":
             extract_type = config.get("extract_type", "text")
             log.info("[Mado/Flow] extract '%s' (type=%s, session=%s)", selector, extract_type, flow_session_id)
-            result = await mado_service.extract_content(
-                session_id=flow_session_id,
-                selector=selector,
-                extract_type=extract_type,
+            result = await run_governed(
+                "mado.page.extract_text",
+                lambda: mado_service.extract_content(
+                    session_id=flow_session_id, selector=selector, extract_type=extract_type
+                ),
             )
             content = result.get("content", "")
             status = result.get("status", "unknown")
@@ -1366,10 +1410,9 @@ async def _exec_mado_browser(config: dict, context_str: str) -> str:
 
         elif action == "screenshot":
             full_page = config.get("full_page", False)
-            result = await mado_service.screenshot(
-                session_id=flow_session_id,
-                full_page=full_page,
-                selector=selector,
+            result = await run_governed(
+                "mado.page.screenshot",
+                lambda: mado_service.screenshot(session_id=flow_session_id, full_page=full_page, selector=selector),
             )
             return f"Screenshot saved: {result.get('filename', 'unknown')}\nPath: {result.get('path', 'N/A')}"
 
@@ -1377,18 +1420,19 @@ async def _exec_mado_browser(config: dict, context_str: str) -> str:
             fields = config.get("fields", [])
             if not fields:
                 return "[ERROR] No form fields specified"
-            result = await mado_service.fill_form(
-                session_id=flow_session_id,
-                fields=fields,
+            result = await run_governed(
+                "mado.form.fill",
+                lambda: mado_service.fill_form(session_id=flow_session_id, fields=fields),
             )
             return f"Filled {result.get('filled', 0)}/{result.get('total', 0)} fields"
 
         elif action == "click":
             if not selector:
                 return "[ERROR] No selector specified for click"
-            result = await mado_service.click_element(
-                session_id=flow_session_id,
-                selector=selector,
+            result = await run_governed(
+                "mado.action.click",
+                lambda: mado_service.click_element(session_id=flow_session_id, selector=selector),
+                config.get("verification"),
             )
             return f"Clicked: {selector}\nURL after click: {result.get('url', 'N/A')}"
 
@@ -1396,9 +1440,9 @@ async def _exec_mado_browser(config: dict, context_str: str) -> str:
             script = config.get("script", "")
             if not script:
                 return "[ERROR] No JavaScript specified"
-            result = await mado_service.execute_js(
-                session_id=flow_session_id,
-                script=script,
+            result = await run_governed(
+                "mado.action.execute_js",
+                lambda: mado_service.execute_js(session_id=flow_session_id, script=script),
             )
             return f"JS result: {result.get('result', 'undefined')}"
 
@@ -1406,10 +1450,10 @@ async def _exec_mado_browser(config: dict, context_str: str) -> str:
             if not selector:
                 return "[ERROR] No selector specified for wait"
             timeout = config.get("timeout", 10000)
-            result = await mado_service.wait_for_selector(
-                session_id=flow_session_id,
-                selector=selector,
-                timeout=timeout,
+            result = await run_governed(
+                "mado.action.wait",
+                lambda: mado_service.wait_for_selector(session_id=flow_session_id, selector=selector, timeout=timeout),
+                {"verification_type": "element_exists", "expected": selector},
             )
             if result.get("status") == "timeout":
                 return f"[TIMEOUT] Selector '{selector}' not found within {timeout}ms"

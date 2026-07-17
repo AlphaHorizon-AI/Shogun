@@ -155,6 +155,14 @@ class SecurityPostureResponse(ShogunBase):
     mado_autonomous_browsing: bool = False
     mado_downloads_enabled: bool = True
     mado_uploads_enabled: bool = True
+    mado_login_profiles_enabled: bool = False
+    mado_authenticated_sessions_enabled: bool = False
+    mado_form_submit_enabled: bool = False
+    mado_external_urls_enabled: bool = False
+    mado_capture_screenshots: bool = True
+    mado_require_verification: bool = True
+    mado_max_runtime_seconds: int = 1800
+    mado_allowed_domains: list[str] = Field(default_factory=list)
     # Ronin desktop automation
     ronin_enabled: bool = False
     ronin_posture: str = "disabled"
@@ -177,4 +185,3 @@ class SecurityPostureResponse(ShogunBase):
     ronin_install_software: str = "blocked"
     ronin_komainu_level: int = 1
     ronin_environment_policy: str = "any"
-
