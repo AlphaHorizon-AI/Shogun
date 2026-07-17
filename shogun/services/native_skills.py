@@ -1535,6 +1535,49 @@ NATIVE_TOOLS = [
         },
     },
     {
+        "type": "function", "risk": "low", "category": "skill_usage",
+        "function": {
+            "name": "skills_get_active",
+            "description": "List the validated skills currently active for a run. This is read-only and does not bypass activation policy.",
+            "parameters": {"type": "object", "properties": {
+                "run_id": {"type": "string", "description": "Run ID whose active skills should be returned."}
+            }, "required": ["run_id"]},
+        },
+    },
+    {
+        "type": "function", "risk": "low", "category": "skill_usage",
+        "function": {
+            "name": "skills_request_activation",
+            "description": "Request deterministic skill activation for an objective. The policy pipeline makes the final decision.",
+            "parameters": {"type": "object", "properties": {
+                "objective": {"type": "string"}, "context": {"type": "string"},
+                "run_id": {"type": "string"}, "available_tools": {"type": "array", "items": {"type": "string"}}
+            }, "required": ["objective"]},
+        },
+    },
+    {
+        "type": "function", "risk": "low", "category": "skill_usage",
+        "function": {
+            "name": "skills_explain_active",
+            "description": "Explain which skills are active, why they were selected, and their bounded context use.",
+            "parameters": {"type": "object", "properties": {
+                "run_id": {"type": "string"}
+            }, "required": ["run_id"]},
+        },
+    },
+    {
+        "type": "function", "risk": "low", "category": "skill_usage",
+        "function": {
+            "name": "skills_report_outcome",
+            "description": "Report the outcome of one policy-approved active skill usage record.",
+            "parameters": {"type": "object", "properties": {
+                "active_skill_run_id": {"type": "string"},
+                "outcome": {"type": "string", "enum": ["success", "partial", "failed", "not_used", "blocked", "unknown"]},
+                "outcome_summary": {"type": "string"}
+            }, "required": ["active_skill_run_id", "outcome"]},
+        },
+    },
+    {
         "type": "function", "risk": "low", "category": "system",
         "function": {"name": "model_router_get_active_profile", "description": "Get the active governed model routing profile.",
                      "parameters": {"type": "object", "properties": {}}},
@@ -3048,6 +3091,8 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
         # ── Dojo / Skill Tools ────────────────────────────────────────
         elif name.startswith("dojo_"):
             return await _execute_dojo_tool(name, args)
+        elif name.startswith("skills_"):
+            return await _execute_active_skill_tool(name, args, db_session)
 
         else:
             return json.dumps({"status": "error", "message": f"Unknown tool: {name}"})
@@ -4062,6 +4107,64 @@ async def _execute_telegram_list_groups() -> str:
     except Exception as exc:
         logger.error(f"telegram_list_groups failed: {exc}", exc_info=True)
         return json.dumps({"status": "error", "message": str(exc)})
+
+
+async def _execute_active_skill_tool(name: str, args: dict[str, Any], db_session) -> str:
+    """Deterministic agent-facing surface for Order 9 active usage."""
+    import uuid
+    from sqlalchemy import select
+
+    from shogun.api.security import _get_agent_posture
+    from shogun.db.models.active_skill_run import ActiveSkillRun
+    from shogun.db.models.skill import Skill
+    from shogun.schemas.skills import SkillActivationRequest
+    from shogun.services.active_skill_service import SkillActivationService
+
+    service = SkillActivationService(db_session)
+    if name in {"skills_get_active", "skills_explain_active"}:
+        run_id = str(args.get("run_id") or "").strip()
+        if not run_id:
+            return json.dumps({"status": "error", "message": "run_id is required."})
+        rows = (await db_session.execute(
+            select(ActiveSkillRun, Skill.name)
+            .join(Skill, Skill.id == ActiveSkillRun.skill_id)
+            .where(ActiveSkillRun.run_id == run_id)
+            .order_by(ActiveSkillRun.relevance_score.desc())
+        )).all()
+        items = [{
+            "active_skill_run_id": str(record.id), "skill_id": str(record.skill_id), "name": skill_name,
+            "reason": record.activation_reason, "relevance_score": record.relevance_score,
+            "activation_mode": record.activation_mode, "injected_tokens": record.injected_tokens,
+            "usage_location": record.usage_location, "outcome": record.outcome,
+            "conflict_notes": record.conflict_notes or [],
+        } for record, skill_name in rows]
+        return json.dumps({"status": "success", "run_id": run_id, "active_skills": items, "total": len(items)})
+    if name == "skills_request_activation":
+        objective = str(args.get("objective") or "").strip()
+        if not objective:
+            return json.dumps({"status": "error", "message": "objective is required."})
+        posture = await _get_agent_posture()
+        result = await service.activate(SkillActivationRequest(
+            run_id=str(args.get("run_id") or uuid.uuid4()), objective=objective,
+            context=str(args.get("context") or ""), posture=posture.get("active_tier", "guarded"),
+            available_tools=list(args.get("available_tools") or []), usage_location="agent_request",
+            ide_enabled=bool(posture.get("ide_enabled", False)),
+        ))
+        await db_session.commit()
+        result["active_skills"] = [
+            {key: str(value) if isinstance(value, uuid.UUID) else value for key, value in item.items()}
+            for item in result["active_skills"]
+        ]
+        return json.dumps({"status": "success", **result}, default=str)
+    if name == "skills_report_outcome":
+        try:
+            record_id = uuid.UUID(str(args.get("active_skill_run_id") or ""))
+            record = await service.outcome(record_id, str(args.get("outcome") or "unknown"), args.get("outcome_summary"))
+            await db_session.commit()
+            return json.dumps({"status": "success", "active_skill_run_id": str(record.id), "outcome": record.outcome})
+        except (ValueError, LookupError) as exc:
+            return json.dumps({"status": "error", "message": str(exc)})
+    return json.dumps({"status": "error", "message": f"Unknown active skill tool: {name}"})
 
 
 async def _execute_dojo_tool(name: str, args: dict[str, Any]) -> str:

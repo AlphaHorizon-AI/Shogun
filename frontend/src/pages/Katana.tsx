@@ -55,8 +55,9 @@ import { Mado } from './Mado';
 import { Ronin } from './Ronin';
 import { IdeModeTab } from './katana/IdeModeTab';
 import ModelRoutingPanel from './katana/ModelRoutingPanel';
+import ActiveSkillsPanel from './katana/ActiveSkillsPanel';
 
-type TabType = 'providers' | 'tools' | 'routing' | 'telegram' | 'teams' | 'mail_calendar' | 'office' | 'ide' | 'mado' | 'ronin';
+type TabType = 'providers' | 'tools' | 'routing' | 'skills' | 'telegram' | 'teams' | 'mail_calendar' | 'office' | 'ide' | 'mado' | 'ronin';
 type RegisterMode = 'quick' | 'manual';
 
 // ── Documentation links for cloud providers ─────────────────────
@@ -1371,8 +1372,8 @@ export function Katana() {
       )}
 
       {/* ── Tab bar ────────────────────────────────────────────── */}
-      <div className="flex border-b border-shogun-border">
-        {(['providers', 'tools', 'routing', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin'] as TabType[]).filter(tab => tab !== 'ide' || ['campaign', 'ronin'].includes(officePosture)).map((tab) => (
+      <div className="flex border-b border-shogun-border overflow-x-auto">
+        {(['providers', 'tools', 'routing', 'skills', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin'] as TabType[]).filter(tab => tab !== 'ide' || ['campaign', 'ronin'].includes(officePosture)).map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -1389,6 +1390,7 @@ export function Katana() {
             {tab === 'providers' && t('katana.tab_cloud', 'AI Model Provider')}
             {tab === 'tools'     && t('katana.tab_tools', 'Toolbox & APIs')}
             {tab === 'routing'   && t('katana.tab_routing', 'Logic Routing')}
+            {tab === 'skills'    && <span className="flex items-center gap-1.5"><Puzzle className="w-3.5 h-3.5" />Skills · Active Usage</span>}
             {tab === 'telegram'  && (
               <span className="flex items-center gap-1.5">
                 <MessageCircle className="w-3.5 h-3.5" />
@@ -1448,6 +1450,8 @@ export function Katana() {
         {/* ════════════════════════════════════════════════════════
             PROVIDERS TAB
         ════════════════════════════════════════════════════════ */}
+        {activeTab === 'skills' && <ActiveSkillsPanel />}
+
         {activeTab === 'providers' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Add Provider form */}

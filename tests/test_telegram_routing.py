@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from shogun.api.agents import _chat_attachment_content
+from shogun.api.agents import _chat_attachment_content, _resolve_provider_model_id
 from shogun.services import telegram_poller
 from shogun.services.telegram_poller import (
     _attachment_context_text,
@@ -120,6 +120,23 @@ def test_chat_attachment_content_includes_image_bytes(tmp_path):
     assert content[0] == {"type": "text", "text": "Describe this image"}
     assert content[1]["type"] == "image_url"
     assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_stale_primary_model_cannot_leak_into_a_different_provider():
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        provider_type="openrouter",
+        name="OpenRouter",
+        config={"models": ["google/gemini-3.5-flash"]},
+    )
+
+    model_id = _resolve_provider_model_id(
+        provider,
+        saved_model_name="gemma3:12b-it-qat",
+        saved_provider_id=str(uuid.uuid4()),
+    )
+
+    assert model_id == "google/gemini-3.5-flash"
 
 
 def test_telegram_topic_registry_remembers_forum_topic(monkeypatch):

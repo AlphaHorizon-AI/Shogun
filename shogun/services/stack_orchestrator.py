@@ -218,6 +218,8 @@ class StackCompactionService:
                 "completed_step_count": len(completed),
                 "failures": payload.get("failures", [])[-3:],
                 "next_action": payload.get("next_action"),
+                "active_skills": payload.get("active_skills", [])[-10:],
+                "active_skill_constraints": payload.get("active_skill_constraints", [])[-20:],
                 "compaction_notice": "Context exceeded the budget; full evidence remains in durable checkpoints.",
             }
             encoded = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
@@ -255,6 +257,8 @@ class StackCompactionService:
             "pending_steps": pending,
             "failures": failed,
             "important_decisions": (stack.metadata_json or {}).get("decisions", []),
+            "active_skills": (stack.metadata_json or {}).get("active_skills", []),
+            "active_skill_constraints": (stack.metadata_json or {}).get("active_skill_constraints", []),
             "next_action": {
                 "step_id": next_step.step_id if next_step else None,
                 "name": next_step.name if next_step else "produce final summary",
@@ -403,6 +407,9 @@ class StackVerificationService:
                 "step": step.name,
                 "expected_result": step.expected_output,
                 "observed_output": StackCompactionService._bounded(output),
+                "active_skill_verification_checklist": (step.metadata_json or {}).get(
+                    "active_skill_verification_checklist", []
+                ),
             }
             response = await _call_llm_chain(
                 [
@@ -682,6 +689,34 @@ class StackOrchestratorService:
             StackApprovalService.add_event(stack, "Review generated or supervised stack plan", "requested")
         self.session.add(stack)
         await self.session.flush()
+
+        # Activate stack-level skills before constructing the execution plan.
+        try:
+            from shogun.schemas.skills import SkillActivationRequest
+            from shogun.services.active_skill_service import SkillActivationService
+
+            skill_activation = await SkillActivationService(self.session).activate(SkillActivationRequest(
+                run_id=str(stack.id), stack_run_id=stack.id, objective=stack.objective,
+                context="Plan a governed long-running Agent Stack. " + " ".join(stack.success_criteria or []),
+                posture=stack.posture, available_tools=stack.allowed_tools or [],
+                max_skills=settings.active_skill_max_per_run, usage_location="stack_planning",
+                ide_enabled=any(str(tool).startswith("ide") for tool in (stack.allowed_tools or [])),
+                activation_phase="planning",
+            ))
+            stack_meta = dict(stack.metadata_json or {})
+            stack_meta["active_skills"] = [
+                {"skill_id": str(item["skill_id"]), "name": item["name"],
+                 "reason": item["activation_reason"], "phase": "planning"}
+                for item in skill_activation["active_skills"]
+            ]
+            stack_meta["active_skill_constraints"] = [
+                check for item in skill_activation["active_skills"]
+                for check in item.get("verification_checklist", [])
+            ]
+            stack_meta["skill_context"] = skill_activation["context_block"]
+            stack.metadata_json = stack_meta
+        except Exception as exc:
+            log.warning("Stack planning skill activation skipped: %s", exc)
 
         plan = (
             await StackPlannerService.flow_plan(self.session, flow, body.max_retry_attempts_per_step)
@@ -1158,6 +1193,49 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                 step.started_at = step.started_at or datetime.now(timezone.utc)
                 stack.current_step_id = step.step_id
                 context = StackCompactionService.compact(stack, steps, step) if stack.context_compaction else ""
+                try:
+                    from shogun.schemas.skills import SkillActivationRequest
+                    from shogun.services.active_skill_service import SkillActivationService
+
+                    available_skill_tools = list(set((stack.allowed_tools or []) + (step.required_tools or [])))
+                    skill_activation = await SkillActivationService(session).activate(SkillActivationRequest(
+                        run_id=str(stack.id), stack_run_id=stack.id, step_run_id=step.id,
+                        objective=f"{stack.objective}\nStep: {step.name}\nExpected: {step.expected_output or ''}",
+                        context=context, posture=stack.posture, available_tools=available_skill_tools,
+                        max_skills=settings.active_skill_max_per_step, usage_location="stack_step",
+                        ide_enabled=any(
+                            str(tool).startswith("ide") or str(tool) in {"ide", "vscode"}
+                            for tool in available_skill_tools
+                        ),
+                        activation_phase="retry" if step.retry_count else "execution",
+                    ))
+                    if skill_activation["context_block"]:
+                        context += "\n\n" + skill_activation["context_block"]
+                    step_meta = dict(step.metadata_json or {})
+                    step_meta["active_skills"] = [
+                        {"skill_id": str(item["skill_id"]), "name": item["name"],
+                         "reason": item["activation_reason"], "score": item["relevance_score"]}
+                        for item in skill_activation["active_skills"]
+                    ]
+                    step_meta["active_skill_run_ids"] = [
+                        str(item["active_skill_run_id"]) for item in skill_activation["active_skills"]
+                    ]
+                    step_meta["active_skill_verification_checklist"] = [
+                        check for item in skill_activation["active_skills"]
+                        for check in item.get("verification_checklist", [])
+                    ]
+                    step.metadata_json = step_meta
+                    stack_meta = dict(stack.metadata_json or {})
+                    active_history = list(stack_meta.get("active_skills", []))
+                    active_history.extend(
+                        {"skill_id": str(item["skill_id"]), "name": item["name"],
+                         "reason": item["activation_reason"], "phase": f"step:{step.step_id}"}
+                        for item in skill_activation["active_skills"]
+                    )
+                    stack_meta["active_skills"] = active_history[-50:]
+                    stack.metadata_json = stack_meta
+                except Exception as exc:
+                    log.warning("Stack step skill activation skipped: %s", exc)
                 from shogun.schemas.model_router import ModelRouteRequest
                 from shogun.services.model_router import ModelRoutingService
 
@@ -1298,6 +1376,17 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                 passed = flow_run.status == "completed" and (
                     not step.requires_verification or verification.status == "passed"
                 )
+                try:
+                    from shogun.services.active_skill_service import SkillActivationService
+
+                    outcome_service = SkillActivationService(session)
+                    for active_id in (step.metadata_json or {}).get("active_skill_run_ids", []):
+                        await outcome_service.outcome(
+                            uuid.UUID(active_id), "success" if passed else "failed",
+                            verification.observed_result,
+                        )
+                except Exception as exc:
+                    log.warning("Stack skill outcome recording skipped: %s", exc)
                 if passed:
                     checkpoint = None
                     step.status = "completed"

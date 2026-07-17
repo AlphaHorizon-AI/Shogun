@@ -91,6 +91,29 @@ VISION_TYPES = {
     "visual_self_verification",
 }
 
+GENERIC_PROVIDER_MODEL_IDS = {
+    "anthropic",
+    "custom",
+    "gemini",
+    "google",
+    "lmstudio",
+    "local",
+    "ollama",
+    "openai",
+    "openrouter",
+    "provider",
+}
+
+
+def is_concrete_model_id(model_id: str | None, provider_type: str = "") -> bool:
+    """Reject provider labels that legacy records sometimes stored as model IDs."""
+    normalized = re.sub(r"[^a-z0-9]+", "", str(model_id or "").strip().lower())
+    provider_label = re.sub(r"[^a-z0-9]+", "", str(provider_type or "").strip().lower())
+    if not normalized:
+        return False
+    generic = {re.sub(r"[^a-z0-9]+", "", value) for value in GENERIC_PROVIDER_MODEL_IDS}
+    return normalized not in generic and normalized != provider_label
+
 
 def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
@@ -269,7 +292,18 @@ class ModelRegistryService:
         for provider in providers:
             model_names = [item.model_key for item in by_provider.get(provider.id, [])]
             if not model_names:
-                model_names = [provider.config.get("model_id") or provider.config.get("model") or provider.name]
+                configured = provider.config or {}
+                model_names = [
+                    *list(configured.get("models") or []),
+                    configured.get("model_id"),
+                    configured.get("model"),
+                    provider.name,
+                ]
+            model_names = list(dict.fromkeys(
+                str(model_id).strip()
+                for model_id in model_names
+                if is_concrete_model_id(model_id, provider.provider_type)
+            ))
             for model_id in model_names:
                 if (str(provider.id), model_id) in keys:
                     continue
@@ -465,7 +499,9 @@ class ModelRoutingService:
         candidates = [
             item
             for item in await self.registry.list()
-            if item.enabled and item.model_id not in request.exclude_model_ids
+            if item.enabled
+            and item.model_id not in request.exclude_model_ids
+            and is_concrete_model_id(item.model_id, item.provider)
         ]
         providers = {item.id: item for item in (await self.session.execute(select(ModelProvider))).scalars().all()}
         candidates = [

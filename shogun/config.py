@@ -74,6 +74,18 @@ class Settings(BaseSettings):
     stack_orchestrator_context_budget_chars: int = 16000
     stack_orchestrator_verifier_timeout_seconds: int = 90
 
+    # Order 9: Active Skill Usage
+    active_skill_usage_enabled: bool = True
+    active_skill_auto_activate: bool = True
+    active_skill_max_per_run: int = 5
+    active_skill_max_per_step: int = 3
+    active_skill_max_total_context_tokens: int = 2500
+    active_skill_default_context_tokens: int = 600
+    active_skill_require_exam_pass: bool = True
+    active_skill_allow_failed_exams: bool = False
+    active_skill_allow_deprecated: bool = False
+    active_skill_preserve_during_compaction: bool = True
+
     # ── Telegram ─────────────────────────────────────────────
     telegram_bot_token: str | None = None
     telegram_allowed_chat_ids: str | None = None

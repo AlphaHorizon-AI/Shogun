@@ -15,6 +15,7 @@ from shogun.db.models.security_policy import SecurityPolicy
 from shogun.db.models.skill_source import SkillSource
 from shogun.db.models.skill import Skill
 from shogun.db.models.skill_installation import SkillInstallation
+from shogun.db.models.active_skill_run import ActiveSkillRun
 from shogun.db.models.bushido import BushidoJob, BushidoRecommendation, BushidoSchedule
 from shogun.db.models.mission import Mission
 from shogun.db.models.execution_event import ExecutionEvent
@@ -66,6 +67,7 @@ __all__ = [
     "SkillSource",
     "Skill",
     "SkillInstallation",
+    "ActiveSkillRun",
     "BushidoJob",
     "BushidoRecommendation",
     "BushidoSchedule",

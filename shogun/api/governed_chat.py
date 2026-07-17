@@ -131,13 +131,20 @@ async def _shogun_governed_chat(
     if provider.provider_type == "ollama" and not base_url.rstrip("/").endswith("/v1"):
         base_url = base_url.rstrip("/") + "/v1"
 
-    model_name = (
-        saved_model_name
-        or provider.config.get("model_id")
-        or (provider.config.get("models") or [None])[0]
-        or provider.name
+    from shogun.api.agents import _resolve_provider_model_id
+
+    model_name = _resolve_provider_model_id(
+        provider,
+        saved_model_name=saved_model_name,
+        saved_provider_id=saved_provider_id,
     )
     provider_name = provider.name
+
+    if not model_name:
+        async def _no_model():
+            yield f"data: {json.dumps({'type': 'error', 'content': 'The selected model provider has no valid model ID configured. Update it in The Katana.'})}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(_no_model(), media_type="text/event-stream")
 
     api_key = provider.config.get("api_key") or provider.config.get("api-key")
     req_headers: dict[str, str] = {"Content-Type": "application/json"}

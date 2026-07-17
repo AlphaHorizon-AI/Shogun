@@ -83,6 +83,28 @@ async def lifespan(app: FastAPI):
                         await conn.execute(text(f"ALTER TABLE agent_flow_runs ADD COLUMN {column} {definition}"))
                 if "root_run_id" not in run_columns:
                     await conn.execute(text("UPDATE agent_flow_runs SET root_run_id = id WHERE root_run_id = ''"))
+            if "skills" in table_names:
+                skill_columns = set(await conn.run_sync(
+                    lambda c: [col["name"] for col in sa_inspect(c).get_columns("skills")]
+                ))
+                skill_additions = {
+                    "exam_status": "VARCHAR(30) NOT NULL DEFAULT 'untested'",
+                    "tags": "TEXT NOT NULL DEFAULT '[]'", "triggers": "TEXT NOT NULL DEFAULT '[]'",
+                    "use_when": "TEXT NOT NULL DEFAULT '[]'", "avoid_when": "TEXT NOT NULL DEFAULT '[]'",
+                    "requires_tools": "TEXT NOT NULL DEFAULT '[]'",
+                    "minimum_posture": "VARCHAR(30) NOT NULL DEFAULT 'guarded'",
+                    "risk_tier": "VARCHAR(20) NOT NULL DEFAULT 'low'",
+                    "priority": "INTEGER NOT NULL DEFAULT 50", "conflict_group": "VARCHAR(100)",
+                    "model_hint": "VARCHAR(100)", "max_context_tokens": "INTEGER NOT NULL DEFAULT 600",
+                    "activation_mode": "VARCHAR(30) NOT NULL DEFAULT 'advisory'", "body_text": "TEXT",
+                    "brief_text": "TEXT", "verification_checklist": "TEXT NOT NULL DEFAULT '[]'",
+                    "embedding_id": "VARCHAR(255)", "last_used_at": "DATETIME",
+                    "usage_count": "INTEGER NOT NULL DEFAULT 0", "success_count": "INTEGER NOT NULL DEFAULT 0",
+                    "failure_count": "INTEGER NOT NULL DEFAULT 0",
+                }
+                for column, definition in skill_additions.items():
+                    if column not in skill_columns:
+                        await conn.execute(text(f"ALTER TABLE skills ADD COLUMN {column} {definition}"))
             columns = await conn.run_sync(
                 lambda c: [col["name"] for col in sa_inspect(c).get_columns("execution_events")]
                 if "execution_events" in sa_inspect(c).get_table_names() else []
@@ -101,6 +123,10 @@ async def lifespan(app: FastAPI):
             routing = ModelRoutingService(session)
             await routing.ensure_defaults()
             await routing.registry.sync_connected()
+            await session.commit()
+        from shogun.services.active_skill_service import SkillActivationService
+        async with async_session_factory() as session:
+            await SkillActivationService(session).ensure_defaults()
             await session.commit()
         from shogun.services.stack_orchestrator import recover_interrupted_stack_runs
         await recover_interrupted_stack_runs()
@@ -248,7 +274,7 @@ async def lifespan(app: FastAPI):
         await EventLogger.emit_system_event(
             "system.startup", "Shogun server started",
             detail={
-                "version": "1.3.2",
+                "version": "1.12.1",
                 "platform": platform.system(),
                 "python": platform.python_version(),
             },
@@ -369,7 +395,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.11.0",
+        version="1.12.1",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,

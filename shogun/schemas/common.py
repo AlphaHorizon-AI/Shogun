@@ -134,6 +134,11 @@ class SkillType(str, Enum):
     SPECIALIZATION = "specialization"
     TOOLING = "tooling"
     WORKFLOW = "workflow"
+    INSTRUCTION = "instruction"
+    TOOL = "tool"
+    STACK = "stack"
+    VERIFICATION = "verification"
+    MEMORY_PREFERENCE = "memory_preference"
 
 
 class SkillStatus(str, Enum):
@@ -143,6 +148,7 @@ class SkillStatus(str, Enum):
     QUARANTINED = "quarantined"
     ERROR = "error"
     ARCHIVED = "archived"
+    DEPRECATED = "deprecated"
 
 
 class MissionType(str, Enum):

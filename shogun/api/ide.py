@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from shogun.api.deps import get_db
 from shogun.schemas.common import ApiResponse
 from shogun.services.ide_service import ide_service
 
@@ -86,7 +89,28 @@ async def delete(body: FileBody): return ApiResponse(data=await ide_service.writ
 @router.get("/files/diff")
 async def file_diff(workspace_id: str): return ApiResponse(data=(await ide_service.git(workspace_id, "diff")))
 @router.post("/tasks/run")
-async def run_task(body: CommandBody): return ApiResponse(data=await ide_service.run_command(body.workspace_id, body.command, body.approved, body.timeout))
+async def run_task(body: CommandBody, db: AsyncSession = Depends(get_db)):
+    from shogun.api.security import _get_agent_posture
+    from shogun.schemas.skills import SkillActivationRequest
+    from shogun.services.active_skill_service import SkillActivationService
+
+    posture = await _get_agent_posture()
+    activation = await SkillActivationService(db).activate(SkillActivationRequest(
+        run_id=f"ide:{body.workspace_id}:{uuid.uuid4()}",
+        objective=body.command,
+        context="Run an approved IDE task in the connected workspace.",
+        posture=posture.get("active_tier", "guarded"),
+        available_tools=["ide.file.read", "ide.file.apply_patch", "ide.task.run"],
+        max_skills=3,
+        usage_location="ide_mode",
+        ide_enabled=bool(posture.get("ide_enabled", False)),
+    ))
+    result = await ide_service.run_command(body.workspace_id, body.command, body.approved, body.timeout)
+    outcome_service = SkillActivationService(db)
+    for item in activation["active_skills"]:
+        await outcome_service.outcome(item["active_skill_run_id"], "success", "IDE task completed")
+    await db.commit()
+    return ApiResponse(data={**result, "active_skills": activation["active_skills"]})
 @router.get("/tasks")
 async def tasks(workspace_id: str):
     _, item = await ide_service.gate("task.list", workspace_id=workspace_id)

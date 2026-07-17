@@ -385,6 +385,34 @@ async def _execute_single_node(
     if config.get("context_injection"):
         context_str += f"\n\n[Additional Context]:\n{config['context_injection']}"
 
+    # Order 9: node-level skill activation. Compact briefs influence execution
+    # but never extend the node's tool or posture permissions.
+    if node_type not in {"input", "output", "logic", "shogun_approval"}:
+        try:
+            from shogun.schemas.skills import SkillActivationRequest
+            from shogun.services.active_skill_service import SkillActivationService
+            from shogun.services.posture_guard import get_posture_permissions
+
+            posture = governance_context or await get_posture_permissions()
+            async with async_session_factory() as skill_session:
+                activation = await SkillActivationService(skill_session).activate(SkillActivationRequest(
+                    run_id=str(run_id),
+                    objective=f"{node.label}: {config.get('prompt') or config.get('description') or node_type}",
+                    context=context_str[-4000:],
+                    posture=posture.get("active_tier", posture.get("posture", "guarded")),
+                    available_tools=list(set(
+                        (config.get("required_tools") or []) + (posture.get("allowed_tools") or [])
+                    )),
+                    max_skills=3,
+                    usage_location="agent_flow",
+                    ide_enabled=bool(posture.get("ide_enabled", False)),
+                ))
+                await skill_session.commit()
+            if activation["context_block"]:
+                context_str += f"\n\n{activation['context_block']}"
+        except Exception as exc:
+            logging.getLogger("shogun.flow").warning("Active skill selection skipped: %s", exc)
+
     if node_type == "input":
         return await _exec_input(config, context_str, run_input or {})
     elif node_type == "samurai":

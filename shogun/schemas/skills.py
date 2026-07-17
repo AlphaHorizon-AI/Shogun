@@ -52,6 +52,18 @@ class SkillManifest(ShogunBase):
     permissions_requested: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
     compatibility: dict[str, bool] = Field(default_factory=dict)
+    description: str = ""
+    source: str = "local"
+    tags: list[str] = Field(default_factory=list)
+    triggers: list[str] = Field(default_factory=list)
+    use_when: list[str] = Field(default_factory=list)
+    avoid_when: list[str] = Field(default_factory=list)
+    requires_tools: list[str] = Field(default_factory=list)
+    minimum_posture: str = "guarded"
+    risk_tier: str = "low"
+    priority: int = 50
+    conflict_group: str | None = None
+    model_hint: str | None = None
 
 
 class SkillResponse(ShogunBase):
@@ -69,6 +81,27 @@ class SkillResponse(ShogunBase):
     status: SkillStatus
     hash: str | None = None
     local_path: str | None = None
+    exam_status: str = "untested"
+    tags: list[str] = Field(default_factory=list)
+    triggers: list[str] = Field(default_factory=list)
+    use_when: list[str] = Field(default_factory=list)
+    avoid_when: list[str] = Field(default_factory=list)
+    requires_tools: list[str] = Field(default_factory=list)
+    minimum_posture: str = "guarded"
+    risk_tier: str = "low"
+    priority: int = 50
+    conflict_group: str | None = None
+    model_hint: str | None = None
+    max_context_tokens: int = 600
+    activation_mode: str = "advisory"
+    body_text: str | None = None
+    brief_text: str | None = None
+    verification_checklist: list[str] = Field(default_factory=list)
+    embedding_id: str | None = None
+    last_used_at: datetime | None = None
+    usage_count: int = 0
+    success_count: int = 0
+    failure_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -110,3 +143,75 @@ class SkillInstallationResponse(ShogunBase):
     last_health_check_at: datetime | None = None
     installed_at: datetime
     installed_by: str
+
+
+class SkillActivationRequest(ShogunBase):
+    run_id: str | None = None
+    stack_run_id: uuid.UUID | None = None
+    step_run_id: uuid.UUID | None = None
+    objective: str = Field(..., min_length=1)
+    context: str = ""
+    posture: str = "guarded"
+    available_tools: list[str] = Field(default_factory=list)
+    max_skills: int | None = Field(default=None, ge=1, le=20)
+    usage_location: str = "chat"
+    explicit_skill_ids: list[uuid.UUID] = Field(default_factory=list)
+    ide_enabled: bool = False
+    activation_phase: str = "execution"
+
+
+class SkillOutcomeRequest(ShogunBase):
+    active_skill_run_id: uuid.UUID
+    outcome: str
+    outcome_summary: str | None = None
+
+
+class ActiveSkillRunResponse(ShogunBase):
+    id: uuid.UUID
+    run_id: str | None = None
+    stack_run_id: uuid.UUID | None = None
+    step_run_id: uuid.UUID | None = None
+    skill_id: uuid.UUID
+    skill_name: str | None = None
+    activation_reason: str
+    relevance_score: float
+    activation_mode: str
+    usage_location: str
+    injected_tokens: int
+    posture: str
+    conflict_notes: list[str] = Field(default_factory=list)
+    outcome: str
+    outcome_summary: str | None = None
+    created_at: datetime
+
+
+class SkillActivationItem(ShogunBase):
+    active_skill_run_id: uuid.UUID | None = None
+    skill_id: uuid.UUID
+    name: str
+    skill_type: str
+    relevance_score: float
+    activation_reason: str
+    activation_mode: str
+    brief: str
+    injected_tokens: int
+    verification_checklist: list[str] = Field(default_factory=list)
+    model_hint: str | None = None
+
+
+class SkillCandidateItem(ShogunBase):
+    skill_id: uuid.UUID
+    name: str
+    relevance_score: float
+    reason: str
+    blocked_reason: str | None = None
+
+
+class SkillActivationResponse(ShogunBase):
+    run_id: str
+    context_block: str
+    total_injected_tokens: int
+    active_skills: list[SkillActivationItem] = Field(default_factory=list)
+    considered_skills: list[SkillCandidateItem] = Field(default_factory=list)
+    blocked_skills: list[SkillCandidateItem] = Field(default_factory=list)
+    conflict_notes: list[str] = Field(default_factory=list)

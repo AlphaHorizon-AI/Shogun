@@ -1,8 +1,8 @@
 {
-  "version": "1.11.0",
+  "version": "1.12.1",
   "name": "Shogun OS",
-  "build": 72,
+  "build": 74,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Adds governed task-aware model routing profiles, capability registry, route preview, escalation and budget policies, routing traces, usage telemetry, and runtime integration across chat, AgentFlow, Flow Stacks, vision, verification, and IDE Mode."
+  "changelog": "Adds Order 9 Active Skill Usage and fixes Telegram model routing by rejecting provider labels as model IDs, repairing registry discovery from configured model lists, and preventing stale primary-model/provider mismatches across chat lanes."
 }

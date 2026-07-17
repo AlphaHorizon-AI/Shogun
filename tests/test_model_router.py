@@ -18,6 +18,7 @@ from shogun.services.model_router import (
     NoEligibleModelError,
     TaskClassifierService,
     infer_tiers,
+    is_concrete_model_id,
 )
 
 
@@ -163,6 +164,46 @@ async def test_local_only_and_no_eligible_model_are_enforced(routing_session):
                 local_only=True,
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_provider_label_is_never_routed_as_a_model_id(routing_session):
+    provider = ModelProvider(
+        id=uuid.uuid4(),
+        provider_type="openrouter",
+        name="OpenRouter",
+        slug=f"provider-{uuid.uuid4().hex}",
+        base_url="https://openrouter.ai/api/v1",
+        is_local=False,
+        status="connected",
+        config={"models": ["google/gemini-3.5-flash"]},
+    )
+    stale = ModelRegistryEntry(
+        model_id="OpenRouter",
+        display_name="OpenRouter",
+        provider_id=provider.id,
+        provider="openrouter",
+        connection_type="api",
+        enabled=True,
+        capabilities={"chat": True, "tool_use": True},
+        quality_tier=5,
+        cost_tier=1,
+        latency_tier=1,
+        context_window=128000,
+        max_output_tokens=4096,
+        local=False,
+        role_tags=[],
+        config_json={"auto_discovered": True},
+    )
+    routing_session.add_all([provider, stale])
+    await routing_session.flush()
+
+    result = await ModelRoutingService(routing_session).route(
+        ModelRouteRequest(prompt="Hello", required_capabilities=["chat", "tool_use"])
+    )
+
+    assert is_concrete_model_id("OpenRouter", "openrouter") is False
+    assert result.selected.model_id == "google/gemini-3.5-flash"
 
 
 @pytest.mark.asyncio
