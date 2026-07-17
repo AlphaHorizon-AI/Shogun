@@ -310,6 +310,9 @@ async def _download_telegram_file(
     kind: str,
     filename: str,
     mime_type: str | None = None,
+    source_message_id: str | None = None,
+    sender_id: str | None = None,
+    caption: str | None = None,
 ) -> dict | None:
     """Download a Telegram file into the persistent agent workspace."""
     client = _get_tg_client()
@@ -346,6 +349,27 @@ async def _download_telegram_file(
         target = target.with_name(f"{target.stem}-{int(time.time())}{target.suffix}")
 
     content = data_resp.content
+    if effective_mime.startswith(_IMAGE_MIME_PREFIX):
+        try:
+            from shogun.db.engine import async_session_factory
+            from shogun.services.visual_intake import VisualIntakeService
+
+            async with async_session_factory() as db:
+                visual = VisualIntakeService(db)
+                artifact = await visual.ingest(
+                    content, filename=filename, declared_mime=effective_mime, source="telegram",
+                    source_chat_id=chat_id, source_message_id=source_message_id,
+                    sender_id=sender_id, caption=caption, chat_session_id=chat_id,
+                )
+                await db.commit()
+                return visual._public(artifact) | {
+                    "kind": kind, "file_id": file_id, "path": artifact.normalized_path,
+                    "workspace_path": artifact.normalized_path, "is_image": True,
+                }
+        except Exception as exc:
+            logger.warning("[Telegram] governed image intake failed for %s: %s", file_id, exc)
+            return None
+
     target.write_bytes(content)
     rel_path = target.relative_to(workspace_root).as_posix()
     return {
@@ -377,6 +401,9 @@ async def _extract_telegram_attachments(bot_token: str, chat_id: str, msg: dict)
             kind="photo",
             filename=_safe_upload_filename(f"{file_unique_id}.jpg", "telegram-photo.jpg"),
             mime_type="image/jpeg",
+            source_message_id=str(msg.get("message_id") or ""),
+            sender_id=str((msg.get("from") or {}).get("id") or ""),
+            caption=msg.get("caption"),
         )
         if attachment:
             attachments.append(attachment)
@@ -390,6 +417,9 @@ async def _extract_telegram_attachments(bot_token: str, chat_id: str, msg: dict)
             kind="document",
             filename=_safe_upload_filename(document.get("file_name", ""), f"telegram-document-{document['file_id']}"),
             mime_type=document.get("mime_type"),
+            source_message_id=str(msg.get("message_id") or ""),
+            sender_id=str((msg.get("from") or {}).get("id") or ""),
+            caption=msg.get("caption"),
         )
         if attachment:
             attachments.append(attachment)
@@ -540,7 +570,10 @@ async def process_telegram_message(
                 content=prompt_msg,
                 external_chat_id=chat_id,
                 message_data={
-                    **({"attachments": attachments} if attachments else {}),
+                    **({"attachments": [
+                        {key: value for key, value in attachment.items() if key not in {"path", "workspace_path"}}
+                        for attachment in attachments
+                    ]} if attachments else {}),
                     **({"telegram_context": telegram_context} if telegram_context else {}),
                 },
             )

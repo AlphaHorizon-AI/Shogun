@@ -36,6 +36,7 @@ from shogun.db.models.stack_orchestrator import (
 from shogun.db.models.mado_session import MadoSession
 from shogun.db.models.ronin_session import RoninSession
 from shogun.db.models.chat_message import ChatMessage
+from shogun.db.models.visual_artifact import ChatArtifactLink, ImageAnalysis, ImageArtifact
 from shogun.db.models.nexus import ExternalAgentModel, AgentCapabilityModel, NexusTaskModel
 from shogun.db.models.teams import (
     TeamsApprovalRequest,
@@ -89,6 +90,9 @@ __all__ = [
     "MadoSession",
     "RoninSession",
     "ChatMessage",
+    "ImageArtifact",
+    "ChatArtifactLink",
+    "ImageAnalysis",
     "ExternalAgentModel",
     "AgentCapabilityModel",
     "NexusTaskModel",

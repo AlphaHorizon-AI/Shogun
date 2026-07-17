@@ -363,7 +363,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.8.1",
+        version="1.9.0",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,
@@ -402,6 +402,7 @@ def create_app() -> FastAPI:
     from shogun.api.email import router as email_router
     from shogun.api.calendar import router as calendar_router
     from shogun.api.comms import router as comms_router
+    from shogun.api.visual import router as visual_router
     from shogun.api.agent_flow import router as agent_flow_router
     from shogun.api.stack_orchestrator import router as stack_orchestrator_router
     from shogun.api.mado import router as mado_router
@@ -435,6 +436,7 @@ def create_app() -> FastAPI:
     app.include_router(email_router, prefix=prefix)
     app.include_router(calendar_router, prefix=prefix)
     app.include_router(comms_router, prefix=prefix)
+    app.include_router(visual_router, prefix=prefix)
     app.include_router(agent_flow_router, prefix=prefix)
     app.include_router(stack_orchestrator_router, prefix=prefix)
     app.include_router(mado_router, prefix=prefix)

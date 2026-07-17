@@ -299,6 +299,16 @@ async def shogun_chat(
     history: list = body.get("history", [])
     mode: str = body.get("mode", "auto")
     attachments = body.get("attachments") if isinstance(body.get("attachments"), list) else []
+    visual_session_id = str(body.get("session_id") or "web-chat")
+    if attachments:
+        from shogun.services.visual_intake import VisualIntakeService
+        attachments = await VisualIntakeService(svc.session).resolve_attachments(attachments)
+    elif any(token in user_msg.lower() for token in ("image", "photo", "picture", "screenshot", "in it", "on it", "this design")):
+        # Keep natural follow-up questions grounded in the latest image from this chat.
+        from shogun.services.visual_intake import VisualIntakeService
+        visual = VisualIntakeService(svc.session)
+        recent = await visual.recent(limit=1, chat_session_id=visual_session_id)
+        attachments = [visual._public(item) | {"path": item.normalized_path} for item in recent]
 
     if not user_msg and attachments:
         user_msg = "Please review the uploaded attachment(s)."
@@ -414,7 +424,7 @@ def _filter_tools_by_intent(tools: list, matched_keywords: list, is_small_model:
         "file": {"workspace", "office"},
         "read file": {"workspace", "office"},
         "write file": {"workspace", "office"},
-        "upload": {"workspace"},
+        "upload": {"workspace", "visual"},
         "download": {"workspace"},
         "analyze": {"workspace", "office"},
         # Email keywords → comms

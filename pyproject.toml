@@ -1,6 +1,6 @@
 [project]
 name = "shogun"
-version = "1.8.1"
+version = "1.9.0"
 description = "Shogun — A GUI-first AI agent framework with structured memory, governed autonomy, and OpenClaw compatibility"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,6 +43,7 @@ dependencies = [
 
     # --- Utilities ---
     "python-multipart>=0.0.12",
+    "Pillow>=10.0.0",
     "orjson>=3.10.0",
     "psutil>=5.9.0",
     "sentence-transformers>=3.1.0",

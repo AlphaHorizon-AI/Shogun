@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     ronin_path: Path = PROJECT_ROOT / "data" / "ronin"
     office_path: Path = PROJECT_ROOT / "data" / "office"
     workspace_path: Path = PROJECT_ROOT / "data" / "workspace"
+    visual_artifacts_path: Path = PROJECT_ROOT / "data" / "artifacts" / "images"
+    visual_max_upload_mb: int = 20
+    visual_retention_days: int = 30
 
     # Flow Stacking / governed hierarchical AgentFlow execution
     flow_stacking_enabled: bool = True
@@ -127,6 +130,7 @@ class Settings(BaseSettings):
             self.log_path,
             self.config_path,
             self.uploads_path,
+            self.visual_artifacts_path,
             # Mado browser automation directories
             self.mado_path,
             self.mado_path / "profiles",

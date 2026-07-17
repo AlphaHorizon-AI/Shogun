@@ -62,6 +62,17 @@ const WORKFLOW_PERMISSION_DEFAULTS = {
     allow_save_as_template: false,
     allow_delete: false,
   },
+  visual_intake: {
+    allow_image_intake: true,
+    allow_local_vision: true,
+    allow_cloud_vision: false,
+    allow_ocr: true,
+    allow_attach_to_stack: true,
+    allow_auto_memory: false,
+    allow_delete: true,
+    retention_days: 30,
+    max_upload_mb: 20,
+  },
 };
 
 export const ShogunProfile = () => {
@@ -210,6 +221,18 @@ export const ShogunProfile = () => {
       allow_save_as_template: 'Allow Shogun to save Flow Stacks as reusable templates.',
       allow_delete: 'Allow Shogun to delete Flow Stacks.',
     },
+    visual_intake: {
+      _category: 'Controls how images from chat and Telegram are stored, analyzed, remembered, and passed into Flow Stacks.',
+      allow_image_intake: 'Accept valid images in chat and connected channels and store them as governed artifacts.',
+      allow_local_vision: 'Allow connected local vision models to inspect images.',
+      allow_cloud_vision: 'Allow image bytes to be sent to a connected cloud vision provider. Disabled by default.',
+      allow_ocr: 'Allow Shogun to extract visible text from images.',
+      allow_attach_to_stack: 'Allow image artifacts to become durable inputs to Flow Stack runs.',
+      allow_auto_memory: 'Allow Shogun to preserve image-derived knowledge automatically. Disabled by default.',
+      allow_delete: 'Allow governed deletion of image artifacts.',
+      retention_days: 'Days to retain unpinned images before automatic cleanup.',
+      max_upload_mb: 'Maximum size of one accepted image.',
+    },
   };
 
   const getTooltip = (category: string, prop?: string): string => {
@@ -226,6 +249,7 @@ export const ShogunProfile = () => {
     ...rawActivePermissions,
     agentflow: { ...WORKFLOW_PERMISSION_DEFAULTS.agentflow, ...(rawActivePermissions.agentflow || {}) },
     flow_stack: { ...WORKFLOW_PERMISSION_DEFAULTS.flow_stack, ...(rawActivePermissions.flow_stack || {}) },
+    visual_intake: { ...WORKFLOW_PERMISSION_DEFAULTS.visual_intake, ...(rawActivePermissions.visual_intake || {}) },
   } : null;
   const basePermissions = selectedPolicy?.permissions || null;
   const isCustomPolicy = customPermissions !== null && JSON.stringify(customPermissions) !== JSON.stringify(basePermissions);

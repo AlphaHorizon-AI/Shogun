@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Terminal, Bot, User, Trash2, History, X, ChevronDown, ChevronRight, ChevronUp, Globe, Mail, Calendar, MessageSquare, Zap, Shield, ShieldAlert, Target, Sparkles, Monitor, MousePointer2, Keyboard, AlertCircle, Camera, Square, Check, XCircle, FolderOpen } from 'lucide-react';
+import { Send, Terminal, Bot, User, Trash2, History, X, ChevronDown, ChevronRight, ChevronUp, Globe, Mail, Calendar, MessageSquare, Zap, Shield, ShieldAlert, Target, Sparkles, Monitor, MousePointer2, Keyboard, AlertCircle, Camera, Square, Check, XCircle, FolderOpen, ImagePlus, Pin } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
 import { MailView } from './MailView';
@@ -11,7 +11,8 @@ type ChatMode = 'auto' | 'fast' | 'governed' | 'mission';
 type RoninAttachment =
   | { type: 'screenshot'; url: string; description: string }
   | { type: 'action'; action: string; detail: string }
-  | { type: 'toolgate_confirm'; confirmId: string; tool: string; args: Record<string, string>; risk: string; reason: string; resolved?: 'approved' | 'denied' | 'timeout' };
+  | { type: 'toolgate_confirm'; confirmId: string; tool: string; args: Record<string, string>; risk: string; reason: string; resolved?: 'approved' | 'denied' | 'timeout' }
+  | { type: 'image'; artifact_id: string; content_url: string; thumbnail_url: string; filename: string; source: string; status: string; width: number; height: number; caption?: string; pinned?: boolean };
 
 interface Message {
   id?: string;
@@ -73,6 +74,7 @@ async function persistSharedMessage(message: Message, mirrorToTelegram = true) {
         provider: message.provider,
         search: message.search,
         mode: message.mode,
+        attachments: message.attachments,
       },
     }),
   });
@@ -229,6 +231,30 @@ export const ChatConsole = () => {
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [pendingImages, setPendingImages] = useState<Extract<RoninAttachment, { type: 'image' }>[]>([]);
+  const [imageViewer, setImageViewer] = useState<Extract<RoninAttachment, { type: 'image' }> | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const handleImageUpload = async (file?: File) => {
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('source', 'chat');
+      form.append('chat_session_id', 'web-chat');
+      const response = await fetch('/api/v1/visual/intake', { method: 'POST', body: form });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || 'Image upload failed.');
+      setPendingImages(prev => [...prev, payload.data]);
+    } catch (error: any) {
+      setStatusText(error.message || 'Image upload failed.');
+    } finally {
+      setUploadingImage(false);
+      if (imageInputRef.current) imageInputRef.current.value = '';
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -272,14 +298,18 @@ export const ChatConsole = () => {
   }, [messages, isThinking]);
 
   const handleSend = async () => {
-    if (!input.trim() || isThinking) return;
+    if ((!input.trim() && pendingImages.length === 0) || isThinking) return;
+
+    const outgoingText = input.trim() || 'Please review this image.';
+    const outgoingImages = [...pendingImages];
 
     const userMsg: Message = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: input,
+      content: outgoingText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       channel: 'comms',
+      attachments: outgoingImages,
     };
     try {
       await persistSharedMessage(userMsg);
@@ -290,6 +320,7 @@ export const ChatConsole = () => {
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     setInput('');
+    setPendingImages([]);
     setIsThinking(true);
     setStatusText(null);
 
@@ -313,7 +344,7 @@ export const ChatConsole = () => {
       const resp = await fetch('/api/v1/agents/shogun/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input, history: hist.slice(0, -1), mode: chatMode }),
+        body: JSON.stringify({ message: outgoingText, history: hist.slice(0, -1), mode: chatMode, session_id: 'web-chat', attachments: outgoingImages.map(image => ({ artifact_id: image.artifact_id })) }),
         signal: controller.signal,
       });
 
@@ -606,6 +637,42 @@ export const ChatConsole = () => {
                       {msg.attachments && msg.attachments.length > 0 && (
                         <div className={cn("space-y-2", msg.content ? "mt-3 border-t border-shogun-border/30 pt-3" : "")}>
                           {msg.attachments.map((att, idx) => {
+                            if (att.type === 'image') {
+                              const removeImage = async () => {
+                                if (!window.confirm('Delete this image artifact?')) return;
+                                const response = await fetch(`/api/v1/visual/${att.artifact_id}`, { method: 'DELETE' });
+                                if (response.ok) setMessages(prev => prev.map(item => ({
+                                  ...item,
+                                  attachments: item.attachments?.filter(a => a.type !== 'image' || a.artifact_id !== att.artifact_id),
+                                })));
+                              };
+                              const togglePin = async () => {
+                                const response = await fetch(`/api/v1/visual/${att.artifact_id}/pin`, {
+                                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ pinned: !att.pinned }),
+                                });
+                                if (response.ok) {
+                                  setMessages(prev => prev.map(item => ({ ...item, attachments: item.attachments?.map(a => a.type === 'image' && a.artifact_id === att.artifact_id ? { ...a, pinned: !att.pinned } : a) })));
+                                }
+                              };
+                              return (
+                                <div key={idx} className="rounded-xl overflow-hidden border border-cyan-500/30 bg-black/30 max-w-2xl">
+                                  <button type="button" onClick={() => setImageViewer(att)} className="block w-full bg-[#070b14]">
+                                    <img src={att.thumbnail_url} alt={att.caption || att.filename} className="w-full max-h-[420px] object-contain hover:opacity-90 transition-opacity" />
+                                  </button>
+                                  <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-cyan-500/20">
+                                    <div className="min-w-0">
+                                      <p className="truncate text-[10px] font-bold text-cyan-300">{att.filename}</p>
+                                      <p className="text-[9px] text-shogun-subdued uppercase">{att.source} · {att.width}×{att.height} · {att.status}</p>
+                                    </div>
+                                    <div className="flex gap-1">
+                                      <button onClick={togglePin} title={att.pinned ? 'Unpin' : 'Pin beyond retention'} className={cn('p-1.5 rounded border', att.pinned ? 'border-amber-400/40 text-amber-300' : 'border-shogun-border text-shogun-subdued')}><Pin className="w-3.5 h-3.5" /></button>
+                                      <button onClick={removeImage} title="Delete image" className="p-1.5 rounded border border-red-500/30 text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
                             if (att.type === 'screenshot') {
                               return (
                                 <div key={idx} className="rounded-lg overflow-hidden border border-cyan-500/30 bg-black/40">
@@ -738,6 +805,10 @@ export const ChatConsole = () => {
           </div>
 
           <div className="relative flex items-center">
+            <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={event => void handleImageUpload(event.target.files?.[0])} />
+            <button type="button" onClick={() => imageInputRef.current?.click()} disabled={uploadingImage || isThinking} title="Add image" className="absolute left-2 z-10 p-2 text-cyan-400 hover:bg-cyan-500/10 rounded-lg disabled:opacity-40">
+              <ImagePlus className={cn('w-5 h-5', uploadingImage && 'animate-pulse')} />
+            </button>
             <input
               type="text"
               value={input}
@@ -745,7 +816,7 @@ export const ChatConsole = () => {
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
               disabled={isThinking}
               placeholder={isThinking ? t('chat.placeholder_thinking', 'Shogun is thinking...') : chatMode === 'auto' ? 'Ask anything â€” Shogun routes automatically...' : chatMode === 'fast' ? 'Ask anything...' : chatMode === 'mission' ? 'Enter mission directive...' : 'Ask with context...'}
-              className="w-full bg-shogun-card border border-shogun-border rounded-xl py-4 pl-6 pr-14 text-shogun-text placeholder:text-shogun-subdued focus:outline-none focus:border-shogun-blue focus:ring-1 focus:ring-shogun-blue/20 transition-all font-mono text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-shogun-card border border-shogun-border rounded-xl py-4 pl-14 pr-14 text-shogun-text placeholder:text-shogun-subdued focus:outline-none focus:border-shogun-blue focus:ring-1 focus:ring-shogun-blue/20 transition-all font-mono text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             />
             {isThinking ? (
               <button
@@ -758,13 +829,23 @@ export const ChatConsole = () => {
             ) : (
               <button
                 onClick={handleSend}
-                disabled={!input.trim()}
+                disabled={!input.trim() && pendingImages.length === 0}
                 className="absolute right-2 p-2 bg-shogun-blue text-white rounded-lg hover:bg-shogun-blue/80 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Send className="w-5 h-5" />
               </button>
             )}
           </div>
+          {pendingImages.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {pendingImages.map(image => (
+                <div key={image.artifact_id} className="relative w-24 h-20 rounded-lg overflow-hidden border border-cyan-500/30 bg-black">
+                  <img src={image.thumbnail_url} alt={image.filename} className="w-full h-full object-cover" />
+                  <button onClick={() => setPendingImages(prev => prev.filter(item => item.artifact_id !== image.artifact_id))} className="absolute right-1 top-1 p-1 rounded bg-black/80 text-white"><X className="w-3 h-3" /></button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex justify-between mt-3 px-2">
             <div className="flex gap-4">
               <span className="text-[10px] text-shogun-subdued flex items-center gap-1">
@@ -784,6 +865,18 @@ export const ChatConsole = () => {
       </div>
 
       {/* â”€â”€ History Drawer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {imageViewer && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-6" onClick={() => setImageViewer(null)}>
+          <div className="relative max-w-[95vw] max-h-[95vh]" onClick={event => event.stopPropagation()}>
+            <img src={imageViewer.content_url} alt={imageViewer.caption || imageViewer.filename} className="max-w-[95vw] max-h-[88vh] object-contain rounded-xl border border-cyan-500/30" />
+            <div className="mt-2 flex items-center justify-between text-xs text-shogun-subdued">
+              <span>{imageViewer.filename} · {imageViewer.width}×{imageViewer.height}</span>
+              <button onClick={() => setImageViewer(null)} className="p-2 rounded border border-shogun-border"><X className="w-4 h-4" /></button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showHistory && (
         <div className="fixed inset-0 z-50 flex">
           <div

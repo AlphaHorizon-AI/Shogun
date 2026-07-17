@@ -1535,6 +1535,73 @@ NATIVE_TOOLS = [
         },
     },
     {
+        "type": "function", "risk": "low", "category": "visual",
+        "function": {
+            "name": "get_recent_images",
+            "description": "List recent governed images from chat or Telegram so you can refer to them by artifact ID.",
+            "parameters": {"type": "object", "properties": {
+                "limit": {"type": "integer", "description": "Number of images, from 1 to 20."},
+                "chat_session_id": {"type": "string", "description": "Optional chat or Telegram conversation ID."}
+            }}
+        }
+    },
+    {
+        "type": "function", "risk": "low", "category": "visual",
+        "function": {
+            "name": "get_image_metadata",
+            "description": "Get safe metadata for a governed image artifact.",
+            "parameters": {"type": "object", "properties": {"artifact_id": {"type": "string"}}, "required": ["artifact_id"]}
+        }
+    },
+    {
+        "type": "function", "risk": "low", "category": "visual",
+        "function": {
+            "name": "describe_image",
+            "description": "Use a permitted vision model to describe a governed chat or Telegram image.",
+            "parameters": {"type": "object", "properties": {
+                "artifact_id": {"type": "string"}, "prompt": {"type": "string"}
+            }, "required": ["artifact_id"]}
+        }
+    },
+    {
+        "type": "function", "risk": "low", "category": "visual",
+        "function": {
+            "name": "inspect_image",
+            "description": "Inspect a governed image for a specific detail or extract visible text.",
+            "parameters": {"type": "object", "properties": {
+                "artifact_id": {"type": "string"}, "prompt": {"type": "string"}
+            }, "required": ["artifact_id", "prompt"]}
+        }
+    },
+    {
+        "type": "function", "risk": "low", "category": "visual",
+        "function": {
+            "name": "extract_image_text",
+            "description": "Extract visible text from a governed image while preserving reading order.",
+            "parameters": {"type": "object", "properties": {"artifact_id": {"type": "string"}}, "required": ["artifact_id"]}
+        }
+    },
+    {
+        "type": "function", "risk": "low", "category": "visual",
+        "function": {
+            "name": "compare_images",
+            "description": "Compare two governed images with a permitted vision model.",
+            "parameters": {"type": "object", "properties": {
+                "first_artifact_id": {"type": "string"}, "second_artifact_id": {"type": "string"}, "prompt": {"type": "string"}
+            }, "required": ["first_artifact_id", "second_artifact_id"]}
+        }
+    },
+    {
+        "type": "function", "risk": "medium", "category": "visual",
+        "function": {
+            "name": "attach_image_to_stack",
+            "description": "Attach a governed image artifact as a durable input/evidence artifact on an existing Flow Stack run.",
+            "parameters": {"type": "object", "properties": {
+                "artifact_id": {"type": "string"}, "stack_run_id": {"type": "string"}
+            }, "required": ["artifact_id", "stack_run_id"]}
+        }
+    },
+    {
         "type": "function",
         "risk": "medium",
         "category": "workflow",
@@ -1831,6 +1898,65 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
     logger.info(f"Executing native skill: {name} with args {args}")
     
     try:
+        if name in {"get_recent_images", "get_image_metadata", "describe_image", "inspect_image", "extract_image_text", "compare_images", "attach_image_to_stack"}:
+            import uuid
+            from shogun.services.visual_intake import VisualIntakeError, VisualIntakeService
+
+            visual = VisualIntakeService(db_session)
+            if name == "get_recent_images":
+                images = await visual.recent(
+                    limit=max(1, min(int(args.get("limit", 5)), 20)),
+                    chat_session_id=args.get("chat_session_id"),
+                )
+                return json.dumps({"status": "success", "images": [visual._public(item) for item in images]})
+
+            if name == "compare_images":
+                try:
+                    first = await visual.get(uuid.UUID(str(args.get("first_artifact_id", ""))))
+                    second = await visual.get(uuid.UUID(str(args.get("second_artifact_id", ""))))
+                    if not first or not second:
+                        raise VisualIntakeError("Both image artifacts are required.")
+                    analysis = await visual.compare(first, second, str(args.get("prompt") or "Compare these images and explain material differences."))
+                    await db_session.commit()
+                    return json.dumps({"status": "success", "result": analysis.result_text, "model": analysis.model_used})
+                except (ValueError, VisualIntakeError) as exc:
+                    return json.dumps({"status": "error", "message": str(exc)})
+
+            try:
+                artifact_id = uuid.UUID(str(args.get("artifact_id", "")))
+            except ValueError:
+                return json.dumps({"status": "error", "message": "artifact_id must be a valid UUID."})
+            artifact = await visual.get(artifact_id)
+            if not artifact:
+                return json.dumps({"status": "error", "message": "Image artifact not found."})
+            if name == "get_image_metadata":
+                return json.dumps({"status": "success", "image": visual._public(artifact)})
+            if name == "attach_image_to_stack":
+                try:
+                    linked = await visual.attach_to_stack(artifact, uuid.UUID(str(args.get("stack_run_id", ""))))
+                    await db_session.commit()
+                    return json.dumps({"status": "success", "stack_artifact_id": str(linked.id)})
+                except (ValueError, VisualIntakeError) as exc:
+                    return json.dumps({"status": "error", "message": str(exc)})
+
+            default_prompt = (
+                "Describe this image accurately, including visible text and important details."
+                if name == "describe_image" else
+                "Transcribe all visible text faithfully and preserve reading order."
+                if name == "extract_image_text" else
+                "Inspect the requested image detail and answer with visual evidence."
+            )
+            prompt = str(args.get("prompt") or default_prompt)
+            try:
+                analysis = await visual.analyze(artifact, prompt, "extract_text" if name == "extract_image_text" else "describe" if name == "describe_image" else "inspect")
+                await db_session.commit()
+                return json.dumps({
+                    "status": "success", "artifact_id": str(artifact.id), "result": analysis.result_text,
+                    "model": analysis.model_used, "provider": analysis.provider_used,
+                })
+            except VisualIntakeError as exc:
+                return json.dumps({"status": "error", "message": str(exc)})
+
         if name == "spawn_samurai":
             # ── Posture enforcement: kill switch + subagent limit ──
             from shogun.services.posture_guard import check_kill_switch, check_subagent_limit_soft

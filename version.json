@@ -1,8 +1,8 @@
 {
-  "version": "1.8.1",
+  "version": "1.9.0",
   "name": "Shogun OS",
-  "build": 66,
+  "build": 67,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Adds Flow Stack activation and deactivation controls, contextual Orchestrator help, and fixes category filtering across the template gallery and Stack Builder."
+  "changelog": "Adds governed image viewing in chat and Telegram, secure visual artifact storage, thumbnails, follow-up visual context, vision routing, retention controls, and Flow Stack image inputs."
 }
