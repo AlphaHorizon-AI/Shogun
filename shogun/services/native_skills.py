@@ -1535,6 +1535,46 @@ NATIVE_TOOLS = [
         },
     },
     {
+        "type": "function", "risk": "low", "category": "system",
+        "function": {"name": "model_router_get_active_profile", "description": "Get the active governed model routing profile.",
+                     "parameters": {"type": "object", "properties": {}}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "system",
+        "function": {"name": "model_router_preview_route", "description": "Preview which eligible model the router would select without executing it.",
+                     "parameters": {"type": "object", "properties": {
+                         "prompt": {"type": "string"}, "task_type": {"type": "string"},
+                         "required_capabilities": {"type": "array", "items": {"type": "string"}},
+                         "complexity": {"type": "integer", "minimum": 1, "maximum": 5},
+                         "profile": {"type": "string"}}, "required": ["prompt"]}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "system",
+        "function": {"name": "model_router_request_route", "description": "Request and audit a governed model routing decision.",
+                     "parameters": {"type": "object", "properties": {
+                         "prompt": {"type": "string"}, "task_type": {"type": "string"},
+                         "required_capabilities": {"type": "array", "items": {"type": "string"}},
+                         "profile": {"type": "string"}}, "required": ["prompt"]}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "system",
+        "function": {"name": "model_router_request_escalation", "description": "Request the next governed model after failure or failed verification.",
+                     "parameters": {"type": "object", "properties": {
+                         "prompt": {"type": "string"}, "task_type": {"type": "string"},
+                         "previous_model": {"type": "string"}, "escalation_level": {"type": "integer", "minimum": 1, "maximum": 2}},
+                         "required": ["prompt", "previous_model"]}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "system",
+        "function": {"name": "model_router_log_outcome", "description": "Log token, latency, success, and error outcome for a routing decision.",
+                     "parameters": {"type": "object", "properties": {
+                         "routing_decision_id": {"type": "string"}, "model_id": {"type": "string"},
+                         "provider": {"type": "string"}, "input_tokens": {"type": "integer"},
+                         "output_tokens": {"type": "integer"}, "latency_ms": {"type": "integer"},
+                         "success": {"type": "boolean"}, "error": {"type": "string"}},
+                         "required": ["model_id", "provider"]}},
+    },
+    {
         "type": "function", "risk": "low", "category": "visual",
         "function": {
             "name": "get_recent_images",
@@ -2134,6 +2174,37 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
                 "status": "success", 
                 "message": f"Successfully updated primary model to {args['primary_model']}."
             })
+
+        elif name.startswith("model_router_"):
+            from shogun.schemas.model_router import ModelRouteRequest, ModelUsageCreate
+            from shogun.services.model_router import ModelRoutingService, ModelUsageLogger
+
+            router = ModelRoutingService(db_session)
+            if name == "model_router_get_active_profile":
+                profile = await router.active_profile()
+                return json.dumps({"status": "success", "profile": profile.name, "profile_id": str(profile.id)})
+            if name == "model_router_log_outcome":
+                usage = await ModelUsageLogger(db_session).log(ModelUsageCreate(
+                    routing_decision_id=args.get("routing_decision_id"), model_id=args["model_id"],
+                    provider=args["provider"], input_tokens=int(args.get("input_tokens", 0)),
+                    output_tokens=int(args.get("output_tokens", 0)), latency_ms=int(args.get("latency_ms", 0)),
+                    success=bool(args.get("success", True)), error_json={"message": args.get("error")} if args.get("error") else {},
+                ))
+                await db_session.commit()
+                return json.dumps({"status": "success", "usage_event_id": str(usage.id)})
+            escalation = int(args.get("escalation_level", 1)) if name == "model_router_request_escalation" else 0
+            request = ModelRouteRequest(
+                prompt=str(args.get("prompt", "")), task_type=args.get("task_type"),
+                required_capabilities=args.get("required_capabilities") or ["chat"],
+                complexity_override=args.get("complexity"), profile_override=args.get("profile"),
+                escalation_level=escalation,
+                exclude_model_ids=[args["previous_model"]] if args.get("previous_model") else [],
+                verification_status="failed" if escalation else None,
+                metadata={"requested_by": "shogun_agent"},
+            )
+            result = await router.route(request, persist=name != "model_router_preview_route")
+            if name != "model_router_preview_route": await db_session.commit()
+            return json.dumps({"status": "success", **result.payload}, default=str)
 
         elif name == "store_memory":
             from shogun.services.memory_service import MemoryService

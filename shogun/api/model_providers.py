@@ -148,3 +148,6 @@ async def delete_routing_profile(
 
 router.include_router(provider_router)
 router.include_router(routing_router)
+
+from shogun.api.model_router import router as task_router
+router.include_router(task_router)

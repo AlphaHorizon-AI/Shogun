@@ -90,6 +90,7 @@ class EventLogger:
         confidence_score: float | None = None,
         governance_flags: dict[str, Any] | None = None,
         use_case_context: dict[str, Any] | None = None,
+        db_session=None,
     ) -> str:
         """Emit an event to both operational and immutable audit layers.
 
@@ -102,7 +103,7 @@ class EventLogger:
             from shogun.db.engine import async_session_factory
             from shogun.db.models.execution_event import ExecutionEvent
 
-            async with async_session_factory() as session:
+            async def add_operational_event(session):
                 event = ExecutionEvent(
                     event_id=event_id,
                     session_id=uuid.UUID(session_id) if session_id else None,
@@ -135,7 +136,13 @@ class EventLogger:
                     use_case_context=use_case_context or {},
                 )
                 session.add(event)
-                await session.commit()
+
+            if db_session is not None:
+                await add_operational_event(db_session)
+            else:
+                async with async_session_factory() as session:
+                    await add_operational_event(session)
+                    await session.commit()
         except Exception as e:
             logger.error("Operational log write failed: %s", e)
 

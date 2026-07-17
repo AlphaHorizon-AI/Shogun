@@ -9,11 +9,17 @@ export const IdeModeTab = () => {
   const [status, setStatus] = useState<any>(null);
   const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [pairing, setPairing] = useState<any>(null);
+  const [routingProfile, setRoutingProfile] = useState('Balanced');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const load = useCallback(async () => {
-    const [s, w] = await Promise.all([axios.get('/api/v1/ide/status'), axios.get('/api/v1/ide/workspaces').catch(() => ({ data: { data: [] } }))]);
+    const [s, w, routing] = await Promise.all([
+      axios.get('/api/v1/ide/status'),
+      axios.get('/api/v1/ide/workspaces').catch(() => ({ data: { data: [] } })),
+      axios.get('/api/v1/models/routing/profiles/active').catch(() => ({ data: { data: null } })),
+    ]);
     setStatus(s.data.data); setWorkspaces(w.data.data || []);
+    setRoutingProfile(routing.data.data?.name || 'Balanced');
   }, []);
   useEffect(() => { load().catch(() => setMessage('Unable to load IDE Mode status.')); }, [load]);
 
@@ -41,7 +47,7 @@ export const IdeModeTab = () => {
       </section>
       <section className="shogun-card space-y-3">
         <h3 className="text-xs font-bold uppercase tracking-widest text-shogun-text">Runtime Status</h3>
-        {[['Posture', status.posture], ['Provider', 'VS Code Adapter'], ['Connections', status.connected_instances], ['Approved workspaces', status.approved_workspaces]].map(([k,v]) => <div key={String(k)} className="flex justify-between text-xs border-b border-shogun-border/40 pb-2"><span className="text-shogun-subdued">{k}</span><b className="text-shogun-text">{String(v)}</b></div>)}
+        {[['Posture', status.posture], ['Routing profile', routingProfile], ['Provider', 'VS Code Adapter'], ['Connections', status.connected_instances], ['Approved workspaces', status.approved_workspaces]].map(([k,v]) => <div key={String(k)} className="flex justify-between text-xs border-b border-shogun-border/40 pb-2"><span className="text-shogun-subdued">{k}</span><b className="text-shogun-text">{String(v)}</b></div>)}
         <button disabled={!status.enabled || busy} onClick={() => perform(() => axios.post('/api/v1/ide/kill-switch'), 'IDE kill switch activated.')} className="w-full mt-2 px-3 py-2 rounded border border-red-500/30 text-red-300 text-[10px] font-bold uppercase disabled:opacity-30">Stop all IDE work</button>
       </section>
     </div>

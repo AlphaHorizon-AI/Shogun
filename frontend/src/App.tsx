@@ -1,25 +1,26 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Shell } from './components/layout/Shell'
-import { Dashboard } from './pages/Dashboard'
-import { Chat } from './pages/Chat'
-import { ShogunProfile } from './pages/ShogunProfile'
-import { SamuraiNetwork } from './pages/SamuraiNetwork'
-import { Katana } from './pages/Katana'
-import { Torii } from './pages/Torii'
-import { Kaizen } from './pages/Kaizen'
-import { Bushido } from './pages/Bushido'
-import { Archives } from './pages/Archives'
-import { Dojo } from './pages/Dojo'
-import { Logs } from './pages/Logs'
-import { Guide } from './pages/Guide'
-import { Nexus } from './pages/Nexus'
-import { Updates } from './pages/Updates'
-import { Backups } from './pages/Backups'
-import { Gensui } from './pages/Gensui'
-import { SetupWizard } from './pages/SetupWizard'
-import { useState, useEffect, useRef } from 'react'
+import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { useTranslation, I18nProvider } from './i18n'
 import { AlertTriangle, Loader2, X } from 'lucide-react'
+
+const Dashboard = lazy(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })))
+const Chat = lazy(() => import('./pages/Chat').then(module => ({ default: module.Chat })))
+const ShogunProfile = lazy(() => import('./pages/ShogunProfile').then(module => ({ default: module.ShogunProfile })))
+const SamuraiNetwork = lazy(() => import('./pages/SamuraiNetwork').then(module => ({ default: module.SamuraiNetwork })))
+const Katana = lazy(() => import('./pages/Katana').then(module => ({ default: module.Katana })))
+const Torii = lazy(() => import('./pages/Torii').then(module => ({ default: module.Torii })))
+const Kaizen = lazy(() => import('./pages/Kaizen').then(module => ({ default: module.Kaizen })))
+const Bushido = lazy(() => import('./pages/Bushido').then(module => ({ default: module.Bushido })))
+const Archives = lazy(() => import('./pages/Archives').then(module => ({ default: module.Archives })))
+const Dojo = lazy(() => import('./pages/Dojo').then(module => ({ default: module.Dojo })))
+const Logs = lazy(() => import('./pages/Logs').then(module => ({ default: module.Logs })))
+const Guide = lazy(() => import('./pages/Guide').then(module => ({ default: module.Guide })))
+const Nexus = lazy(() => import('./pages/Nexus').then(module => ({ default: module.Nexus })))
+const Updates = lazy(() => import('./pages/Updates').then(module => ({ default: module.Updates })))
+const Backups = lazy(() => import('./pages/Backups').then(module => ({ default: module.Backups })))
+const Gensui = lazy(() => import('./pages/Gensui').then(module => ({ default: module.Gensui })))
+const SetupWizard = lazy(() => import('./pages/SetupWizard').then(module => ({ default: module.SetupWizard })))
 
 interface SystemNotification {
   id: string
@@ -172,7 +173,8 @@ function AppContent() {
   return (
     <Router>
       <FirstRunGate>
-        <Routes>
+        <Suspense fallback={<div className="fixed inset-0 bg-[#0a0e1a] flex items-center justify-center"><Loader2 className="w-8 h-8 text-[#d4a017] animate-spin" /></div>}>
+          <Routes>
           {/* Setup wizard — always accessible at /setup */}
           <Route path="/setup" element={<SetupPage />} />
 
@@ -196,7 +198,8 @@ function AppContent() {
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          </Routes>
+        </Suspense>
       </FirstRunGate>
     </Router>
   )

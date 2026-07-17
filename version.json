@@ -1,8 +1,8 @@
 {
-  "version": "1.10.2",
+  "version": "1.11.0",
   "name": "Shogun OS",
-  "build": 71,
+  "build": 72,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Fixes Telegram vision routing and makes local vision reliable during cold model starts with bounded responses and a vision-specific timeout."
+  "changelog": "Adds governed task-aware model routing profiles, capability registry, route preview, escalation and budget policies, routing traces, usage telemetry, and runtime integration across chat, AgentFlow, Flow Stacks, vision, verification, and IDE Mode."
 }

@@ -54,6 +54,7 @@ import { MicrosoftTeamsAdapterTab } from './katana/MicrosoftTeamsAdapterTab';
 import { Mado } from './Mado';
 import { Ronin } from './Ronin';
 import { IdeModeTab } from './katana/IdeModeTab';
+import ModelRoutingPanel from './katana/ModelRoutingPanel';
 
 type TabType = 'providers' | 'tools' | 'routing' | 'telegram' | 'teams' | 'mail_calendar' | 'office' | 'ide' | 'mado' | 'ronin';
 type RegisterMode = 'quick' | 'manual';
@@ -2770,6 +2771,7 @@ export function Katana() {
         ════════════════════════════════════════════════════════ */}
         {activeTab === 'routing' && (
           <div className="space-y-6">
+            <ModelRoutingPanel />
 
             {/* ── Header ──────────────────────────────────────── */}
             <div className="flex items-center justify-between">

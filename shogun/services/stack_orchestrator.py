@@ -177,10 +177,7 @@ class StackCompactionService:
             return value if len(value) <= 2000 else f"{value[:1800]}\n...[{len(value) - 1800} chars compacted]"
         if isinstance(value, dict):
             items = list(value.items())
-            result = {
-                str(key): StackCompactionService._bounded(item, depth=depth + 1)
-                for key, item in items[:30]
-            }
+            result = {str(key): StackCompactionService._bounded(item, depth=depth + 1) for key, item in items[:30]}
             if len(items) > 30:
                 result["_compacted_keys"] = len(items) - 30
             return result
@@ -211,9 +208,7 @@ class StackCompactionService:
         if len(encoded) > budget:
             payload["goal"] = str(payload.get("goal", ""))[:800]
             payload["success_criteria"] = [str(item)[:300] for item in payload.get("success_criteria", [])[:10]]
-            payload["important_decisions"] = [
-                str(item)[:300] for item in payload.get("important_decisions", [])[-10:]
-            ]
+            payload["important_decisions"] = [str(item)[:300] for item in payload.get("important_decisions", [])[-10:]]
             encoded = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
         if len(encoded) > budget:
             payload = {
@@ -238,15 +233,18 @@ class StackCompactionService:
                 "verification": step.verification_status,
                 "output": StackCompactionService._bounded((step.output_json or {}).get("output", step.output_json)),
             }
-            for step in steps if step.status == "completed"
+            for step in steps
+            if step.status == "completed"
         ]
         failed = [
             {"step_id": step.step_id, "name": step.name, "error": StackCompactionService._bounded(step.error_json)}
-            for step in steps if step.status in {"failed", "blocked"}
+            for step in steps
+            if step.status in {"failed", "blocked"}
         ]
         pending = [
             {"step_id": step.step_id, "name": step.name, "status": step.status}
-            for step in steps if step.status in {"pending", "paused", "waiting_approval"}
+            for step in steps
+            if step.status in {"pending", "paused", "waiting_approval"}
         ]
         payload = {
             "continuity_version": 2,
@@ -356,17 +354,22 @@ class StackVerificationService:
                         name = result.get("name", f"{group}[{index}]")
                     else:
                         status, name = result, f"{group}[{index}]"
-                    checks.append({
-                        "name": str(name),
-                        "passed": status is True or str(status).lower() in {"passed", "pass", "approved", "success"},
-                        "observed": str(status),
-                    })
+                    checks.append(
+                        {
+                            "name": str(name),
+                            "passed": status is True
+                            or str(status).lower() in {"passed", "pass", "approved", "success"},
+                            "observed": str(status),
+                        }
+                    )
             elif isinstance(value, (bool, str)):
-                checks.append({
-                    "name": group,
-                    "passed": value is True or str(value).lower() in {"passed", "pass", "approved", "success"},
-                    "observed": str(value),
-                })
+                checks.append(
+                    {
+                        "name": group,
+                        "passed": value is True or str(value).lower() in {"passed", "pass", "approved", "success"},
+                        "observed": str(value),
+                    }
+                )
         return checks
 
     @staticmethod
@@ -378,9 +381,20 @@ class StackVerificationService:
     ) -> dict[str, Any] | None:
         """Use an independently-routed judge when a model is configured."""
         try:
-            from shogun.engine.flow_engine import _call_llm_chain, _resolve_llm_chain
+            from shogun.engine.flow_engine import _call_llm_chain, _resolve_task_llm_chain
 
-            chain = await _resolve_llm_chain(session, stack.model_profile)
+            chain, _routing = await _resolve_task_llm_chain(
+                session,
+                prompt=f"Verify step {step.name}: {StackCompactionService._bounded(output)}",
+                task_type="self_verification",
+                required_capabilities=["chat", "reasoning", "json_mode"],
+                routing_profile_id=stack.model_profile,
+                stack_run_id=stack.id,
+                step_id=step.step_id,
+                verification_status=step.verification_status,
+                risk_level=step.risk_level,
+                exclude_model_ids=[step.model_used] if step.model_used else [],
+            )
             if not chain:
                 return None
             prompt = {
@@ -392,17 +406,22 @@ class StackVerificationService:
             }
             response = await _call_llm_chain(
                 [
-                    {"role": "system", "content": (
-                        "You are an independent execution verifier. Judge evidence, not task completion. "
-                        "Return JSON only with passed (boolean), score (0-100), reasons (array), and checks (array). "
-                        "Fail missing, contradictory, placeholder, or unsupported results."
-                    )},
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an independent execution verifier. Judge evidence, not task completion. "
+                            "Return JSON only with passed (boolean), score (0-100), reasons (array), and checks (array). "
+                            "Fail missing, contradictory, placeholder, or unsupported results."
+                        ),
+                    },
                     {"role": "user", "content": json.dumps(prompt, ensure_ascii=False, default=str)},
                 ],
                 chain,
                 timeout=settings.stack_orchestrator_verifier_timeout_seconds,
                 retry_count=0,
                 context="Stack independent verifier",
+                routing_context=_routing,
+                usage_session=session,
             )
             cleaned = response.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             result = json.loads(cleaned)
@@ -440,20 +459,26 @@ class StackVerificationService:
             .limit(1)
         )
         if not later_step and stack.success_criteria and semantic is None:
-            checks.append({
-                "name": "success_criteria_evidence_present",
-                "passed": bool(explicit_checks),
-                "observed": (
-                    "machine-readable success-criteria evidence found"
-                    if explicit_checks else "no independent model or machine-readable acceptance evidence available"
-                ),
-            })
+            checks.append(
+                {
+                    "name": "success_criteria_evidence_present",
+                    "passed": bool(explicit_checks),
+                    "observed": (
+                        "machine-readable success-criteria evidence found"
+                        if explicit_checks
+                        else "no independent model or machine-readable acceptance evidence available"
+                    ),
+                }
+            )
         if semantic:
-            checks.append({
-                "name": "independent_semantic_judge",
-                "passed": semantic["passed"],
-                "observed": "; ".join(str(item) for item in semantic.get("reasons", [])) or str(semantic.get("score")),
-            })
+            checks.append(
+                {
+                    "name": "independent_semantic_judge",
+                    "passed": semantic["passed"],
+                    "observed": "; ".join(str(item) for item in semantic.get("reasons", []))
+                    or str(semantic.get("score")),
+                }
+            )
         passed = all(item["passed"] for item in checks)
         mode = "model_and_evidence" if semantic else "deterministic_evidence"
         failures = [item for item in checks if not item["passed"]]
@@ -464,15 +489,18 @@ class StackVerificationService:
             expected_result=step.expected_output or "Step completes successfully",
             observed_result=(
                 f"{mode} passed {len(checks)} independent checks"
-                if passed else "; ".join(f"{item['name']}: {item['observed']}" for item in failures)
+                if passed
+                else "; ".join(f"{item['name']}: {item['observed']}" for item in failures)
             ),
             status="passed" if passed else "failed",
             metadata_json={
-                "flow_run_id": str(flow_run.id), "flow_status": flow_run.status,
-                "verifier_mode": mode, "checks": checks,
-                "score": semantic.get("score") if semantic else round(
-                    100 * sum(item["passed"] for item in checks) / len(checks)
-                ),
+                "flow_run_id": str(flow_run.id),
+                "flow_status": flow_run.status,
+                "verifier_mode": mode,
+                "checks": checks,
+                "score": semantic.get("score")
+                if semantic
+                else round(100 * sum(item["passed"] for item in checks) / len(checks)),
                 "reasons": semantic.get("reasons", []) if semantic else [item["observed"] for item in failures],
             },
         )
@@ -600,19 +628,21 @@ class StackOrchestratorService:
             )
             if recipe:
                 config = recipe["orchestrator_config"]
-                body = body.model_copy(update={
-                    "success_criteria": config["success_criteria"],
-                    "model_routing_profile": config["model_routing_profile"],
-                    "max_runtime_minutes": config["max_runtime_minutes"],
-                    "max_iterations": config["max_iterations"],
-                    "max_retry_attempts_per_step": config["max_retry_attempts_per_step"],
-                    "checkpoint_frequency": config["checkpoint_frequency"],
-                    "context_compaction": config["context_compaction"],
-                    "verification_required": config["verification_required"],
-                    "approval_policy": config["approval_policy"],
-                    "artifact_policy": config["artifact_policy"],
-                    "failure_policy": config["failure_policy"],
-                })
+                body = body.model_copy(
+                    update={
+                        "success_criteria": config["success_criteria"],
+                        "model_routing_profile": config["model_routing_profile"],
+                        "max_runtime_minutes": config["max_runtime_minutes"],
+                        "max_iterations": config["max_iterations"],
+                        "max_retry_attempts_per_step": config["max_retry_attempts_per_step"],
+                        "checkpoint_frequency": config["checkpoint_frequency"],
+                        "context_compaction": config["context_compaction"],
+                        "verification_required": config["verification_required"],
+                        "approval_policy": config["approval_policy"],
+                        "artifact_policy": config["artifact_policy"],
+                        "failure_policy": config["failure_policy"],
+                    }
+                )
         posture = await self._posture_gate(body)
         flow = None
         if body.mode == "selected_stack":
@@ -963,13 +993,23 @@ class StackOrchestratorService:
             config["objective"] = objective or config["objective"]
             response = await compose_flow_stack(
                 FlowStackComposeRequest(
-                    name=recipe["name"], description=recipe["description"], category=recipe["category"],
-                    nodes=[FlowStackComposeNode(
-                        id=item["id"], template_id=item["template_id"], label=item["label"],
-                        position_x=item["position_x"], position_y=item["position_y"],
-                    ) for item in recipe["builder_nodes"]],
-                    edges=[FlowStackComposeEdge(source=item["source"], target=item["target"])
-                           for item in recipe["builder_edges"]],
+                    name=recipe["name"],
+                    description=recipe["description"],
+                    category=recipe["category"],
+                    nodes=[
+                        FlowStackComposeNode(
+                            id=item["id"],
+                            template_id=item["template_id"],
+                            label=item["label"],
+                            position_x=item["position_x"],
+                            position_y=item["position_y"],
+                        )
+                        for item in recipe["builder_nodes"]
+                    ],
+                    edges=[
+                        FlowStackComposeEdge(source=item["source"], target=item["target"])
+                        for item in recipe["builder_edges"]
+                    ],
                     orchestrator_config=config,
                 ),
                 AgentFlowService(self.session),
@@ -1046,9 +1086,11 @@ class StackOrchestratorService:
             return
         task = asyncio.create_task(_run_stack(stack_run_id))
         _active_stack_runs[str(stack_run_id)] = task
+
         def clear_if_current(done: asyncio.Task) -> None:
             if _active_stack_runs.get(str(stack_run_id)) is done:
                 _active_stack_runs.pop(str(stack_run_id), None)
+
         task.add_done_callback(clear_if_current)
 
 
@@ -1060,13 +1102,17 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
         previous_output: dict[str, Any] = {}
         async with async_session_factory() as session:
             latest = (
-                await session.execute(
-                    select(StackCheckpoint)
-                    .where(StackCheckpoint.stack_run_id == stack_run_id)
-                    .order_by(StackCheckpoint.created_at.desc())
-                    .limit(1)
+                (
+                    await session.execute(
+                        select(StackCheckpoint)
+                        .where(StackCheckpoint.stack_run_id == stack_run_id)
+                        .order_by(StackCheckpoint.created_at.desc())
+                        .limit(1)
+                    )
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
             if latest:
                 last_output = (latest.state_json or {}).get("last_output", {})
                 previous_output = last_output.get("output", last_output) if isinstance(last_output, dict) else {}
@@ -1112,13 +1158,75 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                 step.started_at = step.started_at or datetime.now(timezone.utc)
                 stack.current_step_id = step.step_id
                 context = StackCompactionService.compact(stack, steps, step) if stack.context_compaction else ""
-                model = str((step.metadata_json or {}).get("model_hint") or stack.model_profile)
+                from shogun.schemas.model_router import ModelRouteRequest
+                from shogun.services.model_router import ModelRoutingService
+
+                coding_step = any(tool in {"ide", "vscode", "workspace"} for tool in (step.required_tools or []))
+                task_type = (
+                    "test_failure_analysis"
+                    if step.retry_count or step.verification_status == "failed"
+                    else "coding_edit"
+                    if coding_step
+                    else "stack_step_execution"
+                )
+                required_capabilities = ["chat"]
+                if step.required_tools:
+                    required_capabilities.append("tool_use")
+                step_db_id = step.id
+                routing = None
+                try:
+                    routing = await ModelRoutingService(session).route(
+                        ModelRouteRequest(
+                            prompt=f"{stack.objective}\n\nStep: {step.name}\nExpected: {step.expected_output or ''}",
+                            task_type=task_type,
+                            required_capabilities=required_capabilities,
+                            risk_level=step.risk_level
+                            if step.risk_level in {"low", "medium", "high", "critical"}
+                            else "low",
+                            retry_count=step.retry_count,
+                            verification_status=step.verification_status,
+                            profile_override=stack.model_profile,
+                            stack_run_id=stack.id,
+                            step_id=step.step_id,
+                            escalation_level=min(step.retry_count, 2),
+                            metadata={"required_tools": step.required_tools or []},
+                        )
+                    )
+                except Exception as exc:
+                    log.info("Task-aware stack routing unavailable; using configured profile: %s", exc)
+                    await session.rollback()
+                    stack = await session.get(StackRun, stack_run_id)
+                    step = await session.get(StackStepRun, step_db_id)
+                    if not stack or not step:
+                        return
+                    step.status = "running" if step.retry_count == 0 else "retrying"
+                    step.started_at = step.started_at or datetime.now(timezone.utc)
+                    stack.current_step_id = step.step_id
+                if routing:
+                    model = routing.selected.model_id
+                    route_payload = routing.payload
+                    decision_id = str(routing.decision.id) if routing.decision else None
+                else:
+                    model = str((step.metadata_json or {}).get("model_hint") or stack.model_profile)
+                    route_payload = {
+                        "active_profile": stack.model_profile,
+                        "selected_provider": "legacy",
+                        "reason": "Legacy configured profile used because the model registry is unavailable.",
+                    }
+                    decision_id = None
                 step.model_used = model
+                step_metadata = dict(step.metadata_json or {})
+                step_metadata["routing_decision"] = route_payload
+                step.metadata_json = step_metadata
                 usage = list(stack.model_usage or [])
                 usage.append(
                     {
                         "step_id": step.step_id,
-                        "model_profile": model,
+                        "model_profile": route_payload["active_profile"],
+                        "model": model,
+                        "provider": route_payload["selected_provider"],
+                        "reason": route_payload["reason"],
+                        "routing_decision_id": decision_id,
                         "selected_at": datetime.now(timezone.utc).isoformat(),
                     }
                 )
@@ -1139,17 +1247,19 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                 )
                 await _audit(
                     "stack.model.selected",
-                    f"Model profile '{model}' selected for '{step.name}'",
+                    f"Model '{model}' selected for '{step.name}'",
                     stack.id,
                     model_used=model,
-                    detail={"step_id": step.step_id},
+                    detail={"step_id": step.step_id, **route_payload},
                 )
                 flow_id = step.flow_id
                 step_id = step.id
                 governance = {
                     "posture_level": stack.posture,
                     "allowed_tools": stack.allowed_tools,
-                    "model_profile": model,
+                    "model_profile": route_payload["active_profile"],
+                    "selected_model": model,
+                    "routing_decision_id": decision_id,
                     "stack_run_id": str(stack.id),
                     "stack_step_id": step.step_id,
                 }
@@ -1333,7 +1443,8 @@ async def _finalize(session: AsyncSession, stack: StackRun, steps: list[StackSte
         ],
         "approvals_requested": stack.approval_events or [],
         "models_used": stack.model_usage or [],
-        "known_issues": [step.error_json for step in failed] + [
+        "known_issues": [step.error_json for step in failed]
+        + [
             {"step": step.name, "issue": "required independent verification did not pass"}
             for step in required_unverified
         ],

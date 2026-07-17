@@ -80,6 +80,15 @@ class VisualIntakeService:
             "thumbnail_url": f"/api/v1/visual/{aid}/thumbnail",
         }
 
+    @staticmethod
+    def _vision_data_url(path: str) -> str:
+        """Return a metadata-free PNG payload accepted by local and cloud vision APIs."""
+        output = io.BytesIO()
+        with Image.open(path) as image:
+            normalized = image.convert("RGB") if image.mode not in ("RGB", "RGBA") else image.copy()
+            normalized.save(output, "PNG", optimize=True)
+        return f"data:image/png;base64,{base64.b64encode(output.getvalue()).decode('ascii')}"
+
     async def ingest(
         self,
         content: bytes,
@@ -228,11 +237,18 @@ class VisualIntakeService:
     async def analyze(
         self, artifact: ImageArtifact, prompt: str, analysis_type: str = "describe", allow_cloud: bool = False
     ) -> ImageAnalysis:
-        from shogun.engine.flow_engine import _call_llm_chain, _resolve_vision_chain
+        from shogun.engine.flow_engine import _call_llm_chain, _resolve_task_llm_chain
 
         permissions = await self.permissions()
         allow_cloud = bool(allow_cloud and permissions.get("allow_cloud_vision", False))
-        chain = await _resolve_vision_chain(self.session)
+        chain, _routing = await _resolve_task_llm_chain(
+            self.session,
+            prompt=prompt,
+            task_type="visual_understanding",
+            required_capabilities=["chat", "vision"],
+            context_size_estimate=len(prompt),
+            local_only=not allow_cloud,
+        )
         if not permissions.get("allow_local_vision", True):
             chain = [
                 entry
@@ -249,7 +265,6 @@ class VisualIntakeService:
             raise VisualIntakeError(
                 "No permitted vision-capable model is connected. Enable cloud vision or connect a local vision model."
             )
-        data = Path(artifact.normalized_path).read_bytes()
         messages = [
             {
                 "role": "user",
@@ -257,7 +272,7 @@ class VisualIntakeService:
                     {"type": "text", "text": prompt},
                     {
                         "type": "image_url",
-                        "image_url": {"url": f"data:image/webp;base64,{base64.b64encode(data).decode('ascii')}"},
+                        "image_url": {"url": self._vision_data_url(artifact.normalized_path)},
                     },
                 ],
             }
@@ -269,6 +284,8 @@ class VisualIntakeService:
             retry_count=0,
             context="visual analysis",
             max_tokens=192,
+            routing_context=_routing,
+            usage_session=self.session,
         )
         provider, model_name, _, _ = chain[0]
         analysis = ImageAnalysis(
@@ -287,11 +304,18 @@ class VisualIntakeService:
     async def compare(
         self, first: ImageArtifact, second: ImageArtifact, prompt: str, allow_cloud: bool = False
     ) -> ImageAnalysis:
-        from shogun.engine.flow_engine import _call_llm_chain, _resolve_vision_chain
+        from shogun.engine.flow_engine import _call_llm_chain, _resolve_task_llm_chain
 
         permissions = await self.permissions()
         allow_cloud = bool(allow_cloud and permissions.get("allow_cloud_vision", False))
-        chain = await _resolve_vision_chain(self.session)
+        chain, _routing = await _resolve_task_llm_chain(
+            self.session,
+            prompt=prompt,
+            task_type="visual_self_verification",
+            required_capabilities=["chat", "vision", "reasoning"],
+            context_size_estimate=len(prompt),
+            local_only=not allow_cloud,
+        )
         if not permissions.get("allow_local_vision", True):
             chain = [
                 entry
@@ -309,8 +333,7 @@ class VisualIntakeService:
         content: list[dict] = [{"type": "text", "text": prompt}]
         for label, artifact in (("FIRST IMAGE", first), ("SECOND IMAGE", second)):
             content.append({"type": "text", "text": label})
-            encoded = base64.b64encode(Path(artifact.normalized_path).read_bytes()).decode("ascii")
-            content.append({"type": "image_url", "image_url": {"url": f"data:image/webp;base64,{encoded}"}})
+            content.append({"type": "image_url", "image_url": {"url": self._vision_data_url(artifact.normalized_path)}})
         result = await _call_llm_chain(
             [{"role": "user", "content": content}],
             chain,
@@ -318,6 +341,8 @@ class VisualIntakeService:
             retry_count=0,
             context="visual comparison",
             max_tokens=256,
+            routing_context=_routing,
+            usage_session=self.session,
         )
         provider, model_name, _, _ = chain[0]
         analysis = ImageAnalysis(

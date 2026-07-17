@@ -8,6 +8,7 @@ from shogun.db.models.samurai_profile import SamuraiProfile
 from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_definition import ModelDefinition
 from shogun.db.models.model_routing import ModelRoutingProfile
+from shogun.db.models.model_router import ModelRegistryEntry, ModelRoutingDecision, ModelUsageEvent
 from shogun.db.models.tool_connector import ToolConnector
 from shogun.db.models.secret_ref import SecretRef
 from shogun.db.models.security_policy import SecurityPolicy
@@ -56,6 +57,9 @@ __all__ = [
     "ModelProvider",
     "ModelDefinition",
     "ModelRoutingProfile",
+    "ModelRegistryEntry",
+    "ModelRoutingDecision",
+    "ModelUsageEvent",
     "ToolConnector",
     "SecretRef",
     "SecurityPolicy",

@@ -1090,6 +1090,30 @@ async def _shogun_chat_internal(
         res_reason = "primary_agent_model"
 
         async for db in get_db():
+            # Prefer the governed task-aware router. Keep the legacy selection
+            # below as a backwards-compatible fallback for old installations.
+            try:
+                from shogun.schemas.model_router import ModelRouteRequest
+                from shogun.services.model_router import ModelRoutingService
+
+                route = await ModelRoutingService(db).route(ModelRouteRequest(
+                    prompt=user_msg,
+                    required_capabilities=["chat", "tool_use"],
+                    tool_count=len(NATIVE_TOOLS),
+                    profile_override=str(agent.model_routing_profile_id) if agent.model_routing_profile_id else None,
+                    metadata={"channel": "mission_chat"},
+                ))
+                provider = await db.get(ModelProvider, route.selected.provider_id)
+                if provider:
+                    model_name = route.selected.model_id
+                    provider_name = route.selected.display_name
+                    _search_model = model_name
+                    _model_supports_tools = bool((route.selected.capabilities or {}).get("tool_use"))
+                    res_reason = route.payload["reason"]
+                    await db.commit()
+            except Exception as exc:
+                logger.info("Task-aware model routing unavailable; using legacy selection: %s", exc)
+
             # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Step 0: Build Authorized Inventory ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
             authorized_keys = set()
             prov_res = await db.execute(select(ModelProvider).where(ModelProvider.status == "connected"))
@@ -1106,7 +1130,7 @@ async def _shogun_chat_internal(
             profile = res.scalar_one_or_none()
         
             # If we have a special task (like research), check if there's a specific rule
-            if profile and task_type != "*":
+            if not provider and profile and task_type != "*":
                 rule = next((r for r in profile.rules if r.get("task_type") == task_type), None)
                 if rule and rule.get("primary_model_id"):
                     try:

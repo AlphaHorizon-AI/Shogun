@@ -235,6 +235,14 @@ export const ChatConsole = () => {
   const [pendingImages, setPendingImages] = useState<Extract<RoninAttachment, { type: 'image' }>[]>([]);
   const [imageViewer, setImageViewer] = useState<Extract<RoninAttachment, { type: 'image' }> | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [routingProfile, setRoutingProfile] = useState('Balanced');
+
+  useEffect(() => {
+    fetch('/api/v1/models/routing/profiles/active')
+      .then(response => response.ok ? response.json() : null)
+      .then(payload => { if (payload?.data?.name) setRoutingProfile(payload.data.name); })
+      .catch(() => undefined);
+  }, []);
 
   const handleImageUpload = async (file?: File) => {
     if (!file) return;
@@ -556,9 +564,9 @@ export const ChatConsole = () => {
     <div className="flex flex-col w-full min-w-0 h-full space-y-4">
       {/* Clear Bar */}
       <div className="flex justify-between items-center shrink-0">
-        <span className="text-xs font-bold text-shogun-subdued uppercase tracking-widest">
+        <div className="flex items-center gap-2"><span className="text-xs font-bold text-shogun-subdued uppercase tracking-widest">
           {t('chat.neural_link', 'Neural Connection')}
-        </span>
+        </span><span className="rounded border border-purple-400/30 bg-purple-400/10 px-2 py-1 text-[9px] font-bold uppercase text-purple-300">Routing: {routingProfile}</span></div>
         <button
           onClick={handleClear}
           className="flex items-center gap-1.5 px-3 py-1.5 border border-red-500/20 text-red-400/80 hover:text-red-400 hover:bg-red-500/10 rounded-lg text-xs font-bold transition-all"

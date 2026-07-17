@@ -96,6 +96,12 @@ async def lifespan(app: FastAPI):
             from shogun.db.base import Base
             import shogun.db.models  # noqa: F401
             await conn.run_sync(Base.metadata.create_all)
+        from shogun.services.model_router import ModelRoutingService
+        async with async_session_factory() as session:
+            routing = ModelRoutingService(session)
+            await routing.ensure_defaults()
+            await routing.registry.sync_connected()
+            await session.commit()
         from shogun.services.stack_orchestrator import recover_interrupted_stack_runs
         await recover_interrupted_stack_runs()
     except Exception:
@@ -363,7 +369,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.10.2",
+        version="1.11.0",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,

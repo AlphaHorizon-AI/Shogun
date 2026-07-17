@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -199,9 +200,7 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                 return
 
             # ── 2. Mark run as running ─────────────────────────────
-            run_result = await session.execute(
-                select(AgentFlowRun).where(AgentFlowRun.id == run_id)
-            )
+            run_result = await session.execute(select(AgentFlowRun).where(AgentFlowRun.id == run_id))
             run = run_result.scalar_one()
             run_input = dict(run.input_payload or {})
             governance_context = dict(run.governance_context or {})
@@ -240,9 +239,7 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
         # Build edge map for logic nodes: source_node_id → [(target_node_id, source_handle)]
         edge_by_source: dict[str, list[tuple[str, str | None]]] = defaultdict(list)
         for edge in edge_list:
-            edge_by_source[str(edge.source_node_id)].append(
-                (str(edge.target_node_id), edge.source_handle)
-            )
+            edge_by_source[str(edge.source_node_id)].append((str(edge.target_node_id), edge.source_handle))
 
         # ── 5. Walk layers ─────────────────────────────────────
         # node_outputs stores the output of each completed node
@@ -285,9 +282,7 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                 node = node_map[node_id]
                 if isinstance(result, Exception):
                     node_outputs[node_id] = None
-                    await _update_node_state(
-                        run_id, node_id, "failed", error=str(result)
-                    )
+                    await _update_node_state(run_id, node_id, "failed", error=str(result))
                     # Check failure action
                     config = node.config or {}
                     failure_action = config.get("failure_action") or {
@@ -304,9 +299,7 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                         return
                     elif failure_action == "skip":
                         # Mark downstream nodes as skipped
-                        _mark_downstream_skipped(
-                            node_id, edge_by_source, skipped_nodes
-                        )
+                        _mark_downstream_skipped(node_id, edge_by_source, skipped_nodes)
                     elif failure_action == "continue":
                         node_outputs[node_id] = {
                             "status": "failed",
@@ -317,9 +310,7 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                     # "retry" and "escalate" fall through (retry handled inside the executor)
                 else:
                     node_outputs[node_id] = result
-                    await _update_node_state(
-                        run_id, node_id, "completed", output=result
-                    )
+                    await _update_node_state(run_id, node_id, "completed", output=result)
 
                     # ── Logic/Decision branch pruning ──────────
                     if node.node_type == "logic":
@@ -329,9 +320,7 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                             if handle != taken_handle:
                                 # This branch was NOT taken — skip all downstream
                                 skipped_nodes.add(target_id)
-                                _mark_downstream_skipped(
-                                    target_id, edge_by_source, skipped_nodes
-                                )
+                                _mark_downstream_skipped(target_id, edge_by_source, skipped_nodes)
                             else:
                                 # Ensure the taken branch is NOT skipped
                                 skipped_nodes.discard(target_id)
@@ -812,9 +801,9 @@ async def _validate_child_safety(session: AsyncSession, parent: AgentFlowRun, ch
     if int(child_count or 0) >= settings.flow_stacking_max_child_runs_per_parent:
         raise ValueError("Subflow blocked: maximum child runs for this parent has been reached.")
     root_count = await session.scalar(
-        select(func.count()).select_from(AgentFlowRun).where(
-            AgentFlowRun.root_run_id == (parent.root_run_id or parent.id)
-        )
+        select(func.count())
+        .select_from(AgentFlowRun)
+        .where(AgentFlowRun.root_run_id == (parent.root_run_id or parent.id))
     )
     if int(root_count or 0) >= settings.flow_stacking_max_total_runs_per_root:
         raise ValueError("Subflow blocked: maximum total runs for this execution tree has been reached.")
@@ -947,9 +936,7 @@ async def _exec_samurai(
     agent_persona = "You are a Samurai agent executing a task in an automated workflow."
     async with async_session_factory() as session:
         if agent_id:
-            agent_result = await session.execute(
-                select(Agent).where(Agent.id == uuid.UUID(agent_id))
-            )
+            agent_result = await session.execute(select(Agent).where(Agent.id == uuid.UUID(agent_id)))
             agent = agent_result.scalar_one_or_none()
             if agent:
                 agent_persona = (
@@ -962,9 +949,18 @@ async def _exec_samurai(
                 if not routing_profile_id and agent.model_routing_profile_id:
                     routing_profile_id = str(agent.model_routing_profile_id)
 
-        # Resolve the ordered primary + fallback chain.
-        model_chain = await _resolve_llm_chain(
-            session, routing_profile_id
+        # Resolve a task-aware primary + fallback chain. Older databases fall
+        # back to the original profile resolver inside this helper.
+        model_chain, _routing = await _resolve_task_llm_chain(
+            session,
+            prompt=user_message,
+            task_type=config.get("task_type") or "stack_step_execution",
+            required_capabilities=["chat", *(["tool_use"] if config.get("requires_tools") else [])],
+            routing_profile_id=routing_profile_id,
+            stack_run_id=(governance_context or {}).get("stack_run_id"),
+            step_id=(governance_context or {}).get("stack_step_id"),
+            retry_count=retry_count,
+            risk_level=config.get("risk_level", "low"),
         )
 
     if not model_chain:
@@ -981,6 +977,7 @@ async def _exec_samurai(
         timeout=timeout,
         retry_count=retry_count,
         context="AgentFlow Samurai node",
+        routing_context=_routing,
     )
 
 
@@ -1004,24 +1001,19 @@ async def _exec_channel_send(config: dict, context_str: str) -> str:
     failures = [name for name in selected if not results.get(name, {}).get("ok")]
     if failures:
         detail = "; ".join(
-            f"{name}: {results.get(name, {}).get('error') or results.get(name, {}).get('errors')}"
-            for name in failures
+            f"{name}: {results.get(name, {}).get('error') or results.get(name, {}).get('errors')}" for name in failures
         )
         raise ValueError(f"Channel delivery failed ({detail})")
     return f"Message delivered via {', '.join(selected)}"
 
 
-async def _exec_approval(
-    config: dict, predecessor_outputs: dict[str, Any]
-) -> str:
+async def _exec_approval(config: dict, predecessor_outputs: dict[str, Any]) -> str:
     """Shogun Approval node — gate that checks approval policy."""
     approval_mode = config.get("approval_mode", "manual")
     confidence_threshold = config.get("confidence_threshold", 85)
 
     # Aggregate predecessor output for review
-    review_content = "\n\n".join(
-        str(v) for v in predecessor_outputs.values() if v is not None
-    )
+    review_content = "\n\n".join(str(v) for v in predecessor_outputs.values() if v is not None)
 
     if approval_mode == "manual":
         # In Phase 2, manual approval auto-approves with a note
@@ -1066,11 +1058,10 @@ async def _exec_approval(
         # Check Torii posture for agentflow_execute permission
         try:
             from shogun.services.posture_guard import get_posture_permissions
+
             perms = await get_posture_permissions()
             if not perms.get("agentflow_execute", False):
-                raise ValueError(
-                    "Policy-based approval denied: agentflow_execute not permitted at current tier"
-                )
+                raise ValueError("Policy-based approval denied: agentflow_execute not permitted at current tier")
         except ImportError:
             pass
         return f"[POLICY-APPROVED]\n{review_content}"
@@ -1078,9 +1069,7 @@ async def _exec_approval(
     return f"[APPROVED]\n{review_content}"
 
 
-async def _exec_logic(
-    config: dict, predecessor_outputs: dict[str, Any]
-) -> bool:
+async def _exec_logic(config: dict, predecessor_outputs: dict[str, Any]) -> bool:
     """Logic/Decision node — evaluates condition and returns True (right) or False (bottom)."""
     condition = config.get("condition_expression", "")
 
@@ -1089,9 +1078,7 @@ async def _exec_logic(
         return True
 
     # Build context for evaluation
-    context = "\n\n".join(
-        str(v) for v in predecessor_outputs.values() if v is not None
-    )
+    context = "\n\n".join(str(v) for v in predecessor_outputs.values() if v is not None)
 
     # Use LLM to evaluate the condition
     async with async_session_factory() as session:
@@ -1144,26 +1131,29 @@ async def _exec_output(
     fmt = config.get("format", "markdown")
 
     # Collect all predecessor outputs
-    content = context_str or "\n\n".join(
-        str(v) for v in predecessor_outputs.values() if v is not None
-    )
+    content = context_str or "\n\n".join(str(v) for v in predecessor_outputs.values() if v is not None)
 
     final_content = content
     if fmt == "json":
         import json
+
         try:
             # Try to parse as JSON, otherwise wrap as JSON
             result = json.loads(content)
             final_content = json.dumps(result, indent=2)
         except (json.JSONDecodeError, TypeError):
-            final_content = json.dumps({
-                "output_type": output_type,
-                "content": content,
-            }, indent=2)
+            final_content = json.dumps(
+                {
+                    "output_type": output_type,
+                    "content": content,
+                },
+                indent=2,
+            )
     elif fmt == "plain":
         # Strip markdown formatting
         import re
-        final_content = re.sub(r'[#*_`~\[\]]', '', content)
+
+        final_content = re.sub(r"[#*_`~\[\]]", "", content)
 
     # Never create a misleading zero-byte "successful" report. An empty
     # predecessor result is still a result that the user needs to understand.
@@ -1178,32 +1168,31 @@ async def _exec_output(
         from shogun.config import settings
         from datetime import datetime
         import logging
-        
+
         log = logging.getLogger("shogun.flow")
         workspace_dir = settings.workspace_path.resolve() / "output"
         workspace_dir.mkdir(parents=True, exist_ok=True)
-        
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         file_ext = "md" if fmt == "markdown" else "json" if fmt == "json" else "html" if fmt == "html" else "txt"
-        
+
         # Sanitize node label for filename
         import re
-        safe_label = re.sub(r'[^a-zA-Z0-9_-]', '_', node_label).strip('_').lower()
+
+        safe_label = re.sub(r"[^a-zA-Z0-9_-]", "_", node_label).strip("_").lower()
         if not safe_label:
             safe_label = "output"
-            
+
         short_run_id = str(run_id)[:8]
         filename = f"report_{safe_label}_{timestamp}_{short_run_id}.{file_ext}"
-        
+
         try:
             target_path = workspace_dir / filename
             temporary_path = target_path.with_suffix(f"{target_path.suffix}.tmp")
             temporary_path.write_text(final_content, encoding="utf-8")
             temporary_path.replace(target_path)
             if node_id:
-                artifact_path = str(
-                    target_path.relative_to(settings.workspace_path.resolve())
-                ).replace("\\", "/")
+                artifact_path = str(target_path.relative_to(settings.workspace_path.resolve())).replace("\\", "/")
                 await _record_node_artifact(run_id, node_id, artifact_path)
             log.info("Saved flow output report to workspace: %s", target_path)
         except Exception as e:
@@ -1271,11 +1260,11 @@ async def _exec_mado_browser(config: dict, context_str: str) -> str:
                 url=target_url,
             )
             if result.get("status") == "error":
-                log.error("[Mado/Flow] navigate FAILED: %s", result.get('error'))
+                log.error("[Mado/Flow] navigate FAILED: %s", result.get("error"))
                 return f"[ERROR] Navigation failed: {result.get('error', 'Unknown')}"
             if result.get("status") == "blocked":
                 return f"[BLOCKED] {result.get('reason', 'Domain not allowed')}"
-            log.info("[Mado/Flow] navigate OK → %s", result.get('title', 'N/A'))
+            log.info("[Mado/Flow] navigate OK → %s", result.get("title", "N/A"))
             return f"Navigated to: {result.get('url', target_url)}\nTitle: {result.get('title', 'N/A')}"
 
         elif action == "extract_content":
@@ -1382,13 +1371,9 @@ async def _exec_email_send(config: dict, context_str: str) -> str:
         svc = EmailService(session)
         acc = await svc.get_account()
         if not acc:
-            raise ValueError(
-                "No email account configured. Set up an account in the Mail page first."
-            )
+            raise ValueError("No email account configured. Set up an account in the Mail page first.")
         if not acc.perm_send_mail:
-            raise ValueError(
-                "Email sending permission is disabled. Enable perm_send_mail in the Mail settings."
-            )
+            raise ValueError("Email sending permission is disabled. Enable perm_send_mail in the Mail settings.")
 
         compose = EmailComposeRequest(
             to_address=to_address,
@@ -1567,8 +1552,12 @@ async def _exec_office(config: dict, context_str: str) -> str:
         # ── Excel Operations ──
         if action == "excel_read":
             from shogun.office.adapters.excel_adapter import (
-                open_workbook, read_used_range, list_sheets, close_workbook,
+                open_workbook,
+                read_used_range,
+                list_sheets,
+                close_workbook,
             )
+
             abs_path = _resolve(input_path)
             handle = open_workbook(abs_path)
             try:
@@ -1586,9 +1575,14 @@ async def _exec_office(config: dict, context_str: str) -> str:
 
         elif action == "excel_create":
             from shogun.office.adapters.excel_adapter import (
-                open_workbook, write_range, save_as, close_workbook, create_sheet,
+                open_workbook,
+                write_range,
+                save_as,
+                close_workbook,
+                create_sheet,
             )
             import openpyxl
+
             abs_out = _resolve(output_path)
             # Create new workbook
             wb = openpyxl.Workbook()
@@ -1608,8 +1602,12 @@ async def _exec_office(config: dict, context_str: str) -> str:
 
         elif action == "excel_write":
             from shogun.office.adapters.excel_adapter import (
-                open_workbook, write_range, save_as, close_workbook,
+                open_workbook,
+                write_range,
+                save_as,
+                close_workbook,
             )
+
             abs_in = _resolve(input_path)
             abs_out = _resolve(output_path) if output_path else abs_in
             handle = open_workbook(abs_in)
@@ -1624,7 +1622,9 @@ async def _exec_office(config: dict, context_str: str) -> str:
                     write_range(handle, target_sheet, 1, 1, data)
                 Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
                 save_as(handle, abs_out)
-                log.info("[Flow/Office] excel_write: %s → %s (%d rows)", input_path, output_path or input_path, len(data))
+                log.info(
+                    "[Flow/Office] excel_write: %s → %s (%d rows)", input_path, output_path or input_path, len(data)
+                )
                 return f"Excel updated: {output_path or input_path} ({len(data)} rows written)"
             finally:
                 close_workbook(handle)
@@ -1632,8 +1632,11 @@ async def _exec_office(config: dict, context_str: str) -> str:
         # ── Word Operations ──
         elif action == "word_read":
             from shogun.office.adapters.word_adapter import (
-                open_document, read_text, close_document,
+                open_document,
+                read_text,
+                close_document,
             )
+
             abs_path = _resolve(input_path)
             handle = open_document(abs_path)
             try:
@@ -1645,6 +1648,7 @@ async def _exec_office(config: dict, context_str: str) -> str:
 
         elif action == "word_create":
             from docx import Document
+
             abs_out = _resolve(output_path)
             doc = Document()
             # Use template or context as content
@@ -1660,8 +1664,12 @@ async def _exec_office(config: dict, context_str: str) -> str:
 
         elif action == "word_replace":
             from shogun.office.adapters.word_adapter import (
-                open_document, replace_placeholders, save_as, close_document,
+                open_document,
+                replace_placeholders,
+                save_as,
+                close_document,
             )
+
             abs_in = _resolve(input_path)
             abs_out = _resolve(output_path) if output_path else abs_in
             handle = open_document(abs_in)
@@ -1672,7 +1680,12 @@ async def _exec_office(config: dict, context_str: str) -> str:
                 count = replace_placeholders(handle, replacements)
                 Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
                 save_as(handle, abs_out)
-                log.info("[Flow/Office] word_replace: %s → %s (%d replacements)", input_path, output_path or input_path, count)
+                log.info(
+                    "[Flow/Office] word_replace: %s → %s (%d replacements)",
+                    input_path,
+                    output_path or input_path,
+                    count,
+                )
                 return f"Word document updated: {output_path or input_path} ({count} replacements)"
             finally:
                 close_document(handle)
@@ -1680,8 +1693,12 @@ async def _exec_office(config: dict, context_str: str) -> str:
         # ── PowerPoint Operations ──
         elif action == "pptx_read":
             from shogun.office.adapters.pptx_adapter import (
-                open_presentation, list_slides, read_slide_text, close_presentation,
+                open_presentation,
+                list_slides,
+                read_slide_text,
+                close_presentation,
             )
+
             abs_path = _resolve(input_path)
             handle = open_presentation(abs_path)
             try:
@@ -1689,7 +1706,7 @@ async def _exec_office(config: dict, context_str: str) -> str:
                 texts = []
                 for i, s in enumerate(slides):
                     text = read_slide_text(handle, i)
-                    texts.append(f"[Slide {i+1}: {s.get('title', 'Untitled')}]\n{text}")
+                    texts.append(f"[Slide {i + 1}: {s.get('title', 'Untitled')}]\n{text}")
                 result = "\n\n".join(texts)
                 log.info("[Flow/Office] pptx_read: %s (%d slides)", input_path, len(slides))
                 return result
@@ -1698,8 +1715,12 @@ async def _exec_office(config: dict, context_str: str) -> str:
 
         elif action == "pptx_replace":
             from shogun.office.adapters.pptx_adapter import (
-                open_presentation, replace_placeholders, save_as, close_presentation,
+                open_presentation,
+                replace_placeholders,
+                save_as,
+                close_presentation,
             )
+
             abs_in = _resolve(input_path)
             abs_out = _resolve(output_path) if output_path else abs_in
             handle = open_presentation(abs_in)
@@ -1768,9 +1789,7 @@ def _provider_connection(
         or provider.name
     )
     # Resolve base URL
-    base_url = provider.base_url or PROVIDER_URLS.get(
-        provider.provider_type, "https://api.openai.com/v1"
-    )
+    base_url = provider.base_url or PROVIDER_URLS.get(provider.provider_type, "https://api.openai.com/v1")
     if provider.provider_type == "ollama" and not base_url.rstrip("/").endswith("/v1"):
         base_url = base_url.rstrip("/") + "/v1"
 
@@ -1861,10 +1880,7 @@ async def _resolve_llm_chain(
 
     if not chain:
         provider = await session.scalar(
-            select(ModelProvider)
-            .where(ModelProvider.status == "connected")
-            .order_by(ModelProvider.created_at)
-            .limit(1)
+            select(ModelProvider).where(ModelProvider.status == "connected").order_by(ModelProvider.created_at).limit(1)
         )
         if provider:
             chain.append(_provider_connection(provider))
@@ -1927,27 +1943,34 @@ async def _resolve_vision_chain(
 
     # Model definitions are authoritative capability declarations.
     definitions = (
-        await session.execute(
-            select(ModelDefinition)
-            .where(
-                ModelDefinition.status == "available",
-                ModelDefinition.supports_vision.is_(True),
+        (
+            await session.execute(
+                select(ModelDefinition)
+                .where(
+                    ModelDefinition.status == "available",
+                    ModelDefinition.supports_vision.is_(True),
+                )
+                .order_by(ModelDefinition.created_at)
             )
-            .order_by(ModelDefinition.created_at)
         )
-    ).scalars().unique().all()
+        .scalars()
+        .unique()
+        .all()
+    )
     for definition in definitions:
         if definition.provider and definition.provider.status == "connected":
             add(_provider_connection(definition.provider, definition.model_key))
 
     # Older installations store their model directly on the provider.
     providers = (
-        await session.execute(
-            select(ModelProvider)
-            .where(ModelProvider.status == "connected")
-            .order_by(ModelProvider.created_at)
+        (
+            await session.execute(
+                select(ModelProvider).where(ModelProvider.status == "connected").order_by(ModelProvider.created_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for provider in providers:
         vision_model = (provider.config or {}).get("vision_model")
         if vision_model:
@@ -1957,6 +1980,69 @@ async def _resolve_vision_chain(
             add(default_target)
 
     return chain
+
+
+async def _resolve_task_llm_chain(
+    session: AsyncSession,
+    *,
+    prompt: str,
+    task_type: str | None = None,
+    required_capabilities: list[str] | None = None,
+    routing_profile_id: str | None = None,
+    run_id: str | uuid.UUID | None = None,
+    stack_run_id: str | uuid.UUID | None = None,
+    step_id: str | None = None,
+    retry_count: int = 0,
+    verification_status: str | None = None,
+    risk_level: str = "low",
+    context_size_estimate: int = 0,
+    escalation_level: int = 0,
+    exclude_model_ids: list[str] | None = None,
+    local_only: bool = False,
+) -> tuple[list[tuple[ModelProvider, str, str, dict]], dict | None]:
+    """Select a governed task-aware model chain with legacy fallback."""
+    from shogun.services.model_router import NoEligibleModelError
+
+    try:
+        from shogun.schemas.model_router import ModelRouteRequest
+        from shogun.services.model_router import ModelRoutingService
+
+        def parsed(value):
+            try:
+                return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value)) if value else None
+            except (TypeError, ValueError):
+                return None
+
+        result = await ModelRoutingService(session).route(
+            ModelRouteRequest(
+                prompt=prompt,
+                task_type=task_type,
+                required_capabilities=required_capabilities or ["chat"],
+                profile_override=routing_profile_id,
+                run_id=parsed(run_id),
+                stack_run_id=parsed(stack_run_id),
+                step_id=step_id,
+                retry_count=retry_count,
+                verification_status=verification_status,
+                risk_level=risk_level if risk_level in {"low", "medium", "high", "critical"} else "low",
+                context_size_estimate=context_size_estimate,
+                escalation_level=escalation_level,
+                exclude_model_ids=exclude_model_ids or [],
+                local_only=local_only,
+            )
+        )
+        chain: list[tuple[ModelProvider, str, str, dict]] = []
+        for entry in [result.selected, *result.fallbacks]:
+            provider = await session.get(ModelProvider, entry.provider_id) if entry.provider_id else None
+            if provider and provider.status == "connected":
+                chain.append(_provider_connection(provider, entry.model_id))
+        if chain:
+            return chain, result.payload
+    except NoEligibleModelError:
+        raise
+    except Exception as exc:
+        log.info("Task-aware routing unavailable; using legacy model chain: %s", exc)
+    return await _resolve_llm_chain(session, routing_profile_id), None
 
 
 async def _call_llm(
@@ -2005,19 +2091,43 @@ async def _call_llm_chain(
     retry_count: int,
     context: str,
     max_tokens: int | None = None,
+    routing_context: dict[str, Any] | None = None,
+    usage_session: AsyncSession | None = None,
 ) -> str:
     """Call each model in order, transparently notifying on every transition."""
     last_error: Exception | None = None
     for model_index, (_provider, model_name, base_url, headers) in enumerate(model_chain):
         for attempt in range(1 + retry_count):
+            started = time.perf_counter()
             try:
                 if max_tokens is None:
-                    return await _call_llm(messages, model_name, base_url, headers, timeout)
-                return await _call_llm(
-                    messages, model_name, base_url, headers, timeout, max_tokens=max_tokens
+                    result = await _call_llm(messages, model_name, base_url, headers, timeout)
+                else:
+                    result = await _call_llm(messages, model_name, base_url, headers, timeout, max_tokens=max_tokens)
+                await _record_model_usage(
+                    _provider,
+                    model_name,
+                    messages,
+                    result,
+                    time.perf_counter() - started,
+                    routing_context,
+                    usage_session,
+                    success=True,
                 )
+                return result
             except Exception as exc:
                 last_error = exc
+                await _record_model_usage(
+                    _provider,
+                    model_name,
+                    messages,
+                    "",
+                    time.perf_counter() - started,
+                    routing_context,
+                    usage_session,
+                    success=False,
+                    error=str(exc),
+                )
                 log.warning(
                     "%s model '%s' failed (attempt %d/%d, timeout=%ss): %s",
                     context,
@@ -2028,7 +2138,7 @@ async def _call_llm_chain(
                     exc,
                 )
                 if attempt < retry_count:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
 
         if model_index + 1 < len(model_chain):
             next_model = model_chain[model_index + 1][1]
@@ -2048,6 +2158,47 @@ async def _call_llm_chain(
             )
 
     raise last_error or ValueError(f"{context} failed without a model response")
+
+
+async def _record_model_usage(
+    provider: ModelProvider,
+    model_name: str,
+    messages: list[dict],
+    output: str,
+    elapsed_seconds: float,
+    routing_context: dict[str, Any] | None,
+    session: AsyncSession | None,
+    *,
+    success: bool,
+    error: str | None = None,
+) -> None:
+    """Record best-effort usage without making telemetry a runtime dependency."""
+    if not routing_context:
+        return
+    try:
+        from shogun.schemas.model_router import ModelUsageCreate
+        from shogun.services.model_router import ModelUsageLogger
+
+        input_tokens = max(1, len(json.dumps(messages, ensure_ascii=False, default=str)) // 4)
+        body = ModelUsageCreate(
+            routing_decision_id=routing_context.get("id"),
+            stack_run_id=routing_context.get("stack_run_id"),
+            model_id=model_name,
+            provider=provider.provider_type,
+            input_tokens=input_tokens,
+            output_tokens=len(output) // 4,
+            latency_ms=max(0, int(elapsed_seconds * 1000)),
+            success=success,
+            error_json={"message": error[:500]} if error else {},
+        )
+        if session is not None:
+            await ModelUsageLogger(session).log(body)
+            return
+        async with async_session_factory() as telemetry_session:
+            await ModelUsageLogger(telemetry_session).log(body)
+            await telemetry_session.commit()
+    except Exception as exc:
+        log.debug("Model usage telemetry could not be recorded: %s", exc)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2102,10 +2253,7 @@ def _topological_sort(
                     queue.append(neighbor)
 
     if visited != len(node_ids):
-        raise ValueError(
-            "Agent Flow contains a cycle — cannot execute. "
-            "Remove circular dependencies and try again."
-        )
+        raise ValueError("Agent Flow contains a cycle — cannot execute. Remove circular dependencies and try again.")
 
     return layers
 
@@ -2134,9 +2282,7 @@ async def _record_node_artifact(
 ) -> None:
     """Associate a generated workspace artifact with its run node."""
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(AgentFlowRun).where(AgentFlowRun.id == run_id)
-        )
+        result = await session.execute(select(AgentFlowRun).where(AgentFlowRun.id == run_id))
         run = result.scalar_one_or_none()
         if not run:
             return
@@ -2148,14 +2294,17 @@ async def _record_node_artifact(
         run.node_states = states
         artifacts = list(run.artifacts or [])
         if not any(item.get("path_or_ref") == artifact_path for item in artifacts if isinstance(item, dict)):
-            artifacts.append({
-                "artifact_type": "file",
-                "path_or_ref": artifact_path,
-                "created_by_run_id": str(run_id),
-                "created_by_node_id": node_id,
-            })
+            artifacts.append(
+                {
+                    "artifact_type": "file",
+                    "path_or_ref": artifact_path,
+                    "created_by_run_id": str(run_id),
+                    "created_by_node_id": node_id,
+                }
+            )
         run.artifacts = artifacts
         from sqlalchemy.orm.attributes import flag_modified
+
         flag_modified(run, "node_states")
         flag_modified(run, "artifacts")
         await session.commit()
@@ -2170,9 +2319,7 @@ async def _update_node_state(
 ) -> None:
     """Update a single node's execution state in the run record."""
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(AgentFlowRun).where(AgentFlowRun.id == run_id)
-        )
+        result = await session.execute(select(AgentFlowRun).where(AgentFlowRun.id == run_id))
         run = result.scalar_one_or_none()
         if not run:
             return
@@ -2198,6 +2345,7 @@ async def _update_node_state(
         states[node_id] = node_state
         run.node_states = states
         from sqlalchemy.orm.attributes import flag_modified
+
         flag_modified(run, "node_states")
         await session.commit()
 
@@ -2209,9 +2357,7 @@ async def _fail_run(
 ) -> None:
     """Mark a run as failed."""
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(AgentFlowRun).where(AgentFlowRun.id == run_id)
-        )
+        result = await session.execute(select(AgentFlowRun).where(AgentFlowRun.id == run_id))
         run = result.scalar_one_or_none()
         if not run:
             return
@@ -2231,9 +2377,7 @@ async def _complete_run(
 ) -> None:
     """Mark a run as completed with results."""
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(AgentFlowRun).where(AgentFlowRun.id == run_id)
-        )
+        result = await session.execute(select(AgentFlowRun).where(AgentFlowRun.id == run_id))
         run = result.scalar_one_or_none()
         if not run:
             return
@@ -2252,6 +2396,7 @@ async def _complete_run(
             complete_summary[k] = str(v)
         run.result_summary = complete_summary
         from sqlalchemy.orm.attributes import flag_modified
+
         flag_modified(run, "result_summary")
         await session.commit()
 
@@ -2272,9 +2417,7 @@ async def _cancel_run_record(run_id: uuid.UUID, reason: str) -> None:
 
 async def _sync_run_edge_status(run_id: uuid.UUID, status: str) -> None:
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(AgentFlowRunEdge).where(AgentFlowRunEdge.child_run_id == run_id)
-        )
+        result = await session.execute(select(AgentFlowRunEdge).where(AgentFlowRunEdge.child_run_id == run_id))
         edge = result.scalar_one_or_none()
         if edge:
             edge.status = status
@@ -2287,4 +2430,4 @@ def _truncate(text: str, max_len: int) -> str:
     """Truncate text with an ellipsis marker."""
     if len(text) <= max_len:
         return text
-    return text[:max_len - 20] + "\n\n[...truncated...]"
+    return text[: max_len - 20] + "\n\n[...truncated...]"

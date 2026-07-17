@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 
 import pytest
@@ -44,6 +45,10 @@ async def test_image_intake_creates_thumbnail_metadata_and_deduplicates(visual_s
     assert (
         settings.visual_artifacts_path / first.created_at.strftime("%Y/%m/%d") / str(first.id) / "thumbnail.webp"
     ).is_file()
+    payload = visual_service._vision_data_url(first.normalized_path)
+    assert payload.startswith("data:image/png;base64,")
+    with Image.open(io.BytesIO(base64.b64decode(payload.split(",", 1)[1]))) as decoded:
+        assert decoded.format == "PNG" and decoded.size == (120, 80)
 
 
 @pytest.mark.asyncio
