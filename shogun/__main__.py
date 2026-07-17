@@ -26,6 +26,7 @@ def _reexec_in_project_venv() -> None:
     for candidate in candidates:
         if candidate.exists() and candidate.resolve() != current:
             import os
+
             env = os.environ.copy()
             env["SHOGUN_PROJECT_VENV"] = str(candidate)
             os.execve(
@@ -86,6 +87,7 @@ def _auto_bootstrap() -> None:
         if db_file and not Path(db_file).exists():
             print("[INIT] First run detected - bootstrapping database...")
             from shogun.bootstrap import bootstrap
+
             asyncio.run(bootstrap())
             print()
 
@@ -161,21 +163,26 @@ def _open_browser_when_ready(url: str, health_url: str, timeout_seconds: int = 1
 
 def main() -> None:
     _reexec_in_project_venv()
+    if len(sys.argv) >= 3 and sys.argv[1:3] == ["benchmark", "ale"]:
+        from shogun.benchmark.ale.cli import main as benchmark_main
+
+        raise SystemExit(benchmark_main(sys.argv[3:]))
 
     """Start Shogun — Unified FastAPI + React entrypoint."""
+
     import uvicorn
-    import os
 
     # Step 1: Ensure .env exists
     _ensure_env_file()
 
     # Step 2: Load config (now that .env is guaranteed)
     from shogun.config import settings
+
     settings.ensure_directories()
 
     # Step 3: Auto-bootstrap if needed
     _auto_bootstrap()
-    
+
     # Step 4: Open browser once the server is actually ready
     url = _browser_url(settings.api_host, settings.api_port)
     health_url = f"http://localhost:{settings.api_port}/api/v1/health"
@@ -185,13 +192,13 @@ def main() -> None:
     print("=" * 60)
     print("  SHOGUN — The Tenshu (FastAPI + React)")
     print("=" * 60)
-    
+
     if settings.app_env == "development":
         print("  [DEVELOPMENT MODE]")
         print(f"  - Backend: http://{settings.api_host}:{settings.api_port}")
         print("  - Frontend: http://localhost:3000 (run: npm run dev in /frontend)")
         print("-" * 60)
-        
+
         uvicorn.run(
             "shogun.app:create_app",
             host=settings.api_host,
@@ -204,7 +211,7 @@ def main() -> None:
         print("  [PRODUCTION MODE]")
         print(f"  - Serving Shogun at {url}")
         print("-" * 60)
-        
+
         uvicorn.run(
             "shogun.app:create_app",
             host=settings.api_host,

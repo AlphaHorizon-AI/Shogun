@@ -623,6 +623,118 @@ class StackOrchestratorService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    async def create_external_run(
+        self,
+        *,
+        objective: str,
+        plan: list[dict[str, Any]],
+        posture: str,
+        model_profile: str,
+        max_runtime_minutes: int,
+        allowed_tools: list[str],
+        metadata: dict[str, Any] | None = None,
+    ) -> StackRun:
+        """Create a Stack-managed run whose concrete loop is an external harness."""
+        if posture not in {"campaign", "ronin"}:
+            raise ValueError("External Stack runs require Campaign or Ronin posture.")
+        stack = StackRun(
+            mode="benchmark",
+            status="running",
+            objective=objective,
+            posture=posture,
+            model_profile=model_profile,
+            max_runtime_minutes=max_runtime_minutes,
+            max_iterations=max(len(plan) * 3, 50),
+            max_retry_attempts_per_step=2,
+            checkpoint_frequency="after_each_step",
+            context_compaction=True,
+            verification_required=True,
+            approval_policy="inherited",
+            artifact_policy="retain_all",
+            failure_policy="retry",
+            success_criteria=["Visible task instructions are satisfied", "Required artifacts are non-empty"],
+            allowed_tools=allowed_tools,
+            metadata_json={"external_runner": True, **(metadata or {})},
+            started_at=datetime.now(timezone.utc),
+        )
+        self.session.add(stack)
+        await self.session.flush()
+        await self._replace_steps(stack, plan)
+        await self.session.commit()
+        await _audit("stack.orchestrator.started", "External Stack Orchestrator execution started", stack.id)
+        return stack
+
+    async def complete_external_step(
+        self,
+        stack_run_id: uuid.UUID,
+        sequence: int,
+        *,
+        output: dict[str, Any],
+        verification_status: str = "passed",
+        artifact_path: str | None = None,
+    ) -> StackStepRun:
+        """Persist one external harness phase as a verified Stack checkpoint."""
+        stack = await self._get(stack_run_id)
+        result = await self.session.execute(
+            select(StackStepRun).where(
+                StackStepRun.stack_run_id == stack.id,
+                StackStepRun.sequence == sequence,
+            )
+        )
+        step = result.scalar_one()
+        step.status = "completed" if verification_status == "passed" else "failed"
+        step.started_at = step.started_at or datetime.now(timezone.utc)
+        step.completed_at = datetime.now(timezone.utc)
+        step.output_json = output
+        step.verification_status = verification_status
+        stack.current_step_id = step.step_id
+        steps = await StackStateService.steps(self.session, stack.id)
+        StackStateService.refresh_lists(stack, steps)
+        self.session.add(StackCheckpoint(
+            stack_run_id=stack.id,
+            step_run_id=step.id,
+            summary=f"Benchmark checkpoint after {step.name}",
+            context_summary=StackCompactionService.compact(stack, steps, None),
+            resume_instruction=f"Resume at benchmark phase {sequence + 1}",
+            artifacts_json=[artifact_path] if artifact_path else [],
+            state_json={"phase": sequence, "output": output},
+        ))
+        self.session.add(StackVerification(
+            stack_run_id=stack.id,
+            step_run_id=step.id,
+            verification_type="benchmark_instruction",
+            expected_result=step.expected_output or step.name,
+            observed_result=json.dumps(output, ensure_ascii=False, default=str)[:4000],
+            status=verification_status,
+            metadata_json={"external_runner": True},
+        ))
+        if artifact_path:
+            self.session.add(StackArtifact(
+                stack_run_id=stack.id,
+                step_run_id=step.id,
+                artifact_type="benchmark",
+                path=artifact_path,
+                summary=f"Artifact from {step.name}",
+                metadata_json={"external_runner": True},
+            ))
+        await self.session.commit()
+        return step
+
+    async def finalize_external_run(self, stack_run_id: uuid.UUID, *, status: str, summary: dict[str, Any]) -> StackRun:
+        stack = await self._get(stack_run_id)
+        stack.status = status
+        stack.final_summary = summary
+        stack.completed_at = datetime.now(timezone.utc)
+        stack.current_step_id = None
+        await self.session.commit()
+        await _audit(
+            "stack.orchestrator.completed" if status == "completed" else "stack.orchestrator.failed",
+            f"External Stack Orchestrator run {status}",
+            stack.id,
+            result="success" if status == "completed" else "failure",
+        )
+        return stack
+
     async def create(self, body: StackOrchestratorCreate) -> StackRun:
         if not settings.stack_orchestrator_enabled:
             raise ValueError("Stack Orchestrator is disabled.")

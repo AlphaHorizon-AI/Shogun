@@ -83,6 +83,30 @@ MADO_DEFAULTS = {
     },
 }
 
+BENCHMARK_MODE_DEFAULTS = {
+    "enabled": True,
+    "output_root": "./data/benchmarks",
+    "providers": {
+        "ale": {
+            "enabled": True,
+            "default_posture": "ronin",
+            "default_model_profile": "ale_balanced",
+            "max_runtime_minutes": 180,
+            "output_retention_days": 30,
+            "trajectory_export": True,
+            "artifact_export": True,
+            "redact_secrets": True,
+            "allow_external_network": "inherit_from_ale_task",
+            "cua_mcp": {
+                "enabled": True,
+                "transport": "stdio",
+                "connection_source": "ale_runtime",
+                "tool_namespace": "cua",
+            },
+        }
+    },
+}
+
 
 def _read_setup() -> dict:
     """Read the setup.json config, or return defaults."""
@@ -94,6 +118,10 @@ def _read_setup() -> dict:
                 **setup.get("ronin_desktop_control", {}),
             }
             setup["mado"] = {**MADO_DEFAULTS, **setup.get("mado", {})}
+            setup["benchmark_mode"] = {
+                **BENCHMARK_MODE_DEFAULTS,
+                **setup.get("benchmark_mode", {}),
+            }
             return setup
         except Exception:
             pass
@@ -102,6 +130,7 @@ def _read_setup() -> dict:
         "setup_complete": False,
         "ronin_desktop_control": dict(RONIN_DESKTOP_DEFAULTS),
         "mado": dict(MADO_DEFAULTS),
+        "benchmark_mode": dict(BENCHMARK_MODE_DEFAULTS),
     }
 
 
