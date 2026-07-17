@@ -458,7 +458,8 @@
     "routing_legend_wins": "wins",
     "routing_legend_wildcard": "Use",
     "routing_legend_catch": "as the last rule to catch all unmatched tasks",
-    "auto_whitelist_desc": "It will automatically test and whitelist your ID."
+    "auto_whitelist_desc": "It will automatically test and whitelist your ID.",
+    "tab_skillopt": "SkillOpt"
   },
   "kaizen": {
     "title": "Kaizen Governance",
@@ -901,5 +902,19 @@
     "info_auto_check": "Updates are checked automatically every 6 hours.",
     "info_preserve": "Updates preserve your data, database, configurations, and virtual environment.",
     "info_restart": "Restart Shogun to apply changes after an update."
+  },
+  "skillopt": {
+    "title": "Skill Optimization Matrix",
+    "subtitle": "Monitor, evaluate, and promote AI-generated skill improvements.",
+    "refresh": "Refresh Status",
+    "available_skills": "Available Skills",
+    "active_runs": "Active Runs",
+    "currently_optimizing": "Currently optimizing",
+    "avg_improvement": "Avg Improvement",
+    "across_promoted": "Across all promoted runs",
+    "candidate_diffs": "Candidate Diffs & Promotion",
+    "reject": "Reject Candidate",
+    "promote": "Promote to Prod",
+    "select_skill": "Select a skill to view optimization candidates"
   }
 }

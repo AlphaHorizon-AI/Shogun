@@ -443,6 +443,7 @@ def create_app() -> FastAPI:
     from shogun.nexus.gateway.external_gateway import router as nexus_router
     from shogun.api.teams import command_router as katana_command_router, router as teams_router
     from shogun.api.ide import router as ide_router
+    from shogun.api.skillopt import router as skillopt_router
 
     prefix = "/api/v1"
     app.include_router(system_router, prefix=prefix)
@@ -452,6 +453,7 @@ def create_app() -> FastAPI:
     app.include_router(tools_router, prefix=prefix)
     app.include_router(security_router, prefix=prefix)
     app.include_router(skills_router, prefix=prefix)
+    app.include_router(skillopt_router, prefix=prefix)
     app.include_router(missions_router, prefix=prefix)
     app.include_router(bushido_router, prefix=prefix)
     app.include_router(channels_router, prefix=prefix)

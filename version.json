@@ -1,8 +1,8 @@
 {
-  "version": "1.16.0",
+  "version": "1.17.0",
   "name": "Shogun OS",
-  "build": 78,
+  "build": 79,
   "channel": "stable",
   "released": "2026-07-17T00:00:00Z",
-  "changelog": "Adds ALE benchmark mode with full runtime, deployer, trajectory mapper, artifact exporter, verification, redaction, and CLI. Adds CUA integration adapter with tool mapping. Adds MCP client with typed protocol. Adds benchmark API endpoints and setup defaults. Extends Stack Orchestrator with external run lifecycle (create, step, finalize) for benchmark harness."
+  "changelog": "Implements Order 14: SkillOpt Integration. Adds skill versioning, usage tracking, generation, and validation services. Includes UI integration in Katana for managing skill optimization runs and promoting candidates."
 }

@@ -56,8 +56,9 @@ import { Ronin } from './Ronin';
 import { IdeModeTab } from './katana/IdeModeTab';
 import ModelRoutingPanel from './katana/ModelRoutingPanel';
 import ActiveSkillsPanel from './katana/ActiveSkillsPanel';
+import { SkillOptTab } from './katana/SkillOptTab';
 
-type TabType = 'providers' | 'tools' | 'routing' | 'skills' | 'telegram' | 'teams' | 'mail_calendar' | 'office' | 'ide' | 'mado' | 'ronin';
+type TabType = 'providers' | 'tools' | 'routing' | 'skills' | 'telegram' | 'teams' | 'mail_calendar' | 'office' | 'ide' | 'mado' | 'ronin' | 'skillopt';
 type RegisterMode = 'quick' | 'manual';
 
 // ── Documentation links for cloud providers ─────────────────────
@@ -291,7 +292,7 @@ export function Katana() {
   useEffect(() => {
     const syncTabFromHash = () => {
       const requested = window.location.hash.replace('#', '') as TabType;
-      if (['providers', 'tools', 'routing', 'skills', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin'].includes(requested)) {
+      if (['providers', 'tools', 'routing', 'skills', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'].includes(requested)) {
         setActiveTab(requested);
       }
     };
@@ -1385,7 +1386,7 @@ export function Katana() {
 
       {/* ── Tab bar ────────────────────────────────────────────── */}
       <div className="flex border-b border-shogun-border overflow-x-auto">
-        {(['providers', 'tools', 'routing', 'skills', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin'] as TabType[]).filter(tab => tab !== 'ide' || ['campaign', 'ronin'].includes(officePosture)).map((tab) => (
+        {(['providers', 'tools', 'routing', 'skills', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'] as TabType[]).filter(tab => tab !== 'ide' || ['campaign', 'ronin'].includes(officePosture)).map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -1449,6 +1450,12 @@ export function Katana() {
               <span className="flex items-center gap-1.5">
                 <Crosshair className="w-3.5 h-3.5" />
                 Ronin Desktop
+              </span>
+            )}
+            {tab === 'skillopt' && (
+              <span className="flex items-center gap-1.5">
+                <Cpu className="w-3.5 h-3.5" />
+                {t('katana.tab_skillopt', 'SkillOpt')}
               </span>
             )}
             {activeTab === tab && (
@@ -4118,6 +4125,15 @@ export function Katana() {
         {activeTab === 'ronin' && (
           <div className="animate-in fade-in duration-300">
             <Ronin />
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════
+            SKILLOPT TAB
+        ════════════════════════════════════════════════════════ */}
+        {activeTab === 'skillopt' && (
+          <div className="animate-in fade-in duration-300">
+            <SkillOptTab />
           </div>
         )}
 
