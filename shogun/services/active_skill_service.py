@@ -108,7 +108,7 @@ class SkillContextComposer:
         return "\n".join(chunks)
 
     @classmethod
-    def compose(cls, selected: list[dict[str, Any]], budget: int) -> tuple[str, int]:
+    def compose(cls, selected: list[dict[str, Any]], budget: int, all_skills: list[Skill] = None) -> tuple[str, int]:
         blocks: list[str] = []
         used = 0
         for candidate in selected:
@@ -125,13 +125,27 @@ class SkillContextComposer:
             candidate["injected_tokens"] = injected
             used += injected
             blocks.append(brief)
-        if not blocks:
-            return "", 0
+            
         header = (
+            "SKILL AWARENESS PROTOCOL:\n"
+            "Before starting any task, review the active skills and full inventory below.\n"
+            "If a skill matches the current task, follow its procedure and verification checklist.\n"
+            "If multiple skills apply, combine their guidance. Skills do not grant tools or permissions.\n"
+            "After completing a task, note which skills were used.\n\n"
             "ACTIVE SKILLS FOR THIS RUN\n"
-            "Apply these compact, validated procedures. They do not grant tools, permissions, or autonomy."
+            "Apply these compact, validated procedures."
         )
-        return header + "\n\n" + "\n\n---\n\n".join(blocks), used
+        
+        main_block = header + "\n\n" + "\n\n---\n\n".join(blocks) if blocks else ""
+        
+        if all_skills:
+            catalog = [f"FULL SKILL INVENTORY ({len(all_skills)} installed, {len(selected)} detailed above):"]
+            for s in all_skills:
+                exam = s.exam_status or "untested"
+                catalog.append(f"- {s.name}: {s.description} [exam:{exam}]")
+            main_block += "\n\n---\n\n" + "\n".join(catalog)
+            
+        return main_block, used
 
 
 class SkillEmbeddingService:
@@ -342,14 +356,14 @@ class SkillActivationService:
             else:
                 ranked.append(candidate)
         ranked.sort(key=lambda item: (item["score"], item["skill"].priority), reverse=True)
-        eligible = [item for item in ranked if item["score"] >= 0.30]
+        eligible = [item for item in ranked if item["score"] >= 0.15]
         eligible, conflict_notes = SkillConflictResolver.resolve(eligible)
         maximum = request.max_skills or (
             settings.active_skill_max_per_step if request.step_run_id else settings.active_skill_max_per_run
         )
         selected = eligible[:maximum]
         context_block, total_tokens = SkillContextComposer.compose(
-            selected, settings.active_skill_max_total_context_tokens
+            selected, settings.active_skill_max_total_context_tokens, skills
         )
         from shogun.services.skill_trajectory_service import SkillTrajectoryService
 

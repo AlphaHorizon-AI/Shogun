@@ -100,9 +100,9 @@ class Settings(BaseSettings):
     # Order 9: Active Skill Usage
     active_skill_usage_enabled: bool = True
     active_skill_auto_activate: bool = True
-    active_skill_max_per_run: int = 5
-    active_skill_max_per_step: int = 3
-    active_skill_max_total_context_tokens: int = 2500
+    active_skill_max_per_run: int = 15
+    active_skill_max_per_step: int = 10
+    active_skill_max_total_context_tokens: int = 6000
     active_skill_default_context_tokens: int = 600
     active_skill_require_exam_pass: bool = True
     active_skill_allow_failed_exams: bool = False

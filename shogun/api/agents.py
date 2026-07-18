@@ -351,6 +351,37 @@ async def shogun_chat(
         intent = _classify_chat_mode(user_msg, history)
         classification["matched"] = intent.get("matched", [])
 
+    # Auto-Sync Skills Hook
+    try:
+        from shogun.db.models.skills import Skill
+        from sqlalchemy import select, func
+        from shogun.services.skill_memory_sync import sync_skills_to_memory
+        import json
+
+        sync_state_file = "data/skill_sync.json"
+        
+        # Fast Check
+        result = await svc.session.execute(
+            select(func.count(Skill.id), func.max(Skill.updated_at)).where(Skill.is_deleted == False)
+        )
+        count, max_ts = result.one()
+        current_state = f"{count}_{max_ts}"
+
+        last_state = None
+        if os.path.exists(sync_state_file):
+            with open(sync_state_file, "r") as sf:
+                last_state = json.load(sf).get("state")
+        
+        if current_state != last_state:
+            import logging
+            logging.getLogger("shogun").info(f"Skill state changed ({last_state} -> {current_state}). Running startup sync...")
+            await sync_skills_to_memory(svc.session, str(agent.id))
+            with open(sync_state_file, "w") as sf:
+                json.dump({"state": current_state}, sf)
+    except Exception as exc:
+        import logging
+        logging.getLogger("shogun").error(f"Startup skill sync failed: {exc}")
+
     # Order 9: activate a bounded set of validated skills before any chat lane.
     try:
         from shogun.schemas.skills import SkillActivationRequest
@@ -359,8 +390,9 @@ async def shogun_chat(
         from shogun.services.posture_guard import get_posture_tool_filter
 
         posture = await get_posture_tool_filter()
+        _run_id = f"chat:{visual_session_id}:{uuid.uuid4()}"
         skill_result = await SkillActivationService(svc.session).activate(SkillActivationRequest(
-            run_id=f"chat:{visual_session_id}:{uuid.uuid4()}",
+            run_id=_run_id,
             objective=user_msg,
             context=" ".join(str(item.get("content", "")) for item in history[-4:] if isinstance(item, dict)),
             posture=posture.get("active_tier", "guarded"),
@@ -369,7 +401,8 @@ async def shogun_chat(
             ide_enabled=bool(posture.get("ide_enabled", False)),
         ))
         await svc.session.commit()
-        classification["_skill_context"] = skill_result["context_block"]
+        classification["_run_id"] = _run_id
+        classification["_skill_context"] = f"CURRENT RUN ID: {_run_id}\n\n" + skill_result["context_block"]
         classification["_active_skill_run_ids"] = [
             str(item["active_skill_run_id"]) for item in skill_result["active_skills"]
         ]

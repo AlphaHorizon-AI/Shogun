@@ -248,7 +248,15 @@ async def _run_memory_consolidation(
     agent_details: list[dict] = []
     decay_class_stats: dict[str, int] = {}
 
+    from shogun.services.skill_memory_sync import sync_skills_to_memory
+
     for agent_id in agent_uuids:
+        # Sync installed skills into the memory layer
+        try:
+            await sync_skills_to_memory(session, str(agent_id))
+        except Exception as e:
+            logger.error("Skill sync failed for agent %s: %s", agent_id, e)
+
         # Apply decay
         decayed = await svc.apply_decay_batch(agent_id=agent_id, limit=2000)
         total_decayed += decayed

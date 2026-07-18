@@ -1,8 +1,8 @@
 {
-  "version": "1.24.3",
+  "version": "1.24.4",
   "name": "Shogun OS",
-  "build": 93,
+  "build": 94,
   "channel": "stable",
-  "released": "2026-07-18T19:00:00Z",
-  "changelog": "Fixes ToolGate blocking skills_request_activation and exempts metadata lists from mass operation limits."
+  "released": "2026-07-18T20:45:00Z",
+  "changelog": "Skills Memory Layer: Persist all installed skills as pinned memories, increase activation limits, and inject run_id context."
 }

@@ -136,7 +136,7 @@ NATIVE_TOOLS = [
                     },
                     "memory_type": {
                         "type": "string",
-                        "enum": ["episodic", "semantic", "procedural", "persona"],
+                        "enum": ["episodic", "semantic", "procedural", "persona", "skill"],
                         "description": (
                             "Type: 'persona' for identity/preferences/personal info, 'semantic' for facts/knowledge, "
                             "'episodic' for events, 'procedural' for how-to patterns."
