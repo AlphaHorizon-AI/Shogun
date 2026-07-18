@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     memory_import_max_single_file_mb: int = 2
     memory_import_max_total_mb: int = 100
     memory_import_max_files: int = 5000
+    memory_allow_agent_sticky_memory: bool = True
+    memory_sticky_requires_min_importance: float = 0.7
+    memory_sticky_allowed_types: str = "persona,semantic,procedural,skills"
+    memory_max_sticky_memories_in_context: int = 20
+    memory_max_sticky_context_tokens: int = 2000
     visual_max_upload_mb: int = 20
     visual_retention_days: int = 30
 

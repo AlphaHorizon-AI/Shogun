@@ -363,22 +363,34 @@ def _telegram_context_from_message(msg: dict) -> dict:
     chat_entry = registry.get(chat_id, {})
     topic_entry = (chat_entry.get("topics") or {}).get(str(thread_id), {}) if thread_id is not None else {}
 
+    known_topics = [
+        {
+            "message_thread_id": value.get("message_thread_id") or key,
+            "name": value.get("name") or "",
+            "status": value.get("status") or "open",
+        }
+        for key, value in sorted((chat_entry.get("topics") or {}).items())
+    ]
+    if thread_id is not None and not any(
+        str(topic.get("message_thread_id")) == str(thread_id) for topic in known_topics
+    ):
+        known_topics.append(
+            {
+                "message_thread_id": thread_id,
+                "name": topic_entry.get("name") or "",
+                "status": topic_entry.get("status") or "open",
+            }
+        )
+
     return {
         "chat_id": chat_id,
         "chat_type": chat.get("type") or chat_entry.get("chat_type") or "",
         "chat_title": chat.get("title") or chat_entry.get("chat_title") or "",
         "message_thread_id": thread_id,
-        "is_topic_message": bool(msg.get("is_topic_message")),
+        "is_topic_message": bool(msg.get("is_topic_message") or thread_id is not None),
         "topic_name": topic_entry.get("name") or "",
         "topic_name_source": topic_entry.get("name_source") or "",
-        "known_topics": [
-            {
-                "message_thread_id": value.get("message_thread_id") or key,
-                "name": value.get("name") or "",
-                "status": value.get("status") or "open",
-            }
-            for key, value in sorted((chat_entry.get("topics") or {}).items())
-        ],
+        "known_topics": known_topics,
     }
 
 
@@ -411,6 +423,13 @@ def _telegram_context_text(user_msg: str, telegram_context: dict | None) -> str:
     thread_id = telegram_context.get("message_thread_id")
     topic_name = telegram_context.get("topic_name") or "unknown"
     known_topics = telegram_context.get("known_topics") or []
+    if thread_id is not None and not any(
+        str(topic.get("message_thread_id")) == str(thread_id) for topic in known_topics
+    ):
+        known_topics = [
+            *known_topics,
+            {"message_thread_id": thread_id, "name": topic_name if topic_name != "unknown" else ""},
+        ]
 
     lines = ["", "", "Telegram context:", f"- Chat: {chat_title} ({chat_type})"]
     if thread_id is not None:

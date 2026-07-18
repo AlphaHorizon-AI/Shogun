@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from fastapi.responses import FileResponse, JSONResponse
 
 from shogun.api.deps import get_memory_service
-from shogun.schemas.common import ApiResponse
+from shogun.schemas.common import ApiResponse, DecayClass
 from shogun.schemas.memory import (
     MemoryExportJobResponse,
     MemoryExportPreview,
@@ -43,13 +43,13 @@ async def memory_stats(
 
     # Total active (non-archived) records
     total_result = await session.execute(
-        select(func.count(MemoryRecord.id)).where(MemoryRecord.is_archived == False)
+        select(func.count(MemoryRecord.id)).where(MemoryRecord.is_archived.is_(False))
     )
     total_active = total_result.scalar() or 0
 
     # Total archived
     archived_result = await session.execute(
-        select(func.count(MemoryRecord.id)).where(MemoryRecord.is_archived == True)
+        select(func.count(MemoryRecord.id)).where(MemoryRecord.is_archived.is_(True))
     )
     total_archived = archived_result.scalar() or 0
 
@@ -60,7 +60,7 @@ async def memory_stats(
     # Per-type counts
     type_result = await session.execute(
         select(MemoryRecord.memory_type, func.count(MemoryRecord.id))
-        .where(MemoryRecord.is_archived == False)
+        .where(MemoryRecord.is_archived.is_(False))
         .group_by(MemoryRecord.memory_type)
     )
     type_counts = {r[0]: r[1] for r in type_result.all()}
@@ -68,21 +68,21 @@ async def memory_stats(
     # Pinned count
     pinned_result = await session.execute(
         select(func.count(MemoryRecord.id)).where(
-            MemoryRecord.is_pinned == True,
-            MemoryRecord.is_archived == False,
+            MemoryRecord.is_pinned.is_(True),
+            MemoryRecord.is_archived.is_(False),
         )
     )
     pinned_count = pinned_result.scalar() or 0
 
     # Avg relevance score
     avg_result = await session.execute(
-        select(func.avg(MemoryRecord.relevance_score)).where(MemoryRecord.is_archived == False)
+        select(func.avg(MemoryRecord.relevance_score)).where(MemoryRecord.is_archived.is_(False))
     )
     avg_relevance = round(avg_result.scalar() or 0.0, 3)
 
     # Avg importance
     avg_imp = await session.execute(
-        select(func.avg(MemoryRecord.importance_score)).where(MemoryRecord.is_archived == False)
+        select(func.avg(MemoryRecord.importance_score)).where(MemoryRecord.is_archived.is_(False))
     )
     avg_importance = round(avg_imp.scalar() or 0.0, 3)
 
@@ -111,23 +111,24 @@ async def memory_stats(
 async def list_memories(
     agent_id: uuid.UUID | None = None,
     memory_type: str | None = Query(None, alias="memory_type"),
+    decay_class: DecayClass | None = Query(None, alias="decay_class"),
     include_archived: bool = False,
     sort_by: str = Query("created_at", alias="sort_by"),
     svc: MemoryService = Depends(get_memory_service),
 ):
-    from sqlalchemy import desc
-
     from shogun.db.models.memory_record import MemoryRecord
     filters = []
     if not include_archived:
-        filters.append(MemoryRecord.is_archived == False)
+        filters.append(MemoryRecord.is_archived.is_(False))
     if agent_id:
         filters.append(MemoryRecord.agent_id == agent_id)
     if memory_type:
         filters.append(MemoryRecord.memory_type == memory_type)
-    
+    if decay_class:
+        filters.append(MemoryRecord.decay_class == decay_class.value)
+
     records, total = await svc.get_all(filters=filters, limit=200)
-    
+
     # Sort results
     records_list = list(records)
     if sort_by == "relevance":
@@ -136,7 +137,7 @@ async def list_memories(
         records_list.sort(key=lambda r: r.importance_score, reverse=True)
     elif sort_by == "created_at":
         records_list.sort(key=lambda r: r.created_at, reverse=True)
-    
+
     return ApiResponse(
         data=[MemoryRecordResponse.model_validate(r) for r in records_list],
         meta={"total": total},
@@ -168,6 +169,7 @@ async def search_memory(
             memory_types=[t.value for t in body.memory_types] if body.memory_types else None,
             min_importance=body.filters.min_importance if body.filters else None,
             pinned_only=body.filters.pinned_only if body.filters else False,
+            decay_class=(body.filters.decay_class.value if body.filters and body.filters.decay_class else None),
             limit=body.limit,
             weight_overrides=body.weight_overrides,
         )
@@ -472,7 +474,10 @@ async def download_memory_import_report(
         raise HTTPException(status_code=404, detail="Memory import batch not found")
     return JSONResponse(
         batch.report_json or {},
-        headers={"Content-Disposition": f'attachment; filename="memory_import_{batch_id}.json"', "Cache-Control": "no-store"},
+        headers={
+            "Content-Disposition": f'attachment; filename="memory_import_{batch_id}.json"',
+            "Cache-Control": "no-store",
+        },
     )
 
 
@@ -499,6 +504,24 @@ async def create_memory(
     data = body.model_dump()
     tags = data.pop("tags", [])
     record = await svc.create_memory(tags=tags, **data)
+    from shogun.services.event_logger import EventLogger
+
+    await EventLogger.emit(
+        category="memory",
+        event_type="memory.stored",
+        action=f"Stored memory '{record.title}' through memory API",
+        user_id="local_user",
+        memory_ids=[str(record.id)],
+        detail={
+            "memory_id": str(record.id),
+            "memory_type": record.memory_type,
+            "importance": record.importance_score,
+            "decay_type": record.decay_class,
+            "tags": record.tags or [],
+            "source": "memory_api",
+        },
+        db_session=svc.session,
+    )
     return ApiResponse(data=MemoryRecordResponse.model_validate(record))
 
 
@@ -540,7 +563,7 @@ async def toggle_pin_memory(
     record = await svc.get_by_id(memory_id)
     if not record:
         raise HTTPException(status_code=404, detail="Memory record not found")
-    
+
     new_pinned = not record.is_pinned
     record = await svc.update(memory_id, is_pinned=new_pinned)
     if new_pinned:

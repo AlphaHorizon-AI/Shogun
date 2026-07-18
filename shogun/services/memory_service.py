@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shogun.config import settings
 from shogun.db.models.memory_record import MemoryRecord
 from shogun.engine.memory_salience import (
     ScoredMemory,
@@ -27,6 +28,7 @@ from shogun.engine.memory_salience import (
 )
 from shogun.engine.vector_store import get_vector_store
 from shogun.services.base_service import BaseService
+from shogun.services.memory_governance import validate_decay_type
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +67,8 @@ class MemoryService(BaseService[MemoryRecord]):
         **kwargs: Any,
     ) -> MemoryRecord:
         """Create a memory with dual-write to SQLite + Qdrant."""
+        validated_decay = validate_decay_type(decay_class)
+        decay_class = validated_decay or "medium"
         # 1. SQLite insert
         record = await self.create(
             memory_type=memory_type,
@@ -120,6 +124,7 @@ class MemoryService(BaseService[MemoryRecord]):
         memory_types: list[str] | None = None,
         min_importance: float | None = None,
         pinned_only: bool = False,
+        decay_class: str | None = None,
         limit: int = 20,
         weight_overrides: dict[str, float] | None = None,
     ) -> list[dict[str, Any]]:
@@ -127,6 +132,7 @@ class MemoryService(BaseService[MemoryRecord]):
 
         Returns scored, ranked memory results with full metadata.
         """
+        decay_class = validate_decay_type(decay_class)
         store = get_vector_store()
 
         # 1. Vector search in Qdrant (runs in thread pool to avoid blocking event loop)
@@ -140,30 +146,63 @@ class MemoryService(BaseService[MemoryRecord]):
             limit=limit * 2,  # over-fetch for better reranking
         )
 
-        if not qdrant_hits:
-            return []
-
-        # 2. Fetch full metadata from SQLite
+        # 2. Fetch full metadata from SQLite. Sticky memories for an explicit
+        # agent scope remain eligible even when semantic retrieval misses them.
         hit_ids = [uuid.UUID(h["memory_id"]) for h in qdrant_hits]
         similarity_map = {h["memory_id"]: h["score"] for h in qdrant_hits}
-
-        result = await self.session.execute(
-            select(MemoryRecord).where(
-                MemoryRecord.id.in_(hit_ids),
-                MemoryRecord.is_archived == False,
+        records: dict[str, MemoryRecord] = {}
+        if hit_ids:
+            result = await self.session.execute(
+                select(MemoryRecord).where(
+                    MemoryRecord.id.in_(hit_ids),
+                    MemoryRecord.is_archived.is_(False),
+                )
             )
-        )
-        records = {str(r.id): r for r in result.scalars().all()}
+            records = {str(r.id): r for r in result.scalars().all()}
+
+        sticky_considered = 0
+        sticky_skipped_token_budget = 0
+        if agent_id and not pinned_only and decay_class in (None, "sticky"):
+            sticky_query = select(MemoryRecord).where(
+                MemoryRecord.agent_id == agent_id,
+                MemoryRecord.decay_class == "sticky",
+                MemoryRecord.is_archived.is_(False),
+            )
+            if memory_types:
+                sticky_query = sticky_query.where(MemoryRecord.memory_type.in_(memory_types))
+            if min_importance is not None:
+                sticky_query = sticky_query.where(MemoryRecord.importance_score >= min_importance)
+            sticky_query = sticky_query.order_by(
+                MemoryRecord.importance_score.desc(),
+                MemoryRecord.created_at.desc(),
+            ).limit(settings.memory_max_sticky_memories_in_context)
+            sticky_result = await self.session.execute(sticky_query)
+            sticky_records = list(sticky_result.scalars().all())
+            sticky_considered = len(sticky_records)
+            sticky_token_budget = settings.memory_max_sticky_context_tokens
+            for record in sticky_records:
+                estimated_tokens = max((len(record.title) + len(record.content) + 3) // 4, 1)
+                if estimated_tokens > sticky_token_budget:
+                    sticky_skipped_token_budget += 1
+                    continue
+                sticky_token_budget -= estimated_tokens
+                records[str(record.id)] = record
+                similarity_map.setdefault(str(record.id), 0.0)
+
+        if decay_class:
+            records = {
+                memory_id: record
+                for memory_id, record in records.items()
+                if record.decay_class == decay_class
+            }
+        if not records and not sticky_considered:
+            return []
 
         # 3. Build scored candidates
         now = datetime.now(timezone.utc)
         candidates: list[ScoredMemory] = []
 
-        for hit in qdrant_hits:
-            mid = hit["memory_id"]
-            record = records.get(mid)
-            if not record:
-                continue
+        for mid, record in records.items():
 
             # Compute live scores
             effective_relevance = compute_decayed_relevance(
@@ -199,6 +238,7 @@ class MemoryService(BaseService[MemoryRecord]):
 
         # 4. Rerank using salience engine
         ranked = rerank_candidates(candidates, weight_overrides=weight_overrides)
+        ranked.sort(key=lambda candidate: candidate.decay_class != "sticky")
 
         # 5. Return top-N with full score breakdown + all fields the frontend needs
         results_out = []
@@ -234,6 +274,33 @@ class MemoryService(BaseService[MemoryRecord]):
                 "last_accessed_at": record.last_accessed_at.isoformat() if record and record.last_accessed_at else None,
                 "last_confirmed_at": c.last_confirmed_at.isoformat() if c.last_confirmed_at else None,
             })
+        if sticky_considered:
+            sticky_injected = sum(item["decay_class"] == "sticky" for item in results_out)
+            logger.info(
+                "Sticky memories considered=%d injected=%d token_skipped=%d cap=%d agent_id=%s",
+                sticky_considered,
+                sticky_injected,
+                sticky_skipped_token_budget,
+                settings.memory_max_sticky_memories_in_context,
+                agent_id,
+            )
+            from shogun.services.event_logger import EventLogger
+
+            await EventLogger.emit(
+                category="memory",
+                event_type="memory.retrieval.sticky_injected",
+                action="Injected governed sticky memories into retrieval results",
+                agent_id=str(agent_id),
+                detail={
+                    "sticky_considered": sticky_considered,
+                    "sticky_injected": sticky_injected,
+                    "sticky_skipped": max(sticky_considered - sticky_injected, 0),
+                    "sticky_skipped_token_budget": sticky_skipped_token_budget,
+                    "max_sticky_memories_in_context": settings.memory_max_sticky_memories_in_context,
+                    "max_sticky_context_tokens": settings.memory_max_sticky_context_tokens,
+                },
+                db_session=self.session,
+            )
         return results_out
 
     # ── Forget with Qdrant cleanup ──────────────────────────────
@@ -258,7 +325,7 @@ class MemoryService(BaseService[MemoryRecord]):
 
         # Fetch all active memories
         result = await self.session.execute(
-            select(MemoryRecord).where(MemoryRecord.is_archived == False)
+            select(MemoryRecord).where(MemoryRecord.is_archived.is_(False))
         )
         records = result.scalars().all()
 
@@ -392,9 +459,9 @@ class MemoryService(BaseService[MemoryRecord]):
         Returns the number of records updated.
         """
         query = select(MemoryRecord).where(
-            MemoryRecord.is_pinned == False,
-            MemoryRecord.is_archived == False,
-            MemoryRecord.decay_class != "pinned",
+            MemoryRecord.is_pinned.is_(False),
+            MemoryRecord.is_archived.is_(False),
+            MemoryRecord.decay_class.notin_(["sticky", "pinned"]),
         )
         if agent_id:
             query = query.where(MemoryRecord.agent_id == agent_id)
@@ -437,7 +504,7 @@ class MemoryService(BaseService[MemoryRecord]):
         query = select(MemoryRecord).where(MemoryRecord.agent_id == agent_id)
 
         if not include_archived:
-            query = query.where(MemoryRecord.is_archived == False)
+            query = query.where(MemoryRecord.is_archived.is_(False))
         if memory_type:
             query = query.where(MemoryRecord.memory_type == memory_type)
 
@@ -449,8 +516,8 @@ class MemoryService(BaseService[MemoryRecord]):
         result = await self.session.execute(
             select(MemoryRecord).where(
                 MemoryRecord.agent_id == agent_id,
-                MemoryRecord.is_pinned == True,
-                MemoryRecord.is_archived == False,
+                MemoryRecord.is_pinned.is_(True),
+                MemoryRecord.is_archived.is_(False),
             )
         )
         return list(result.scalars().all())

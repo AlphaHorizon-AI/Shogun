@@ -2,19 +2,30 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-import os
-from pathlib import Path
+from fastapi.staticfiles import StaticFiles
 
 from shogun.config import settings
 
 # Calculate project root (assuming this file is in shogun/app.py)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+async def _upgrade_database_schema() -> None:
+    """Advance the configured database before ORM startup touches it."""
+    from alembic import command
+    from alembic.config import Config
+
+    config = Config(str(PROJECT_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(PROJECT_ROOT / "migrations"))
+    config.set_main_option("sqlalchemy.url", settings.database_url)
+    await asyncio.to_thread(command.upgrade, config, "head")
 
 
 class NoCacheStaticFiles(StaticFiles):
@@ -32,6 +43,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown hooks."""
     # Startup
     settings.ensure_directories()
+    await _upgrade_database_schema()
 
     # ── Auto-migrate execution_events to NIS2/SOC2 schema ──────
     try:
@@ -280,7 +292,7 @@ async def lifespan(app: FastAPI):
         await EventLogger.emit_system_event(
             "system.startup", "Shogun server started",
             detail={
-                "version": "1.20.0",
+                "version": "1.21.0",
                 "platform": platform.system(),
                 "python": platform.python_version(),
             },
@@ -401,7 +413,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.20.0",
+        version="1.21.0",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,

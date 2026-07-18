@@ -1,8 +1,8 @@
 {
-  "version": "1.20.0",
+  "version": "1.21.0",
   "name": "Shogun OS",
-  "build": 85,
+  "build": 86,
   "channel": "stable",
   "released": "2026-07-18T00:00:00Z",
-  "changelog": "Memory portability and Telegram workspace topics: adds governed OpenClaw Markdown import with preview, deduplication, native SQLite/Qdrant persistence, retry and rollback; completes inbound message_thread_id extraction and same-topic outbound replies for chat, tools, cron jobs, and Agent Flows."
+  "changelog": "Governed memory decay controls, hardened Telegram workspace-topic context and routing, resilient automatic schema upgrades, and custom security policy visibility on the Overview page."
 }

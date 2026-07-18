@@ -16,6 +16,14 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    tables = set(inspector.get_table_names())
+    memory_columns = (
+        {column["name"] for column in inspector.get_columns("memory_records")}
+        if "memory_records" in tables
+        else set()
+    )
     for name, column in [
         ("source_system", sa.Column("source_system", sa.String(100))),
         ("source_file", sa.Column("source_file", sa.String(1000))),
@@ -24,11 +32,19 @@ def upgrade() -> None:
         ("content_hash", sa.Column("content_hash", sa.String(64))),
         ("tags", sa.Column("tags", JSONType(), nullable=False, server_default="[]")),
     ]:
-        op.add_column("memory_records", column)
+        if name not in memory_columns:
+            op.add_column("memory_records", column)
+    inspector = sa.inspect(bind)
+    existing_indexes = {
+        index["name"] for index in inspector.get_indexes("memory_records")
+    }
     for name in ["source_system", "source_external_id", "import_batch_id", "content_hash"]:
-        op.create_index(f"ix_memory_records_{name}", "memory_records", [name])
+        index_name = f"ix_memory_records_{name}"
+        if index_name not in existing_indexes:
+            op.create_index(index_name, "memory_records", [name])
 
-    op.create_table(
+    if "memory_import_batches" not in tables:
+        op.create_table(
         "memory_import_batches",
         sa.Column("id", sa.String(64), primary_key=True),
         sa.Column("source_type", sa.String(40), nullable=False),
@@ -46,9 +62,10 @@ def upgrade() -> None:
         sa.Column("warnings_json", JSONType(), nullable=False),
         sa.Column("metadata_json", JSONType(), nullable=False),
         sa.Column("report_json", JSONType(), nullable=False),
-    )
-    op.create_index("ix_memory_import_batches_status", "memory_import_batches", ["status"])
-    op.create_table(
+        )
+        op.create_index("ix_memory_import_batches_status", "memory_import_batches", ["status"])
+    if "memory_import_items" not in tables:
+        op.create_table(
         "memory_import_items",
         sa.Column("id", sa.String(64), primary_key=True),
         sa.Column(
@@ -68,15 +85,15 @@ def upgrade() -> None:
         sa.Column("error_json", JSONType(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("embedding_error", sa.Text()),
-    )
-    for name, columns in [
-        ("ix_memory_import_items_batch", ["batch_id"]),
-        ("ix_memory_import_items_external", ["source_external_id"]),
-        ("ix_memory_import_items_status", ["status"]),
-        ("ix_memory_import_items_memory", ["shogun_memory_id"]),
-        ("ix_memory_import_items_hash", ["content_hash"]),
-    ]:
-        op.create_index(name, "memory_import_items", columns)
+        )
+        for name, columns in [
+            ("ix_memory_import_items_batch", ["batch_id"]),
+            ("ix_memory_import_items_external", ["source_external_id"]),
+            ("ix_memory_import_items_status", ["status"]),
+            ("ix_memory_import_items_memory", ["shogun_memory_id"]),
+            ("ix_memory_import_items_hash", ["content_hash"]),
+        ]:
+            op.create_index(name, "memory_import_items", columns)
 
 
 def downgrade() -> None:

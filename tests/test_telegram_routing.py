@@ -215,6 +215,25 @@ def test_telegram_context_text_includes_group_and_topic():
     assert "Known topics in this chat: Operations [42]" in message
 
 
+def test_current_thread_is_never_reported_as_no_topics_learned():
+    context = _telegram_context_from_message({
+        "chat": {"id": -100123, "type": "supergroup", "title": "Workspace"},
+        "message_thread_id": 22,
+        "text": "Morning brief",
+    })
+    prompt = _telegram_context_text(
+        "Morning brief",
+        {"chat_id": "-100123", "message_thread_id": 22, "known_topics": []},
+    )
+
+    assert context["is_topic_message"] is True
+    assert context["known_topics"] == [
+        {"message_thread_id": 22, "name": "", "status": "open"}
+    ]
+    assert "Known topics in this chat: unknown [22]" in prompt
+    assert "none learned yet" not in prompt
+
+
 def test_ordinary_forum_message_registers_thread_and_tag_name(monkeypatch):
     monkeypatch.setattr(telegram_poller, "_topic_registry_cache", {})
     monkeypatch.setattr(telegram_poller, "_save_topic_registry", lambda registry: None)

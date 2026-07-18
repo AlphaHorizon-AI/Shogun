@@ -157,6 +157,7 @@ export function Archives() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<MemoryCategory>('all');
+  const [decayFilter, setDecayFilter] = useState<string>('all');
   const [selectedAgentId, setSelectedAgentId] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'created_at' | 'relevance' | 'importance'>('created_at');
   const [selectedMemory, setSelectedMemory] = useState<MemoryRecord | ScoredMemory | null>(null);
@@ -207,6 +208,7 @@ export function Archives() {
       // Initial memories
       const params = new URLSearchParams();
       if (activeCategory !== 'all') params.set('memory_type', activeCategory);
+      if (decayFilter !== 'all') params.set('decay_class', decayFilter);
       if (selectedAgentId !== 'all') params.set('agent_id', selectedAgentId);
       params.set('sort_by', sortBy);
       
@@ -217,7 +219,7 @@ export function Archives() {
     } finally {
       setLoading(false);
     }
-  }, [activeCategory, selectedAgentId, sortBy]);
+  }, [activeCategory, decayFilter, selectedAgentId, sortBy]);
 
   useEffect(() => {
     fetchData();
@@ -233,6 +235,7 @@ export function Archives() {
             query: searchTerm,
             agent_id: selectedAgentId === 'all' ? null : selectedAgentId,
             memory_types: activeCategory === 'all' ? null : [activeCategory],
+            filters: decayFilter === 'all' ? null : { decay_class: decayFilter },
             limit: 20
           });
           setSearchResults(res.data.data || []);
@@ -247,7 +250,7 @@ export function Archives() {
     }, 500);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchTerm, selectedAgentId, activeCategory]);
+  }, [searchTerm, selectedAgentId, activeCategory, decayFilter]);
 
   // ── Actions ────────────────────────────────────────────────
   const forgetMemory = async (id: string, e?: React.MouseEvent) => {
@@ -579,6 +582,22 @@ export function Archives() {
           
           {/* Filters Panel */}
           <div className="shogun-card space-y-6">
+            <div>
+              <h3 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest mb-3 flex items-center gap-2">
+                <Shield className="w-3 h-3" /> Decay Type
+              </h3>
+              <select
+                value={decayFilter}
+                onChange={(e) => setDecayFilter(e.target.value)}
+                className="w-full bg-shogun-bg border border-shogun-border rounded-lg px-3 py-2 text-xs text-shogun-text focus:border-shogun-blue outline-none"
+              >
+                <option value="all">All decay types</option>
+                {['fast', 'medium', 'slow', 'sticky', 'pinned'].map(decay => (
+                  <option key={decay} value={decay}>{decay}</option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <h3 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest mb-3 flex items-center gap-2">
                 <Filter className="w-3 h-3" /> Agent Context

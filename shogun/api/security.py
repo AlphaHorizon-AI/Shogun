@@ -291,7 +291,20 @@ async def _get_agent_posture() -> dict:
             return dict(_DEFAULT_POSTURE)
         bushido = agent.bushido_settings or {}
         stored = bushido.get(_POSTURE_KEY, {})
-        return {**_DEFAULT_POSTURE, **stored}
+        posture = {**_DEFAULT_POSTURE, **stored}
+        if agent.security_policy_id:
+            from shogun.db.models.security_policy import SecurityPolicy
+
+            policy = await db.get(SecurityPolicy, agent.security_policy_id)
+            if policy:
+                posture.update(
+                    {
+                        "active_policy_id": policy.id,
+                        "active_policy_name": policy.name,
+                        "active_policy_is_builtin": policy.is_builtin,
+                    }
+                )
+        return posture
 
 
 async def _save_agent_posture(posture: dict) -> None:

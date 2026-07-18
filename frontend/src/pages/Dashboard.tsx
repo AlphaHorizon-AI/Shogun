@@ -65,6 +65,10 @@ export const Dashboard = () => {
   const [showHarakiri, setShowHarakiri] = useState(false);
   const [metrics, setMetrics] = useState<any>(null);
   const { t } = useTranslation();
+  const activeTier = posture?.active_tier || data?.security_posture?.tier || 'tactical';
+  const customPolicyName = posture?.active_policy_is_builtin === false
+    ? posture?.active_policy_name
+    : null;
 
   const fetchData = async () => {
     setLoading(true);
@@ -192,13 +196,13 @@ export const Dashboard = () => {
           to="/archives"
         />
         <StatCard 
-          title={t('dashboard.security_posture', 'Security Tier')} 
-          value={posture?.active_tier?.toUpperCase() || data?.security_posture?.tier?.toUpperCase() || "TACTICAL"} 
-          status={t('common.active', 'Active')} 
+          title={t('dashboard.security_posture', 'Security Posture')}
+          value={customPolicyName || activeTier.toUpperCase()}
+          status={customPolicyName ? `CUSTOM · ${activeTier.toUpperCase()}` : t('common.active', 'Active')}
           icon={Shield} 
           colorClass={
             ({ shrine: 'text-shogun-gold', guarded: 'text-green-400', tactical: 'text-shogun-blue', campaign: 'text-orange-400', ronin: 'text-red-500' } as Record<string, string>)
-            [posture?.active_tier || data?.security_posture?.tier || 'tactical'] || 'text-shogun-blue'
+            [activeTier] || 'text-shogun-blue'
           }
           to="/torii"
         />

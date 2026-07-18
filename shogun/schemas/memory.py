@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, computed_field, model_validator
 
 from shogun.schemas.common import DecayClass, MemoryType, ShogunBase, SnapshotType
 
@@ -28,7 +28,10 @@ class MemorySearchFilters(ShogunBase):
     pinned_only: bool = False
     min_relevance: float | None = None
     min_importance: float | None = None
-    decay_class: DecayClass | None = None
+    decay_class: DecayClass | None = Field(
+        default=None,
+        validation_alias=AliasChoices("decay_class", "decay_type"),
+    )
 
 
 class MemorySearchRequest(ShogunBase):
@@ -82,7 +85,10 @@ class MemorySearchResult(ShogunBase):
     content: str
     scores: MemoryScores
     # Salience metadata exposed for transparency
-    decay_class: DecayClass = DecayClass.MEDIUM
+    decay_class: DecayClass = Field(
+        default=DecayClass.MEDIUM,
+        validation_alias=AliasChoices("decay_class", "decay_type"),
+    )
     access_count: int = 0
     successful_use_count: int = 0
     is_pinned: bool = False
@@ -110,7 +116,10 @@ class MemoryRecordCreate(ShogunBase):
     relevance_score: float = Field(default=0.7, ge=0.0, le=1.0)
     importance_score: float = Field(default=0.5, ge=0.0, le=1.0)
     confidence_score: float = Field(default=0.5, ge=0.0, le=1.0)
-    decay_class: DecayClass = DecayClass.MEDIUM
+    decay_class: DecayClass = Field(
+        default=DecayClass.MEDIUM,
+        validation_alias=AliasChoices("decay_class", "decay_type"),
+    )
     is_pinned: bool = False
     tags: list[str] = Field(default_factory=list)
 
@@ -125,7 +134,10 @@ class MemoryRecordUpdate(ShogunBase):
     relevance_score: float | None = None
     importance_score: float | None = None
     confidence_score: float | None = None
-    decay_class: DecayClass | None = None
+    decay_class: DecayClass | None = Field(
+        default=None,
+        validation_alias=AliasChoices("decay_class", "decay_type"),
+    )
 
 
 class MemoryRecordResponse(ShogunBase):
@@ -165,6 +177,12 @@ class MemoryRecordResponse(ShogunBase):
     tags: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def decay_type(self) -> DecayClass:
+        """API-compatible name for the persisted decay class."""
+        return self.decay_class
 
 
 # ── Reinforcement Events ─────────────────────────────────────

@@ -134,6 +134,9 @@ class SecurityPostureResponse(ShogunBase):
     """Response model for the current security posture summary."""
 
     active_tier: SecurityTier
+    active_policy_id: uuid.UUID | None = None
+    active_policy_name: str | None = None
+    active_policy_is_builtin: bool | None = None
     filesystem_mode: str
     network_mode: str
     shell_enabled: bool

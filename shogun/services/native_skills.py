@@ -6,8 +6,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from shogun.db.engine import async_session_factory
-from shogun.api.agents import _get_system_context
+from shogun.schemas.common import DecayClass
 
 logger = logging.getLogger("shogun.native_skills")
 
@@ -119,7 +118,11 @@ NATIVE_TOOLS = [
         "category": "memory",
         "function": {
             "name": "store_memory",
-            "description": "Store important information in your persistent Archives memory system. Use this when the user shares personal details (e.g. their name), preferences, facts, or anything worth remembering across sessions.",
+            "description": (
+                "Store durable information in Shogun Archives. Optionally set decay_type to control decay. "
+                "Use sticky only for stable, high-confidence preferences, project facts, durable signals, or "
+                "operating conventions; never for temporary task state, news, speculation, or claims likely to change."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -134,11 +137,30 @@ NATIVE_TOOLS = [
                     "memory_type": {
                         "type": "string",
                         "enum": ["episodic", "semantic", "procedural", "persona"],
-                        "description": "Type: 'persona' for identity/preferences/personal info, 'semantic' for facts/knowledge, 'episodic' for events, 'procedural' for how-to patterns.",
+                        "description": (
+                            "Type: 'persona' for identity/preferences/personal info, 'semantic' for facts/knowledge, "
+                            "'episodic' for events, 'procedural' for how-to patterns."
+                        ),
                     },
                     "importance": {
                         "type": "number",
-                        "description": "How important this is (0.0-1.0). Use 0.9+ for identity/preferences, 0.5-0.8 for general facts.",
+                        "description": (
+                            "How important this is (0.0-1.0). Use 0.9+ for identity/preferences, "
+                            "0.5-0.8 for general facts."
+                        ),
+                    },
+                    "decay_type": {
+                        "type": "string",
+                        "enum": [item.value for item in DecayClass],
+                        "description": (
+                            "Optional decay behavior. If omitted or null, the existing importance-based default is "
+                            "used. Sticky is governed and reserved for important long-term memories."
+                        ),
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional labels used to organize and retrieve this memory.",
                     },
                 },
                 "required": ["title", "content", "memory_type", "importance"],
@@ -2399,16 +2421,22 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
             return json.dumps({"status": "success", **result.payload}, default=str)
 
         elif name == "store_memory":
-            from shogun.services.memory_service import MemoryService
-            from shogun.db.models.agent import Agent
             from sqlalchemy import select
+
+            from shogun.db.models.agent import Agent
+            from shogun.services.event_logger import EventLogger
+            from shogun.services.memory_governance import (
+                MemoryDecayError,
+                validate_agent_decay_request,
+            )
+            from shogun.services.memory_service import MemoryService
 
             # Get the primary Shogun agent ID to associate the memory with
             shogun_res = await db_session.execute(
                 select(Agent).where(
                     Agent.agent_type == "shogun",
-                    Agent.is_primary == True,
-                    Agent.is_deleted == False
+                    Agent.is_primary.is_(True),
+                    Agent.is_deleted.is_(False),
                 ).limit(1)
             )
             shogun = shogun_res.scalar_one_or_none()
@@ -2417,10 +2445,43 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
 
             mem_svc = MemoryService(db_session)
             importance = float(args.get("importance", 0.7))
-            is_pinned = importance >= 0.85  # High-importance memories get auto-pinned
-            decay = "slow" if importance >= 0.7 else "medium"
-            if is_pinned:
-                decay = "pinned"
+            explicit_decay = args.get("decay_type")
+            try:
+                explicit_decay = validate_agent_decay_request(
+                    explicit_decay,
+                    importance=importance,
+                    memory_type=args["memory_type"],
+                )
+            except MemoryDecayError as exc:
+                await EventLogger.emit(
+                    category="memory",
+                    event_type=(
+                        "memory.decay_type.invalid"
+                        if exc.code == "invalid_decay_type"
+                        else "memory.sticky.rejected"
+                    ),
+                    action="Rejected store_memory decay request",
+                    result="rejected",
+                    agent_id=str(shogun.id),
+                    tool_name="store_memory",
+                    detail={
+                        "decay_type": args.get("decay_type"),
+                        "memory_type": args.get("memory_type"),
+                        "importance": importance,
+                        "reason": exc.code,
+                    },
+                    db_session=db_session,
+                )
+                await db_session.commit()
+                return json.dumps(exc.as_dict())
+
+            if explicit_decay is None:
+                # Preserve the historical tool behavior when decay_type is omitted.
+                is_pinned = importance >= 0.85
+                decay = "pinned" if is_pinned else ("slow" if importance >= 0.7 else "medium")
+            else:
+                decay = explicit_decay
+                is_pinned = decay == "pinned"
 
             record = await mem_svc.create_memory(
                 memory_type=args["memory_type"],
@@ -2432,13 +2493,32 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
                 confidence_score=0.8,
                 decay_class=decay,
                 is_pinned=is_pinned,
+                tags=args.get("tags") or [],
+            )
+            await EventLogger.emit(
+                category="memory",
+                event_type="memory.stored",
+                action=f"Stored memory '{args['title']}' through store_memory",
+                agent_id=str(shogun.id),
+                tool_name="store_memory",
+                memory_ids=[str(record.id)],
+                detail={
+                    "memory_id": str(record.id),
+                    "memory_type": args["memory_type"],
+                    "importance": importance,
+                    "decay_type": decay,
+                    "tags": args.get("tags") or [],
+                    "source": "store_memory_tool",
+                },
+                db_session=db_session,
             )
             await db_session.commit()
 
             return json.dumps({
                 "status": "success",
-                "message": f"Memory '{args['title']}' stored in Archives (type={args['memory_type']}, importance={importance}, pinned={is_pinned}).",
+                "message": f"Memory '{args['title']}' stored in Archives (type={args['memory_type']}, importance={importance}, decay_type={decay}, pinned={is_pinned}).",
                 "memory_id": str(record.id),
+                "decay_type": decay,
             })
 
         elif name == "fetch_inbox":

@@ -8,7 +8,7 @@ Core principles:
   - Similarity finds candidates. Relevance decides what matters now.
   - Relevance decays over time and is reinforced by *successful use*, not mere retrieval.
   - Importance is intrinsic and separate from relevance.
-  - Pinned memories bypass normal decay.
+  - Sticky and pinned memories bypass normal decay.
   - Repeated retrieval without use *reduces* effective salience.
 
 Decay model:
@@ -16,7 +16,7 @@ Decay model:
     fast   = 6 hours       (temporary episodic details)
     medium = 3 days         (active workflows)
     slow   = 14 days        (durable facts)
-    sticky = 90 days        (important long-term operational memories)
+    sticky = no decay       (persistently eligible operational memories)
     pinned = no decay       (only manual or policy-driven)
 
 Reinforcement:
@@ -36,9 +36,8 @@ Reranking weights (default, tuned per memory type):
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from dataclasses import dataclass, field
-
 
 # ── Half-life constants (in hours) ───────────────────────────
 
@@ -46,7 +45,7 @@ DECAY_HALF_LIFE_HOURS: dict[str, float] = {
     "fast": 6.0,
     "medium": 72.0,       # 3 days
     "slow": 336.0,        # 14 days
-    "sticky": 2160.0,     # 90 days
+    "sticky": float("inf"),
     "pinned": float("inf"),
 }
 
@@ -135,7 +134,7 @@ def compute_decayed_relevance(
     """Compute the current effective relevance after time-based decay.
 
     Uses exponential decay with a half-life determined by the decay class.
-    Pinned memories skip normal decay entirely.
+    Sticky and pinned memories skip normal decay entirely.
 
     Args:
         current_relevance: The stored relevance score (last reinforced value).
@@ -147,7 +146,7 @@ def compute_decayed_relevance(
     Returns:
         Decayed relevance score, clamped to [RELEVANCE_FLOOR, current_relevance].
     """
-    if is_pinned or decay_class == "pinned":
+    if is_pinned or decay_class in {"sticky", "pinned"}:
         return current_relevance
 
     if now is None:
