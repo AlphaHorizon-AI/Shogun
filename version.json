@@ -1,8 +1,8 @@
 {
-  "version": "1.17.1",
+  "version": "1.17.2",
   "name": "Shogun OS",
-  "build": 80,
+  "build": 81,
   "channel": "stable",
-  "released": "2026-07-17T00:00:00Z",
-  "changelog": "Adds list_agent_flows native tool for discovering, searching, and paginating existing Agent Flows. Enhances list_flows API and service with search support."
+  "released": "2026-07-18T00:00:00Z",
+  "changelog": "Fixes Bushido scheduling (broken import path for BushidoScheduleService). Unblocks AgentFlow/Flow Stack tools by removing phantom allow_list permission gate from list_agent_flows."
 }

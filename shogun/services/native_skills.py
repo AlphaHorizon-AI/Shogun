@@ -2072,7 +2072,9 @@ def generate_tool_prompt(tools: list[dict]) -> str:
 
 
 WORKFLOW_TOOL_PERMISSIONS = {
-    "list_agent_flows": ("agentflow", "allow_list"),
+    # list_agent_flows is intentionally omitted — it is read-only and should
+    # always be available when the tool passes posture filtering, so the agent
+    # can discover flow IDs before editing / deleting.
     "create_agent_flow": ("agentflow", "allow_create"),
     "edit_agent_flow": ("agentflow", "allow_edit"),
     "delete_agent_flow": ("agentflow", "allow_delete"),
@@ -2468,7 +2470,7 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
             })
 
         elif name == "list_cron_jobs":
-            from shogun.services.bushido_schedule_service import BushidoScheduleService
+            from shogun.services.bushido_service import BushidoScheduleService
             sched_svc = BushidoScheduleService(db_session)
             records, total = await sched_svc.get_all(limit=200)
             jobs = []
@@ -2491,7 +2493,7 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
             })
 
         elif name == "create_cron_job":
-            from shogun.services.bushido_schedule_service import BushidoScheduleService
+            from shogun.services.bushido_service import BushidoScheduleService
             from shogun.schemas.bushido import BushidoScheduleCreate
             sched_svc = BushidoScheduleService(db_session)
             create_data = BushidoScheduleCreate(
@@ -2516,7 +2518,7 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
             })
 
         elif name == "delete_cron_job":
-            from shogun.services.bushido_schedule_service import BushidoScheduleService
+            from shogun.services.bushido_service import BushidoScheduleService
             import uuid as _uuid
             sched_svc = BushidoScheduleService(db_session)
             schedule_id = _uuid.UUID(args["schedule_id"])
