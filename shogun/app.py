@@ -101,6 +101,12 @@ async def lifespan(app: FastAPI):
                     "embedding_id": "VARCHAR(255)", "last_used_at": "DATETIME",
                     "usage_count": "INTEGER NOT NULL DEFAULT 0", "success_count": "INTEGER NOT NULL DEFAULT 0",
                     "failure_count": "INTEGER NOT NULL DEFAULT 0",
+                    # ── Order 15: OpenClaw College Content Loop ──
+                    "lifecycle_state": "VARCHAR(30) NOT NULL DEFAULT 'draft'",
+                    "publication_status": "VARCHAR(30) NOT NULL DEFAULT 'unpublished'",
+                    "active_version_id": "VARCHAR(36)",
+                    "published_at": "DATETIME",
+                    "archived_at": "DATETIME",
                 }
                 for column, definition in skill_additions.items():
                     if column not in skill_columns:
@@ -444,6 +450,7 @@ def create_app() -> FastAPI:
     from shogun.api.teams import command_router as katana_command_router, router as teams_router
     from shogun.api.ide import router as ide_router
     from shogun.api.skillopt import router as skillopt_router
+    from shogun.api.skill_lifecycle import router as skill_lifecycle_router
 
     prefix = "/api/v1"
     app.include_router(system_router, prefix=prefix)
@@ -454,6 +461,7 @@ def create_app() -> FastAPI:
     app.include_router(security_router, prefix=prefix)
     app.include_router(skills_router, prefix=prefix)
     app.include_router(skillopt_router, prefix=prefix)
+    app.include_router(skill_lifecycle_router, prefix=prefix)
     app.include_router(missions_router, prefix=prefix)
     app.include_router(bushido_router, prefix=prefix)
     app.include_router(channels_router, prefix=prefix)

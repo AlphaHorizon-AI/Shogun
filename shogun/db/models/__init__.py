@@ -32,6 +32,9 @@ from shogun.db.models.skillopt import (
     SkillOptCandidate,
     SkillOptEvalResult,
 )
+from shogun.db.models.skill_test import SkillTest
+from shogun.db.models.skill_metrics import SkillMetrics
+from shogun.db.models.skill_publication import SkillPublication
 from shogun.db.models.bushido import BushidoJob, BushidoRecommendation, BushidoSchedule
 from shogun.db.models.mission import Mission
 from shogun.db.models.execution_event import ExecutionEvent
@@ -96,6 +99,9 @@ __all__ = [
     "SkillOptTrainingRun",
     "SkillOptCandidate",
     "SkillOptEvalResult",
+    "SkillTest",
+    "SkillMetrics",
+    "SkillPublication",
     "BushidoJob",
     "BushidoRecommendation",
     "BushidoSchedule",

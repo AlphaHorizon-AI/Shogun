@@ -2001,6 +2001,59 @@ NATIVE_TOOLS = [
         "type": "function", "risk": "high", "category": "ide",
         "function": {"name": "ide_run_task", "description": "Run an approved test, lint, or build command in a VS Code workspace and return its verified output.", "parameters": {"type": "object", "properties": {"workspace_id": {"type": "string"}, "command": {"type": "string"}, "approved": {"type": "boolean"}}, "required": ["workspace_id", "command"]}},
     },
+    # ── Order 15: Skill Lifecycle Tools ──────────────────────────
+    {
+        "type": "function", "risk": "medium", "category": "skill_lifecycle",
+        "function": {
+            "name": "dojo_author_skill",
+            "description": "Create a new skill draft in the Dojo. Generates the skill package (skill.md, manifest.json, changelog.md) and registers it in the database with lifecycle_state='draft'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Display name for the skill (e.g. 'Business Email Reply')."},
+                    "description": {"type": "string", "description": "Short description of what the skill does."},
+                    "body_text": {"type": "string", "description": "Full skill instructions in markdown. If empty, a template is generated."},
+                    "category": {"type": "string", "description": "Skill category (e.g. 'communication', 'research', 'coding'). Defaults to 'general'."},
+                    "triggers": {"type": "array", "items": {"type": "string"}, "description": "Activation trigger phrases (e.g. ['email reply', 'business response'])."},
+                    "risk_tier": {"type": "string", "enum": ["low", "medium", "high", "critical"], "description": "Risk tier for the skill. Defaults to 'low'."},
+                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for categorization and search."},
+                    "requires_tools": {"type": "array", "items": {"type": "string"}, "description": "List of tool names this skill requires."},
+                    "version": {"type": "string", "description": "Semantic version number. Defaults to '1.0.0'."},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function", "risk": "low", "category": "skill_lifecycle",
+        "function": {
+            "name": "dojo_validate_skill",
+            "description": "Run the quality gate and validation checks on a skill. Checks: manifest, body text, triggers, risk tier, forbidden instructions, credentials, posture bypass, version format, changelog, and validation tests. Returns detailed pass/fail results and score.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_id": {"type": "string", "description": "UUID of the skill to validate."},
+                },
+                "required": ["skill_id"],
+            },
+        },
+    },
+    {
+        "type": "function", "risk": "high", "category": "skill_lifecycle",
+        "function": {
+            "name": "dojo_publish_skill",
+            "description": "Publish a validated skill to a provider (local folder or OpenClaw College). Runs quality gate first unless skipped. Packages the skill and records the publication.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_id": {"type": "string", "description": "UUID of the skill to publish."},
+                    "provider": {"type": "string", "enum": ["local", "openclaw_college"], "description": "Publishing provider. Defaults to 'local'."},
+                    "skip_quality_gate": {"type": "boolean", "description": "If true, skip the quality gate check. Defaults to false."},
+                },
+                "required": ["skill_id"],
+            },
+        },
+    },
 ]
 
 
@@ -2538,6 +2591,58 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
                 "status": "success",
                 "message": f"Cron job '{record.name}' deleted successfully.",
             })
+
+        # ── Order 15: Skill Lifecycle Tool Handlers ─────────────
+        elif name == "dojo_author_skill":
+            from shogun.services.skill_authoring_service import SkillAuthoringService
+            svc = SkillAuthoringService(db_session)
+            result = await svc.create_skill_draft(
+                name=args["name"],
+                category=args.get("category", "general"),
+                description=args.get("description", ""),
+                body_text=args.get("body_text", ""),
+                triggers=args.get("triggers", []),
+                risk_tier=args.get("risk_tier", "low"),
+                requires_tools=args.get("requires_tools", []),
+                tags=args.get("tags", []),
+                version=args.get("version", "1.0.0"),
+            )
+            # Auto-generate validation tests
+            try:
+                skill_uuid = uuid.UUID(result["skill_id"])
+                tests = await svc.generate_validation_tests(skill_uuid)
+                result["tests_created"] = len(tests)
+            except Exception:
+                result["tests_created"] = 0
+            await db_session.commit()
+            return json.dumps(result)
+
+        elif name == "dojo_validate_skill":
+            from shogun.services.skill_quality_gate import SkillQualityGateService
+            svc = SkillQualityGateService(db_session)
+            skill_uuid = uuid.UUID(args["skill_id"])
+            result = await svc.run_quality_gate(skill_uuid)
+
+            # Transition to 'validated' if passed
+            if result.get("status") == "passed":
+                skill = await db_session.get(Skill, skill_uuid)
+                if skill and skill.lifecycle_state in ("draft", "optimized"):
+                    skill.lifecycle_state = "validated"
+                    result["lifecycle_state"] = "validated"
+            await db_session.commit()
+            return json.dumps(result)
+
+        elif name == "dojo_publish_skill":
+            from shogun.services.skill_publishing import SkillPublishingService
+            svc = SkillPublishingService(db_session)
+            skill_uuid = uuid.UUID(args["skill_id"])
+            result = await svc.publish(
+                skill_uuid,
+                provider_name=args.get("provider", "local"),
+                skip_quality_gate=args.get("skip_quality_gate", False),
+            )
+            await db_session.commit()
+            return json.dumps(result)
 
         elif name == "list_agent_flows":
             # ── Read-only: list existing flows ──

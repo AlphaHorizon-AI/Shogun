@@ -1,8 +1,8 @@
 {
-  "version": "1.17.2",
+  "version": "1.18.0",
   "name": "Shogun OS",
-  "build": 81,
+  "build": 82,
   "channel": "stable",
   "released": "2026-07-18T00:00:00Z",
-  "changelog": "Fixes Bushido scheduling (broken import path for BushidoScheduleService). Unblocks AgentFlow/Flow Stack tools by removing phantom allow_list permission gate from list_agent_flows."
+  "changelog": "Order 15: OpenClaw College Content Loop — full skill lifecycle pipeline (create, validate, publish, install, use, optimize, republish). Adds SkillQualityGate (14-point check), SkillAuthoringService, SkillPublishingService with LocalFolderProvider, SkillMetricsService, SkillRollbackService, and 17 new API endpoints. 3 new native tools: dojo_author_skill, dojo_validate_skill, dojo_publish_skill."
 }

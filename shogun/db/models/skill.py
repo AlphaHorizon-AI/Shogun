@@ -48,4 +48,22 @@ class Skill(Base, UUIDMixin, AuditMixin, SoftDeleteMixin):
     success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # ── Order 15: OpenClaw College Content Loop ──────────────────
+    lifecycle_state: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="draft"
+    )
+    publication_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="unpublished"
+    )
+    active_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("skill_versions.id", ondelete="SET NULL", use_alter=True),
+        nullable=True,
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     source = relationship("SkillSource", lazy="joined")
