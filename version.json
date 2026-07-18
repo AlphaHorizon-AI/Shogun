@@ -1,8 +1,8 @@
 {
-  "version": "1.24.2",
+  "version": "1.24.3",
   "name": "Shogun OS",
-  "build": 92,
+  "build": 93,
   "channel": "stable",
-  "released": "2026-07-18T00:00:00Z",
-  "changelog": "Repairs the missing legacy Agent key column that blocked first-run setup and makes setup submission errors visible in Tenshu."
+  "released": "2026-07-18T19:00:00Z",
+  "changelog": "Fixes ToolGate blocking skills_request_activation and exempts metadata lists from mass operation limits."
 }

@@ -134,6 +134,10 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     "edit_agent_flow":        {"risk": "medium",   "category": "workflow"},
     "create_flow_stack":      {"risk": "medium",   "category": "workflow"},
     "edit_flow_stack":        {"risk": "medium",   "category": "workflow"},
+    # Skills
+    "skills_request_activation": {"risk": "low",   "category": "skills"},
+    "skills_explain_active":     {"risk": "low",   "category": "skills"},
+    "skills_report_outcome":     {"risk": "low",   "category": "skills"},
     "mcp_list_tools":         {"risk": "low",      "category": "mcp"},
     "mcp_call_tool":          {"risk": "high",     "category": "mcp"},
     "mcp_list_resources":     {"risk": "low",      "category": "mcp"},
@@ -285,6 +289,8 @@ def check_dangerous_parameters(tool_name: str, args: dict[str, Any]) -> list[str
 
     # ── Check for mass operations ──
     for key, value in args.items():
+        if key in ("available_tools", "required_capabilities", "tags"):
+            continue
         if isinstance(value, list) and len(value) > 10:
             flags.append(f"mass_operation:{key}({len(value)} items)")
 
