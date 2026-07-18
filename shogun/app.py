@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,6 +18,64 @@ from shogun.config import settings
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _legacy_sqlite_baseline(database_url: str) -> str | None:
+    """Infer the latest schema already present in an unversioned desktop DB.
+
+    Early Tenshu releases created ORM tables directly and did not maintain an
+    ``alembic_version`` row. Starting their migration history at ``base``
+    therefore attempts to recreate existing columns and aborts Uvicorn. Marker
+    tables and columns let us stamp only work demonstrably already present;
+    Alembic still applies every later revision normally.
+    """
+    from sqlalchemy.engine import make_url
+
+    url = make_url(database_url)
+    if not url.drivername.startswith("sqlite") or not url.database or url.database == ":memory:":
+        return None
+    database_path = Path(url.database)
+    if not database_path.is_absolute():
+        database_path = PROJECT_ROOT / database_path
+    if not database_path.exists():
+        return None
+
+    with sqlite3.connect(database_path) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        if "alembic_version" in tables:
+            revision = connection.execute(
+                "SELECT version_num FROM alembic_version LIMIT 1"
+            ).fetchone()
+            if revision and revision[0]:
+                return None
+
+        def columns(table: str) -> set[str]:
+            if table not in tables:
+                return set()
+            return {row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')}
+
+        markers: list[tuple[bool, str]] = [
+            ("file_artifacts" in tables, "20260718fileformats"),
+            ("memory_import_batches" in tables, "20260718memoryimport"),
+            ("memory_export_jobs" in tables, "20260718memoryexport"),
+            ("skill_trajectories" in tables, "20260717trajectory"),
+            ("active_skill_runs" in tables, "20260717skills"),
+            ("model_registry" in tables, "20260717router"),
+            ("template_config" in columns("agent_flows"), "20260716tpls"),
+            ("flow_stack_runs" in tables, "20260716orch"),
+            ("agent_flow_run_edges" in tables, "20260716stack"),
+            ("chat_messages" in tables, "20260706chat"),
+            ("katana_teams_config" in tables, "20260704teams"),
+            ("security_policy" in columns("mado_sessions"), "cb3060c69bea"),
+            ("a2a_workspaces" in tables, "b2c3d4e5f6a7"),
+            ("openclaw_api_key" in columns("agents"), "a1b2c3d4e5f6"),
+        ]
+        return next((revision for present, revision in markers if present), None)
+
+
 async def _upgrade_database_schema() -> None:
     """Advance the configured database before ORM startup touches it."""
     from alembic import command
@@ -25,6 +84,15 @@ async def _upgrade_database_schema() -> None:
     config = Config(str(PROJECT_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(PROJECT_ROOT / "migrations"))
     config.set_main_option("sqlalchemy.url", settings.database_url)
+    baseline = await asyncio.to_thread(_legacy_sqlite_baseline, settings.database_url)
+    if baseline:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Legacy unversioned database detected; establishing Alembic baseline %s",
+            baseline,
+        )
+        await asyncio.to_thread(command.stamp, config, baseline)
     await asyncio.to_thread(command.upgrade, config, "head")
 
 
@@ -292,7 +360,7 @@ async def lifespan(app: FastAPI):
         await EventLogger.emit_system_event(
             "system.startup", "Shogun server started",
             detail={
-                "version": "1.22.0",
+                "version": "1.22.1",
                 "platform": platform.system(),
                 "python": platform.python_version(),
             },
@@ -413,7 +481,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.22.0",
+        version="1.22.1",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,

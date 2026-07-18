@@ -1,8 +1,8 @@
 {
-  "version": "1.22.0",
+  "version": "1.22.1",
   "name": "Shogun OS",
-  "build": 87,
+  "build": 88,
   "channel": "stable",
   "released": "2026-07-18T00:00:00Z",
-  "changelog": "Broader governed file-format handling for documents, spreadsheets, PDFs, images, and archives; Katana format controls; hardened native file tools; and resilient standalone Tenshu startup recovery."
+  "changelog": "Fixes Tenshu startup for legacy desktop databases by safely establishing their existing Alembic baseline before applying newer schema revisions."
 }
