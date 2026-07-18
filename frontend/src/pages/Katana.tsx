@@ -57,8 +57,9 @@ import { IdeModeTab } from './katana/IdeModeTab';
 import ModelRoutingPanel from './katana/ModelRoutingPanel';
 import ActiveSkillsPanel from './katana/ActiveSkillsPanel';
 import { SkillOptTab } from './katana/SkillOptTab';
+import { FileFormatsPanel } from './katana/FileFormatsPanel';
 
-type TabType = 'providers' | 'tools' | 'routing' | 'skills' | 'telegram' | 'teams' | 'mail_calendar' | 'office' | 'ide' | 'mado' | 'ronin' | 'skillopt';
+type TabType = 'providers' | 'tools' | 'files' | 'routing' | 'skills' | 'telegram' | 'teams' | 'mail_calendar' | 'office' | 'ide' | 'mado' | 'ronin' | 'skillopt';
 type RegisterMode = 'quick' | 'manual';
 
 // ── Documentation links for cloud providers ─────────────────────
@@ -292,7 +293,7 @@ export function Katana() {
   useEffect(() => {
     const syncTabFromHash = () => {
       const requested = window.location.hash.replace('#', '') as TabType;
-      if (['providers', 'tools', 'routing', 'skills', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'].includes(requested)) {
+      if (['providers', 'tools', 'files', 'routing', 'skills', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'].includes(requested)) {
         setActiveTab(requested);
       }
     };
@@ -1386,7 +1387,7 @@ export function Katana() {
 
       {/* ── Tab bar ────────────────────────────────────────────── */}
       <div className="flex border-b border-shogun-border overflow-x-auto">
-        {(['providers', 'tools', 'routing', 'skills', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'] as TabType[]).filter(tab => tab !== 'ide' || ['campaign', 'ronin'].includes(officePosture)).map((tab) => (
+        {(['providers', 'tools', 'files', 'routing', 'skills', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'] as TabType[]).filter(tab => tab !== 'ide' || ['campaign', 'ronin'].includes(officePosture)).map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -1402,6 +1403,7 @@ export function Katana() {
           >
             {tab === 'providers' && t('katana.tab_cloud', 'AI Model Provider')}
             {tab === 'tools'     && t('katana.tab_tools', 'Toolbox & APIs')}
+            {tab === 'files'     && <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />File Formats</span>}
             {tab === 'routing'   && t('katana.tab_routing', 'Logic Routing')}
             {tab === 'skills'    && <span className="flex items-center gap-1.5"><Puzzle className="w-3.5 h-3.5" />Skills · Active Usage</span>}
             {tab === 'telegram'  && (
@@ -1470,6 +1472,7 @@ export function Katana() {
             PROVIDERS TAB
         ════════════════════════════════════════════════════════ */}
         {activeTab === 'skills' && <ActiveSkillsPanel />}
+        {activeTab === 'files' && <FileFormatsPanel />}
 
         {activeTab === 'providers' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

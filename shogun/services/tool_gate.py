@@ -91,6 +91,21 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     "update_model_settings":  {"risk": "medium",   "category": "system"},
     # Memory
     "store_memory":           {"risk": "medium",   "category": "memory"},
+    # File format adapters
+    "file_detect_type":       {"risk": "low",      "category": "files"},
+    "file_inspect":           {"risk": "low",      "category": "files"},
+    "file_preview":           {"risk": "low",      "category": "files"},
+    "file_schema":            {"risk": "low",      "category": "files"},
+    "file_query":             {"risk": "low",      "category": "files"},
+    "file_extract":           {"risk": "low",      "category": "files"},
+    "file_compare":           {"risk": "low",      "category": "files"},
+    "file_validate":          {"risk": "low",      "category": "files"},
+    "file_transform":         {"risk": "medium",   "category": "files"},
+    "file_export":            {"risk": "medium",   "category": "files"},
+    "file_archive_extract_selected": {"risk": "high", "category": "files"},
+    "file_index_profile":     {"risk": "medium",   "category": "files"},
+    "file_index":             {"risk": "medium",   "category": "files"},
+    "file_list_formats":      {"risk": "low",      "category": "files"},
     # Comms — read
     "fetch_inbox":            {"risk": "low",      "category": "comms"},
     "read_email":             {"risk": "low",      "category": "comms"},

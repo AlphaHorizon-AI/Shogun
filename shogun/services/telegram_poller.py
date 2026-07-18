@@ -475,7 +475,9 @@ def _attachment_context_text(user_msg: str, attachments: list[dict]) -> str:
         mime_type = att.get("mime_type") or "unknown type"
         size = att.get("size")
         size_text = f", {size} bytes" if isinstance(size, int) else ""
-        lines.append(f"{index}. {label} ({mime_type}{size_text}) at {rel_path}")
+        format_text = f", detected as {att['format_id']}" if att.get("format_id") else ""
+        file_id_text = f", Shogun file ID {att['artifact_file_id']}" if att.get("artifact_file_id") else ""
+        lines.append(f"{index}. {label} ({mime_type}{size_text}{format_text}{file_id_text}) at {rel_path}")
     lines.append(
         "Use workspace tools to read files. For images use workspace_read_image, for PDFs use workspace_read_pdf."
     )
@@ -561,7 +563,7 @@ async def _download_telegram_file(
 
     target.write_bytes(content)
     rel_path = target.relative_to(workspace_root).as_posix()
-    return {
+    attachment = {
         "source": "telegram",
         "kind": kind,
         "file_id": file_id,
@@ -573,6 +575,27 @@ async def _download_telegram_file(
         "path": str(target),
         "is_image": effective_mime.startswith(_IMAGE_MIME_PREFIX),
     }
+    try:
+        from shogun.db.engine import async_session_factory
+        from shogun.services.file_formats import FileFormatService
+
+        async with async_session_factory() as db:
+            inspection = await FileFormatService(db).inspect(
+                path=str(target), source="telegram", mime_type=effective_mime
+            )
+            await db.commit()
+        attachment.update(
+            {
+                "artifact_file_id": inspection.get("file_id"),
+                "format_id": inspection.get("format_id"),
+                "format_summary": inspection.get("summary"),
+                "format_warnings": inspection.get("warnings", []),
+            }
+        )
+    except Exception as exc:
+        logger.warning("[Telegram] file format registration failed for %s: %s", target.name, exc)
+        attachment["format_warnings"] = ["File was saved but deterministic format inspection failed."]
+    return attachment
 
 
 async def _extract_telegram_attachments(bot_token: str, chat_id: str, msg: dict) -> list[dict]:

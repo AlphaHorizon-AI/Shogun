@@ -64,6 +64,19 @@ class Settings(BaseSettings):
     memory_max_sticky_context_tokens: int = 2000
     visual_max_upload_mb: int = 20
     visual_retention_days: int = 30
+    file_format_handling_enabled: bool = True
+    file_detect_by_content: bool = True
+    file_safe_parsing: bool = True
+    file_max_preview_bytes: int = 1_048_576
+    file_max_parse_bytes: int = 52_428_800
+    file_max_rows_preview: int = 100
+    file_max_json_depth: int = 100
+    file_mask_secrets_in_preview: bool = True
+    file_archive_extraction_enabled: bool = True
+    file_archive_requires_approval: bool = True
+    file_archive_max_uncompressed_bytes: int = 524_288_000
+    file_archive_max_ratio: int = 200
+    file_archive_block_executables: bool = True
 
     # Flow Stacking / governed hierarchical AgentFlow execution
     flow_stacking_enabled: bool = True

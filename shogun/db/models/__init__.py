@@ -41,6 +41,7 @@ from shogun.db.models.execution_event import ExecutionEvent
 from shogun.db.models.memory_record import MemoryRecord, MemoryProvenanceLink
 from shogun.db.models.memory_export import MemoryExportItem, MemoryExportJob
 from shogun.db.models.memory_import import MemoryImportBatch, MemoryImportItem
+from shogun.db.models.file_artifact import FileArtifact
 from shogun.db.models.snapshot import Snapshot
 from shogun.db.models.runtime_session import RuntimeSession
 from shogun.db.models.samurai_role import SamuraiRole
@@ -115,6 +116,7 @@ __all__ = [
     "MemoryExportItem",
     "MemoryImportBatch",
     "MemoryImportItem",
+    "FileArtifact",
     "Snapshot",
     "RuntimeSession",
     "SamuraiRole",

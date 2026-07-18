@@ -2059,6 +2059,76 @@ NATIVE_TOOLS = [
     },
     # ── Order 15: Skill Lifecycle Tools ──────────────────────────
     {
+        "type": "function", "risk": "low", "category": "files",
+        "function": {"name": "file_detect_type", "description": "Detect a workspace file by extension, MIME, magic bytes, and content without trusting its extension alone.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Approved workspace or artifact path."}}, "required": ["path"]}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "files",
+        "function": {"name": "file_inspect", "description": "Safely inspect a file with its deterministic adapter and return a normalized profile, schema, preview, warnings, and file ID.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}, "source": {"type": "string"}}}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "files",
+        "function": {"name": "file_preview", "description": "Return a bounded, secret-masked preview through the detected format adapter.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}}}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "files",
+        "function": {"name": "file_schema", "description": "Return the inferred schema or structural outline without sending the complete file to the model.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}}}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "files",
+        "function": {"name": "file_query", "description": "Query a registered or approved file using JSON path, column=value, field=value, config path, or text search.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}, "query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "files",
+        "function": {"name": "file_extract", "description": "Extract bounded deterministic content and structural metadata from a supported file without executing it.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}}}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "files",
+        "function": {"name": "file_compare", "description": "Compare two approved files by normalized profile, format, schema, and content hash.",
+                     "parameters": {"type": "object", "properties": {"left_path": {"type": "string"}, "right_path": {"type": "string"}}, "required": ["left_path", "right_path"]}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "files",
+        "function": {"name": "file_validate", "description": "Deterministically validate a file with the correct safe parser.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}}}},
+    },
+    {
+        "type": "function", "risk": "medium", "category": "files",
+        "function": {"name": "file_transform", "description": "Transform a supported file to JSON, CSV, TSV, or Markdown in the approved workspace without overwriting its source.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}, "target_format": {"type": "string", "enum": ["json", "csv", "tsv", "md"]}, "output_filename": {"type": "string"}, "sanitize_formulas": {"type": "boolean"}}, "required": ["target_format"]}},
+    },
+    {
+        "type": "function", "risk": "medium", "category": "files",
+        "function": {"name": "file_export", "description": "Export a supported transformation as a new versioned artifact without overwriting the source.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}, "target_format": {"type": "string", "enum": ["json", "csv", "tsv", "md"]}, "output_filename": {"type": "string"}, "sanitize_formulas": {"type": "boolean"}}, "required": ["target_format"]}},
+    },
+    {
+        "type": "function", "risk": "high", "category": "files",
+        "function": {"name": "file_archive_extract_selected", "description": "Extract explicitly selected safe ZIP members under the approved workspace. Blocks traversal, symlinks, executables, bombs, and silent overwrite.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}, "members": {"type": "array", "items": {"type": "string"}}, "output_directory": {"type": "string"}, "allow_overwrite": {"type": "boolean"}}, "required": ["members"]}},
+    },
+    {
+        "type": "function", "risk": "medium", "category": "files",
+        "function": {"name": "file_index_profile", "description": "Store only a normalized file profile, schema, summary, file ID, and hash in memory; never embeds a large raw structured file.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}, "agent_id": {"type": "string"}, "title": {"type": "string"}}, "required": ["agent_id"]}},
+    },
+    {
+        "type": "function", "risk": "medium", "category": "files",
+        "function": {"name": "file_index", "description": "Index a normalized file profile and artifact reference in memory, never the entire large raw file.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}, "agent_id": {"type": "string"}, "title": {"type": "string"}}, "required": ["agent_id"]}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "files",
+        "function": {"name": "file_list_formats", "description": "List registered file adapters, capabilities, risk, read/write/index support, and status.",
+                     "parameters": {"type": "object", "properties": {}}},
+    },
+    {
         "type": "function", "risk": "medium", "category": "skill_lifecycle",
         "function": {
             "name": "dojo_author_skill",
@@ -2218,6 +2288,67 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
     logger.info(f"Executing native skill: {name} with args {args}")
     
     try:
+        if name.startswith("file_"):
+            import uuid
+
+            from shogun.services.file_formats import FileFormatError, FileFormatService, registry
+
+            if name == "file_list_formats":
+                return json.dumps({"status": "success", "formats": registry.formats()}, default=str)
+            try:
+                service = FileFormatService(db_session)
+                if name == "file_compare":
+                    result = await service.compare(str(args.get("left_path") or ""), str(args.get("right_path") or ""))
+                    await db_session.commit()
+                    return json.dumps(result, default=str, ensure_ascii=False)
+                file_id = uuid.UUID(str(args["file_id"])) if args.get("file_id") else None
+                reference = {"path": args.get("path"), "file_id": file_id}
+                if not reference["path"] and not file_id:
+                    raise FileFormatError("path or file_id is required.", "invalid_request")
+                if name == "file_detect_type":
+                    result = await service.detect(**reference)
+                elif name in {"file_inspect", "file_preview", "file_schema"}:
+                    result = await service.inspect(**reference, source=str(args.get("source") or "agent"))
+                    if name == "file_preview":
+                        result = {key: result[key] for key in ("status", "file_id", "format_id", "summary", "preview", "warnings", "audit_event_id")}
+                    elif name == "file_schema":
+                        result = {"status": "success", "file_id": result["file_id"], "format_id": result["format_id"],
+                                  "summary": result["summary"], "schema": result["schema"], "warnings": result["warnings"]}
+                    await db_session.commit()
+                elif name == "file_query":
+                    result = await service.query(str(args.get("query") or ""), limit=int(args.get("limit") or 100), **reference)
+                elif name == "file_extract":
+                    inspected = await service.inspect(**reference, source="agent")
+                    result = {
+                        "status": "success", "file_id": inspected["file_id"], "format_id": inspected["format_id"],
+                        "operation": "extract", "summary": inspected["summary"], "data": inspected["data"],
+                        "preview": inspected["preview"], "warnings": inspected["warnings"],
+                        "artifacts": [], "audit_event_id": inspected["audit_event_id"],
+                    }
+                    await db_session.commit()
+                elif name == "file_validate":
+                    result = await service.validate(**reference)
+                    await db_session.commit()
+                elif name in {"file_transform", "file_export"}:
+                    result = await service.transform(
+                        str(args.get("target_format") or ""), args.get("output_filename"),
+                        {"sanitize_formulas": args.get("sanitize_formulas", True)}, **reference,
+                    )
+                elif name == "file_archive_extract_selected":
+                    result = await service.extract_archive(
+                        list(args.get("members") or []), args.get("output_directory"),
+                        bool(args.get("allow_overwrite", False)), True, **reference,
+                    )
+                elif name in {"file_index_profile", "file_index"}:
+                    result = await service.index_profile(uuid.UUID(str(args.get("agent_id") or "")), args.get("title"), **reference)
+                else:
+                    raise FileFormatError(f"Unknown file tool: {name}", "unsupported_operation")
+                return json.dumps(result, default=str, ensure_ascii=False)
+            except (FileFormatError, ValueError) as exc:
+                await db_session.rollback()
+                return json.dumps({"status": "failed", "error_type": getattr(exc, "error_type", "invalid_request"),
+                                   "message": str(exc), "warnings": [], "artifacts": []})
+
         if name in {"get_recent_images", "get_image_metadata", "describe_image", "inspect_image", "extract_image_text", "compare_images", "attach_image_to_stack"}:
             import uuid
             from shogun.services.visual_intake import VisualIntakeError, VisualIntakeService

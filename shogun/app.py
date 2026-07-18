@@ -292,7 +292,7 @@ async def lifespan(app: FastAPI):
         await EventLogger.emit_system_event(
             "system.startup", "Shogun server started",
             detail={
-                "version": "1.21.0",
+                "version": "1.22.0",
                 "platform": platform.system(),
                 "python": platform.python_version(),
             },
@@ -413,7 +413,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.21.0",
+        version="1.22.0",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,
@@ -463,6 +463,7 @@ def create_app() -> FastAPI:
     from shogun.api.ide import router as ide_router
     from shogun.api.skillopt import router as skillopt_router
     from shogun.api.skill_lifecycle import router as skill_lifecycle_router
+    from shogun.api.files import router as files_router
 
     prefix = "/api/v1"
     app.include_router(system_router, prefix=prefix)
@@ -500,6 +501,7 @@ def create_app() -> FastAPI:
     app.include_router(teams_router, prefix=prefix)
     app.include_router(katana_command_router, prefix=prefix)
     app.include_router(ide_router, prefix=prefix)
+    app.include_router(files_router, prefix=prefix)
 
     # Office App Mode (Katana)
     from shogun.api.office import router as office_router

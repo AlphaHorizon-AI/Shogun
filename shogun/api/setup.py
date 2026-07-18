@@ -107,6 +107,28 @@ BENCHMARK_MODE_DEFAULTS = {
     },
 }
 
+FILE_FORMAT_HANDLING_DEFAULTS = {
+    "enabled": True,
+    "detect_by_content": True,
+    "safe_parsing": True,
+    "max_preview_bytes": 1_048_576,
+    "max_parse_bytes_default": 52_428_800,
+    "max_rows_preview": 100,
+    "max_json_depth": 100,
+    "mask_secrets_in_preview": True,
+    "archive_extraction": {
+        "enabled": True,
+        "requires_approval": True,
+        "max_uncompressed_bytes": 524_288_000,
+        "block_executables": True,
+    },
+    "indexing": {
+        "enabled": True,
+        "embed_full_large_files": False,
+        "store_profiles_in_memory": True,
+    },
+}
+
 
 def _read_setup() -> dict:
     """Read the setup.json config, or return defaults."""
@@ -122,6 +144,10 @@ def _read_setup() -> dict:
                 **BENCHMARK_MODE_DEFAULTS,
                 **setup.get("benchmark_mode", {}),
             }
+            setup["file_format_handling"] = {
+                **FILE_FORMAT_HANDLING_DEFAULTS,
+                **setup.get("file_format_handling", {}),
+            }
             return setup
         except Exception:
             pass
@@ -131,6 +157,7 @@ def _read_setup() -> dict:
         "ronin_desktop_control": dict(RONIN_DESKTOP_DEFAULTS),
         "mado": dict(MADO_DEFAULTS),
         "benchmark_mode": dict(BENCHMARK_MODE_DEFAULTS),
+        "file_format_handling": dict(FILE_FORMAT_HANDLING_DEFAULTS),
     }
 
 

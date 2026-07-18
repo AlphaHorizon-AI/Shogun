@@ -356,6 +356,18 @@ def filter_tools_by_posture(tools: list[dict], posture: dict) -> tuple[list[dict
                 denied.append(name)
                 continue
 
+        # File adapters inherit the posture's filesystem boundary. Guarded
+        # allowlists remain read-only; transforms/extraction require scoped/full.
+        if name.startswith("file_"):
+            filesystem_mode = posture.get("filesystem_mode", "disabled")
+            if filesystem_mode == "disabled":
+                denied.append(name)
+                continue
+            write_tools = {"file_transform", "file_export", "file_archive_extract_selected"}
+            if name in write_tools and filesystem_mode == "allowlist":
+                denied.append(name)
+                continue
+
         # ── Dojo: Skill management tools ──
         if (name.startswith("dojo_") or name.startswith("mcp_")) and not posture.get("skill_auto_install", False):
             denied.append(name)

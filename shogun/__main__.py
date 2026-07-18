@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import shutil
 import sys
+import traceback
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 
@@ -161,6 +163,20 @@ def _open_browser_when_ready(url: str, health_url: str, timeout_seconds: int = 1
     threading.Thread(target=worker, name="shogun-browser-opener", daemon=True).start()
 
 
+def _record_startup_failure(exc: BaseException) -> Path:
+    """Persist launcher failures that would otherwise disappear with the terminal."""
+    project_root = Path(__file__).resolve().parent.parent
+    log_path = project_root / "logs" / "startup-error.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as handle:
+        stamp = datetime.now().astimezone().isoformat(timespec="seconds")
+        handle.write(f"\n[{stamp}] Shogun startup failed\n")
+        if isinstance(exc, SystemExit):
+            handle.write(f"Process exited with code {exc.code!r}.\n")
+        traceback.print_exception(type(exc), exc, exc.__traceback__, file=handle)
+    return log_path
+
+
 def main() -> None:
     _reexec_in_project_venv()
     if len(sys.argv) >= 3 and sys.argv[1:3] == ["benchmark", "ale"]:
@@ -223,4 +239,17 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
+    except BaseException as exc:
+        # Uvicorn uses SystemExit for errors such as an occupied port. Record it
+        # as well so shortcut launches leave useful evidence behind.
+        if not isinstance(exc, SystemExit) or exc.code not in (None, 0):
+            try:
+                failure_log = _record_startup_failure(exc)
+                print(f"\n[ERROR] Startup details saved to: {failure_log}", file=sys.stderr)
+            except Exception:
+                pass
+        raise
