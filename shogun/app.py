@@ -134,6 +134,30 @@ async def _repair_memory_record_columns(conn) -> list[str]:
     return added
 
 
+async def _repair_agent_columns(conn) -> list[str]:
+    """Add Agent fields introduced after legacy desktop databases were created."""
+    from sqlalchemy import inspect as sa_inspect, text
+
+    if conn.dialect.name != "sqlite":
+        return []
+
+    table_names = await conn.run_sync(lambda c: sa_inspect(c).get_table_names())
+    if "agents" not in table_names:
+        return []
+    columns = set(
+        await conn.run_sync(
+            lambda c: [column["name"] for column in sa_inspect(c).get_columns("agents")]
+        )
+    )
+    additions = {"openclaw_private_key": "VARCHAR(4000)"}
+    added: list[str] = []
+    for column, definition in additions.items():
+        if column not in columns:
+            await conn.execute(text(f"ALTER TABLE agents ADD COLUMN {column} {definition}"))
+            added.append(column)
+    return added
+
+
 class NoCacheStaticFiles(StaticFiles):
     """Serve desktop UI assets without browser cache stickiness."""
 
@@ -165,6 +189,12 @@ async def lifespan(app: FastAPI):
                 logging.getLogger(__name__).warning(
                     "Repaired legacy memory_records columns: %s",
                     ", ".join(repaired_memory_columns),
+                )
+            repaired_agent_columns = await _repair_agent_columns(conn)
+            if repaired_agent_columns:
+                logging.getLogger(__name__).warning(
+                    "Repaired legacy agents columns: %s",
+                    ", ".join(repaired_agent_columns),
                 )
             if "agent_flows" in table_names:
                 flow_columns = set(await conn.run_sync(
@@ -404,7 +434,7 @@ async def lifespan(app: FastAPI):
         await EventLogger.emit_system_event(
             "system.startup", "Shogun server started",
             detail={
-                "version": "1.24.1",
+                "version": "1.24.2",
                 "platform": platform.system(),
                 "python": platform.python_version(),
             },
@@ -525,7 +555,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.24.1",
+        version="1.24.2",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,

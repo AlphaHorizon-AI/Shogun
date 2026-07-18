@@ -175,6 +175,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
   // Step 9: Completing
   const [completing, setCompleting] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [completionError, setCompletionError] = useState<string | null>(null);
 
   // ── Load initial data ────────────────────────────────────────
   useEffect(() => {
@@ -342,6 +343,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
   // ── Complete setup ───────────────────────────────────────────
   const handleComplete = async () => {
     setCompleting(true);
+    setCompletionError(null);
     try {
       await axios.post('/api/v1/setup/complete', {
         language,
@@ -384,6 +386,12 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
       }, 2500);
     } catch (err) {
       console.error('Setup failed:', err);
+      let message = 'Setup could not be completed. Restart Tenshu to apply database repairs, then try again.';
+      if (axios.isAxiosError(err)) {
+        const detail = err.response?.data?.detail;
+        if (typeof detail === 'string' && detail.trim()) message = detail;
+      }
+      setCompletionError(message);
       setCompleting(false);
     }
   };
@@ -1382,6 +1390,16 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                 </div>
               </div>
             </div>
+
+            {completionError && (
+              <div className="max-w-2xl mx-auto flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-left">
+                <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-bold text-red-300">Setup could not be completed</p>
+                  <p className="text-xs text-red-200/80 mt-1 leading-relaxed">{completionError}</p>
+                </div>
+              </div>
+            )}
 
             {/* Rise + Cancel buttons */}
             <div className="flex items-center justify-center gap-4 pt-4">

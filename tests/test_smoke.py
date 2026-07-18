@@ -8,7 +8,7 @@ import pytest
 def test_version():
     """Package version is set."""
     import shogun
-    assert shogun.__version__ == "1.24.1"
+    assert shogun.__version__ == "1.24.2"
 
 
 def test_app_factory():
@@ -96,6 +96,32 @@ async def test_memory_column_repair_heals_stamped_legacy_database(tmp_path):
             "tags",
         }
         assert set(added).issubset(columns)
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_agent_column_repair_unblocks_setup_on_legacy_database(tmp_path):
+    from sqlalchemy import inspect, text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from shogun.app import _repair_agent_columns
+
+    database = tmp_path / "missing-agent-columns.db"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database.as_posix()}")
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE TABLE agents (id VARCHAR(36) PRIMARY KEY, name VARCHAR(255))"))
+            added = await _repair_agent_columns(conn)
+            columns = set(
+                await conn.run_sync(
+                    lambda sync_conn: [
+                        column["name"] for column in inspect(sync_conn).get_columns("agents")
+                    ]
+                )
+            )
+        assert added == ["openclaw_private_key"]
+        assert "openclaw_private_key" in columns
     finally:
         await engine.dispose()
 
