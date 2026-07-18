@@ -1,8 +1,8 @@
 {
-  "version": "1.24.0",
+  "version": "1.24.1",
   "name": "Shogun OS",
-  "build": 90,
+  "build": 91,
   "channel": "stable",
   "released": "2026-07-18T00:00:00Z",
-  "changelog": "Restores inbound Telegram workspace-topic delivery with listener diagnostics and adds a dedicated Programming category to Archives."
+  "changelog": "Repairs missing legacy memory columns at startup and prevents Archives from hiding intact fragments behind a false empty state."
 }

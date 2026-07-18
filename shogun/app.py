@@ -97,6 +97,43 @@ async def _upgrade_database_schema() -> None:
     await asyncio.to_thread(command.upgrade, config, "head")
 
 
+async def _repair_memory_record_columns(conn) -> list[str]:
+    """Heal desktop databases that were stamped past the memory-import revision.
+
+    ``create_all`` creates missing tables but cannot add columns to an existing
+    SQLite table. Some legacy desktop databases therefore have valid memory
+    rows and statistics while full record reads fail on ``source_system``.
+    """
+    from sqlalchemy import inspect as sa_inspect, text
+
+    if conn.dialect.name != "sqlite":
+        return []
+
+    table_names = await conn.run_sync(lambda c: sa_inspect(c).get_table_names())
+    if "memory_records" not in table_names:
+        return []
+
+    columns = set(
+        await conn.run_sync(
+            lambda c: [column["name"] for column in sa_inspect(c).get_columns("memory_records")]
+        )
+    )
+    additions = {
+        "source_system": "VARCHAR(100)",
+        "source_file": "VARCHAR(1000)",
+        "source_external_id": "VARCHAR(255)",
+        "import_batch_id": "VARCHAR(64)",
+        "content_hash": "VARCHAR(64)",
+        "tags": "TEXT NOT NULL DEFAULT '[]'",
+    }
+    added: list[str] = []
+    for column, definition in additions.items():
+        if column not in columns:
+            await conn.execute(text(f"ALTER TABLE memory_records ADD COLUMN {column} {definition}"))
+            added.append(column)
+    return added
+
+
 class NoCacheStaticFiles(StaticFiles):
     """Serve desktop UI assets without browser cache stickiness."""
 
@@ -123,6 +160,12 @@ async def lifespan(app: FastAPI):
             # Stacking revisions. SQLite's create_all cannot add columns to an
             # existing table, so add only the missing, backward-compatible fields.
             table_names = await conn.run_sync(lambda c: sa_inspect(c).get_table_names())
+            repaired_memory_columns = await _repair_memory_record_columns(conn)
+            if repaired_memory_columns:
+                logging.getLogger(__name__).warning(
+                    "Repaired legacy memory_records columns: %s",
+                    ", ".join(repaired_memory_columns),
+                )
             if "agent_flows" in table_names:
                 flow_columns = set(await conn.run_sync(
                     lambda c: [col["name"] for col in sa_inspect(c).get_columns("agent_flows")]
@@ -361,7 +404,7 @@ async def lifespan(app: FastAPI):
         await EventLogger.emit_system_event(
             "system.startup", "Shogun server started",
             detail={
-                "version": "1.24.0",
+                "version": "1.24.1",
                 "platform": platform.system(),
                 "python": platform.python_version(),
             },
@@ -482,7 +525,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.24.0",
+        version="1.24.1",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,

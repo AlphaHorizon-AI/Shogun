@@ -162,6 +162,7 @@ interface ImportBatch {
 export function Archives() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
+  const [memoryLoadError, setMemoryLoadError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
   const [searchResults, setSearchResults] = useState<ScoredMemory[]>([]);
@@ -210,30 +211,37 @@ export function Archives() {
   // ── Fetch Initial Data ─────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true);
-    try {
-      const agentsRes = await axios.get(AGENTS_API);
-      setAgents(agentsRes.data.data || []);
-      
-      const statsRes = await axios.get(`${API}/stats`);
-      setStats(statsRes.data.data);
-      
-      // Initial memories. Programming memory remains project-scoped in its
-      // dedicated table and is projected into the common Archive card shape.
-      const params = new URLSearchParams();
-      if (activeCategory !== 'all' && activeCategory !== 'programming') params.set('memory_type', activeCategory);
-      if (decayFilter !== 'all' && activeCategory !== 'programming') params.set('decay_class', decayFilter);
-      if (selectedAgentId !== 'all') params.set('agent_id', selectedAgentId);
-      params.set('sort_by', sortBy);
-      
-      const memoriesRes = await axios.get(
-        activeCategory === 'programming' ? `${API}/programming?${params}` : `${API}?${params}`
-      );
-      setMemories(memoriesRes.data.data || []);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
+    setMemoryLoadError(null);
+
+    // These requests are independent. A statistics or agent-list failure must
+    // never hide memory fragments that the record endpoint can still return.
+    const params = new URLSearchParams();
+    if (activeCategory !== 'all' && activeCategory !== 'programming') params.set('memory_type', activeCategory);
+    if (decayFilter !== 'all' && activeCategory !== 'programming') params.set('decay_class', decayFilter);
+    if (selectedAgentId !== 'all') params.set('agent_id', selectedAgentId);
+    params.set('sort_by', sortBy);
+    const memoryUrl = activeCategory === 'programming' ? `${API}/programming?${params}` : `${API}?${params}`;
+
+    const [agentsResult, statsResult, memoriesResult] = await Promise.allSettled([
+      axios.get(AGENTS_API),
+      axios.get(`${API}/stats`),
+      axios.get(memoryUrl),
+    ]);
+
+    if (agentsResult.status === 'fulfilled') setAgents(agentsResult.value.data.data || []);
+    else console.error('Error fetching agents:', agentsResult.reason);
+
+    if (statsResult.status === 'fulfilled') setStats(statsResult.value.data.data);
+    else console.error('Error fetching memory statistics:', statsResult.reason);
+
+    if (memoriesResult.status === 'fulfilled') {
+      setMemories(memoriesResult.value.data.data || []);
+    } else {
+      console.error('Error fetching memory fragments:', memoriesResult.reason);
+      setMemories([]);
+      setMemoryLoadError('Memory fragments could not be loaded. Shogun may need to repair the local memory schema.');
     }
+    setLoading(false);
   }, [activeCategory, decayFilter, selectedAgentId, sortBy]);
 
   useEffect(() => {
@@ -781,6 +789,20 @@ export function Archives() {
                  <div className="h-[500px] flex flex-col items-center justify-center opacity-50 gap-4">
                     <RefreshCw className="w-10 h-10 animate-spin text-shogun-blue" />
                     <span className="text-[10px] font-bold uppercase tracking-[0.3em] shogun-title">Synchronizing Memory...</span>
+                 </div>
+               ) : memoryLoadError ? (
+                 <div className="h-[500px] flex flex-col items-center justify-center text-shogun-subdued gap-6">
+                   <AlertTriangle className="w-12 h-12 text-red-400" />
+                   <div className="text-center space-y-3 max-w-lg px-8">
+                     <p className="text-sm font-bold text-red-300">Memory Fragments Failed to Load</p>
+                     <p className="text-xs leading-relaxed opacity-80">{memoryLoadError}</p>
+                     <button
+                       onClick={fetchData}
+                       className="px-4 py-2 rounded-lg border border-shogun-border bg-shogun-card text-xs font-bold hover:border-shogun-blue transition-colors"
+                     >
+                       Retry Memory Load
+                     </button>
+                   </div>
                  </div>
                ) : displayedMemories.length === 0 ? (
                  <div className="h-[500px] flex flex-col items-center justify-center text-shogun-subdued gap-6">

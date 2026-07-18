@@ -8,7 +8,7 @@ import pytest
 def test_version():
     """Package version is set."""
     import shogun
-    assert shogun.__version__ == "1.24.0"
+    assert shogun.__version__ == "1.24.1"
 
 
 def test_app_factory():
@@ -65,6 +65,39 @@ def test_legacy_sqlite_baseline_recognizes_programming_memory_schema(tmp_path):
         _legacy_sqlite_baseline(f"sqlite+aiosqlite:///{database.as_posix()}")
         == "20260718programmingmemory"
     )
+
+
+@pytest.mark.asyncio
+async def test_memory_column_repair_heals_stamped_legacy_database(tmp_path):
+    from sqlalchemy import inspect, text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from shogun.app import _repair_memory_record_columns
+
+    database = tmp_path / "missing-memory-columns.db"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database.as_posix()}")
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE TABLE memory_records (id VARCHAR(36) PRIMARY KEY, title VARCHAR(500))"))
+            added = await _repair_memory_record_columns(conn)
+            columns = set(
+                await conn.run_sync(
+                    lambda sync_conn: [
+                        column["name"] for column in inspect(sync_conn).get_columns("memory_records")
+                    ]
+                )
+            )
+        assert set(added) == {
+            "source_system",
+            "source_file",
+            "source_external_id",
+            "import_batch_id",
+            "content_hash",
+            "tags",
+        }
+        assert set(added).issubset(columns)
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
