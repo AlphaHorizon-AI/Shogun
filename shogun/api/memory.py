@@ -4,17 +4,22 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from shogun.api.deps import get_memory_service
 from shogun.schemas.common import ApiResponse
 from shogun.schemas.memory import (
+    MemoryExportJobResponse,
+    MemoryExportPreview,
+    MemoryExportRequest,
     MemoryRecordCreate,
     MemoryRecordResponse,
     MemoryRecordUpdate,
     MemoryReinforcementRequest,
     MemorySearchRequest,
 )
+from shogun.services.memory_export_service import MemoryExportService, job_response
 from shogun.services.memory_service import MemoryService
 
 router = APIRouter(prefix="/memory", tags=["Memory"])
@@ -27,7 +32,8 @@ async def memory_stats(
     svc: MemoryService = Depends(get_memory_service),
 ):
     """Get aggregate memory statistics for the Archives sidebar."""
-    from sqlalchemy import select, func
+    from sqlalchemy import func, select
+
     from shogun.db.models.memory_record import MemoryRecord
 
     session = svc.session
@@ -107,6 +113,7 @@ async def list_memories(
     svc: MemoryService = Depends(get_memory_service),
 ):
     from sqlalchemy import desc
+
     from shogun.db.models.memory_record import MemoryRecord
     filters = []
     if not include_archived:
@@ -148,7 +155,8 @@ async def search_memory(
       3. Apply salience reranking (decay × importance × recency)
       4. Return scored, ranked results
     """
-    import logging, traceback
+    import logging
+    import traceback
     logger = logging.getLogger(__name__)
     try:
         results = await svc.search(
@@ -170,6 +178,118 @@ async def search_memory(
     return ApiResponse(
         data=results,
         meta={"query": body.query, "count": len(results)},
+    )
+
+
+# ── Order 16: Portable Markdown export ─────────────────────────────────────
+
+
+@router.post("/export/preview", response_model=ApiResponse[MemoryExportPreview])
+async def preview_memory_export(
+    body: MemoryExportRequest,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    export_svc = MemoryExportService(svc.session)
+    preview = await export_svc.preview(body)
+    from shogun.services.event_logger import EventLogger
+
+    await EventLogger.emit(
+        category="memory",
+        event_type="memory.export.preview_requested",
+        action="Previewed portable memory export",
+        user_id="local_user",
+        data_classification="private" if body.include_private else "internal",
+        detail={"filters": preview["filters"], "counts": preview["estimated_counts"]},
+    )
+    return ApiResponse(data=preview)
+
+
+async def _run_memory_export(export_id: str) -> None:
+    from shogun.db.engine import async_session_factory
+
+    async with async_session_factory() as session:
+        await MemoryExportService(session).execute(export_id)
+
+
+@router.post("/export", response_model=ApiResponse[MemoryExportJobResponse], status_code=202)
+async def start_memory_export(
+    body: MemoryExportRequest,
+    background_tasks: BackgroundTasks,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    export_svc = MemoryExportService(svc.session)
+    try:
+        job = await export_svc.create_job(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await svc.session.commit()
+    background_tasks.add_task(_run_memory_export, job.id)
+    return ApiResponse(data=job_response(job))
+
+
+@router.get("/export/history", response_model=ApiResponse[list[MemoryExportJobResponse]])
+async def memory_export_history(
+    limit: int = Query(20, ge=1, le=100),
+    svc: MemoryService = Depends(get_memory_service),
+):
+    jobs = await MemoryExportService(svc.session).history(limit)
+    return ApiResponse(data=[job_response(job) for job in jobs])
+
+
+@router.get("/export/{export_id}", response_model=ApiResponse[MemoryExportJobResponse])
+async def memory_export_status(
+    export_id: str,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    job = await MemoryExportService(svc.session).get_job(export_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Memory export job not found")
+    return ApiResponse(data=job_response(job))
+
+
+@router.post("/export/{export_id}/cancel", response_model=ApiResponse[MemoryExportJobResponse])
+async def cancel_memory_export(
+    export_id: str,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    try:
+        job = await MemoryExportService(svc.session).cancel(export_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return ApiResponse(data=job_response(job))
+
+
+@router.get("/export/{export_id}/download")
+async def download_memory_export(
+    export_id: str,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    export_svc = MemoryExportService(svc.session)
+    job = await export_svc.get_job(export_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Memory export job not found")
+    try:
+        path = export_svc.download_path(job)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    from shogun.services.event_logger import EventLogger
+
+    await EventLogger.emit(
+        category="memory",
+        event_type="memory.export.downloaded",
+        action=f"Downloaded memory export {export_id}",
+        user_id="local_user",
+        data_classification="private" if (job.filters_json or {}).get("include_private") else "internal",
+        detail={"export_id": export_id, "counts": job.counts_json},
+    )
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=f"shogun_memory_export_{export_id}.zip",
+        headers={"Cache-Control": "no-store"},
     )
 
 

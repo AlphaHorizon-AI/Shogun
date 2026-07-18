@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from shogun.schemas.common import DecayClass, MemoryType, ShogunBase, SnapshotType
-
 
 # ── Memory Search ────────────────────────────────────────────
 
@@ -227,3 +227,59 @@ class SnapshotResponse(ShogunBase):
     status: str
     created_by: str
     created_at: datetime
+
+
+# ── Order 16: Portable Markdown exports ────────────────────────────────────
+
+
+class MemoryExportRequest(ShogunBase):
+    """Filters and packaging options for an OpenClaw-compatible export."""
+
+    scope: Literal["all", "agent", "project", "archives"] = "all"
+    project_id: str | None = None
+    agent_id: uuid.UUID | None = None
+    include_archives: bool = True
+    include_private: bool = True
+    include_sticky: bool = True
+    include_analysis: bool = True
+    include_raw_json: bool = False
+    include_secrets: bool = False
+    package_as_zip: bool = True
+    private_export_confirmed: bool = False
+    memory_types: list[str] = Field(default_factory=list)
+    decay_classes: list[str] = Field(default_factory=list)
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    min_importance: float | None = Field(default=None, ge=0.0, le=1.0)
+    source_run_id: str | None = None
+    stack_run_id: str | None = None
+    skill_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_filters(self):
+        if self.scope == "agent" and not self.agent_id:
+            raise ValueError("agent_id is required when scope is 'agent'")
+        if self.scope == "project" and not (self.project_id or "").strip():
+            raise ValueError("project_id is required when scope is 'project'")
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            raise ValueError("date_from must be before or equal to date_to")
+        return self
+
+
+class MemoryExportPreview(ShogunBase):
+    estimated_counts: dict[str, int]
+    warnings: list[str] = Field(default_factory=list)
+    filters: dict = Field(default_factory=dict)
+
+
+class MemoryExportJobResponse(ShogunBase):
+    export_id: str
+    status: str
+    requested_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    records_exported: int = 0
+    counts: dict[str, int] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    error: dict = Field(default_factory=dict)
+    download_url: str | None = None

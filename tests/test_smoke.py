@@ -6,7 +6,7 @@ import pytest
 def test_version():
     """Package version is set."""
     import shogun
-    assert shogun.__version__ == "1.13.0"
+    assert shogun.__version__ == "1.19.0"
 
 
 def test_app_factory():
@@ -34,8 +34,8 @@ def test_config_defaults():
 
 def test_all_models_registered():
     """All ORM models are discovered by the base metadata."""
-    from shogun.db.base import Base
     import shogun.db.models  # noqa: F401
+    from shogun.db.base import Base
     tables = Base.metadata.tables
     assert len(tables) >= 20, f"Expected 20+ tables, got {len(tables)}"
 
@@ -45,10 +45,11 @@ async def test_bootstrap_creates_tables():
     """Bootstrap creates all database tables."""
     from shogun.config import settings
     settings.ensure_directories()
+    from sqlalchemy import inspect
+
+    import shogun.db.models  # noqa: F401
     from shogun.db.base import Base
     from shogun.db.engine import engine
-    import shogun.db.models  # noqa: F401
-    from sqlalchemy import inspect
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

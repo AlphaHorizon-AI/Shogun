@@ -1,8 +1,8 @@
 {
-  "version": "1.18.1",
+  "version": "1.19.0",
   "name": "Shogun OS",
-  "build": 83,
+  "build": 84,
   "channel": "stable",
   "released": "2026-07-18T00:00:00Z",
-  "changelog": "Telegram forum topic delivery: adds the governed send_telegram_message tool with optional message_thread_id, passes topic IDs through Agent Flow channel output nodes, preserves General-topic compatibility, and centralizes topic payload handling for future Telegram media senders."
+  "changelog": "Memory portability: adds governed OpenClaw-compatible Markdown exports with filtering, previews, background job history, sensitive-data confirmation, manifests, reports, optional raw JSON, ZIP downloads, and Archives UI controls."
 }

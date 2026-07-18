@@ -24,7 +24,11 @@ import {
   Network,
   Users,
   Info,
-  Zap
+  Zap,
+  Download,
+  FileArchive,
+  AlertTriangle,
+  PackageCheck
 } from "lucide-react";
 import axios from 'axios';
 import { cn } from '../lib/utils';
@@ -89,6 +93,22 @@ interface Agent {
   agent_type: string;
 }
 
+interface ExportPreview {
+  estimated_counts: Record<string, number>;
+  warnings: string[];
+}
+
+interface ExportJob {
+  export_id: string;
+  status: string;
+  requested_at: string;
+  records_exported: number;
+  counts: Record<string, number>;
+  warnings: string[];
+  download_url: string | null;
+  error: Record<string, string>;
+}
+
 export function Archives() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
@@ -103,6 +123,18 @@ export function Archives() {
   const [sortBy, setSortBy] = useState<'created_at' | 'relevance' | 'importance'>('created_at');
   const [selectedMemory, setSelectedMemory] = useState<MemoryRecord | ScoredMemory | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportPreview, setExportPreview] = useState<ExportPreview | null>(null);
+  const [exportHistory, setExportHistory] = useState<ExportJob[]>([]);
+  const [activeExport, setActiveExport] = useState<ExportJob | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [privateExportConfirmed, setPrivateExportConfirmed] = useState(false);
+  const [exportForm, setExportForm] = useState({
+    scope: 'all', project_id: '', agent_id: '', memory_types: [] as string[],
+    date_from: '', date_to: '', include_archives: true, include_private: true,
+    include_sticky: true, include_analysis: true, include_raw_json: false,
+    include_secrets: false, package_as_zip: true, min_importance: 0,
+  });
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // ── Manual Memory Form State ─────────────────────────────
@@ -240,6 +272,80 @@ export function Archives() {
     } catch { /* silent */ }
   };
 
+  const exportPayload = (confirmed = false) => ({
+    ...exportForm,
+    project_id: exportForm.project_id.trim() || null,
+    agent_id: exportForm.agent_id || null,
+    date_from: exportForm.date_from ? `${exportForm.date_from}T00:00:00Z` : null,
+    date_to: exportForm.date_to ? `${exportForm.date_to}T23:59:59Z` : null,
+    min_importance: exportForm.min_importance || null,
+    private_export_confirmed: confirmed,
+  });
+
+  const loadExportHistory = async () => {
+    try {
+      const res = await axios.get(`${API}/export/history`);
+      setExportHistory(res.data.data || []);
+    } catch (error) {
+      console.error('Export history error:', error);
+    }
+  };
+
+  const previewExport = async () => {
+    try {
+      const res = await axios.post(`${API}/export/preview`, exportPayload(false));
+      setExportPreview(res.data.data);
+    } catch (error: any) {
+      setStatusMsg({ type: 'error', text: error?.response?.data?.detail || 'Export preview failed.' });
+    }
+  };
+
+  const openExport = () => {
+    setIsExportModalOpen(true);
+    setPrivateExportConfirmed(false);
+    setExportPreview(null);
+    setActiveExport(null);
+    void loadExportHistory();
+  };
+
+  const startExport = async () => {
+    if ((exportForm.include_private || exportForm.include_secrets) && !privateExportConfirmed) {
+      setStatusMsg({ type: 'error', text: 'Confirm the sensitive-memory warning before exporting.' });
+      return;
+    }
+    setExporting(true);
+    try {
+      const started = await axios.post(`${API}/export`, exportPayload(privateExportConfirmed));
+      let job: ExportJob = started.data.data;
+      setActiveExport(job);
+      for (let attempt = 0; attempt < 60 && ['pending', 'running'].includes(job.status); attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const status = await axios.get(`${API}/export/${job.export_id}`);
+        job = status.data.data;
+        setActiveExport(job);
+      }
+      if (job.status === 'completed' || job.status === 'completed_with_warnings') {
+        setStatusMsg({ type: 'success', text: `Export completed with ${job.records_exported} Markdown files.` });
+      } else if (job.status === 'failed') {
+        setStatusMsg({ type: 'error', text: job.error?.message || 'Memory export failed.' });
+      }
+      await loadExportHistory();
+    } catch (error: any) {
+      setStatusMsg({ type: 'error', text: error?.response?.data?.detail || 'Memory export failed.' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const toggleExportMemoryType = (memoryType: string) => {
+    setExportForm(current => ({
+      ...current,
+      memory_types: current.memory_types.includes(memoryType)
+        ? current.memory_types.filter(item => item !== memoryType)
+        : [...current.memory_types, memoryType],
+    }));
+  };
+
   // ── Helpers ────────────────────────────────────────────────
   const getCategoryIcon = (cat: string) => {
     switch(cat.toLowerCase()) {
@@ -290,6 +396,12 @@ export function Archives() {
         </div>
         
         <div className="flex items-center gap-3">
+          <button
+            onClick={openExport}
+            className="flex items-center gap-2 px-4 py-2 bg-shogun-blue/10 text-shogun-blue border border-shogun-blue/20 rounded-lg text-sm font-bold uppercase tracking-widest hover:bg-shogun-blue/20 transition-all"
+          >
+            <Download className="w-4 h-4" /> Export Memory
+          </button>
           <button 
             onClick={() => setIsCreateModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-shogun-gold/10 text-shogun-gold border border-shogun-gold/20 rounded-lg text-sm font-bold uppercase tracking-widest hover:bg-shogun-gold/20 transition-all"
@@ -625,6 +737,70 @@ export function Archives() {
           </div>
         </div>
       </div>
+
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="bg-shogun-bg border border-shogun-border w-full max-w-5xl max-h-[92vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-shogun-border bg-shogun-card flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-shogun-blue/10 border border-shogun-blue/20 flex items-center justify-center text-shogun-blue"><FileArchive className="w-6 h-6" /></div>
+                <div><h3 className="text-xl font-bold shogun-title">Export Memory</h3><p className="text-xs text-shogun-subdued uppercase tracking-widest font-bold">OpenClaw-compatible Markdown bundle</p></div>
+              </div>
+              <button onClick={() => setIsExportModalOpen(false)} className="p-2 hover:bg-shogun-bg rounded-lg"><X className="w-6 h-6 text-shogun-subdued" /></button>
+            </div>
+
+            <div className="p-6 overflow-y-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="space-y-5">
+                <div className="shogun-card space-y-4">
+                  <h4 className="text-[10px] font-bold text-shogun-blue uppercase tracking-widest">Export Scope & Filters</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="space-y-1 text-[10px] uppercase font-bold text-shogun-subdued">Scope
+                      <select value={exportForm.scope} onChange={e => setExportForm({...exportForm, scope: e.target.value})} className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text">
+                        <option value="all">All memory</option><option value="agent">Selected agent</option><option value="project">Selected project</option><option value="archives">Archives only</option>
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-[10px] uppercase font-bold text-shogun-subdued">Agent
+                      <select value={exportForm.agent_id} onChange={e => setExportForm({...exportForm, agent_id: e.target.value})} className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text">
+                        <option value="">All agents</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  {exportForm.scope === 'project' && <label className="space-y-1 text-[10px] uppercase font-bold text-shogun-subdued block">Project identifier<input value={exportForm.project_id} onChange={e => setExportForm({...exportForm, project_id: e.target.value})} placeholder="Project slug or UUID" className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text normal-case" /></label>}
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="space-y-1 text-[10px] uppercase font-bold text-shogun-subdued">From<input type="date" value={exportForm.date_from} onChange={e => setExportForm({...exportForm, date_from: e.target.value})} className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text" /></label>
+                    <label className="space-y-1 text-[10px] uppercase font-bold text-shogun-subdued">To<input type="date" value={exportForm.date_to} onChange={e => setExportForm({...exportForm, date_to: e.target.value})} className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text" /></label>
+                  </div>
+                  <div><p className="text-[10px] uppercase font-bold text-shogun-subdued mb-2">Memory types (none means all)</p><div className="flex flex-wrap gap-2">{categories.filter(item => item !== 'all').map(item => <button key={item} onClick={() => toggleExportMemoryType(item)} className={cn("px-3 py-1.5 rounded-lg border text-[9px] uppercase font-bold", exportForm.memory_types.includes(item) ? "border-shogun-blue bg-shogun-blue/10 text-shogun-blue" : "border-shogun-border text-shogun-subdued")}>{item}</button>)}</div></div>
+                  <label className="space-y-1 text-[10px] uppercase font-bold text-shogun-subdued block">Minimum importance: {Math.round(exportForm.min_importance * 100)}%<input type="range" min="0" max="1" step="0.05" value={exportForm.min_importance} onChange={e => setExportForm({...exportForm, min_importance: Number(e.target.value)})} className="w-full accent-shogun-blue" /></label>
+                </div>
+
+                <div className="shogun-card grid grid-cols-2 gap-3">
+                  {([['include_archives', 'Include archives'], ['include_private', 'Include private'], ['include_sticky', 'Include sticky'], ['include_analysis', 'Include analysis'], ['include_raw_json', 'Include raw JSON'], ['include_secrets', 'Include secret-classified'], ['package_as_zip', 'Package as ZIP']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-xs text-shogun-text cursor-pointer"><input type="checkbox" checked={exportForm[key]} onChange={e => setExportForm({...exportForm, [key]: e.target.checked})} className="accent-shogun-blue" /> {label}</label>)}
+                </div>
+
+                {(exportForm.include_private || exportForm.include_secrets) && <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 space-y-3"><div className="flex gap-3"><AlertTriangle className="w-5 h-5 shrink-0" /><p className="text-xs leading-relaxed">This export may contain private or secret-classified context, preferences, project information, and operational memory. Store it securely.</p></div><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={privateExportConfirmed} onChange={e => setPrivateExportConfirmed(e.target.checked)} className="accent-amber-400" /> I understand and confirm this sensitive export.</label></div>}
+                {exportForm.include_secrets && <p className="text-[10px] text-red-400 border border-red-500/30 bg-red-500/10 rounded-lg p-3">Secret-classified memory is explicitly included. Review and protect the resulting bundle.</p>}
+              </div>
+
+              <div className="space-y-5">
+                <div className="shogun-card space-y-4">
+                  <div className="flex items-center justify-between"><h4 className="text-[10px] font-bold text-shogun-gold uppercase tracking-widest">Export Preview</h4><button onClick={previewExport} className="px-3 py-1.5 text-[9px] font-bold uppercase border border-shogun-gold/30 text-shogun-gold rounded-lg">Refresh preview</button></div>
+                  {exportPreview ? <><div className="grid grid-cols-3 gap-2">{['memories', 'archives', 'sticky', 'analysis', 'private', 'total'].map(key => <div key={key} className="bg-shogun-bg border border-shogun-border rounded-lg p-3"><p className="text-[8px] uppercase text-shogun-subdued">{key}</p><p className="text-lg font-bold">{exportPreview.estimated_counts[key] || 0}</p></div>)}</div><div>{exportPreview.warnings.map(warning => <p key={warning} className="text-[10px] text-amber-300">• {warning}</p>)}</div></> : <p className="text-xs text-shogun-subdued">Preview the selected filters before generating the bundle.</p>}
+                </div>
+
+                {activeExport && <div className="shogun-card border-shogun-blue/30 space-y-3"><div className="flex items-center justify-between"><h4 className="text-[10px] font-bold uppercase text-shogun-blue">Current Export</h4><span className="text-[9px] uppercase font-bold">{activeExport.status.replaceAll('_', ' ')}</span></div><p className="text-[10px] font-mono text-shogun-subdued">{activeExport.export_id}</p><p className="text-xs">{activeExport.records_exported} Markdown files generated</p>{activeExport.download_url && <a href={activeExport.download_url} className="flex items-center justify-center gap-2 w-full py-2.5 bg-shogun-blue text-white rounded-lg text-xs font-bold uppercase"><Download className="w-4 h-4" /> Download ZIP</a>}</div>}
+
+                <div className="shogun-card space-y-3">
+                  <div className="flex items-center justify-between"><h4 className="text-[10px] font-bold uppercase text-shogun-subdued">Export History</h4><button onClick={loadExportHistory}><RefreshCw className="w-3 h-3 text-shogun-subdued" /></button></div>
+                  <div className="space-y-2 max-h-52 overflow-y-auto">{exportHistory.length === 0 ? <p className="text-xs text-shogun-subdued">No exports yet.</p> : exportHistory.map(job => <div key={job.export_id} className="p-3 bg-shogun-bg border border-shogun-border rounded-lg flex items-center justify-between gap-2"><div className="min-w-0"><p className="text-[10px] font-mono truncate">{job.export_id}</p><p className="text-[9px] text-shogun-subdued">{new Date(job.requested_at).toLocaleString()} · {job.records_exported} files</p></div>{job.download_url ? <a title="Download export" href={job.download_url}><Download className="w-4 h-4 text-shogun-blue" /></a> : <span className="text-[8px] uppercase text-shogun-subdued">{job.status}</span>}</div>)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-shogun-border bg-shogun-card flex justify-between items-center"><p className="text-[10px] text-shogun-subdued flex items-center gap-2"><PackageCheck className="w-4 h-4 text-green-400" /> Files remain local in Shogun-controlled storage.</p><div className="flex gap-3"><button onClick={() => setIsExportModalOpen(false)} className="px-5 py-2 border border-shogun-border rounded-lg text-xs font-bold text-shogun-subdued">Close</button><button onClick={startExport} disabled={exporting || ((exportForm.include_private || exportForm.include_secrets) && !privateExportConfirmed)} className="px-6 py-2 bg-shogun-blue text-white rounded-lg text-xs font-bold uppercase tracking-widest disabled:opacity-40">{exporting ? 'Exporting…' : 'Generate Export'}</button></div></div>
+          </div>
+        </div>
+      )}
 
       {/* ── MANUALLY INSCRIBE MODAL ────────────────────────────── */}
       {isCreateModalOpen && (
