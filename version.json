@@ -1,8 +1,8 @@
 {
-  "version": "1.23.0",
+  "version": "1.24.0",
   "name": "Shogun OS",
-  "build": 89,
+  "build": 90,
   "channel": "stable",
   "released": "2026-07-18T00:00:00Z",
-  "changelog": "Adds durable self-reinforced learning for operator corrections and researched solutions, plus evidence-aware project memory for governed VS Code programming work."
+  "changelog": "Restores inbound Telegram workspace-topic delivery with listener diagnostics and adds a dedicated Programming category to Archives."
 }

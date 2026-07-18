@@ -42,6 +42,15 @@ def _get_tg_client() -> httpx.AsyncClient:
 _tg_config_cache: dict = {"data": None, "ts": 0.0}
 _TG_CONFIG_TTL = 60  # seconds
 _topic_registry_cache: dict | None = None
+_poller_health: dict = {
+    "running": False,
+    "last_poll_at": None,
+    "last_update_at": None,
+    "last_error": None,
+    "last_error_at": None,
+    "updates_received": 0,
+    "updates_blocked": 0,
+}
 
 _TOPIC_TAG_NAMES = {
     "general": "General",
@@ -161,6 +170,49 @@ async def _get_cached_telegram_config() -> tuple[dict, dict]:
 def invalidate_telegram_config_cache():
     """Force a config refresh on the next poll cycle (e.g. after connect/disconnect)."""
     _tg_config_cache["ts"] = 0.0
+
+
+def get_telegram_poller_health() -> dict:
+    """Return safe runtime diagnostics without exposing the bot token."""
+    return dict(_poller_health)
+
+
+def _telegram_message_is_allowed(msg: dict, allowed_ids: list[str]) -> bool:
+    """Authorize a group update by either its chat ID or its sender ID.
+
+    Older setup screens commonly captured the operator's private user ID.
+    Forum messages carry the supergroup ID as ``chat.id``, so checking only
+    the chat ID silently discarded messages from an authorized operator.
+    """
+    if not allowed_ids:
+        return True
+    allowed = {str(value) for value in allowed_ids if str(value)}
+    chat_id = str((msg.get("chat") or {}).get("id") or "")
+    sender_id = str((msg.get("from") or {}).get("id") or "")
+    return chat_id in allowed or sender_id in allowed
+
+
+def _telegram_polling_conflict_kind(response: httpx.Response) -> str | None:
+    if response.status_code != 409:
+        return None
+    try:
+        description = str(response.json().get("description") or "").lower()
+    except Exception:
+        description = response.text.lower()
+    if "webhook" in description:
+        return "webhook"
+    if "getupdates" in description or "terminated by other" in description:
+        return "competing_poller"
+    return "conflict"
+
+
+async def _remove_stale_telegram_webhook(client: httpx.AsyncClient, bot_token: str) -> bool:
+    """Switch a bot back to polling without discarding queued messages."""
+    response = await client.post(
+        f"https://api.telegram.org/bot{bot_token}/deleteWebhook",
+        json={"drop_pending_updates": False},
+    )
+    return response.is_success and bool(response.json().get("ok"))
 
 
 # ── Telegram API helpers (use persistent client) ──────────────────────────
@@ -443,7 +495,8 @@ def _telegram_context_text(user_msg: str, telegram_context: dict | None) -> str:
     else:
         lines.append("- Known topics in this chat: none learned yet")
     lines.append(
-        "You can see the current group/topic metadata above, but Telegram Bot API does not provide a full topic list unless topic events or messages have been observed."
+        "You can see the current group/topic metadata above, but Telegram Bot API does not provide a full "
+        "topic list unless topic events or messages have been observed."
     )
     return user_msg.strip() + "\n".join(lines)
 
@@ -1027,6 +1080,7 @@ async def _process_telegram_message(
 async def telegram_poller_task():
     """Continuous background loop for polling Long-Polling getUpdates API."""
     logger.info("[Telegram] Background listener task starting...")
+    _poller_health["running"] = True
     offset = 0
 
     while True:
@@ -1072,14 +1126,38 @@ async def telegram_poller_task():
                 continue
             except Exception as e:
                 logger.warning(f"[Telegram] Polling network exception: {e}")
+                _poller_health["last_error"] = f"Network error: {e}"
+                _poller_health["last_error_at"] = datetime.now(timezone.utc).isoformat()
                 await asyncio.sleep(5)
                 continue
 
             if not resp.is_success:
-                if resp.status_code == 401:
+                conflict_kind = _telegram_polling_conflict_kind(resp)
+                if conflict_kind == "webhook":
+                    recovered = await _remove_stale_telegram_webhook(client, bot_token)
+                    _poller_health["last_error_at"] = datetime.now(timezone.utc).isoformat()
+                    if recovered:
+                        _poller_health["last_error"] = "Stale Telegram webhook removed; polling is resuming."
+                        logger.warning("[Telegram] Removed a stale webhook that was blocking inbound polling.")
+                        await asyncio.sleep(1)
+                    else:
+                        _poller_health["last_error"] = (
+                            "A Telegram webhook is blocking polling and could not be removed."
+                        )
+                        logger.error("[Telegram] A stale webhook is blocking inbound polling and deleteWebhook failed.")
+                        await asyncio.sleep(10)
+                elif conflict_kind == "competing_poller":
+                    _poller_health["last_error"] = (
+                        "Another Shogun/Telegram poller is using this bot token. Stop the duplicate instance."
+                    )
+                    _poller_health["last_error_at"] = datetime.now(timezone.utc).isoformat()
+                    logger.error("[Telegram] Another getUpdates consumer is using this bot token.")
+                    await asyncio.sleep(10)
+                elif resp.status_code == 401:
                     # Invalid or revoked bot token — auto-disconnect to stop polling
                     logger.warning(
-                        "[Telegram] Bot token is invalid (HTTP 401). Auto-disconnecting to stop polling. Reconfigure in the Katana to reconnect."
+                        "[Telegram] Bot token is invalid (HTTP 401). Auto-disconnecting to stop polling. "
+                        "Reconfigure in the Katana to reconnect."
                     )
                     try:
                         async with async_session_factory() as session:
@@ -1089,8 +1167,8 @@ async def telegram_poller_task():
                                 await session.execute(
                                     select(Agent).where(
                                         Agent.agent_type == "shogun",
-                                        Agent.is_primary == True,
-                                        Agent.is_deleted == False,
+                                        Agent.is_primary.is_(True),
+                                        Agent.is_deleted.is_(False),
                                     )
                                 )
                             ).scalar_one_or_none()
@@ -1105,14 +1183,20 @@ async def telegram_poller_task():
                     invalidate_telegram_config_cache()
                     await asyncio.sleep(60)  # Long sleep after auto-disconnect
                 else:
+                    _poller_health["last_error"] = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                    _poller_health["last_error_at"] = datetime.now(timezone.utc).isoformat()
                     logger.warning(f"[Telegram] Polling failed: HTTP {resp.status_code} - {resp.text[:200]}")
                     await asyncio.sleep(10)
                 continue
 
+            _poller_health["last_poll_at"] = datetime.now(timezone.utc).isoformat()
+            _poller_health["last_error"] = None
             data = resp.json()
             results = data.get("result", [])
 
             if results:
+                _poller_health["last_update_at"] = datetime.now(timezone.utc).isoformat()
+                _poller_health["updates_received"] += len(results)
                 logger.debug(f"[Telegram] Received {len(results)} updates")
 
             for update in results:
@@ -1131,11 +1215,18 @@ async def telegram_poller_task():
 
                 chat = msg.get("chat", {})
                 chat_id_str = str(chat.get("id"))
+                sender_id_str = str((msg.get("from") or {}).get("id") or "")
                 text = (msg.get("text") or msg.get("caption") or "").strip()
 
-                # Check whitelist (allowing ID capture if empty)
-                if allowed_ids and chat_id_str not in allowed_ids:
-                    logger.warning(f"[Telegram] Blocked unauthorized message from {chat_id_str}")
+                # A setup may authorize either the group chat ID or the
+                # operator's user ID. Forum topics retain the group chat ID.
+                if not _telegram_message_is_allowed(msg, allowed_ids):
+                    _poller_health["updates_blocked"] += 1
+                    logger.warning(
+                        "[Telegram] Blocked unauthorized message (chat=%s, sender=%s)",
+                        chat_id_str,
+                        sender_id_str or "unknown",
+                    )
                     # Optionally notify unauthorized users? Usually better to stay silent.
                     continue
 
@@ -1176,13 +1267,17 @@ async def telegram_poller_task():
 
         except asyncio.CancelledError:
             logger.info("[Telegram] Listener task cancelled.")
+            _poller_health["running"] = False
             break
         except Exception as e:
             logger.error(f"[Telegram] Unexpected exception in poller: {e}\n{traceback.format_exc()}")
+            _poller_health["last_error"] = f"Unexpected error: {e}"
+            _poller_health["last_error_at"] = datetime.now(timezone.utc).isoformat()
             await asyncio.sleep(5)
 
     # Clean up the persistent client on exit
     if _tg_client and not _tg_client.is_closed:
         await _tg_client.aclose()
 
+    _poller_health["running"] = False
     logger.info("[Telegram] Background listener loop exited.")

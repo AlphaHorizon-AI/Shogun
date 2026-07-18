@@ -9,8 +9,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from shogun.api.agents import _classify_chat_mode
+from shogun.api.memory import (
+    _programming_archive_record,
+    delete_programming_memory,
+    list_programming_memories,
+)
 from shogun.db.models.memory_record import MemoryRecord
 from shogun.db.models.programming_memory import ProgrammingMemory
+from shogun.services.memory_service import MemoryService
 from shogun.services.native_skills import NATIVE_TOOLS
 from shogun.services.programming_memory import ProgrammingMemoryService
 from shogun.services.self_learning import (
@@ -97,6 +103,48 @@ async def test_programming_memory_is_project_scoped_deduplicated_and_reinforced(
     assert reinforced.successful_use_count == 1
     assert reinforced.confidence_score > prior_confidence
     assert await service.reinforce(record.id, workspace_key=workspace_b, successful=True) is None
+
+    archive_record = _programming_archive_record(record)
+    assert archive_record["memory_type"] == "programming"
+    assert archive_record["workspace_name"] == "project-a"
+    assert archive_record["validation_status"] == "tests_passed"
+    assert archive_record["content"] == record.solution
+
+
+@pytest.mark.asyncio
+async def test_programming_archive_api_lists_searches_and_deletes(memory_session, tmp_path):
+    service = ProgrammingMemoryService(memory_session)
+    record, _ = await service.remember(
+        agent_id=uuid.uuid4(),
+        workspace_key=service.workspace_key(tmp_path / "archive-project"),
+        workspace_name="archive-project",
+        title="Repair migration startup",
+        problem="Startup cannot find the schema baseline",
+        solution="Stamp the verified baseline before upgrading",
+        validation_status="tests_passed",
+        evidence="22 tests passed",
+        files=["shogun/app.py"],
+        languages=["Python"],
+    )
+    await memory_session.commit()
+
+    response = await list_programming_memories(
+        query="schema baseline",
+        workspace_key=None,
+        agent_id=None,
+        kind=None,
+        validation_status=None,
+        sort_by="created_at",
+        limit=200,
+        svc=MemoryService(memory_session),
+    )
+    assert len(response.data) == 1
+    assert response.data[0]["id"] == str(record.id)
+    assert response.data[0]["files"] == ["shogun/app.py"]
+
+    deleted = await delete_programming_memory(record.id, svc=MemoryService(memory_session))
+    assert deleted.data == {"deleted": True, "id": str(record.id)}
+    assert await memory_session.get(ProgrammingMemory, record.id) is None
 
 
 def test_explicit_corrections_route_to_memory_aware_chat():

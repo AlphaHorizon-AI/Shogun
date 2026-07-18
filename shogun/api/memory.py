@@ -28,6 +28,34 @@ from shogun.services.memory_service import MemoryService
 router = APIRouter(prefix="/memory", tags=["Memory"])
 
 
+def _programming_archive_record(record) -> dict:
+    """Present project memory in the common Archive card shape plus IDE metadata."""
+    from shogun.services.programming_memory import ProgrammingMemoryService
+
+    data = ProgrammingMemoryService.serialize(record)
+    importance = {
+        "production_confirmed": 1.0,
+        "tests_passed": 0.9,
+        "operator_confirmed": 0.8,
+        "unverified": 0.5,
+    }.get(record.validation_status, 0.5)
+    return {
+        **data,
+        "memory_type": "programming",
+        "content": record.solution,
+        "summary": record.problem,
+        "relevance_score": record.confidence_score,
+        "importance_score": importance,
+        "decay_class": "project-scoped",
+        "is_pinned": False,
+        "access_count": record.use_count,
+        "recall_count": record.use_count,
+        "last_accessed_at": record.last_used_at,
+        "last_confirmed_at": record.last_used_at,
+        "is_archived": False,
+    }
+
+
 # ── Stats ────────────────────────────────────────────────────
 
 @router.get("/stats", response_model=ApiResponse)
@@ -53,10 +81,6 @@ async def memory_stats(
     )
     total_archived = archived_result.scalar() or 0
 
-    # Retention rate = active / (active + archived) * 100
-    grand_total = total_active + total_archived
-    retention_rate = round((total_active / grand_total * 100), 1) if grand_total > 0 else 100.0
-
     # Per-type counts
     type_result = await session.execute(
         select(MemoryRecord.memory_type, func.count(MemoryRecord.id))
@@ -64,6 +88,20 @@ async def memory_stats(
         .group_by(MemoryRecord.memory_type)
     )
     type_counts = {r[0]: r[1] for r in type_result.all()}
+
+    # Programming memory deliberately lives in a project-scoped table, but it
+    # is still operator-visible memory and therefore belongs in Archive totals.
+    from shogun.db.models.programming_memory import ProgrammingMemory
+
+    programming_count = (
+        await session.scalar(select(func.count(ProgrammingMemory.id)))
+    ) or 0
+    total_active += programming_count
+    type_counts["programming"] = programming_count
+
+    # Retention rate = active / (active + archived) * 100
+    grand_total = total_active + total_archived
+    retention_rate = round((total_active / grand_total * 100), 1) if grand_total > 0 else 100.0
 
     # Pinned count
     pinned_result = await session.execute(
@@ -103,6 +141,82 @@ async def memory_stats(
         "avg_importance": avg_importance,
         "qdrant": qdrant_info,
     })
+
+
+# ── Project-scoped programming memory ─────────────────────────────────────
+
+
+@router.get("/programming", response_model=ApiResponse)
+async def list_programming_memories(
+    query: str | None = None,
+    workspace_key: str | None = None,
+    agent_id: uuid.UUID | None = None,
+    kind: str | None = None,
+    validation_status: str | None = None,
+    sort_by: str = Query("created_at"),
+    limit: int = Query(200, ge=1, le=500),
+    svc: MemoryService = Depends(get_memory_service),
+):
+    """List evidence-aware IDE memories for the Programming Archive category."""
+    from sqlalchemy import case, or_, select
+
+    from shogun.db.models.programming_memory import ProgrammingMemory
+
+    filters = []
+    if workspace_key:
+        filters.append(ProgrammingMemory.workspace_key == workspace_key)
+    if agent_id:
+        filters.append(ProgrammingMemory.agent_id == agent_id)
+    if kind:
+        filters.append(ProgrammingMemory.kind == kind)
+    if validation_status:
+        filters.append(ProgrammingMemory.validation_status == validation_status)
+    if query and query.strip():
+        term = f"%{query.strip()}%"
+        filters.append(
+            or_(
+                ProgrammingMemory.title.ilike(term),
+                ProgrammingMemory.problem.ilike(term),
+                ProgrammingMemory.solution.ilike(term),
+                ProgrammingMemory.evidence.ilike(term),
+                ProgrammingMemory.workspace_name.ilike(term),
+            )
+        )
+
+    order = ProgrammingMemory.created_at.desc()
+    if sort_by == "relevance":
+        order = ProgrammingMemory.confidence_score.desc()
+    elif sort_by == "importance":
+        order = case(
+            (ProgrammingMemory.validation_status == "production_confirmed", 4),
+            (ProgrammingMemory.validation_status == "tests_passed", 3),
+            (ProgrammingMemory.validation_status == "operator_confirmed", 2),
+            (ProgrammingMemory.validation_status == "unverified", 1),
+            else_=0,
+        ).desc()
+
+    statement = select(ProgrammingMemory).where(*filters).order_by(order).limit(limit)
+    records = list((await svc.session.scalars(statement)).all())
+    return ApiResponse(
+        data=[_programming_archive_record(record) for record in records],
+        meta={"total": len(records)},
+    )
+
+
+@router.delete("/programming/{memory_id}", response_model=ApiResponse)
+async def delete_programming_memory(
+    memory_id: uuid.UUID,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    """Delete a programming memory after explicit operator action in Archives."""
+    from shogun.db.models.programming_memory import ProgrammingMemory
+
+    record = await svc.session.get(ProgrammingMemory, memory_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Programming memory not found")
+    await svc.session.delete(record)
+    await svc.session.commit()
+    return ApiResponse(data={"deleted": True, "id": str(memory_id)})
 
 
 # ── List ─────────────────────────────────────────────────────

@@ -30,7 +30,8 @@ import {
   AlertTriangle,
   PackageCheck,
   Upload,
-  RotateCcw
+  RotateCcw,
+  Code2
 } from "lucide-react";
 import axios from 'axios';
 import { cn } from '../lib/utils';
@@ -39,7 +40,7 @@ import { useTranslation } from '../i18n';
 const API = '/api/v1/memory';
 const AGENTS_API = '/api/v1/agents';
 
-type MemoryCategory = 'all' | 'episodic' | 'semantic' | 'procedural' | 'persona' | 'skills';
+type MemoryCategory = 'all' | 'episodic' | 'semantic' | 'procedural' | 'persona' | 'skills' | 'programming';
 
 interface MemoryRecord {
   id: string;
@@ -61,6 +62,17 @@ interface MemoryRecord {
   is_archived: boolean;
   created_at: string;
   updated_at: string;
+  workspace_key?: string;
+  workspace_name?: string;
+  kind?: string;
+  problem?: string;
+  solution?: string;
+  evidence?: string | null;
+  validation_status?: string;
+  languages?: string[];
+  files?: string[];
+  source_urls?: string[];
+  tags?: string[];
 }
 
 interface ScoredMemory extends MemoryRecord {
@@ -205,14 +217,17 @@ export function Archives() {
       const statsRes = await axios.get(`${API}/stats`);
       setStats(statsRes.data.data);
       
-      // Initial memories
+      // Initial memories. Programming memory remains project-scoped in its
+      // dedicated table and is projected into the common Archive card shape.
       const params = new URLSearchParams();
-      if (activeCategory !== 'all') params.set('memory_type', activeCategory);
-      if (decayFilter !== 'all') params.set('decay_class', decayFilter);
+      if (activeCategory !== 'all' && activeCategory !== 'programming') params.set('memory_type', activeCategory);
+      if (decayFilter !== 'all' && activeCategory !== 'programming') params.set('decay_class', decayFilter);
       if (selectedAgentId !== 'all') params.set('agent_id', selectedAgentId);
       params.set('sort_by', sortBy);
       
-      const memoriesRes = await axios.get(`${API}?${params}`);
+      const memoriesRes = await axios.get(
+        activeCategory === 'programming' ? `${API}/programming?${params}` : `${API}?${params}`
+      );
       setMemories(memoriesRes.data.data || []);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -231,6 +246,13 @@ export function Archives() {
       if (searchTerm.trim().length > 2) {
         setSearching(true);
         try {
+          if (activeCategory === 'programming') {
+            const params = new URLSearchParams({ query: searchTerm, sort_by: sortBy });
+            if (selectedAgentId !== 'all') params.set('agent_id', selectedAgentId);
+            const res = await axios.get(`${API}/programming?${params}`);
+            setSearchResults(res.data.data || []);
+            return;
+          }
           const res = await axios.post(`${API}/search`, {
             query: searchTerm,
             agent_id: selectedAgentId === 'all' ? null : selectedAgentId,
@@ -250,17 +272,20 @@ export function Archives() {
     }, 500);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchTerm, selectedAgentId, activeCategory, decayFilter]);
+  }, [searchTerm, selectedAgentId, activeCategory, decayFilter, sortBy]);
 
   // ── Actions ────────────────────────────────────────────────
   const forgetMemory = async (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
     try {
-      await axios.post(`${API}/${id}/forget`);
+      const isProgramming = activeCategory === 'programming' || selectedMemory?.memory_type === 'programming';
+      if (isProgramming && !window.confirm('Delete this project programming memory permanently?')) return;
+      if (isProgramming) await axios.delete(`${API}/programming/${id}`);
+      else await axios.post(`${API}/${id}/forget`);
       setMemories(prev => prev.filter(m => m.id !== id));
       setSearchResults(prev => prev.filter(m => m.id !== id));
       if (selectedMemory?.id === id) setSelectedMemory(null);
-      setStatusMsg({ type: 'success', text: 'Memory archived.' });
+      setStatusMsg({ type: 'success', text: isProgramming ? 'Programming memory deleted.' : 'Memory archived.' });
       fetchStats();
     } catch {
       setStatusMsg({ type: 'error', text: 'Failed to archive memory.' });
@@ -493,6 +518,7 @@ export function Archives() {
       case 'procedural': return <Brain className="w-4 h-4" />;
       case 'persona': return <Shield className="w-4 h-4" />;
       case 'skills': return <Zap className="w-4 h-4" />;
+      case 'programming': return <Code2 className="w-4 h-4" />;
       default: return <Database className="w-4 h-4" />;
     }
   };
@@ -504,6 +530,7 @@ export function Archives() {
       case 'procedural': return 'text-green-400';
       case 'persona': return 'text-shogun-gold';
       case 'skills': return 'text-orange-400';
+      case 'programming': return 'text-cyan-400';
       default: return 'text-shogun-subdued';
     }
   };
@@ -519,7 +546,7 @@ export function Archives() {
     return `${Math.floor(hours / 24)}d ago`;
   };
 
-  const categories: MemoryCategory[] = ['all', 'episodic', 'semantic', 'procedural', 'persona', 'skills'];
+  const categories: MemoryCategory[] = ['all', 'episodic', 'semantic', 'procedural', 'persona', 'skills', 'programming'];
 
   const displayedMemories = searchTerm.trim().length > 2 ? searchResults : memories;
 
@@ -803,6 +830,16 @@ export function Archives() {
                                    <span className={cn("text-[10px] font-bold uppercase tracking-wider", getCategoryColor(memory.memory_type))}>
                                      {memory.memory_type}
                                    </span>
+                                   {memory.memory_type === 'programming' && (
+                                     <>
+                                       <span className="text-[9px] text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-full truncate max-w-[180px]">
+                                         {memory.workspace_name || 'Unknown project'}
+                                       </span>
+                                       <span className="text-[9px] text-green-300 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full">
+                                         {(memory.validation_status || 'unverified').replaceAll('_', ' ')}
+                                       </span>
+                                     </>
+                                   )}
                                    {memory.is_pinned && <Pin className="w-3 h-3 text-shogun-gold" />}
                                    <span className="text-[10px] text-shogun-subdued flex items-center gap-1.5 border-l border-shogun-border pl-3">
                                       <Clock className="w-3.5 h-3.5" /> {timeAgo(memory.created_at)}
@@ -815,12 +852,14 @@ export function Archives() {
                                 </div>
                                 
                                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 translate-x-2 group-hover:translate-x-0 transition-all">
-                                   <button 
-                                      onClick={(e) => togglePin(memory.id, e)}
-                                      className="p-1.5 hover:bg-shogun-bg border border-transparent hover:border-shogun-border rounded-lg text-shogun-subdued hover:text-shogun-gold transition-all"
-                                   >
-                                      {memory.is_pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
-                                   </button>
+                                   {memory.memory_type !== 'programming' && (
+                                     <button
+                                        onClick={(e) => togglePin(memory.id, e)}
+                                        className="p-1.5 hover:bg-shogun-bg border border-transparent hover:border-shogun-border rounded-lg text-shogun-subdued hover:text-shogun-gold transition-all"
+                                     >
+                                        {memory.is_pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                                     </button>
+                                   )}
                                    <button 
                                       onClick={(e) => forgetMemory(memory.id, e)}
                                       className="p-1.5 hover:bg-shogun-bg border border-transparent hover:border-shogun-border rounded-lg text-shogun-subdued hover:text-red-500 transition-all"
@@ -1191,12 +1230,32 @@ export function Archives() {
                  <div className="col-span-8 p-8 border-r border-shogun-border space-y-8 bg-[#050508]/20">
                     <div className="space-y-4">
                        <h4 className="text-[10px] font-bold text-shogun-blue uppercase tracking-[0.2em] flex items-center gap-2">
-                         <Layers className="w-3.5 h-3.5" /> Intelligence Payload
+                         <Layers className="w-3.5 h-3.5" /> {selectedMemory.memory_type === 'programming' ? 'Verified Solution' : 'Intelligence Payload'}
                        </h4>
                        <div className="bg-shogun-bg border border-shogun-border p-6 rounded-2xl text-[13px] leading-relaxed text-shogun-text font-mono whitespace-pre-wrap shadow-inner min-h-[300px]">
-                          {selectedMemory.content || '(Fragment empty)'}
+                          {selectedMemory.solution || selectedMemory.content || '(Fragment empty)'}
                        </div>
                     </div>
+
+                    {selectedMemory.memory_type === 'programming' && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="shogun-card !p-4">
+                            <p className="text-[9px] uppercase font-bold text-cyan-400 mb-2">Problem</p>
+                            <p className="text-xs text-shogun-text whitespace-pre-wrap">{selectedMemory.problem || selectedMemory.summary}</p>
+                          </div>
+                          <div className="shogun-card !p-4">
+                            <p className="text-[9px] uppercase font-bold text-green-400 mb-2">Validation Evidence</p>
+                            <p className="text-xs text-shogun-text whitespace-pre-wrap">{selectedMemory.evidence || 'No evidence recorded.'}</p>
+                          </div>
+                        </div>
+                        <div className="shogun-card !p-4 space-y-3">
+                          <div><p className="text-[9px] uppercase font-bold text-shogun-subdued mb-1">Files</p><p className="text-xs font-mono text-shogun-text">{selectedMemory.files?.join(', ') || 'No files recorded'}</p></div>
+                          <div><p className="text-[9px] uppercase font-bold text-shogun-subdued mb-1">Languages</p><div className="flex flex-wrap gap-2">{(selectedMemory.languages || []).map(language => <span key={language} className="px-2 py-1 rounded bg-cyan-500/10 border border-cyan-500/20 text-[9px] text-cyan-300">{language}</span>)}</div></div>
+                          <div><p className="text-[9px] uppercase font-bold text-shogun-subdued mb-1">Sources</p><div className="space-y-1">{(selectedMemory.source_urls || []).map(url => <a key={url} href={url} target="_blank" rel="noreferrer" className="block text-[10px] text-shogun-blue hover:underline break-all">{url}</a>)}</div></div>
+                        </div>
+                      </div>
+                    )}
                     
                     {'scores' in selectedMemory && (
                        <div className="space-y-4">
@@ -1229,12 +1288,12 @@ export function Archives() {
                        <h4 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-[0.2em]">Operational Health</h4>
                        <div className="space-y-4">
                           <div className="flex justify-between items-center bg-shogun-bg/50 p-3 border border-shogun-border rounded-xl">
-                             <span className="text-[10px] text-shogun-subdued uppercase font-bold">Decay State</span>
+                             <span className="text-[10px] text-shogun-subdued uppercase font-bold">{selectedMemory.memory_type === 'programming' ? 'Validation' : 'Decay State'}</span>
                              <span className={cn(
                                "text-[9px] font-bold uppercase px-2 py-1 rounded-md",
                                selectedMemory.decay_class === 'pinned' ? 'bg-purple-500/10 text-purple-400' : 'bg-shogun-blue/10 text-shogun-blue'
                              )}>
-                                {selectedMemory.decay_class}
+                                {selectedMemory.memory_type === 'programming' ? selectedMemory.validation_status?.replaceAll('_', ' ') : selectedMemory.decay_class}
                              </span>
                           </div>
                           <div className="space-y-1">
@@ -1266,6 +1325,16 @@ export function Archives() {
                                 </p>
                              </div>
                           </div>
+                          {selectedMemory.memory_type === 'programming' && (
+                            <div className="flex items-center gap-3 text-xs">
+                              <Code2 className="w-4 h-4 text-cyan-400" />
+                              <div>
+                                <p className="text-shogun-subdued text-[9px] uppercase font-bold">Project Workspace</p>
+                                <p className="text-shogun-text font-bold">{selectedMemory.workspace_name || 'Unknown project'}</p>
+                                <p className="text-[8px] font-mono text-shogun-subdued truncate max-w-[190px]">{selectedMemory.workspace_key}</p>
+                              </div>
+                            </div>
+                          )}
                           <div className="flex items-center gap-3 text-xs">
                              <Users className="w-4 h-4 text-shogun-gold" />
                              <div>
@@ -1286,17 +1355,19 @@ export function Archives() {
                     </div>
 
                     <div className="pt-8 space-y-3">
-                       <button 
-                         onClick={() => togglePin(selectedMemory.id)}
-                         className="w-full py-3 bg-shogun-bg border border-shogun-border rounded-xl text-xs font-bold uppercase tracking-widest hover:text-shogun-gold hover:border-shogun-gold transition-all flex items-center justify-center gap-3 group"
-                       >
-                         {selectedMemory.is_pinned ? <><PinOff className="w-4 h-4 group-hover:scale-110" /> Unpin Fragment</> : <><Pin className="w-4 h-4 group-hover:scale-110" /> Pin for Retrieval</>}
-                       </button>
+                       {selectedMemory.memory_type !== 'programming' && (
+                         <button
+                           onClick={() => togglePin(selectedMemory.id)}
+                           className="w-full py-3 bg-shogun-bg border border-shogun-border rounded-xl text-xs font-bold uppercase tracking-widest hover:text-shogun-gold hover:border-shogun-gold transition-all flex items-center justify-center gap-3 group"
+                         >
+                           {selectedMemory.is_pinned ? <><PinOff className="w-4 h-4 group-hover:scale-110" /> Unpin Fragment</> : <><Pin className="w-4 h-4 group-hover:scale-110" /> Pin for Retrieval</>}
+                         </button>
+                       )}
                        <button 
                          onClick={() => forgetMemory(selectedMemory.id)}
                          className="w-full py-3 bg-shogun-bg border border-shogun-border rounded-xl text-xs font-bold uppercase tracking-widest hover:text-red-500 hover:border-red-500 transition-all flex items-center justify-center gap-3 group"
                        >
-                         <Archive className="w-4 h-4 group-hover:scale-110" /> Move to Archive
+                         <Archive className="w-4 h-4 group-hover:scale-110" /> {selectedMemory.memory_type === 'programming' ? 'Delete Programming Memory' : 'Move to Archive'}
                        </button>
                     </div>
                  </div>

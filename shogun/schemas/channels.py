@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import Any
+
 from shogun.schemas.common import ShogunBase
 
 
@@ -36,6 +37,9 @@ class TelegramStatusResponse(ShogunBase):
     allowed_chat_ids: list[str] = []
     webhook_url: str | None = None
     last_connected_at: str | None = None
+    can_join_groups: bool | None = None
+    can_read_all_group_messages: bool | None = None
+    poller: dict[str, Any] = {}
 
 
 class EmailAccountCreate(ShogunBase):

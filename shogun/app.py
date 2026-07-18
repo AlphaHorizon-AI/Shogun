@@ -361,7 +361,7 @@ async def lifespan(app: FastAPI):
         await EventLogger.emit_system_event(
             "system.startup", "Shogun server started",
             detail={
-                "version": "1.23.0",
+                "version": "1.24.0",
                 "platform": platform.system(),
                 "python": platform.python_version(),
             },
@@ -482,7 +482,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.23.0",
+        version="1.24.0",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,

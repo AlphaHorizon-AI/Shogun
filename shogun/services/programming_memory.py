@@ -163,6 +163,7 @@ class ProgrammingMemoryService:
     def serialize(record: ProgrammingMemory) -> dict[str, Any]:
         return {
             "id": str(record.id),
+            "agent_id": str(record.agent_id),
             "workspace_key": record.workspace_key,
             "workspace_name": record.workspace_name,
             "kind": record.kind,
@@ -179,4 +180,7 @@ class ProgrammingMemoryService:
             "use_count": record.use_count,
             "successful_use_count": record.successful_use_count,
             "last_used_at": record.last_used_at,
+            "created_at": record.created_at,
+            "updated_at": record.updated_at,
+            "content_hash": record.content_hash,
         }

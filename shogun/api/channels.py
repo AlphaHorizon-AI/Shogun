@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from shogun.schemas.channels import TelegramConnectRequest, TelegramStatusResponse
+from shogun.schemas.channels import TelegramConnectRequest
 from shogun.schemas.common import ApiResponse
 from shogun.services.channel_service import ChannelService
 
@@ -16,6 +16,12 @@ channel_svc = ChannelService()
 async def telegram_status():
     status = await channel_svc.get_telegram_status()
     return ApiResponse(data=status)
+
+
+@router.get("/telegram/diagnostics", response_model=ApiResponse)
+async def telegram_diagnostics():
+    """Report why inbound group/topic updates may not reach Shogun."""
+    return ApiResponse(data=await channel_svc.diagnose_telegram())
 
 
 @router.post("/telegram/connect", response_model=ApiResponse)
