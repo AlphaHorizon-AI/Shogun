@@ -157,6 +157,12 @@ class MemoryRecordResponse(ShogunBase):
     last_recalled_at: datetime | None = None
     # Lifecycle
     is_archived: bool = False
+    source_system: str | None = None
+    source_file: str | None = None
+    source_external_id: str | None = None
+    import_batch_id: str | None = None
+    content_hash: str | None = None
+    tags: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -283,3 +289,49 @@ class MemoryExportJobResponse(ShogunBase):
     warnings: list[str] = Field(default_factory=list)
     error: dict = Field(default_factory=dict)
     download_url: str | None = None
+
+
+# ── Order 17: OpenClaw Markdown imports ────────────────────────
+
+
+class MemoryImportConfirmRequest(ShogunBase):
+    batch_preview_id: str = Field(..., min_length=1, max_length=64)
+    duplicate_policy: Literal["skip_exact", "import_as_new"] = "skip_exact"
+    conflict_policy: Literal["skip", "import_as_new"] = "skip"
+
+
+class MemoryImportItemResponse(ShogunBase):
+    item_id: str
+    source_file: str
+    status: str
+    title: str | None = None
+    memory_type: str | None = None
+    importance: int | None = None
+    decay_type: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    body_excerpt: str = ""
+    warnings: list[str] = Field(default_factory=list)
+    error: dict = Field(default_factory=dict)
+    duplicate_kind: str | None = None
+    duplicate_memory_id: str | None = None
+    shogun_memory_id: str | None = None
+    embedding_error: str | None = None
+
+
+class MemoryImportBatchResponse(ShogunBase):
+    batch_id: str
+    source_type: str
+    source_name: str | None = None
+    agent_id: str
+    status: str
+    created_at: datetime
+    completed_at: datetime | None = None
+    total_files: int = 0
+    valid_count: int = 0
+    imported_count: int = 0
+    skipped_count: int = 0
+    failed_count: int = 0
+    embedded_count: int = 0
+    warnings: list[str] = Field(default_factory=list)
+    report: dict = Field(default_factory=dict)
+    items: list[MemoryImportItemResponse] = Field(default_factory=list)

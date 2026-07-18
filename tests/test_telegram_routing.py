@@ -10,6 +10,7 @@ from shogun.services.telegram_poller import (
     _prepare_telegram_visual_context,
     _select_telegram_chat_mode,
     _telegram_context_from_message,
+    _telegram_context_from_update,
     _telegram_context_text,
     _update_topic_registry_from_message,
     list_telegram_topic_mappings,
@@ -172,6 +173,30 @@ def test_telegram_topic_registry_remembers_forum_topic(monkeypatch):
     ]
 
 
+def test_inbound_update_extracts_news_thread_before_agent_context(monkeypatch):
+    monkeypatch.setattr(telegram_poller, "_topic_registry_cache", {})
+    monkeypatch.setattr(telegram_poller, "_save_topic_registry", lambda registry: None)
+    message, context = _telegram_context_from_update(
+        {
+            "update_id": 9001,
+            "message": {
+                "message_id": 501,
+                "chat": {"id": -100123, "type": "supergroup", "title": "Max Workspace"},
+                "message_thread_id": 22,
+                "is_topic_message": True,
+                "text": "Here is the News request",
+            },
+        }
+    )
+
+    assert message["message_thread_id"] == 22
+    assert context["message_thread_id"] == 22
+    assert context["known_topics"] == [{"message_thread_id": 22, "name": "", "status": "open"}]
+    prompt = _telegram_context_text(message["text"], context)
+    assert "message_thread_id: 22" in prompt
+    assert "Known topics in this chat: unknown [22]" in prompt
+
+
 def test_telegram_context_text_includes_group_and_topic():
     message = _telegram_context_text(
         "Can you see the group?",
@@ -186,7 +211,7 @@ def test_telegram_context_text_includes_group_and_topic():
 
     assert "Can you see the group?" in message
     assert "Chat: Max Workspace (supergroup)" in message
-    assert "Topic/thread id: 42" in message
+    assert "message_thread_id: 42" in message
     assert "Known topics in this chat: Operations [42]" in message
 
 

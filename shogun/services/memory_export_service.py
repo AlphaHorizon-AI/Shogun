@@ -123,7 +123,7 @@ class MemoryMarkdownRenderer:
             "importance": record.importance_score,
             "confidence": record.confidence_score,
             "decay_type": record.decay_class,
-            "tags": [],
+            "tags": record.tags or [],
             "visibility": _visibility(record),
             "source_table": "memory_records",
             "source_record_id": str(record.id),

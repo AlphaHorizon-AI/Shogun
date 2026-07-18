@@ -28,7 +28,9 @@ import {
   Download,
   FileArchive,
   AlertTriangle,
-  PackageCheck
+  PackageCheck,
+  Upload,
+  RotateCcw
 } from "lucide-react";
 import axios from 'axios';
 import { cn } from '../lib/utils';
@@ -109,6 +111,42 @@ interface ExportJob {
   error: Record<string, string>;
 }
 
+interface ImportItem {
+  item_id: string;
+  source_file: string;
+  status: string;
+  title: string | null;
+  memory_type: string | null;
+  importance: number | null;
+  decay_type: string | null;
+  tags: string[];
+  body_excerpt: string;
+  warnings: string[];
+  error: Record<string, string>;
+  duplicate_kind: string | null;
+  shogun_memory_id: string | null;
+  embedding_error: string | null;
+}
+
+interface ImportBatch {
+  batch_id: string;
+  source_type: string;
+  source_name: string | null;
+  agent_id: string;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+  total_files: number;
+  valid_count: number;
+  imported_count: number;
+  skipped_count: number;
+  failed_count: number;
+  embedded_count: number;
+  warnings: string[];
+  report: Record<string, any>;
+  items: ImportItem[];
+}
+
 export function Archives() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
@@ -124,6 +162,15 @@ export function Archives() {
   const [selectedMemory, setSelectedMemory] = useState<MemoryRecord | ScoredMemory | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFiles, setImportFiles] = useState<File[]>([]);
+  const [importPreview, setImportPreview] = useState<ImportBatch | null>(null);
+  const [importHistory, setImportHistory] = useState<ImportBatch[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importForm, setImportForm] = useState({
+    agent_id: '', source_type: 'openclaw', folder_path: '', default_memory_type: 'semantic',
+    default_importance: 5, default_decay_type: 'medium', duplicate_policy: 'skip_exact', conflict_policy: 'skip',
+  });
   const [exportPreview, setExportPreview] = useState<ExportPreview | null>(null);
   const [exportHistory, setExportHistory] = useState<ExportJob[]>([]);
   const [activeExport, setActiveExport] = useState<ExportJob | null>(null);
@@ -346,6 +393,95 @@ export function Archives() {
     }));
   };
 
+  const loadImportHistory = async () => {
+    try {
+      const res = await axios.get(`${API}/import/batches`);
+      setImportHistory(res.data.data || []);
+    } catch (error) {
+      console.error('Import history error:', error);
+    }
+  };
+
+  const openImport = () => {
+    setIsImportModalOpen(true);
+    setImportPreview(null);
+    setImportFiles([]);
+    setImportForm(current => ({ ...current, agent_id: current.agent_id || agents[0]?.id || '' }));
+    void loadImportHistory();
+  };
+
+  const previewImport = async () => {
+    if (!importForm.agent_id || (importFiles.length === 0 && !importForm.folder_path.trim())) {
+      setStatusMsg({ type: 'error', text: 'Select a target agent and Markdown/ZIP input or local folder.' });
+      return;
+    }
+    setImporting(true);
+    try {
+      const body = new FormData();
+      importFiles.forEach(file => body.append('files', file));
+      if (importForm.folder_path.trim()) body.append('folder_path', importForm.folder_path.trim());
+      body.append('agent_id', importForm.agent_id);
+      body.append('source_type', importForm.source_type);
+      body.append('default_memory_type', importForm.default_memory_type);
+      body.append('default_importance', String(importForm.default_importance));
+      body.append('default_decay_type', importForm.default_decay_type);
+      const res = await axios.post(`${API}/import/openclaw/preview`, body);
+      setImportPreview(res.data.data);
+      await loadImportHistory();
+    } catch (error: any) {
+      setStatusMsg({ type: 'error', text: error?.response?.data?.detail || 'Memory import preview failed.' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const confirmImport = async () => {
+    if (!importPreview) return;
+    setImporting(true);
+    try {
+      const res = await axios.post(`${API}/import/openclaw/confirm`, {
+        batch_preview_id: importPreview.batch_id,
+        duplicate_policy: importForm.duplicate_policy,
+        conflict_policy: importForm.conflict_policy,
+      });
+      setImportPreview(res.data.data);
+      setStatusMsg({ type: 'success', text: `Imported ${res.data.data.imported_count} memories; ${res.data.data.embedded_count} embedded.` });
+      await Promise.all([loadImportHistory(), fetchData()]);
+    } catch (error: any) {
+      setStatusMsg({ type: 'error', text: error?.response?.data?.detail || 'Memory import failed.' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const rollbackImport = async (batchId: string) => {
+    if (!window.confirm('Rollback this import batch? Only memories created by this batch will be removed.')) return;
+    setImporting(true);
+    try {
+      const res = await axios.post(`${API}/import/batches/${batchId}/rollback`);
+      setImportPreview(res.data.data);
+      setStatusMsg({ type: 'success', text: 'Import batch rolled back.' });
+      await Promise.all([loadImportHistory(), fetchData()]);
+    } catch (error: any) {
+      setStatusMsg({ type: 'error', text: error?.response?.data?.detail || 'Rollback failed.' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const retryImportEmbeddings = async (batchId: string) => {
+    setImporting(true);
+    try {
+      const res = await axios.post(`${API}/import/batches/${batchId}/retry-embeddings`);
+      setImportPreview(res.data.data);
+      await loadImportHistory();
+    } catch (error: any) {
+      setStatusMsg({ type: 'error', text: error?.response?.data?.detail || 'Embedding retry failed.' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   // ── Helpers ────────────────────────────────────────────────
   const getCategoryIcon = (cat: string) => {
     switch(cat.toLowerCase()) {
@@ -396,6 +532,12 @@ export function Archives() {
         </div>
         
         <div className="flex items-center gap-3">
+          <button
+            onClick={openImport}
+            className="flex items-center gap-2 px-4 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-sm font-bold uppercase tracking-widest hover:bg-green-500/20 transition-all"
+          >
+            <Upload className="w-4 h-4" /> Import Memories
+          </button>
           <button
             onClick={openExport}
             className="flex items-center gap-2 px-4 py-2 bg-shogun-blue/10 text-shogun-blue border border-shogun-blue/20 rounded-lg text-sm font-bold uppercase tracking-widest hover:bg-shogun-blue/20 transition-all"
@@ -737,6 +879,83 @@ export function Archives() {
           </div>
         </div>
       </div>
+
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="bg-shogun-bg border border-shogun-border w-full max-w-6xl max-h-[94vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-shogun-border bg-shogun-card flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center text-green-400"><Upload className="w-6 h-6" /></div>
+                <div><h3 className="text-xl font-bold shogun-title">Import OpenClaw Memories</h3><p className="text-xs text-shogun-subdued uppercase tracking-widest font-bold">Validated Markdown into native Shogun Archives</p></div>
+              </div>
+              <button onClick={() => setIsImportModalOpen(false)} className="p-2 hover:bg-shogun-bg rounded-lg"><X className="w-6 h-6 text-shogun-subdued" /></button>
+            </div>
+
+            <div className="p-6 overflow-y-auto grid grid-cols-1 lg:grid-cols-5 gap-6">
+              <div className="lg:col-span-2 space-y-5">
+                <div className="shogun-card space-y-4">
+                  <h4 className="text-[10px] font-bold text-green-400 uppercase tracking-widest">Input & Native Defaults</h4>
+                  <label className="block p-4 border border-dashed border-green-500/30 rounded-xl bg-green-500/5 cursor-pointer text-center">
+                    <Upload className="w-6 h-6 text-green-400 mx-auto mb-2" />
+                    <span className="text-xs font-bold">Select Markdown or ZIP files</span>
+                    <span className="block text-[9px] text-shogun-subdued mt-1">Multiple .md files and nested ZIP bundles supported</span>
+                    <input type="file" accept=".md,.zip,text/markdown,application/zip" multiple className="hidden" onChange={event => setImportFiles(Array.from(event.target.files || []))} />
+                  </label>
+                  {importFiles.length > 0 && <p className="text-[10px] text-green-300">{importFiles.length} file{importFiles.length === 1 ? '' : 's'} selected: {importFiles.map(file => file.name).join(', ')}</p>}
+                  <label className="space-y-1 text-[10px] uppercase font-bold text-shogun-subdued block">Or local folder path
+                    <input value={importForm.folder_path} onChange={e => setImportForm({...importForm, folder_path: e.target.value})} placeholder="C:\OpenClaw\memory-export" className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text normal-case" />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="space-y-1 text-[10px] uppercase font-bold text-shogun-subdued">Target agent
+                      <select value={importForm.agent_id} onChange={e => setImportForm({...importForm, agent_id: e.target.value})} className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text"><option value="">Select agent</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select>
+                    </label>
+                    <label className="space-y-1 text-[10px] uppercase font-bold text-shogun-subdued">Source
+                      <select value={importForm.source_type} onChange={e => setImportForm({...importForm, source_type: e.target.value})} className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text"><option value="openclaw">OpenClaw</option><option value="shogun_export">Shogun Export</option><option value="generic_markdown">Generic Markdown</option></select>
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <label className="space-y-1 text-[9px] uppercase font-bold text-shogun-subdued">Default type<select value={importForm.default_memory_type} onChange={e => setImportForm({...importForm, default_memory_type: e.target.value})} className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text">{['semantic','episodic','procedural','persona','skills'].map(type => <option key={type}>{type}</option>)}</select></label>
+                    <label className="space-y-1 text-[9px] uppercase font-bold text-shogun-subdued">Importance<input type="number" min="1" max="10" value={importForm.default_importance} onChange={e => setImportForm({...importForm, default_importance: Number(e.target.value)})} className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text" /></label>
+                    <label className="space-y-1 text-[9px] uppercase font-bold text-shogun-subdued">Decay<select value={importForm.default_decay_type} onChange={e => setImportForm({...importForm, default_decay_type: e.target.value})} className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text">{['medium','fast','slow','sticky','pinned'].map(decay => <option key={decay}>{decay}</option>)}</select></label>
+                  </div>
+                </div>
+
+                <div className="shogun-card space-y-3">
+                  <h4 className="text-[10px] font-bold text-shogun-gold uppercase tracking-widest">Duplicate & Conflict Policy</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="space-y-1 text-[9px] uppercase font-bold text-shogun-subdued">Exact duplicates<select value={importForm.duplicate_policy} onChange={e => setImportForm({...importForm, duplicate_policy: e.target.value})} className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text"><option value="skip_exact">Skip exact</option><option value="import_as_new">Import as new</option></select></label>
+                    <label className="space-y-1 text-[9px] uppercase font-bold text-shogun-subdued">Conflicts<select value={importForm.conflict_policy} onChange={e => setImportForm({...importForm, conflict_policy: e.target.value})} className="w-full bg-shogun-bg border border-shogun-border rounded-lg p-2 text-xs text-shogun-text"><option value="skip">Skip</option><option value="import_as_new">Import as new</option></select></label>
+                  </div>
+                  <p className="text-[9px] text-shogun-subdued">Existing memories are never overwritten. Preview is mandatory before import.</p>
+                </div>
+
+                <div className="shogun-card space-y-3">
+                  <div className="flex justify-between"><h4 className="text-[10px] font-bold uppercase text-shogun-subdued">Import History</h4><button onClick={loadImportHistory}><RefreshCw className="w-3 h-3" /></button></div>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">{importHistory.length === 0 ? <p className="text-xs text-shogun-subdued">No import batches yet.</p> : importHistory.map(batch => <button key={batch.batch_id} onClick={async () => { const res = await axios.get(`${API}/import/batches/${batch.batch_id}`); setImportPreview(res.data.data); }} className="w-full text-left p-3 bg-shogun-bg border border-shogun-border rounded-lg"><div className="flex justify-between gap-2"><span className="text-[9px] font-mono truncate">{batch.batch_id}</span><span className="text-[8px] uppercase">{batch.status.replaceAll('_', ' ')}</span></div><p className="text-[9px] text-shogun-subdued">{batch.imported_count} imported · {batch.failed_count} failed</p></button>)}</div>
+                </div>
+              </div>
+
+              <div className="lg:col-span-3 space-y-5">
+                <div className="shogun-card space-y-4">
+                  <div className="flex justify-between items-center"><h4 className="text-[10px] font-bold text-green-400 uppercase tracking-widest">Validated Preview</h4><button onClick={previewImport} disabled={importing} className="px-3 py-1.5 text-[9px] uppercase font-bold border border-green-500/30 text-green-400 rounded-lg disabled:opacity-40">{importing ? 'Working…' : 'Parse & Preview'}</button></div>
+                  {!importPreview ? <p className="text-xs text-shogun-subdued">Files are parsed as inert data. Nothing enters Archives until you review and confirm this preview.</p> : <>
+                    <div className="grid grid-cols-6 gap-2">{[
+                      ['files', importPreview.total_files], ['valid', importPreview.valid_count], ['duplicates', importPreview.items?.filter(item => item.status === 'duplicate').length || 0],
+                      ['imported', importPreview.imported_count], ['embedded', importPreview.embedded_count], ['failed', importPreview.failed_count],
+                    ].map(([label, value]) => <div key={String(label)} className="bg-shogun-bg border border-shogun-border rounded-lg p-2"><p className="text-[7px] uppercase text-shogun-subdued">{label}</p><p className="text-lg font-bold">{value}</p></div>)}</div>
+                    <div className="flex flex-wrap gap-2">{Object.entries(importPreview.report?.memory_type_distribution || {}).map(([type, count]) => <span key={type} className="px-2 py-1 rounded border border-shogun-border text-[9px]">{type}: {String(count)}</span>)}</div>
+                    <div className="space-y-2 max-h-[42vh] overflow-y-auto">{(importPreview.items || []).map(item => <div key={item.item_id} className={cn("p-3 border rounded-lg", item.status === 'invalid' || item.status === 'failed' ? 'border-red-500/30 bg-red-500/5' : item.status === 'duplicate' || item.status === 'skipped' ? 'border-amber-500/30 bg-amber-500/5' : 'border-shogun-border bg-shogun-bg')}><div className="flex justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold truncate">{item.title || item.source_file}</p><p className="text-[9px] font-mono text-shogun-subdued truncate">{item.source_file}</p></div><span className="text-[8px] font-bold uppercase shrink-0">{item.status.replaceAll('_', ' ')}</span></div><div className="flex flex-wrap gap-2 mt-2 text-[8px] uppercase"><span>{item.memory_type}</span><span>importance {item.importance}</span><span>{item.decay_type}</span>{item.tags.map(tag => <span key={tag} className="text-shogun-blue">#{tag}</span>)}</div><p className="text-[10px] text-shogun-subdued mt-2 line-clamp-2 whitespace-pre-wrap">{item.body_excerpt}</p>{item.warnings.map(warning => <p key={warning} className="text-[9px] text-amber-300 mt-1">• {warning}</p>)}{item.error?.message && <p className="text-[9px] text-red-400 mt-1">• {item.error.message}</p>}{item.embedding_error && <p className="text-[9px] text-red-400 mt-1">Embedding: {item.embedding_error}</p>}</div>)}</div>
+                  </>}
+                </div>
+
+                {importPreview && <div className="shogun-card flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-mono">{importPreview.batch_id}</p><p className="text-[9px] text-shogun-subdued uppercase">{importPreview.status.replaceAll('_', ' ')}</p></div><div className="flex gap-2"><a href={`${API}/import/batches/${importPreview.batch_id}/report`} className="px-3 py-2 border border-shogun-border rounded-lg text-[9px] font-bold uppercase"><Download className="w-3 h-3 inline mr-1" /> Report</a>{importPreview.failed_count > 0 && importPreview.imported_count > 0 && <button onClick={() => retryImportEmbeddings(importPreview.batch_id)} disabled={importing} className="px-3 py-2 border border-amber-500/30 text-amber-300 rounded-lg text-[9px] font-bold uppercase">Retry embeddings</button>}{['completed','completed_with_warnings'].includes(importPreview.status) && <button onClick={() => rollbackImport(importPreview.batch_id)} disabled={importing} className="px-3 py-2 border border-red-500/30 text-red-400 rounded-lg text-[9px] font-bold uppercase"><RotateCcw className="w-3 h-3 inline mr-1" /> Rollback</button>}</div></div>}
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-shogun-border bg-shogun-card flex justify-between items-center"><p className="text-[10px] text-shogun-subdued flex items-center gap-2"><Shield className="w-4 h-4 text-green-400" /> ZIP traversal blocked · Markdown never executed · imported memory remains auditable</p><div className="flex gap-3"><button onClick={() => setIsImportModalOpen(false)} className="px-5 py-2 border border-shogun-border rounded-lg text-xs font-bold text-shogun-subdued">Close</button><button onClick={confirmImport} disabled={importing || importPreview?.status !== 'previewed'} className="px-6 py-2 bg-green-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest disabled:opacity-40">Import Valid Memories</button></div></div>
+          </div>
+        </div>
+      )}
 
       {isExportModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">

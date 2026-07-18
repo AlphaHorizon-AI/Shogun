@@ -4,16 +4,13 @@ import json
 
 import pytest
 
-from shogun.services import channel_service, notification_service
+from shogun.services import channel_service, notification_service, telegram_poller
 from shogun.services.native_skills import NATIVE_TOOLS, execute_native_tool
 from shogun.services.tool_gate import TOOL_RISK_REGISTRY
 
 
 def _telegram_tool() -> dict:
-    return next(
-        tool for tool in NATIVE_TOOLS
-        if tool["function"]["name"] == "send_telegram_message"
-    )
+    return next(tool for tool in NATIVE_TOOLS if tool["function"]["name"] == "send_telegram_message")
 
 
 def test_send_telegram_message_schema_exposes_optional_topic_id():
@@ -37,19 +34,23 @@ async def test_native_tool_passes_topic_id_to_channel_sender(monkeypatch):
 
     monkeypatch.setattr(notification_service, "send_channel_message", send)
 
-    result = json.loads(await execute_native_tool(
-        "send_telegram_message",
-        {"chat_id": -100123, "text": "Morning brief", "message_thread_id": 22},
-        object(),
-    ))
+    result = json.loads(
+        await execute_native_tool(
+            "send_telegram_message",
+            {"chat_id": -100123, "text": "Morning brief", "message_thread_id": 22},
+            object(),
+        )
+    )
 
     assert result["status"] == "success"
-    assert delivered == [{
-        "message": "Morning brief",
-        "channel": "telegram",
-        "telegram_chat_ids": ["-100123"],
-        "telegram_message_thread_id": 22,
-    }]
+    assert delivered == [
+        {
+            "message": "Morning brief",
+            "channel": "telegram",
+            "telegram_chat_ids": ["-100123"],
+            "telegram_message_thread_id": 22,
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -62,32 +63,114 @@ async def test_native_tool_without_topic_id_remains_backward_compatible(monkeypa
 
     monkeypatch.setattr(notification_service, "send_channel_message", send)
 
-    result = json.loads(await execute_native_tool(
-        "send_telegram_message",
-        {"chat_id": -100123, "text": "General update"},
-        object(),
-    ))
+    result = json.loads(
+        await execute_native_tool(
+            "send_telegram_message",
+            {"chat_id": -100123, "text": "General update"},
+            object(),
+        )
+    )
 
     assert result["status"] == "success"
     assert delivered[0]["telegram_message_thread_id"] is None
 
 
+@pytest.mark.asyncio
+async def test_inbound_topic_scope_defaults_tool_reply_to_same_thread(monkeypatch):
+    delivered: list[dict] = []
+
+    async def send(message, **kwargs):
+        delivered.append({"message": message, **kwargs})
+        return {"telegram": {"ok": True, "sent": 1, "errors": []}}
+
+    async def process_inside_scope(*_args, **_kwargs):
+        return await execute_native_tool(
+            "send_telegram_message",
+            {"chat_id": -100123, "text": "Reply in News"},
+            object(),
+        )
+
+    monkeypatch.setattr(notification_service, "send_channel_message", send)
+    monkeypatch.setattr(telegram_poller, "_process_telegram_message", process_inside_scope)
+
+    await telegram_poller.process_telegram_message(
+        "token",
+        "-100123",
+        "News request",
+        telegram_context={"chat_id": "-100123", "message_thread_id": 22},
+    )
+
+    assert delivered[0]["telegram_message_thread_id"] == 22
+
+
+@pytest.mark.asyncio
+async def test_topic_scope_does_not_leak_to_other_chats(monkeypatch):
+    delivered: list[dict] = []
+
+    async def send(message, **kwargs):
+        delivered.append({"message": message, **kwargs})
+        return {"telegram": {"ok": True, "sent": 1, "errors": []}}
+
+    async def process_inside_scope(*_args, **_kwargs):
+        return await execute_native_tool(
+            "send_telegram_message",
+            {"chat_id": -100999, "text": "Different chat"},
+            object(),
+        )
+
+    monkeypatch.setattr(notification_service, "send_channel_message", send)
+    monkeypatch.setattr(telegram_poller, "_process_telegram_message", process_inside_scope)
+
+    await telegram_poller.process_telegram_message(
+        "token",
+        "-100123",
+        "News request",
+        telegram_context={"chat_id": "-100123", "message_thread_id": 22},
+    )
+
+    assert delivered[0]["telegram_message_thread_id"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("thread_id", [22, None])
+async def test_poller_reply_payload_targets_topic_only_when_present(monkeypatch, thread_id):
+    payloads: list[dict] = []
+
+    class Response:
+        is_success = True
+        text = ""
+
+        @staticmethod
+        def json():
+            return {"result": {"message_id": 501}}
+
+    class Client:
+        async def post(self, _url, *, json):
+            payloads.append(json)
+            return Response()
+
+    monkeypatch.setattr(telegram_poller, "_get_tg_client", lambda: Client())
+    message_id = await telegram_poller.send_telegram_message(
+        "token", "-100123", "Reply", message_thread_id=thread_id
+    )
+
+    assert message_id == 501
+    if thread_id is None:
+        assert "message_thread_id" not in payloads[0]
+    else:
+        assert payloads[0]["message_thread_id"] == 22
+
+
 def test_topic_helper_is_reusable_for_text_and_future_media_payloads():
-    text_payload = notification_service._apply_telegram_message_thread(
-        {"chat_id": "-100123", "text": "Hello"}, 22
-    )
-    photo_payload = notification_service._apply_telegram_message_thread(
-        {"chat_id": "-100123", "photo": "file-id"}, 22
-    )
+    text_payload = notification_service._apply_telegram_message_thread({"chat_id": "-100123", "text": "Hello"}, 22)
+    photo_payload = notification_service._apply_telegram_message_thread({"chat_id": "-100123", "photo": "file-id"}, 22)
 
     assert text_payload["message_thread_id"] == 22
     assert photo_payload["message_thread_id"] == 22
 
 
 def test_topic_helper_omits_field_when_no_topic_is_requested():
-    payload = notification_service._apply_telegram_message_thread(
-        {"chat_id": "-100123", "text": "General"}, None
-    )
+    payload = notification_service._apply_telegram_message_thread({"chat_id": "-100123", "text": "General"}, None)
 
     assert "message_thread_id" not in payload
 

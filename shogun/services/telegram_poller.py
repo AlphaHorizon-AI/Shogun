@@ -71,7 +71,7 @@ def _select_telegram_chat_mode(user_msg: str, history: list) -> tuple[str, str, 
     }
     for command, requested_mode in overrides.items():
         if lowered == command or lowered.startswith(command + " "):
-            clean_message = text[len(command):].lstrip() or "Hello"
+            clean_message = text[len(command) :].lstrip() or "Hello"
             classification = _classify_chat_mode(clean_message, history)
             mode = classification["mode"] if requested_mode == "auto" else requested_mode
             classification = {
@@ -82,16 +82,18 @@ def _select_telegram_chat_mode(user_msg: str, history: list) -> tuple[str, str, 
             return clean_message, mode, classification
 
     classification = _classify_chat_mode(text, history)
-    return text, "mission", {
-        **classification,
-        "mode": "mission",
-        "reason": "telegram_mission_default",
-    }
+    return (
+        text,
+        "mission",
+        {
+            **classification,
+            "mode": "mission",
+            "reason": "telegram_mission_default",
+        },
+    )
 
 
-async def _prepare_telegram_visual_context(
-    session, prompt: str, attachments: list[dict]
-) -> tuple[str, list[dict]]:
+async def _prepare_telegram_visual_context(session, prompt: str, attachments: list[dict]) -> tuple[str, list[dict]]:
     """Analyze Telegram images with the governed vision router before chat.
 
     The regular chat model may be text-only. Passing raw image bytes to it
@@ -105,9 +107,7 @@ async def _prepare_telegram_visual_context(
     safe_attachments: list[dict] = []
     visual_context: list[str] = []
     for attachment in attachments:
-        is_image = bool(attachment.get("is_image")) or str(
-            attachment.get("mime_type", "")
-        ).startswith("image/")
+        is_image = bool(attachment.get("is_image")) or str(attachment.get("mime_type", "")).startswith("image/")
         if not is_image:
             safe_attachments.append(attachment)
             continue
@@ -115,9 +115,7 @@ async def _prepare_telegram_visual_context(
         artifact_id = attachment.get("artifact_id")
         filename = attachment.get("filename") or "Telegram image"
         if not artifact_id:
-            visual_context.append(
-                f"[Visual analysis unavailable for {filename}: image artifact was not created.]"
-            )
+            visual_context.append(f"[Visual analysis unavailable for {filename}: image artifact was not created.]")
             continue
         try:
             artifact = await visual.get(uuid.UUID(str(artifact_id)))
@@ -133,9 +131,7 @@ async def _prepare_telegram_visual_context(
                 analysis_type="telegram_vision",
                 allow_cloud=True,
             )
-            visual_context.append(
-                f"[Governed visual analysis for {filename}]\n{analysis.result_text}"
-            )
+            visual_context.append(f"[Governed visual analysis for {filename}]\n{analysis.result_text}")
         except Exception as exc:
             logger.warning("[Telegram] Vision analysis unavailable for %s: %s", filename, exc)
             visual_context.append(f"[Visual analysis unavailable for {filename}: {exc}]")
@@ -226,17 +222,25 @@ def set_telegram_topic_mapping(chat_id: str, thread_id: int, name: str, *, sourc
         raise ValueError("Topic name cannot be empty.")
     registry = _load_topic_registry()
     chat_key = str(chat_id)
-    chat_entry = registry.setdefault(chat_key, {
-        "chat_id": chat_key, "chat_title": "", "chat_type": "supergroup", "topics": {},
-    })
+    chat_entry = registry.setdefault(
+        chat_key,
+        {
+            "chat_id": chat_key,
+            "chat_title": "",
+            "chat_type": "supergroup",
+            "topics": {},
+        },
+    )
     topic = chat_entry.setdefault("topics", {}).setdefault(str(int(thread_id)), {})
-    topic.update({
-        "message_thread_id": int(thread_id),
-        "name": clean_name[:200],
-        "name_source": source,
-        "status": topic.get("status") or "open",
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    })
+    topic.update(
+        {
+            "message_thread_id": int(thread_id),
+            "name": clean_name[:200],
+            "name_source": source,
+            "status": topic.get("status") or "open",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
     _save_topic_registry(registry)
     return topic
 
@@ -265,12 +269,15 @@ def _update_topic_registry_from_message(msg: dict) -> None:
         return
 
     registry = _load_topic_registry()
-    chat_entry = registry.setdefault(chat_id, {
-        "chat_id": chat_id,
-        "chat_title": chat.get("title") or "",
-        "chat_type": chat.get("type") or "",
-        "topics": {},
-    })
+    chat_entry = registry.setdefault(
+        chat_id,
+        {
+            "chat_id": chat_id,
+            "chat_title": chat.get("title") or "",
+            "chat_type": chat.get("type") or "",
+            "topics": {},
+        },
+    )
     chat_entry["chat_title"] = chat.get("title") or chat_entry.get("chat_title") or ""
     chat_entry["chat_type"] = chat.get("type") or chat_entry.get("chat_type") or ""
 
@@ -315,16 +322,19 @@ def _register_group_from_member_update(update: dict) -> None:
     if not chat_id or chat_type not in ("group", "supergroup"):
         return
 
-    new_member = (update.get("new_chat_member") or {})
+    new_member = update.get("new_chat_member") or {}
     status = new_member.get("status") or ""  # member, administrator, left, kicked, etc.
 
     registry = _load_topic_registry()
-    chat_entry = registry.setdefault(chat_id, {
-        "chat_id": chat_id,
-        "chat_title": "",
-        "chat_type": "",
-        "topics": {},
-    })
+    chat_entry = registry.setdefault(
+        chat_id,
+        {
+            "chat_id": chat_id,
+            "chat_title": "",
+            "chat_type": "",
+            "topics": {},
+        },
+    )
     chat_entry["chat_title"] = chat.get("title") or chat_entry.get("chat_title") or ""
     chat_entry["chat_type"] = chat_type
     chat_entry["bot_status"] = status
@@ -336,7 +346,9 @@ def _register_group_from_member_update(update: dict) -> None:
     else:
         logger.info(
             "[Telegram] Bot status in group %s (%s): %s",
-            chat_id, chat_entry.get("chat_title"), status,
+            chat_id,
+            chat_entry.get("chat_title"),
+            status,
         )
 
     _save_topic_registry(registry)
@@ -370,6 +382,25 @@ def _telegram_context_from_message(msg: dict) -> dict:
     }
 
 
+def _telegram_message_from_update(update: dict) -> dict | None:
+    """Extract every Telegram update shape that carries message/thread metadata."""
+    return (
+        update.get("message")
+        or update.get("edited_message")
+        or update.get("channel_post")
+        or update.get("edited_channel_post")
+    )
+
+
+def _telegram_context_from_update(update: dict) -> tuple[dict | None, dict | None]:
+    """Extract and register inbound topic context before agent processing."""
+    message = _telegram_message_from_update(update)
+    if not message:
+        return None, None
+    _update_topic_registry_from_message(message)
+    return message, _telegram_context_from_message(message)
+
+
 def _telegram_context_text(user_msg: str, telegram_context: dict | None) -> str:
     """Add group/topic context to the prompt."""
     if not telegram_context:
@@ -383,12 +414,11 @@ def _telegram_context_text(user_msg: str, telegram_context: dict | None) -> str:
 
     lines = ["", "", "Telegram context:", f"- Chat: {chat_title} ({chat_type})"]
     if thread_id is not None:
-        lines.append(f"- Topic/thread id: {thread_id}")
+        lines.append(f"- message_thread_id: {thread_id}")
         lines.append(f"- Topic name: {topic_name}")
     if known_topics:
         topic_text = ", ".join(
-            f"{topic.get('name') or 'unknown'} [{topic.get('message_thread_id')}]"
-            for topic in known_topics[:20]
+            f"{topic.get('name') or 'unknown'} [{topic.get('message_thread_id')}]" for topic in known_topics[:20]
         )
         lines.append(f"- Known topics in this chat: {topic_text}")
     else:
@@ -427,7 +457,9 @@ def _attachment_context_text(user_msg: str, attachments: list[dict]) -> str:
         size = att.get("size")
         size_text = f", {size} bytes" if isinstance(size, int) else ""
         lines.append(f"{index}. {label} ({mime_type}{size_text}) at {rel_path}")
-    lines.append("Use workspace tools to read files. For images use workspace_read_image, for PDFs use workspace_read_pdf.")
+    lines.append(
+        "Use workspace tools to read files. For images use workspace_read_image, for PDFs use workspace_read_pdf."
+    )
     return text + "\n".join(lines)
 
 
@@ -486,14 +518,23 @@ async def _download_telegram_file(
             async with async_session_factory() as db:
                 visual = VisualIntakeService(db)
                 artifact = await visual.ingest(
-                    content, filename=filename, declared_mime=effective_mime, source="telegram",
-                    source_chat_id=chat_id, source_message_id=source_message_id,
-                    sender_id=sender_id, caption=caption, chat_session_id=chat_id,
+                    content,
+                    filename=filename,
+                    declared_mime=effective_mime,
+                    source="telegram",
+                    source_chat_id=chat_id,
+                    source_message_id=source_message_id,
+                    sender_id=sender_id,
+                    caption=caption,
+                    chat_session_id=chat_id,
                 )
                 await db.commit()
                 return visual._public(artifact) | {
-                    "kind": kind, "file_id": file_id, "path": artifact.normalized_path,
-                    "workspace_path": artifact.normalized_path, "is_image": True,
+                    "kind": kind,
+                    "file_id": file_id,
+                    "path": artifact.normalized_path,
+                    "workspace_path": artifact.normalized_path,
+                    "is_image": True,
                 }
         except Exception as exc:
             logger.warning("[Telegram] governed image intake failed for %s: %s", file_id, exc)
@@ -556,12 +597,21 @@ async def _extract_telegram_attachments(bot_token: str, chat_id: str, msg: dict)
     return attachments
 
 
-async def send_chat_action(bot_token: str, chat_id: str, action: str = "typing"):
+async def send_chat_action(
+    bot_token: str,
+    chat_id: str,
+    action: str = "typing",
+    *,
+    message_thread_id: int | None = None,
+):
     """Send a chat action indicator (e.g. 'typing...') — instant user feedback."""
     url = f"https://api.telegram.org/bot{bot_token}/sendChatAction"
     try:
         client = _get_tg_client()
-        await client.post(url, json={"chat_id": chat_id, "action": action})
+        payload = {"chat_id": chat_id, "action": action}
+        if message_thread_id is not None:
+            payload["message_thread_id"] = int(message_thread_id)
+        await client.post(url, json=payload)
     except Exception:
         pass  # Non-critical — best effort
 
@@ -572,14 +622,13 @@ async def send_telegram_message(
     text: str,
     *,
     message_thread_id: int | None = None,
+    use_markdown: bool = True,
 ) -> int | None:
     """Push a textual response back to the Telegram client. Returns message_id if successful."""
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "Markdown"
-    }
+    payload = {"chat_id": chat_id, "text": text}
+    if use_markdown:
+        payload["parse_mode"] = "Markdown"
     if message_thread_id is not None:
         payload["message_thread_id"] = message_thread_id
     try:
@@ -600,7 +649,7 @@ async def edit_telegram_message(
     text: str,
     *,
     use_markdown: bool = True,
-):
+) -> bool:
     """Update an existing Telegram message with new content.
 
     Set ``use_markdown=False`` for intermediate streaming edits where the
@@ -618,15 +667,34 @@ async def edit_telegram_message(
     try:
         client = _get_tg_client()
         resp = await client.post(url, json=payload)
+        if resp.is_success:
+            return True
         if not resp.is_success:
             # Often occurs if content is identical, skip error logging for that
             if "message is not modified" not in resp.text:
                 logger.debug(f"Note: Failed to edit Telegram message: {resp.text}")
+            else:
+                return True
     except Exception as e:
         logger.error(f"Network error editing Telegram message: {e}")
+    return False
 
 
 async def process_telegram_message(
+    bot_token: str,
+    chat_id: str,
+    user_msg: str,
+    attachments: list[dict] | None = None,
+    telegram_context: dict | None = None,
+):
+    """Process one inbound message inside its isolated Telegram topic scope."""
+    from shogun.services.telegram_routing_context import telegram_routing_scope
+
+    with telegram_routing_scope(telegram_context):
+        return await _process_telegram_message(bot_token, chat_id, user_msg, attachments, telegram_context)
+
+
+async def _process_telegram_message(
     bot_token: str,
     chat_id: str,
     user_msg: str,
@@ -640,7 +708,12 @@ async def process_telegram_message(
     logger.info(f"[Telegram] Received: '{user_msg[:50]}...' from {chat_id}")
 
     # ── 0. Immediate typing indicator — user sees feedback in <100ms ──
-    await send_chat_action(bot_token, chat_id, "typing")
+    await send_chat_action(
+        bot_token,
+        chat_id,
+        "typing",
+        message_thread_id=message_thread_id,
+    )
 
     # Emergency controls must be handled before the kill-switch gate so the
     # same authorized Telegram user can also reset an active Harakiri.
@@ -648,6 +721,7 @@ async def process_telegram_message(
         execute_harakiri_control,
         parse_harakiri_control,
     )
+
     harakiri_action = parse_harakiri_control(user_msg)
     if harakiri_action:
         await execute_harakiri_control(
@@ -675,10 +749,13 @@ async def process_telegram_message(
     posture = {"active_tier": "guarded", "ide_enabled": False}
     try:
         from shogun.api.security import _get_agent_posture
+
         posture = await _get_agent_posture()
         if posture.get("kill_switch_active", False):
             logger.warning("[Telegram] Kill switch active — blocking message from %s", chat_id)
-            await send_telegram_message(bot_token, chat_id,
+            await send_telegram_message(
+                bot_token,
+                chat_id,
                 "⛩️ Shogun is in emergency lockdown mode (HARAKIRI). "
                 "All AI operations are suspended. Deactivate the kill switch "
                 "in the Torii to resume.",
@@ -696,9 +773,8 @@ async def process_telegram_message(
                 append_chat_message,
                 get_chat_context,
             )
-            prompt_msg, chat_attachments = await _prepare_telegram_visual_context(
-                session, prompt_msg, attachments
-            )
+
+            prompt_msg, chat_attachments = await _prepare_telegram_visual_context(session, prompt_msg, attachments)
             history = await get_chat_context(session, limit=20)
             await append_chat_message(
                 session,
@@ -707,10 +783,20 @@ async def process_telegram_message(
                 content=prompt_msg,
                 external_chat_id=chat_id,
                 message_data={
-                    **({"attachments": [
-                        {key: value for key, value in attachment.items() if key not in {"path", "workspace_path"}}
-                        for attachment in attachments
-                    ]} if attachments else {}),
+                    **(
+                        {
+                            "attachments": [
+                                {
+                                    key: value
+                                    for key, value in attachment.items()
+                                    if key not in {"path", "workspace_path"}
+                                }
+                                for attachment in attachments
+                            ]
+                        }
+                        if attachments
+                        else {}
+                    ),
                     **({"telegram_context": telegram_context} if telegram_context else {}),
                 },
             )
@@ -725,14 +811,20 @@ async def process_telegram_message(
                 from shogun.services.active_skill_service import SkillActivationService
                 from shogun.services.native_skills import NATIVE_TOOLS
 
-                skill_result = await SkillActivationService(session).activate(SkillActivationRequest(
-                    run_id=f"telegram:{chat_id}:{uuid.uuid4()}", objective=prompt_msg,
-                    context=" ".join(str(item.get("content", "")) for item in history[-4:] if isinstance(item, dict)),
-                    posture=posture.get("active_tier", "guarded"),
-                    available_tools=[item["function"]["name"] for item in NATIVE_TOOLS],
-                    usage_location="telegram", agent_id="shogun",
-                    ide_enabled=bool(posture.get("ide_enabled", False)),
-                ))
+                skill_result = await SkillActivationService(session).activate(
+                    SkillActivationRequest(
+                        run_id=f"telegram:{chat_id}:{uuid.uuid4()}",
+                        objective=prompt_msg,
+                        context=" ".join(
+                            str(item.get("content", "")) for item in history[-4:] if isinstance(item, dict)
+                        ),
+                        posture=posture.get("active_tier", "guarded"),
+                        available_tools=[item["function"]["name"] for item in NATIVE_TOOLS],
+                        usage_location="telegram",
+                        agent_id="shogun",
+                        ide_enabled=bool(posture.get("ide_enabled", False)),
+                    )
+                )
                 classification["_skill_context"] = skill_result["context_block"]
                 classification["_active_skill_run_ids"] = [
                     str(item["active_skill_run_id"]) for item in skill_result["active_skills"]
@@ -759,23 +851,32 @@ async def process_telegram_message(
             # 3. Invoke the appropriate engine lane
             if mode == "fast":
                 from shogun.api.agents import _shogun_fast_chat
+
                 logger.info("[Telegram] Routing to Fast Chat lane...")
                 response_stream = await _shogun_fast_chat(
-                    user_msg=prompt_msg, history=history, svc=svc,
+                    user_msg=prompt_msg,
+                    history=history,
+                    svc=svc,
                     classification=classification,
                 )
             elif mode == "governed":
                 from shogun.api.governed_chat import _shogun_governed_chat
+
                 logger.info("[Telegram] Routing to Governed Chat lane...")
                 response_stream = await _shogun_governed_chat(
-                    user_msg=prompt_msg, history=history, svc=svc,
+                    user_msg=prompt_msg,
+                    history=history,
+                    svc=svc,
                     classification=classification,
                 )
             else:
                 logger.info("[Telegram] Routing to Mission lane...")
                 response_stream = await _shogun_chat_internal(
-                    user_msg=prompt_msg, history=history, svc=svc,
-                    classification=classification, attachments=chat_attachments,
+                    user_msg=prompt_msg,
+                    history=history,
+                    svc=svc,
+                    classification=classification,
+                    attachments=chat_attachments,
                 )
 
             # 4. Aggregate the SSE chunks and update Telegram periodically
@@ -823,11 +924,13 @@ async def process_telegram_message(
                             else:
                                 display_text = f"⚙️ _{current_action}_"
 
-                        if display_text and display_text != last_update_text:
+                        if msg_id is not None and display_text and display_text != last_update_text:
                             # use_markdown=False for intermediate edits to avoid
                             # Telegram rejecting partial/unclosed markdown syntax
                             await edit_telegram_message(
-                                bot_token, chat_id, msg_id,
+                                bot_token,
+                                chat_id,
+                                msg_id,
                                 display_text + (" ▮" if not current_action else ""),
                                 use_markdown=False,
                             )
@@ -844,13 +947,27 @@ async def process_telegram_message(
                 full_reply = "I apologize, but I couldn't generate a response to that message."
 
             # 5. Final update to the same message — HERE we enable Markdown for the finished text
-            await edit_telegram_message(bot_token, chat_id, msg_id, full_reply, use_markdown=True)
+            edited = False
+            if msg_id is not None:
+                edited = await edit_telegram_message(bot_token, chat_id, msg_id, full_reply, use_markdown=True)
+            if not edited:
+                await send_telegram_message(
+                    bot_token,
+                    chat_id,
+                    full_reply,
+                    message_thread_id=message_thread_id,
+                    use_markdown=False,
+                )
             await append_chat_message(
                 session,
                 channel="telegram",
                 role="assistant",
                 content=full_reply,
                 external_chat_id=chat_id,
+                message_data={
+                    "telegram_context": telegram_context,
+                    "reply_to_message_id": msg_id,
+                },
             )
             await session.commit()
             logger.info(f"[Telegram] Response finalized for {chat_id}")
@@ -894,10 +1011,16 @@ async def telegram_poller_task():
             params = {
                 "timeout": "30",
                 "offset": str(offset),
-                "allowed_updates": json.dumps([
-                    "message", "edited_message", "channel_post", "edited_channel_post",
-                    "my_chat_member", "chat_member",
-                ]),
+                "allowed_updates": json.dumps(
+                    [
+                        "message",
+                        "edited_message",
+                        "channel_post",
+                        "edited_channel_post",
+                        "my_chat_member",
+                        "chat_member",
+                    ]
+                ),
             }
 
             client = _get_tg_client()
@@ -913,13 +1036,22 @@ async def telegram_poller_task():
             if not resp.is_success:
                 if resp.status_code == 401:
                     # Invalid or revoked bot token — auto-disconnect to stop polling
-                    logger.warning("[Telegram] Bot token is invalid (HTTP 401). Auto-disconnecting to stop polling. Reconfigure in the Katana to reconnect.")
+                    logger.warning(
+                        "[Telegram] Bot token is invalid (HTTP 401). Auto-disconnecting to stop polling. Reconfigure in the Katana to reconnect."
+                    )
                     try:
                         async with async_session_factory() as session:
                             from sqlalchemy import select
-                            agent = (await session.execute(
-                                select(Agent).where(Agent.agent_type == "shogun", Agent.is_primary == True, Agent.is_deleted == False)
-                            )).scalar_one_or_none()
+
+                            agent = (
+                                await session.execute(
+                                    select(Agent).where(
+                                        Agent.agent_type == "shogun",
+                                        Agent.is_primary == True,
+                                        Agent.is_deleted == False,
+                                    )
+                                )
+                            ).scalar_one_or_none()
                             if agent and agent.bushido_settings:
                                 tg_cfg = agent.bushido_settings.get(_TELEGRAM_KEY, {})
                                 tg_cfg["connected"] = False
@@ -951,20 +1083,13 @@ async def telegram_poller_task():
                 if member_update:
                     _register_group_from_member_update(member_update)
 
-                msg = (
-                    update.get("message")
-                    or update.get("edited_message")
-                    or update.get("channel_post")
-                    or update.get("edited_channel_post")
-                )
+                msg, telegram_context = _telegram_context_from_update(update)
                 if not msg:
                     continue
 
                 chat = msg.get("chat", {})
                 chat_id_str = str(chat.get("id"))
                 text = (msg.get("text") or msg.get("caption") or "").strip()
-                _update_topic_registry_from_message(msg)
-                telegram_context = _telegram_context_from_message(msg)
 
                 # Check whitelist (allowing ID capture if empty)
                 if allowed_ids and chat_id_str not in allowed_ids:
@@ -976,6 +1101,7 @@ async def telegram_poller_task():
                 # allowlist; an empty list is acceptable for chat discovery,
                 # but never for kill-switch activation or reset.
                 from shogun.services.harakiri_control import parse_harakiri_control
+
                 if parse_harakiri_control(text) and not allowed_ids:
                     logger.warning(
                         "[Telegram] Blocked Harakiri control from %s because no chat allowlist is configured",
@@ -985,6 +1111,11 @@ async def telegram_poller_task():
                         bot_token,
                         chat_id_str,
                         "⚠️ Harakiri control is disabled until this chat ID is added to Telegram's allowed chat IDs.",
+                        message_thread_id=(
+                            telegram_context.get("message_thread_id")
+                            if telegram_context
+                            else None
+                        ),
                     )
                     continue
 

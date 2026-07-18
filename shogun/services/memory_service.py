@@ -77,6 +77,7 @@ class MemoryService(BaseService[MemoryRecord]):
             confidence_score=confidence_score,
             decay_class=decay_class,
             is_pinned=is_pinned,
+            tags=tags or [],
             **kwargs,
         )
 
@@ -279,7 +280,7 @@ class MemoryService(BaseService[MemoryRecord]):
                     "importance_score": r.importance_score,
                     "decay_class": r.decay_class,
                     "is_pinned": r.is_pinned,
-                    "tags": [],
+                    "tags": r.tags or [],
                 },
             })
 

@@ -5,10 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, ForeignKey
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shogun.db.base import AuditMixin, Base, GUID, UUIDMixin
+from shogun.db.base import GUID, AuditMixin, Base, JSONType, UUIDMixin
 
 
 class MemoryRecord(Base, UUIDMixin, AuditMixin):
@@ -42,6 +42,14 @@ class MemoryRecord(Base, UUIDMixin, AuditMixin):
 
     # Lifecycle
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Portable import provenance (Order 17)
+    source_system: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    source_file: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    source_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    import_batch_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    tags: Mapped[list] = mapped_column(JSONType(), nullable=False, default=list)
 
 
 class MemoryProvenanceLink(Base, UUIDMixin):

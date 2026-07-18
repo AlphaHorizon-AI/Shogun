@@ -1,8 +1,8 @@
 {
-  "version": "1.19.0",
+  "version": "1.20.0",
   "name": "Shogun OS",
-  "build": 84,
+  "build": 85,
   "channel": "stable",
   "released": "2026-07-18T00:00:00Z",
-  "changelog": "Memory portability: adds governed OpenClaw-compatible Markdown exports with filtering, previews, background job history, sensitive-data confirmation, manifests, reports, optional raw JSON, ZIP downloads, and Archives UI controls."
+  "changelog": "Memory portability and Telegram workspace topics: adds governed OpenClaw Markdown import with preview, deduplication, native SQLite/Qdrant persistence, retry and rollback; completes inbound message_thread_id extraction and same-topic outbound replies for chat, tools, cron jobs, and Agent Flows."
 }

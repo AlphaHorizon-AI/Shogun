@@ -237,8 +237,8 @@ NATIVE_TOOLS = [
             "name": "send_telegram_message",
             "description": (
                 "Send a text message through the configured Telegram bot. For forum supergroups, "
-                "provide message_thread_id to target a specific topic; omit it to post normally "
-                "(including General)."
+                "provide message_thread_id to target a specific topic. During an inbound Telegram "
+                "request, omitting it replies in the current topic; otherwise omission posts normally."
             ),
             "parameters": {
                 "type": "object",
@@ -2505,8 +2505,12 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
 
         elif name == "send_telegram_message":
             from shogun.services.notification_service import send_channel_message
+            from shogun.services.telegram_routing_context import current_telegram_routing
 
             message_thread_id = args.get("message_thread_id")
+            routing = current_telegram_routing() or {}
+            if message_thread_id is None and str(args["chat_id"]) == str(routing.get("chat_id")):
+                message_thread_id = routing.get("message_thread_id")
             result = await send_channel_message(
                 str(args["text"]),
                 channel="telegram",

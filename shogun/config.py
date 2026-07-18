@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     workspace_path: Path = PROJECT_ROOT / "data" / "workspace"
     visual_artifacts_path: Path = PROJECT_ROOT / "data" / "artifacts" / "images"
     memory_exports_path: Path = PROJECT_ROOT / "data" / "memory_exports"
+    memory_imports_path: Path = PROJECT_ROOT / "data" / "memory_imports"
+    memory_import_max_single_file_mb: int = 2
+    memory_import_max_total_mb: int = 100
+    memory_import_max_files: int = 5000
     visual_max_upload_mb: int = 20
     visual_retention_days: int = 30
 
@@ -145,6 +149,7 @@ class Settings(BaseSettings):
             self.uploads_path,
             self.visual_artifacts_path,
             self.memory_exports_path,
+            self.memory_imports_path,
             # Mado browser automation directories
             self.mado_path,
             self.mado_path / "profiles",

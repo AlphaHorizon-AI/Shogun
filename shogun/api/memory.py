@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 
 from shogun.api.deps import get_memory_service
 from shogun.schemas.common import ApiResponse
@@ -13,6 +13,8 @@ from shogun.schemas.memory import (
     MemoryExportJobResponse,
     MemoryExportPreview,
     MemoryExportRequest,
+    MemoryImportBatchResponse,
+    MemoryImportConfirmRequest,
     MemoryRecordCreate,
     MemoryRecordResponse,
     MemoryRecordUpdate,
@@ -20,6 +22,7 @@ from shogun.schemas.memory import (
     MemorySearchRequest,
 )
 from shogun.services.memory_export_service import MemoryExportService, job_response
+from shogun.services.memory_import_service import MemoryImportService, batch_response
 from shogun.services.memory_service import MemoryService
 
 router = APIRouter(prefix="/memory", tags=["Memory"])
@@ -290,6 +293,186 @@ async def download_memory_export(
         media_type="application/zip",
         filename=f"shogun_memory_export_{export_id}.zip",
         headers={"Cache-Control": "no-store"},
+    )
+
+
+# ── Order 17: OpenClaw Markdown import ─────────────────────────
+
+
+@router.post("/import/openclaw/preview", response_model=ApiResponse[MemoryImportBatchResponse])
+async def preview_memory_import(
+    files: list[UploadFile] | None = File(None),
+    folder_path: str | None = Form(None),
+    agent_id: uuid.UUID = Form(...),
+    source_type: str = Form("openclaw"),
+    default_memory_type: str = Form("semantic"),
+    default_importance: int = Form(5, ge=1, le=10),
+    default_decay_type: str = Form("medium"),
+    svc: MemoryService = Depends(get_memory_service),
+):
+    """Parse and persist a mandatory preview without writing native memories."""
+    importer = MemoryImportService(svc.session)
+    try:
+        kwargs = {
+            "agent_id": agent_id,
+            "source_type": source_type,
+            "default_memory_type": default_memory_type,
+            "default_importance": default_importance,
+            "default_decay_type": default_decay_type,
+        }
+        if folder_path:
+            from pathlib import Path
+
+            batch = await importer.preview_folder(Path(folder_path), **kwargs)
+        elif files:
+            uploads = [(upload.filename or "memory.md", await upload.read()) for upload in files]
+            batch = await importer.preview_uploads(uploads, **kwargs)
+        else:
+            raise ValueError("Select at least one Markdown/ZIP file or provide a local folder path")
+        await svc.session.commit()
+        items = await importer._items(batch.id)
+        return ApiResponse(data=batch_response(batch, items))
+    except ValueError as exc:
+        await svc.session.rollback()
+        from shogun.services.event_logger import EventLogger
+
+        await EventLogger.emit(
+            category="memory",
+            event_type="memory.import.preview_failed",
+            action="OpenClaw Markdown import preview failed",
+            result="failure",
+            user_id="local_user",
+            detail={"error": str(exc)},
+        )
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        await svc.session.rollback()
+        from shogun.services.event_logger import EventLogger
+
+        await EventLogger.emit(
+            category="memory",
+            event_type="memory.import.preview_failed",
+            action="OpenClaw Markdown import preview failed",
+            result="failure",
+            user_id="local_user",
+            detail={"error": str(exc)},
+        )
+        raise HTTPException(status_code=500, detail="Memory import preview failed") from exc
+
+
+@router.post("/import/openclaw/confirm", response_model=ApiResponse[MemoryImportBatchResponse])
+async def confirm_memory_import(
+    body: MemoryImportConfirmRequest,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    importer = MemoryImportService(svc.session)
+    try:
+        batch = await importer.confirm(
+            body.batch_preview_id,
+            duplicate_policy=body.duplicate_policy,
+            conflict_policy=body.conflict_policy,
+        )
+        await svc.session.commit()
+    except LookupError as exc:
+        await svc.session.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        await svc.session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        await svc.session.rollback()
+        from shogun.services.event_logger import EventLogger
+
+        await EventLogger.emit(
+            category="memory",
+            event_type="memory.import.batch_failed",
+            action=f"Memory import batch {body.batch_preview_id} failed",
+            result="failure",
+            user_id="local_user",
+            detail={"batch_id": body.batch_preview_id, "error": str(exc)},
+        )
+        raise HTTPException(status_code=500, detail="Memory import batch failed") from exc
+    return ApiResponse(data=batch_response(batch, await importer._items(batch.id)))
+
+
+@router.get("/import/batches", response_model=ApiResponse[list[MemoryImportBatchResponse]])
+async def memory_import_history(
+    limit: int = Query(20, ge=1, le=100),
+    svc: MemoryService = Depends(get_memory_service),
+):
+    importer = MemoryImportService(svc.session)
+    return ApiResponse(data=[batch_response(batch) for batch in await importer.history(limit)])
+
+
+@router.get("/import/batches/{batch_id}", response_model=ApiResponse[MemoryImportBatchResponse])
+async def memory_import_status(
+    batch_id: str,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    importer = MemoryImportService(svc.session)
+    batch = await importer.get_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Memory import batch not found")
+    return ApiResponse(data=batch_response(batch, await importer._items(batch.id)))
+
+
+@router.post("/import/batches/{batch_id}/rollback", response_model=ApiResponse[MemoryImportBatchResponse])
+async def rollback_memory_import(
+    batch_id: str,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    importer = MemoryImportService(svc.session)
+    try:
+        batch = await importer.rollback(batch_id)
+        await svc.session.commit()
+    except LookupError as exc:
+        await svc.session.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        await svc.session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        await svc.session.rollback()
+        from shogun.services.event_logger import EventLogger
+
+        await EventLogger.emit(
+            category="memory",
+            event_type="memory.import.rollback_failed",
+            action=f"Memory import rollback {batch_id} failed",
+            result="failure",
+            user_id="local_user",
+            detail={"batch_id": batch_id, "error": str(exc)},
+        )
+        raise HTTPException(status_code=500, detail="Memory import rollback failed") from exc
+    return ApiResponse(data=batch_response(batch, await importer._items(batch.id)))
+
+
+@router.post("/import/batches/{batch_id}/retry-embeddings", response_model=ApiResponse[MemoryImportBatchResponse])
+async def retry_memory_import_embeddings(
+    batch_id: str,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    importer = MemoryImportService(svc.session)
+    try:
+        batch = await importer.retry_embeddings(batch_id)
+        await svc.session.commit()
+    except LookupError as exc:
+        await svc.session.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ApiResponse(data=batch_response(batch, await importer._items(batch.id)))
+
+
+@router.get("/import/batches/{batch_id}/report")
+async def download_memory_import_report(
+    batch_id: str,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    batch = await MemoryImportService(svc.session).get_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Memory import batch not found")
+    return JSONResponse(
+        batch.report_json or {},
+        headers={"Content-Disposition": f'attachment; filename="memory_import_{batch_id}.json"', "Cache-Control": "no-store"},
     )
 
 
