@@ -231,6 +231,40 @@ NATIVE_TOOLS = [
     },
     {
         "type": "function",
+        "risk": "high",
+        "category": "comms",
+        "function": {
+            "name": "send_telegram_message",
+            "description": (
+                "Send a text message through the configured Telegram bot. For forum supergroups, "
+                "provide message_thread_id to target a specific topic; omit it to post normally "
+                "(including General)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "chat_id": {
+                        "type": "integer",
+                        "description": "Telegram chat, group, or supergroup ID.",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Plain-text message to send.",
+                    },
+                    "message_thread_id": {
+                        "type": "integer",
+                        "description": (
+                            "Optional forum topic thread ID. Use this for a forum supergroup to "
+                            "post in a specific topic."
+                        ),
+                    },
+                },
+                "required": ["chat_id", "text"],
+            },
+        },
+    },
+    {
+        "type": "function",
         "risk": "low",
         "category": "comms",
         "function": {
@@ -2467,6 +2501,24 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
             return json.dumps({
                 "status": "success" if result.get("ok") else "error",
                 "message": result.get("message", "Email operation completed."),
+            })
+
+        elif name == "send_telegram_message":
+            from shogun.services.notification_service import send_channel_message
+
+            message_thread_id = args.get("message_thread_id")
+            result = await send_channel_message(
+                str(args["text"]),
+                channel="telegram",
+                telegram_chat_ids=[str(int(args["chat_id"]))],
+                telegram_message_thread_id=(
+                    int(message_thread_id) if message_thread_id is not None else None
+                ),
+            )
+            telegram_result = result.get("telegram", {})
+            return json.dumps({
+                "status": "success" if telegram_result.get("ok") else "error",
+                **telegram_result,
             })
 
         elif name == "list_calendar_events":

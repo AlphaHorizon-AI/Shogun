@@ -56,19 +56,39 @@ async def send_channel_message(
     *,
     channel: str = "both",
     telegram_chat_ids: list[str] | None = None,
+    telegram_message_thread_id: int | None = None,
     teams_conversation_ids: list[str] | None = None,
     event_type: str = "agentflow.message",
 ) -> dict[str, Any]:
     """Send a plain-text message to configured operator channels."""
     results: dict[str, Any] = {}
     if channel in {"telegram", "both"}:
-        results["telegram"] = await _send_telegram(message, telegram_chat_ids)
+        results["telegram"] = await _send_telegram(
+            message,
+            telegram_chat_ids,
+            message_thread_id=telegram_message_thread_id,
+        )
     if channel in {"teams", "both"}:
         results["teams"] = await _send_teams(message, teams_conversation_ids, event_type)
     return results
 
 
-async def _send_telegram(message: str, chat_ids: list[str] | None) -> dict[str, Any]:
+def _apply_telegram_message_thread(
+    payload: dict[str, Any],
+    message_thread_id: int | None,
+) -> dict[str, Any]:
+    """Attach a forum topic to any Telegram API payload when one is requested."""
+    if message_thread_id is not None:
+        payload["message_thread_id"] = int(message_thread_id)
+    return payload
+
+
+async def _send_telegram(
+    message: str,
+    chat_ids: list[str] | None,
+    *,
+    message_thread_id: int | None = None,
+) -> dict[str, Any]:
     from shogun.services.channel_service import _get_agent_bushido
 
     config = (await _get_agent_bushido()).get("telegram_config", {})
@@ -85,16 +105,17 @@ async def _send_telegram(message: str, chat_ids: list[str] | None) -> dict[str, 
         for target in targets:
             parts = target.split(":")
             chat_id = parts[0]
-            thread_id = None
+            target_thread_id = message_thread_id
             if len(parts) > 1:
                 try:
-                    thread_id = int(parts[1])
+                    target_thread_id = int(parts[1])
                 except ValueError:
                     pass
 
-            payload = {"chat_id": chat_id, "text": message}
-            if thread_id is not None:
-                payload["message_thread_id"] = thread_id
+            payload = _apply_telegram_message_thread(
+                {"chat_id": chat_id, "text": message},
+                target_thread_id,
+            )
 
             try:
                 response = await client.post(

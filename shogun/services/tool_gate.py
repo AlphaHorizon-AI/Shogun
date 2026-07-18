@@ -98,6 +98,7 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     "list_cron_jobs":         {"risk": "low",      "category": "comms"},
     # Comms — write
     "send_email":             {"risk": "high",     "category": "comms"},
+    "send_telegram_message":  {"risk": "high",     "category": "comms"},
     "create_calendar_event":  {"risk": "medium",   "category": "comms"},
     "create_cron_job":        {"risk": "high",     "category": "comms"},
     "delete_cron_job":        {"risk": "high",     "category": "comms"},

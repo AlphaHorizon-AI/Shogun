@@ -1,8 +1,8 @@
 {
-  "version": "1.18.0",
+  "version": "1.18.1",
   "name": "Shogun OS",
-  "build": 82,
+  "build": 83,
   "channel": "stable",
   "released": "2026-07-18T00:00:00Z",
-  "changelog": "Order 15: OpenClaw College Content Loop — full skill lifecycle pipeline (create, validate, publish, install, use, optimize, republish). Adds SkillQualityGate (14-point check), SkillAuthoringService, SkillPublishingService with LocalFolderProvider, SkillMetricsService, SkillRollbackService, and 17 new API endpoints. 3 new native tools: dojo_author_skill, dojo_validate_skill, dojo_publish_skill."
+  "changelog": "Telegram forum topic delivery: adds the governed send_telegram_message tool with optional message_thread_id, passes topic IDs through Agent Flow channel output nodes, preserves General-topic compatibility, and centralizes topic payload handling for future Telegram media senders."
 }

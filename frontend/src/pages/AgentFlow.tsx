@@ -2332,6 +2332,18 @@ Content-Type: application/json
               />
             </div>
             <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Telegram Topic Thread ID (optional)</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={config.message_thread_id ?? ''}
+                onChange={(e) => updateConfig('message_thread_id', e.target.value === '' ? null : Number(e.target.value))}
+                className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#38bdf8] transition-colors outline-none"
+                placeholder="For example, 22 for the News topic"
+              />
+            </div>
+            <div className="space-y-1.5">
               <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Teams Conversation IDs (optional)</label>
               <input
                 type="text"

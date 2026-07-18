@@ -107,6 +107,7 @@ async def test_channel_node_injects_predecessor_context(monkeypatch):
             "channel": "telegram",
             "message_template": "Workflow completed:\n{{context}}",
             "telegram_chat_ids": ["123"],
+            "message_thread_id": 22,
         },
         "final report",
     )
@@ -114,6 +115,7 @@ async def test_channel_node_injects_predecessor_context(monkeypatch):
     assert result == "Message delivered via telegram"
     assert delivered[0]["message"] == "Workflow completed:\nfinal report"
     assert delivered[0]["telegram_chat_ids"] == ["123"]
+    assert delivered[0]["telegram_message_thread_id"] == 22
 
 
 def test_notification_cursor_only_returns_new_events():

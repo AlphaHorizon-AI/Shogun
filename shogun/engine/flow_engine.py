@@ -1082,10 +1082,15 @@ async def _exec_channel_send(config: dict, context_str: str) -> str:
     if not message:
         raise ValueError("Channel Send node produced an empty message")
 
+    telegram_chat_ids = config.get("telegram_chat_ids") or None
+    if telegram_chat_ids is None and config.get("chat_id") is not None:
+        telegram_chat_ids = [str(config["chat_id"])]
+
     results = await send_channel_message(
         message,
         channel=channel,
-        telegram_chat_ids=config.get("telegram_chat_ids") or None,
+        telegram_chat_ids=telegram_chat_ids,
+        telegram_message_thread_id=config.get("message_thread_id"),
         teams_conversation_ids=config.get("teams_conversation_ids") or None,
     )
     selected = [channel] if channel != "both" else ["telegram", "teams"]
