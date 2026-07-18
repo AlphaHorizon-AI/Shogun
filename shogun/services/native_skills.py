@@ -319,7 +319,7 @@ NATIVE_TOOLS = [
                     },
                     "job_type": {
                         "type": "string",
-                        "enum": ["consolidation", "reflection", "pruning", "calibration", "health_check", "custom"],
+                        "enum": ["memory_consolidation", "performance_audit", "skill_health_check", "persona_drift_check", "custom_task"],
                         "description": "Type of job to schedule.",
                     },
                     "frequency": {
@@ -2694,9 +2694,9 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
         elif name == "create_agent_flow":
             # ── Posture enforcement: requires agentflow_autonomous ──
             try:
-                from shogun.services.posture_guard import get_posture_permissions
-                perms = await get_posture_permissions()
-                if not perms.get("agentflow_create", False):
+                from shogun.services.posture_guard import get_posture_tool_filter
+                posture = await get_posture_tool_filter()
+                if not posture.get("agentflow_create", False):
                     return json.dumps({
                         "status": "error",
                         "message": "AgentFlow creation is only available in Tactical, Campaign, or Ronin posture."
@@ -2767,8 +2767,8 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
 
         elif name == "edit_agent_flow":
             try:
-                from shogun.services.posture_guard import get_posture_permissions
-                posture = await get_posture_permissions()
+                from shogun.services.posture_guard import get_posture_tool_filter
+                posture = await get_posture_tool_filter()
                 if not posture.get("agentflow_create", False):
                     return json.dumps({"status": "error", "message": "AgentFlow editing is only available in Tactical, Campaign, or Ronin posture."})
             except Exception:
@@ -2806,9 +2806,9 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
 
         elif name == "delete_agent_flow":
             try:
-                from shogun.services.posture_guard import get_posture_permissions
+                from shogun.services.posture_guard import get_posture_tool_filter
 
-                posture = await get_posture_permissions()
+                posture = await get_posture_tool_filter()
                 if not posture.get("agentflow_create", False):
                     return json.dumps({
                         "status": "error",
@@ -2842,8 +2842,8 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
 
         elif name == "edit_flow_stack":
             try:
-                from shogun.services.posture_guard import get_posture_permissions
-                posture = await get_posture_permissions()
+                from shogun.services.posture_guard import get_posture_tool_filter
+                posture = await get_posture_tool_filter()
                 if not posture.get("flowstack_create", False):
                     return json.dumps({"status": "error", "message": "Flow Stack editing is only available in Tactical, Campaign, or Ronin posture."})
             except Exception:
@@ -2912,9 +2912,9 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
 
         elif name == "delete_flow_stack":
             try:
-                from shogun.services.posture_guard import get_posture_permissions
+                from shogun.services.posture_guard import get_posture_tool_filter
 
-                posture = await get_posture_permissions()
+                posture = await get_posture_tool_filter()
                 if not posture.get("flowstack_create", False):
                     return json.dumps({
                         "status": "error",
@@ -2948,8 +2948,8 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
 
         elif name == "create_flow_stack":
             try:
-                from shogun.services.posture_guard import get_posture_permissions
-                posture = await get_posture_permissions()
+                from shogun.services.posture_guard import get_posture_tool_filter
+                posture = await get_posture_tool_filter()
                 if not posture.get("flowstack_create", False):
                     return json.dumps({"status": "error", "message": "Flow Stack creation is only available in Tactical, Campaign, or Ronin posture."})
             except Exception:

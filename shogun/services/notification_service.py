@@ -82,18 +82,31 @@ async def _send_telegram(message: str, chat_ids: list[str] | None) -> dict[str, 
     sent = 0
     errors: list[str] = []
     async with httpx.AsyncClient(timeout=10.0) as client:
-        for chat_id in targets:
+        for target in targets:
+            parts = target.split(":")
+            chat_id = parts[0]
+            thread_id = None
+            if len(parts) > 1:
+                try:
+                    thread_id = int(parts[1])
+                except ValueError:
+                    pass
+
+            payload = {"chat_id": chat_id, "text": message}
+            if thread_id is not None:
+                payload["message_thread_id"] = thread_id
+
             try:
                 response = await client.post(
                     f"https://api.telegram.org/bot{token}/sendMessage",
-                    json={"chat_id": chat_id, "text": message},
+                    json=payload,
                 )
                 if response.is_success:
                     sent += 1
                 else:
-                    errors.append(f"{chat_id}: HTTP {response.status_code}")
+                    errors.append(f"{target}: HTTP {response.status_code}")
             except Exception as exc:
-                errors.append(f"{chat_id}: {exc}")
+                errors.append(f"{target}: {exc}")
     return {"ok": sent == len(targets), "sent": sent, "errors": errors}
 
 

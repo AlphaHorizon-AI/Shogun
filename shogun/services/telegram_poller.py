@@ -660,12 +660,14 @@ async def process_telegram_message(
                 bot_token,
                 chat_id,
                 "⛩️ *HARAKIRI ACTIVATED*\n\nAll agent activity is suspended. Posture is now SHRINE.",
+                message_thread_id=message_thread_id,
             )
         else:
             await send_telegram_message(
                 bot_token,
                 chat_id,
                 "✅ *HARAKIRI RESET*\n\nThe kill switch is inactive. Posture is now TACTICAL.",
+                message_thread_id=message_thread_id,
             )
         return
 
@@ -679,7 +681,9 @@ async def process_telegram_message(
             await send_telegram_message(bot_token, chat_id,
                 "⛩️ Shogun is in emergency lockdown mode (HARAKIRI). "
                 "All AI operations are suspended. Deactivate the kill switch "
-                "in the Torii to resume.")
+                "in the Torii to resume.",
+                message_thread_id=message_thread_id,
+            )
             return
     except Exception as e:
         logger.debug("[Telegram] Posture check failed: %s", e)
