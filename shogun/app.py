@@ -58,6 +58,7 @@ def _legacy_sqlite_baseline(database_url: str) -> str | None:
             return {row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')}
 
         markers: list[tuple[bool, str]] = [
+            ("programming_memories" in tables, "20260718programmingmemory"),
             ("file_artifacts" in tables, "20260718fileformats"),
             ("memory_import_batches" in tables, "20260718memoryimport"),
             ("memory_export_jobs" in tables, "20260718memoryexport"),
@@ -360,7 +361,7 @@ async def lifespan(app: FastAPI):
         await EventLogger.emit_system_event(
             "system.startup", "Shogun server started",
             detail={
-                "version": "1.22.1",
+                "version": "1.23.0",
                 "platform": platform.system(),
                 "python": platform.python_version(),
             },
@@ -481,7 +482,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.22.1",
+        version="1.23.0",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,

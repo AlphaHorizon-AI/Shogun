@@ -1,8 +1,8 @@
 {
-  "version": "1.22.1",
+  "version": "1.23.0",
   "name": "Shogun OS",
-  "build": 88,
+  "build": 89,
   "channel": "stable",
   "released": "2026-07-18T00:00:00Z",
-  "changelog": "Fixes Tenshu startup for legacy desktop databases by safely establishing their existing Alembic baseline before applying newer schema revisions."
+  "changelog": "Adds durable self-reinforced learning for operator corrections and researched solutions, plus evidence-aware project memory for governed VS Code programming work."
 }

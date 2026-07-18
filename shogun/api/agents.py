@@ -657,7 +657,9 @@ def _classify_chat_mode(message: str, history: list) -> dict:
         "remember", "memory", "earlier", "last time", "you said",
         "you mentioned", "previous", "we discussed", "my preference",
         "what did i say", "what did you say", "save to memory",
-        "store in memory", "note this",
+        "store in memory", "note this", "that's wrong", "that is wrong",
+        "not correct", "incorrect", "correction", "i meant", "the correct",
+        "for future reference",
     ]
 
     mission_matched = [kw for kw in MISSION_KEYWORDS if kw in msg]
@@ -1188,6 +1190,20 @@ async def _shogun_chat_internal(
             return
         agent = records[0]
 
+        # Explicit operator corrections are durable learning signals, not just
+        # another episodic chat turn. Capture them before producing the reply.
+        try:
+            from shogun.services.self_learning import capture_operator_correction
+
+            await capture_operator_correction(
+                agent_id=agent.id,
+                user_message=user_msg,
+                history=history,
+                source_type="mission_chat",
+            )
+        except Exception as exc:
+            logger.warning("Operator correction capture failed: %s", exc)
+
     # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ 2. Resolve primary model from settings ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
         bushido = agent.bushido_settings or {}
 
@@ -1680,6 +1696,9 @@ Do NOT plan out all steps in text first ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å�
 - **Calendar**: Use list_calendar_events, create_calendar_event.
 - **Cron Jobs**: Use list_cron_jobs, create_cron_job, delete_cron_job.
 - **Memory**: Use store_memory when the user shares important details worth remembering.
+- **Self-reinforced learning**: Treat explicit operator corrections as durable guidance. They are captured automatically; acknowledge the correction and apply it on future turns.
+- **Unknown-answer fallback**: If you are not confident in an answer and browse_web is available under the active posture, research authoritative sources before answering. If browser access is denied, say that clearly instead of guessing.
+- **Programming memory**: Before changing an approved VS Code workspace, call ide_memory_search. After a fix is confirmed by the operator or tests pass, call ide_memory_store with the problem, exact solution, affected files, languages, sources, and verification evidence. Reinforce recalled entries with ide_memory_reinforce.
 
 BEHAVIOUR:
 - Be conversational, warm, and genuinely helpful
@@ -2765,6 +2784,22 @@ BEHAVIOUR:
             )
         except Exception:
             pass
+
+        # A researched answer becomes reusable procedural memory even if the
+        # model omitted an explicit store_memory call. Tool availability was
+        # already filtered by the active security posture.
+        if "browse_web" in _tools_used_in_turn and "store_memory" not in _tools_used_in_turn:
+            try:
+                from shogun.services.self_learning import capture_researched_solution
+
+                await capture_researched_solution(
+                    agent_id=agent.id,
+                    question=user_msg,
+                    solution="".join(assistant_tokens),
+                    tool_messages=messages,
+                )
+            except Exception as exc:
+                logger.warning("Researched solution capture failed: %s", exc)
 
         # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ EVENT: Decision Influences (EU AI Act) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
         try:

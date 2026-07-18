@@ -120,6 +120,9 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     # Browser (Mado)
     "browse_web":             {"risk": "low",      "category": "browser"},
     "take_screenshot":        {"risk": "low",      "category": "browser"},
+    "ide_memory_search":      {"risk": "low",      "category": "ide"},
+    "ide_memory_store":       {"risk": "medium",   "category": "ide"},
+    "ide_memory_reinforce":   {"risk": "low",      "category": "ide"},
     # Desktop (Ronin)
     "desktop_screenshot":     {"risk": "low",      "category": "desktop"},
     "desktop_click":          {"risk": "high",     "category": "desktop"},

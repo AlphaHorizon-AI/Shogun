@@ -2057,6 +2057,18 @@ NATIVE_TOOLS = [
         "type": "function", "risk": "high", "category": "ide",
         "function": {"name": "ide_run_task", "description": "Run an approved test, lint, or build command in a VS Code workspace and return its verified output.", "parameters": {"type": "object", "properties": {"workspace_id": {"type": "string"}, "command": {"type": "string"}, "approved": {"type": "boolean"}}, "required": ["workspace_id", "command"]}},
     },
+    {
+        "type": "function", "risk": "low", "category": "ide",
+        "function": {"name": "ide_memory_search", "description": "Search project-scoped programming memory before diagnosing or editing an approved VS Code workspace. Returns prior solutions, corrections, failed approaches, evidence, and validation status for this repository only.", "parameters": {"type": "object", "properties": {"workspace_id": {"type": "string"}, "query": {"type": "string"}, "limit": {"type": "integer", "default": 8}, "include_global": {"type": "boolean", "default": False}}, "required": ["workspace_id", "query"]}},
+    },
+    {
+        "type": "function", "risk": "medium", "category": "ide",
+        "function": {"name": "ide_memory_store", "description": "Store a reusable project-scoped programming solution only after operator confirmation or successful tests. Include evidence and sources when research was used.", "parameters": {"type": "object", "properties": {"workspace_id": {"type": "string"}, "title": {"type": "string"}, "problem": {"type": "string"}, "solution": {"type": "string"}, "kind": {"type": "string", "enum": ["solution", "correction", "pattern", "project_fact", "failed_approach"]}, "evidence": {"type": "string"}, "validation_status": {"type": "string", "enum": ["unverified", "operator_confirmed", "tests_passed", "production_confirmed"]}, "confidence_score": {"type": "number"}, "languages": {"type": "array", "items": {"type": "string"}}, "files": {"type": "array", "items": {"type": "string"}}, "source_urls": {"type": "array", "items": {"type": "string"}}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["workspace_id", "title", "problem", "solution", "validation_status"]}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "ide",
+        "function": {"name": "ide_memory_reinforce", "description": "Record whether a recalled programming memory solved the current task, raising or lowering its future confidence.", "parameters": {"type": "object", "properties": {"workspace_id": {"type": "string"}, "memory_id": {"type": "string"}, "successful": {"type": "boolean", "default": True}}, "required": ["workspace_id", "memory_id"]}},
+    },
     # ── Order 15: Skill Lifecycle Tools ──────────────────────────
     {
         "type": "function", "risk": "low", "category": "files",
@@ -4272,6 +4284,21 @@ async def _execute_ide_tool(name: str, args: dict[str, Any]) -> str:
             result = await ide_service.write(workspace_id, str(args.get("path") or ""), str(args.get("content") or ""), approval=bool(args.get("approved")))
         elif name == "ide_run_task":
             result = await ide_service.run_command(workspace_id, str(args.get("command") or ""), approval=bool(args.get("approved")))
+        elif name == "ide_memory_search":
+            result = await ide_service.search_programming_memory(
+                workspace_id,
+                str(args.get("query") or ""),
+                int(args.get("limit") or 8),
+                bool(args.get("include_global")),
+            )
+        elif name == "ide_memory_store":
+            result = await ide_service.remember_programming_solution(workspace_id, args)
+        elif name == "ide_memory_reinforce":
+            result = await ide_service.reinforce_programming_memory(
+                workspace_id,
+                str(args.get("memory_id") or ""),
+                bool(args.get("successful", True)),
+            )
         else:
             return json.dumps({"status": "error", "message": f"Unknown IDE tool: {name}"})
         return json.dumps({"status": "success", "result": result}, default=str)

@@ -8,7 +8,7 @@ import pytest
 def test_version():
     """Package version is set."""
     import shogun
-    assert shogun.__version__ == "1.22.1"
+    assert shogun.__version__ == "1.23.0"
 
 
 def test_app_factory():
@@ -52,6 +52,19 @@ def test_legacy_sqlite_baseline_uses_head_for_bootstrapped_schema(tmp_path):
         connection.execute("CREATE TABLE file_artifacts (id TEXT)")
 
     assert _legacy_sqlite_baseline(f"sqlite+aiosqlite:///{database.as_posix()}") == "20260718fileformats"
+
+
+def test_legacy_sqlite_baseline_recognizes_programming_memory_schema(tmp_path):
+    from shogun.app import _legacy_sqlite_baseline
+
+    database = tmp_path / "programming-memory.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE programming_memories (id TEXT)")
+
+    assert (
+        _legacy_sqlite_baseline(f"sqlite+aiosqlite:///{database.as_posix()}")
+        == "20260718programmingmemory"
+    )
 
 
 @pytest.mark.asyncio

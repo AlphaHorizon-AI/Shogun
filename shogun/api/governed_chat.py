@@ -70,6 +70,18 @@ async def _shogun_governed_chat(
     agent = records[0]
     _agent_id_str = str(agent.id)
 
+    try:
+        from shogun.services.self_learning import capture_operator_correction
+
+        await capture_operator_correction(
+            agent_id=agent.id,
+            user_message=user_msg,
+            history=history,
+            source_type="governed_chat",
+        )
+    except Exception as exc:
+        logger.warning("Governed Chat: operator correction capture failed: %s", exc)
+
     # ── 2. Resolve model ──
     bushido = agent.bushido_settings or {}
     _exploration_variance = bushido.get("exploration_variance", 24)
@@ -255,6 +267,7 @@ explain that it requires Mission Mode and they can switch using the mode selecto
 
 Be conversational, direct, and helpful. Use markdown when it improves readability.
 When referencing recalled memories, acknowledge them naturally.
+Explicit operator corrections are durable learning signals. Acknowledge them and apply them in future answers.
 {memory_context_block}{kaizen_block}"""
 
     # ── 8. Build messages ──

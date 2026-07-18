@@ -30,6 +30,27 @@ class CommandBody(BaseModel):
 class GitBody(BaseModel):
     workspace_id: str; operation: str; args: list[str] = Field(default_factory=list); approved: bool = False
 
+class ProgrammingMemorySearchBody(BaseModel):
+    query: str
+    limit: int = Field(default=8, ge=1, le=50)
+    include_global: bool = False
+
+class ProgrammingMemoryBody(BaseModel):
+    title: str
+    problem: str
+    solution: str
+    kind: str = "solution"
+    evidence: str | None = None
+    validation_status: str = "unverified"
+    confidence_score: float = Field(default=0.7, ge=0.0, le=1.0)
+    languages: list[str] = Field(default_factory=list)
+    files: list[str] = Field(default_factory=list)
+    source_urls: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+class ProgrammingMemoryReinforceBody(BaseModel):
+    successful: bool = True
+
 @router.get("/status")
 async def status(): return ApiResponse(data=await ide_service.status())
 @router.post("/enable")
@@ -132,6 +153,24 @@ async def diagnostics():
     return ApiResponse(data=result)
 @router.get("/editor/context")
 async def editor_context(): return ApiResponse(data=await ide_service.request_bridge("editor.context"))
+@router.post("/workspaces/{workspace_id}/memory/search")
+async def programming_memory_search(workspace_id: str, body: ProgrammingMemorySearchBody):
+    return ApiResponse(
+        data=await ide_service.search_programming_memory(
+            workspace_id,
+            body.query,
+            body.limit,
+            body.include_global,
+        )
+    )
+@router.post("/workspaces/{workspace_id}/memory")
+async def programming_memory_store(workspace_id: str, body: ProgrammingMemoryBody):
+    return ApiResponse(data=await ide_service.remember_programming_solution(workspace_id, body.model_dump()))
+@router.post("/workspaces/{workspace_id}/memory/{memory_id}/reinforce")
+async def programming_memory_reinforce(workspace_id: str, memory_id: str, body: ProgrammingMemoryReinforceBody):
+    return ApiResponse(
+        data=await ide_service.reinforce_programming_memory(workspace_id, memory_id, body.successful)
+    )
 @router.post("/workspaces/{workspace_id}/rollback/{snapshot_id}")
 async def rollback(workspace_id: str, snapshot_id: str): return ApiResponse(data=await ide_service.rollback(workspace_id, snapshot_id))
 @router.post("/kill-switch")

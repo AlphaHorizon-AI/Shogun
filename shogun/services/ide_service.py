@@ -94,6 +94,7 @@ class IDEService:
         permission_map = {
             "file.read": "file_read", "workspace.list": "file_read", "workspace.list_files": "file_read",
             "file.search": "file_search", "file.write": "file_patch", "file.delete": "file_delete",
+            "memory.search": "file_read", "memory.store": "file_patch", "memory.reinforce": "file_patch",
             "task.list": "diagnostics", "diagnostics.get": "diagnostics", "terminal.run": "terminal_approved_only",
             "git.status": "git_status", "git.diff": "git_diff", "git.create-branch": "git_branch_create", "git.commit": "git_commit",
         }
@@ -291,6 +292,96 @@ class IDEService:
             except OSError: continue
         await self.event("ide.file.search", f"Searched workspace for: {query}", workspace_id=workspace_id, matches=len(hits))
         return hits
+
+    async def search_programming_memory(
+        self, workspace_id: str, query: str, limit: int = 8, include_global: bool = False
+    ) -> list[dict[str, Any]]:
+        _, workspace = await self.gate("memory.search", workspace_id=workspace_id)
+        from shogun.db.engine import async_session_factory
+        from shogun.services.programming_memory import ProgrammingMemoryService
+
+        async with async_session_factory() as session:
+            service = ProgrammingMemoryService(session)
+            results = await service.search(
+                workspace_key=service.workspace_key(workspace.root),
+                query=query,
+                limit=limit,
+                include_global=include_global,
+            )
+            await session.commit()
+        await self.event(
+            "ide.memory.searched",
+            f"Programming memory searched: {query[:120]}",
+            workspace_id=workspace_id,
+            matches=len(results),
+        )
+        return results
+
+    async def remember_programming_solution(self, workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        _, workspace = await self.gate("memory.store", workspace_id=workspace_id)
+        from sqlalchemy import select
+
+        from shogun.db.engine import async_session_factory
+        from shogun.db.models.agent import Agent
+        from shogun.services.programming_memory import ProgrammingMemoryService
+
+        async with async_session_factory() as session:
+            agent_id = await session.scalar(
+                select(Agent.id).where(
+                    Agent.agent_type == "shogun",
+                    Agent.is_primary.is_(True),
+                    Agent.is_deleted.is_(False),
+                ).limit(1)
+            )
+            if not agent_id:
+                raise HTTPException(404, "Primary Shogun agent not found.")
+            service = ProgrammingMemoryService(session)
+            record, created = await service.remember(
+                agent_id=agent_id,
+                workspace_key=service.workspace_key(workspace.root),
+                workspace_name=workspace.name,
+                title=str(payload.get("title") or "Programming solution"),
+                problem=str(payload.get("problem") or ""),
+                solution=str(payload.get("solution") or ""),
+                kind=str(payload.get("kind") or "solution"),
+                evidence=payload.get("evidence"),
+                validation_status=str(payload.get("validation_status") or "unverified"),
+                confidence_score=float(payload.get("confidence_score", 0.7)),
+                languages=list(payload.get("languages") or []),
+                files=list(payload.get("files") or []),
+                source_urls=list(payload.get("source_urls") or []),
+                tags=list(payload.get("tags") or []),
+            )
+            await session.commit()
+            result = service.serialize(record)
+        await self.event(
+            "ide.memory.stored",
+            f"Programming memory {'stored' if created else 'reinforced'}: {result['title']}",
+            workspace_id=workspace_id,
+            programming_memory_id=result["id"],
+            validation_status=result["validation_status"],
+        )
+        return {**result, "created": created}
+
+    async def reinforce_programming_memory(
+        self, workspace_id: str, memory_id: str, successful: bool = True
+    ) -> dict[str, Any]:
+        _, workspace = await self.gate("memory.reinforce", workspace_id=workspace_id)
+        from shogun.db.engine import async_session_factory
+        from shogun.services.programming_memory import ProgrammingMemoryService
+
+        async with async_session_factory() as session:
+            service = ProgrammingMemoryService(session)
+            record = await service.reinforce(
+                uuid.UUID(memory_id),
+                successful=successful,
+                workspace_key=service.workspace_key(workspace.root),
+            )
+            if not record:
+                raise HTTPException(404, "Programming memory not found.")
+            await session.commit()
+            result = service.serialize(record)
+        return result
 
     async def write(self, workspace_id: str, path: str, content: str, *, approval: bool = False, delete: bool = False) -> dict[str, Any]:
         action = "file.delete" if delete else "file.write"
