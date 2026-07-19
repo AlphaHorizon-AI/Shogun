@@ -116,6 +116,67 @@ class OpenClawClient:
             headers["X-API-Key"] = self.api_key
         return headers
 
+    def _auth_header_candidates(self) -> list[dict[str, str]]:
+        """Return write-auth headers in preferred fallback order.
+
+        Existing Shogun agents may have an empty or outdated College key saved
+        in their local profile. Try that profile first, then the current
+        platform credential so POST operations continue to work after a key
+        migration. The actor-only request is retained for College deployments
+        that authorize an already verified actor without an API key.
+        """
+        candidates: list[dict[str, str]] = []
+        seen: set[tuple[tuple[str, str], ...]] = set()
+
+        def add(headers: dict[str, str]) -> None:
+            key = tuple(sorted(headers.items()))
+            if key not in seen:
+                seen.add(key)
+                candidates.append(headers)
+
+        add(self._auth_headers())
+        if self.api_key != OPENCLAW_API_KEY:
+            add(OpenClawClient(
+                base_url=self.base_url,
+                timeout=self.timeout,
+                actor_id=self.actor_id,
+                api_key=OPENCLAW_API_KEY,
+            )._auth_headers())
+        if self.api_key:
+            add(OpenClawClient(
+                base_url=self.base_url,
+                timeout=self.timeout,
+                actor_id=self.actor_id,
+                api_key=None,
+            )._auth_headers())
+        return candidates
+
+    async def _post_authenticated(
+        self,
+        path: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """POST with credential fallback for authenticated College writes."""
+        last_auth_error: httpx.HTTPStatusError | None = None
+        for headers in self._auth_header_candidates():
+            response = await self.client.post(
+                f"{self.base_url}/{path.lstrip('/')}",
+                json=payload,
+                headers=headers,
+            )
+            if response.status_code in {401, 403}:
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    last_auth_error = exc
+                continue
+            response.raise_for_status()
+            return response.json()
+
+        if last_auth_error:
+            raise last_auth_error
+        raise RuntimeError("OpenClaw authenticated POST failed before receiving a response")
+
     async def __aenter__(self):
         self._client = httpx.AsyncClient(timeout=self.timeout)
         return self
@@ -440,23 +501,17 @@ class OpenClawClient:
         agent_id: str,
     ) -> dict[str, Any]:
         """Enroll an agent and retroactively evaluate its passed exams."""
-        resp = await self.client.post(
-            f"{self.base_url}/v1/specializations/{quote(specialization_id, safe='')}/enroll",
-            json={"agentId": agent_id},
-            headers=self._auth_headers(),
+        return await self._post_authenticated(
+            f"v1/specializations/{quote(specialization_id, safe='')}/enroll",
+            {"agentId": agent_id},
         )
-        resp.raise_for_status()
-        return resp.json()
 
     async def evaluate_achievements(self, agent_id: str) -> dict[str, Any]:
         """Reevaluate every enrolled specialization for an agent."""
-        resp = await self.client.post(
-            f"{self.base_url}/v1/agents/{quote(agent_id, safe='')}/evaluate-badges",
-            json={"agentId": agent_id},
-            headers=self._auth_headers(),
+        return await self._post_authenticated(
+            f"v1/agents/{quote(agent_id, safe='')}/evaluate-badges",
+            {"agentId": agent_id},
         )
-        resp.raise_for_status()
-        return resp.json()
 
     # ── Feedback ──────────────────────────────────────────────
 
@@ -474,9 +529,7 @@ class OpenClawClient:
             "rating": rating,
             "comment": comment,
         }
-        resp = await self.client.post(f"{self.base_url}/v1/feedback", json=payload)
-        resp.raise_for_status()
-        return resp.json()
+        return await self._post_authenticated("v1/feedback", payload)
 
     # ── Suggestions ──────────────────────────────────────────
 
@@ -493,9 +546,7 @@ class OpenClawClient:
         }
         if agent_id:
             payload["agentId"] = agent_id
-        resp = await self.client.post(f"{self.base_url}/v1/suggestions", json=payload)
-        resp.raise_for_status()
-        return resp.json()
+        return await self._post_authenticated("v1/suggestions", payload)
 
     # ── Examination API ──────────────────────────────────────
 
@@ -559,54 +610,7 @@ class OpenClawClient:
         if model_id:
             payload["modelId"] = model_id
 
-        header_candidates: list[dict[str, str]] = []
-        seen: set[tuple[tuple[str, str], ...]] = set()
-
-        def add_headers(headers: dict[str, str]) -> None:
-            key = tuple(sorted(headers.items()))
-            if key not in seen:
-                seen.add(key)
-                header_candidates.append(headers)
-
-        add_headers(self._auth_headers())
-
-        if self.api_key != OPENCLAW_API_KEY:
-            platform_client = OpenClawClient(
-                base_url=self.base_url,
-                timeout=self.timeout,
-                actor_id=self.actor_id,
-                api_key=OPENCLAW_API_KEY,
-            )
-            add_headers(platform_client._auth_headers())
-
-        if self.api_key:
-            actor_only_client = OpenClawClient(
-                base_url=self.base_url,
-                timeout=self.timeout,
-                actor_id=self.actor_id,
-                api_key=None,
-            )
-            add_headers(actor_only_client._auth_headers())
-
-        last_auth_error: httpx.HTTPStatusError | None = None
-        for headers in header_candidates:
-            resp = await self.client.post(
-                f"{self.base_url}/v1/tests/{test_id}/results",
-                json=payload,
-                headers=headers,
-            )
-            if resp.status_code in {401, 403}:
-                try:
-                    resp.raise_for_status()
-                except httpx.HTTPStatusError as exc:
-                    last_auth_error = exc
-                continue
-            resp.raise_for_status()
-            return resp.json()
-
-        if last_auth_error:
-            raise last_auth_error
-        raise RuntimeError("OpenClaw exam result submission failed before receiving a response")
+        return await self._post_authenticated(f"v1/tests/{test_id}/results", payload)
 
     async def get_test_result(self, result_id: str) -> dict[str, Any] | None:
         """Check the verification status of a specific test submission.

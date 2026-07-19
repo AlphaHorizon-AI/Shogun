@@ -1,8 +1,8 @@
 {
-  "version": "1.26.1",
+  "version": "1.26.2",
   "name": "Shogun OS",
-  "build": 99,
+  "build": 100,
   "channel": "stable",
-  "released": "2026-07-19T13:21:07Z",
-  "changelog": "Centralize model selection in Katana, consolidate routing profile editing behind one overview, and replace opaque capability tier numbers with meaningful labels and guidance."
+  "released": "2026-07-19T13:45:00Z",
+  "changelog": "Fix OpenClaw College POST authentication for agents with missing or stale stored credentials by applying the current platform-key fallback consistently to enrollment, badge evaluation, exams, feedback, and suggestions."
 }
