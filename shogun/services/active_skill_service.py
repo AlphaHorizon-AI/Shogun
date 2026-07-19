@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -189,6 +190,133 @@ class SkillEmbeddingService:
             return {}
 
 
+class SkillHierarchyService:
+    """Cached top-down retrieval across specializations, bundles, then skills."""
+
+    _cache: tuple[list[dict[str, Any]], list[dict[str, Any]]] | None = None
+    _cache_at: float = 0.0
+    cache_ttl_seconds: float = 15 * 60
+    # Hierarchy is an accelerator/reranker, never a reason to hold up a task.
+    fetch_timeout_seconds: float = 3.0
+    generic_tokens = {
+        "advanced", "specialization", "bundle", "skill", "skills", "professional",
+        "management", "agent", "agents", "task", "tasks", "general", "spec",
+    }
+
+    @classmethod
+    async def _catalog(cls) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        if cls._cache is not None and time.monotonic() - cls._cache_at < cls.cache_ttl_seconds:
+            return cls._cache
+
+        from shogun.integrations.openclaw_client import get_openclaw_client
+
+        async def fetch() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+            async with get_openclaw_client() as client:
+                bundle_response, specialization_response = await asyncio.gather(
+                    client.client.get(f"{client.base_url}/bundles"),
+                    client.client.get(f"{client.base_url}/specializations"),
+                )
+                bundle_response.raise_for_status()
+                specialization_response.raise_for_status()
+                return bundle_response.json(), specialization_response.json()
+
+        try:
+            cls._cache = await asyncio.wait_for(fetch(), timeout=cls.fetch_timeout_seconds)
+            cls._cache_at = time.monotonic()
+            return cls._cache
+        except Exception as exc:
+            logger.debug("Skill hierarchy unavailable; direct retrieval remains active: %s", exc)
+            return [], []
+
+    @classmethod
+    def _relevance(cls, query_tokens: set[str], item: dict[str, Any]) -> float:
+        text = " ".join(str(item.get(field) or "") for field in (
+            "name", "title", "description", "shortDescription", "facultyId", "categoryId", "slug",
+        ))
+        item_tokens = _tokens(text) - cls.generic_tokens
+        useful_query = query_tokens - cls.generic_tokens
+        if not useful_query or not item_tokens:
+            return 0.0
+        overlap = useful_query & item_tokens
+        if not overlap:
+            return 0.0
+        coverage = len(overlap) / max(1, min(6, len(useful_query)))
+        specificity = len(overlap) / max(1, min(10, len(item_tokens)))
+        return round(min(1.0, coverage * 0.7 + specificity * 0.3), 4)
+
+    @staticmethod
+    def _bundle_skill_ids(bundle: dict[str, Any]) -> list[str]:
+        values = [
+            *(bundle.get("skillIds") or []),
+            *((bundle.get("currentVersion") or {}).get("skills") or []),
+        ]
+        ids = [item.get("id") if isinstance(item, dict) else item for item in values]
+        return list(dict.fromkeys(str(item) for item in ids if item))
+
+    @classmethod
+    async def search(cls, query: str, skills: list[Skill]) -> dict[str, Any]:
+        local_ids = {
+            str((skill.manifest or {}).get("openclaw_id")): str(skill.id)
+            for skill in skills
+            if (skill.manifest or {}).get("openclaw_id")
+        }
+        if not local_ids:
+            return {"boosts": {}, "paths": {}, "matched_bundles": [], "matched_specializations": []}
+
+        bundles, specializations = await cls._catalog()
+        query_tokens = _tokens(query)
+        bundles_by_id = {bundle.get("id"): bundle for bundle in bundles}
+        ranked_bundles = sorted(
+            ((cls._relevance(query_tokens, bundle), bundle) for bundle in bundles),
+            key=lambda pair: pair[0],
+            reverse=True,
+        )
+        ranked_specs = sorted(
+            ((cls._relevance(query_tokens, spec), spec) for spec in specializations),
+            key=lambda pair: pair[0],
+            reverse=True,
+        )
+        matched_bundles = [(score, item) for score, item in ranked_bundles[:8] if score >= 0.12]
+        matched_specs = [(score, item) for score, item in ranked_specs[:6] if score >= 0.12]
+        boosts: dict[str, float] = {}
+        paths: dict[str, list[str]] = {}
+
+        def add(openclaw_id: str, score: float, path: str) -> None:
+            local_id = local_ids.get(str(openclaw_id))
+            if not local_id:
+                return
+            boosts[local_id] = max(boosts.get(local_id, 0.0), score)
+            paths.setdefault(local_id, [])
+            if path not in paths[local_id]:
+                paths[local_id].append(path)
+
+        for score, bundle in matched_bundles:
+            label = bundle.get("name") or bundle.get("title") or bundle.get("id")
+            for skill_id in cls._bundle_skill_ids(bundle):
+                add(skill_id, min(1.0, 0.55 + score * 0.45), f"bundle: {label}")
+
+        for score, spec in matched_specs:
+            label = spec.get("name") or spec.get("title") or spec.get("id")
+            skill_ids = list(spec.get("requiredSkillIds") or [])
+            bundle_ids: list[str] = []
+            for requirement in spec.get("requirements") or []:
+                skill_ids.extend(requirement.get("skillIds") or [])
+                bundle_ids.extend(requirement.get("bundleIds") or [])
+                if requirement.get("bundleId"):
+                    bundle_ids.append(requirement["bundleId"])
+            for bundle_id in bundle_ids:
+                skill_ids.extend(cls._bundle_skill_ids(bundles_by_id.get(bundle_id, {})))
+            for skill_id in dict.fromkeys(skill_ids):
+                add(skill_id, min(1.0, 0.60 + score * 0.40), f"specialization: {label}")
+
+        return {
+            "boosts": boosts,
+            "paths": paths,
+            "matched_bundles": [item.get("name") or item.get("title") for _, item in matched_bundles],
+            "matched_specializations": [item.get("name") or item.get("title") for _, item in matched_specs],
+        }
+
+
 class SkillCompatibilityService:
     @staticmethod
     def blocked_reason(skill: Skill, request: SkillActivationRequest) -> str | None:
@@ -225,7 +353,13 @@ class SkillCompatibilityService:
 
 class SkillRankingService:
     @staticmethod
-    def score(skill: Skill, request: SkillActivationRequest, semantic: float) -> tuple[float, str]:
+    def score(
+        skill: Skill,
+        request: SkillActivationRequest,
+        semantic: float,
+        hierarchy: float = 0.0,
+        hierarchy_paths: list[str] | None = None,
+    ) -> tuple[float, str]:
         text = f"{request.objective} {request.context}".lower()
         task_tokens = _tokens(text)
         tags = [str(item).lower() for item in skill.tags or []]
@@ -247,20 +381,24 @@ class SkillRankingService:
             recency = max(0.0, 1.0 - age / (30 * 86400))
         explicit = skill.id in set(request.explicit_skill_ids)
         score = (
-            semantic * 0.35
+            semantic * 0.30
+            + hierarchy * 0.20
             + trigger_score * 0.20
             + exam_score * 0.15
             + success_rate * 0.10
             + recency * 0.05
-            + priority * 0.10
-            + 0.05
+            + priority * 0.05
         )
         if explicit:
             score = 1.0
         reason = (
             "explicitly requested"
             if explicit
-            else (f"matched {', '.join(phrase_hits[:3])}" if phrase_hits else f"task relevance {score:.2f}")
+            else (
+                f"matched {'; '.join((hierarchy_paths or [])[:2])}"
+                if hierarchy_paths
+                else (f"matched {', '.join(phrase_hits[:3])}" if phrase_hits else f"task relevance {score:.2f}")
+            )
         )
         return round(min(1.0, score), 4), reason
 
@@ -339,6 +477,13 @@ class SkillActivationService:
                 "considered_skills": [],
                 "blocked_skills": [],
                 "conflict_notes": [],
+                "retrieval": {
+                    "strategy": "disabled",
+                    "matched_bundles": [],
+                    "matched_specializations": [],
+                    "hierarchy_candidate_count": 0,
+                    "direct_candidate_count": 0,
+                },
             }
         await self._emit(
             "skill.activation.started",
@@ -358,18 +503,24 @@ class SkillActivationService:
         # Archives is the canonical skill-memory layer. Search it for every new
         # task, including legacy/achieved skills that predate direct embedding
         # IDs on the Skill row. Metadata ranking remains the offline fallback.
-        semantic = (
-            await SkillEmbeddingService.search(
-                f"{request.objective}\n{request.context}",
-                limit=max(20, min(100, len(skills))),
+        retrieval_query = f"{request.objective}\n{request.context}"
+        if skills:
+            semantic, hierarchy = await asyncio.gather(
+                SkillEmbeddingService.search(retrieval_query, limit=max(20, min(100, len(skills)))),
+                SkillHierarchyService.search(retrieval_query, skills),
             )
-            if skills
-            else {}
-        )
+        else:
+            semantic, hierarchy = {}, {"boosts": {}, "paths": {}}
         ranked: list[dict[str, Any]] = []
         blocked: list[dict[str, Any]] = []
         for skill in skills:
-            score, reason = SkillRankingService.score(skill, request, semantic.get(str(skill.id), 0.0))
+            score, reason = SkillRankingService.score(
+                skill,
+                request,
+                semantic.get(str(skill.id), 0.0),
+                hierarchy.get("boosts", {}).get(str(skill.id), 0.0),
+                hierarchy.get("paths", {}).get(str(skill.id), []),
+            )
             candidate = {"skill": skill, "score": score, "reason": reason}
             blocked_reason = SkillCompatibilityService.blocked_reason(skill, request)
             if blocked_reason:
@@ -521,6 +672,13 @@ class SkillActivationService:
             "considered_skills": considered,
             "blocked_skills": blocked_items,
             "conflict_notes": conflict_notes,
+            "retrieval": {
+                "strategy": "hybrid_hierarchical_direct",
+                "matched_bundles": hierarchy.get("matched_bundles", []),
+                "matched_specializations": hierarchy.get("matched_specializations", []),
+                "hierarchy_candidate_count": len(hierarchy.get("boosts", {})),
+                "direct_candidate_count": len(semantic),
+            },
         }
 
     async def outcome(self, record_id: uuid.UUID, outcome: str, summary: str | None = None) -> ActiveSkillRun:

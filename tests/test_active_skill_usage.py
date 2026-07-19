@@ -22,6 +22,7 @@ from shogun.services.active_skill_service import (
     SkillCompatibilityService,
     SkillContextComposer,
     SkillEmbeddingService,
+    SkillHierarchyService,
 )
 from shogun.services.native_skills import _execute_active_skill_tool
 
@@ -126,6 +127,59 @@ async def test_every_task_searches_archives_and_can_activate_achieved_skill(skil
     assert "Triage a production incident" in query
     assert "API is returning errors" in query
     assert [item["name"] for item in result["active_skills"]] == ["Incident Triage"]
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retrieval_goes_from_specializations_and_bundles_to_skills(skill_session, monkeypatch):
+    bundle_skill = make_skill("Rollback Orchestrator", triggers=[])
+    bundle_skill.manifest = {**bundle_skill.manifest, "openclaw_id": "skill-bundle"}
+    specialization_skill = make_skill("Autonomous Release Verifier", triggers=[])
+    specialization_skill.manifest = {**specialization_skill.manifest, "openclaw_id": "skill-spec"}
+    direct_skill = make_skill("Deployment Checklist", triggers=["deploy service"])
+    direct_skill.manifest = {**direct_skill.manifest, "openclaw_id": "skill-direct"}
+    skill_session.add_all([bundle_skill, specialization_skill, direct_skill])
+    await skill_session.flush()
+
+    monkeypatch.setattr(
+        SkillHierarchyService,
+        "_catalog",
+        AsyncMock(return_value=(
+            [{
+                "id": "bundle-deploy",
+                "name": "Autonomous Deployment Operations",
+                "description": "Safe deployment, rollback, and release operations",
+                "currentVersion": {"skills": [{"id": "skill-bundle", "name": "Rollback Orchestrator"}]},
+            }],
+            [{
+                "id": "spec-automation",
+                "name": "Autonomous Automation",
+                "description": "Verify and deploy autonomous production automation",
+                "requiredSkillIds": ["skill-spec"],
+            }],
+        )),
+    )
+    monkeypatch.setattr(
+        SkillEmbeddingService,
+        "search",
+        AsyncMock(return_value={str(direct_skill.id): 0.95}),
+    )
+
+    result = await SkillActivationService(skill_session).activate(
+        SkillActivationRequest(
+            objective="Deploy an autonomous service with rollback verification",
+            posture="campaign",
+            available_tools=["chat"],
+            max_skills=3,
+        )
+    )
+
+    names = {item["name"] for item in result["active_skills"]}
+    assert names == {"Rollback Orchestrator", "Autonomous Release Verifier", "Deployment Checklist"}
+    assert result["retrieval"]["strategy"] == "hybrid_hierarchical_direct"
+    assert result["retrieval"]["hierarchy_candidate_count"] == 2
+    reasons = {item["name"]: item["activation_reason"] for item in result["active_skills"]}
+    assert "bundle:" in reasons["Rollback Orchestrator"]
+    assert "specialization:" in reasons["Autonomous Release Verifier"]
 
 
 @pytest.mark.asyncio

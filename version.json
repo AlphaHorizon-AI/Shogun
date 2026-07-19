@@ -1,8 +1,8 @@
 {
-  "version": "1.28.1",
+  "version": "1.29.0",
   "name": "Shogun OS",
-  "build": 104,
+  "build": 105,
   "channel": "stable",
-  "released": "2026-07-19T18:15:00Z",
-  "changelog": "Restore Dojo achievement display by using the private agent transcript endpoint and falling back to authoritative achievement records."
+  "released": "2026-07-19T19:00:00Z",
+  "changelog": "Add cached top-down specialization and bundle retrieval, fused with direct semantic skill search for faster, broader task-time activation."
 }
