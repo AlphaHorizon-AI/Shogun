@@ -12,9 +12,9 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, is_dataclass
-from typing import Any, Awaitable, Callable
-
+from typing import Any
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 MAX_PAGE_SIZE = 200
@@ -184,6 +184,18 @@ async def openclaw_take_exam(args: dict[str, Any]) -> dict[str, Any]:
     return _json_loads_maybe(await _dojo_take_exam(args))
 
 
+async def openclaw_enroll_specialization(args: dict[str, Any]) -> dict[str, Any]:
+    from shogun.services.native_skills import _dojo_enroll_specialization
+
+    return _json_loads_maybe(await _dojo_enroll_specialization(args))
+
+
+async def openclaw_evaluate_achievements(_args: dict[str, Any]) -> dict[str, Any]:
+    from shogun.services.native_skills import _dojo_evaluate_achievements
+
+    return _json_loads_maybe(await _dojo_evaluate_achievements())
+
+
 async def openclaw_get_achievements(_args: dict[str, Any]) -> dict[str, Any]:
     from shogun.services.native_skills import _dojo_get_achievements
 
@@ -265,8 +277,26 @@ TOOLS: dict[str, dict[str, Any]] = {
     },
     "openclaw_take_exam": {
         "description": "Take and submit the certification exam for an OpenClaw skill.",
-        "inputSchema": {"type": "object", "properties": {"openclaw_skill_id": {"type": "string"}}, "required": ["openclaw_skill_id"]},
+        "inputSchema": {
+            "type": "object",
+            "properties": {"openclaw_skill_id": {"type": "string"}},
+            "required": ["openclaw_skill_id"],
+        },
         "handler": openclaw_take_exam,
+    },
+    "openclaw_enroll_specialization": {
+        "description": "Enroll the Shogun agent in a specialization and immediately apply prior passed exams.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"specialization_id": {"type": "string"}},
+            "required": ["specialization_id"],
+        },
+        "handler": openclaw_enroll_specialization,
+    },
+    "openclaw_evaluate_achievements": {
+        "description": "Reevaluate enrolled specializations and award all newly earned badges.",
+        "inputSchema": {"type": "object", "properties": {}},
+        "handler": openclaw_evaluate_achievements,
     },
     "openclaw_get_achievements": {
         "description": "Show the registered Shogun agent's OpenClaw achievements.",

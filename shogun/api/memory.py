@@ -221,6 +221,28 @@ async def delete_programming_memory(
 
 # ── List ─────────────────────────────────────────────────────
 
+@router.post("/skills/sync", response_model=ApiResponse)
+async def sync_archives_skills(
+    svc: MemoryService = Depends(get_memory_service),
+):
+    """Repair and refresh the primary Shogun's Dojo skills in Archives."""
+    from sqlalchemy import select
+
+    from shogun.db.models.agent import Agent
+    from shogun.services.skill_memory_sync import sync_skills_to_memory
+
+    agent_id = await svc.session.scalar(
+        select(Agent.id).where(
+            Agent.agent_type == "shogun",
+            Agent.is_primary.is_(True),
+            Agent.is_deleted.is_(False),
+        ).limit(1)
+    )
+    if not agent_id:
+        raise HTTPException(status_code=404, detail="Primary Shogun agent not found")
+    return ApiResponse(data=await sync_skills_to_memory(svc.session, agent_id))
+
+
 @router.get("", response_model=ApiResponse)
 async def list_memories(
     agent_id: uuid.UUID | None = None,

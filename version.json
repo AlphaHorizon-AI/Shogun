@@ -1,8 +1,8 @@
 {
-  "version": "1.25.0",
+  "version": "1.26.0",
   "name": "Shogun OS",
-  "build": 96,
+  "build": 98,
   "channel": "stable",
-  "released": "2026-07-19T11:12:32Z",
-  "changelog": "Add governed Custom model routing, unify Shogun routing controls, and embed routing profile selection into first-run setup."
+  "released": "2026-07-19T12:48:26Z",
+  "changelog": "Add OpenClaw specialization enrollment and automatic badge evaluation, certify agents through an automatic digital handshake, expose achievement actions through MCP and Dojo, and repair Dojo-to-Archives skill synchronization."
 }

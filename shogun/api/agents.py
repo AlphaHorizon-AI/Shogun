@@ -353,34 +353,41 @@ async def shogun_chat(
 
     # Auto-Sync Skills Hook
     try:
-        from shogun.db.models.skills import Skill
-        from sqlalchemy import select, func
-        from shogun.services.skill_memory_sync import sync_skills_to_memory
-        import json
+        from sqlalchemy import func, select
 
-        sync_state_file = "data/skill_sync.json"
-        
+        from shogun.db.models.agent import Agent
+        from shogun.db.models.skill import Skill
+        from shogun.services.skill_memory_sync import sync_skills_to_memory
+
+        sync_state_file = Path("data/skill_sync.json")
+
         # Fast Check
         result = await svc.session.execute(
-            select(func.count(Skill.id), func.max(Skill.updated_at)).where(Skill.is_deleted == False)
+            select(func.count(Skill.id), func.max(Skill.updated_at)).where(Skill.is_deleted.is_(False))
         )
         count, max_ts = result.one()
         current_state = f"{count}_{max_ts}"
 
         last_state = None
-        if os.path.exists(sync_state_file):
-            with open(sync_state_file, "r") as sf:
+        if sync_state_file.exists():
+            with sync_state_file.open() as sf:
                 last_state = json.load(sf).get("state")
-        
+
         if current_state != last_state:
-            import logging
-            logging.getLogger("shogun").info(f"Skill state changed ({last_state} -> {current_state}). Running startup sync...")
-            await sync_skills_to_memory(svc.session, str(agent.id))
-            with open(sync_state_file, "w") as sf:
-                json.dump({"state": current_state}, sf)
+            agent_result = await svc.session.execute(
+                select(Agent.id)
+                .where(Agent.is_primary.is_(True), Agent.is_deleted.is_(False))
+                .limit(1)
+            )
+            primary_agent_id = agent_result.scalar_one_or_none()
+            if primary_agent_id:
+                logger.info("Skill state changed (%s -> %s); refreshing Archives", last_state, current_state)
+                await sync_skills_to_memory(svc.session, primary_agent_id)
+                sync_state_file.parent.mkdir(parents=True, exist_ok=True)
+                with sync_state_file.open("w") as sf:
+                    json.dump({"state": current_state}, sf)
     except Exception as exc:
-        import logging
-        logging.getLogger("shogun").error(f"Startup skill sync failed: {exc}")
+        logger.error("Startup skill sync failed: %s", exc)
 
     # Order 9: activate a bounded set of validated skills before any chat lane.
     try:

@@ -213,6 +213,17 @@ export function Archives() {
     setLoading(true);
     setMemoryLoadError(null);
 
+    // Opening the Skills layer is also an idempotent repair point. This
+    // migrates legacy singular "skill" records and imports newly achieved
+    // Dojo skills before the list and counters are loaded.
+    if (activeCategory === 'skills') {
+      try {
+        await axios.post(`${API}/skills/sync`);
+      } catch (error) {
+        console.error('Skill memory synchronization failed:', error);
+      }
+    }
+
     // These requests are independent. A statistics or agent-list failure must
     // never hide memory fragments that the record endpoint can still return.
     const params = new URLSearchParams();

@@ -45,6 +45,8 @@ async def test_openclaw_dojo_mcp_lists_tools():
         assert "openclaw_search_skills" in names
         assert "openclaw_get_achievements" in names
         assert "openclaw_take_exam" in names
+        assert "openclaw_enroll_specialization" in names
+        assert "openclaw_evaluate_achievements" in names
     finally:
         proc.terminate()
         await proc.wait()
@@ -67,6 +69,7 @@ async def test_mcp_bridge_lists_openclaw_tools():
     names = {tool["name"] for tool in result["tools"]}
     assert "openclaw_search_skills" in names
     assert "openclaw_list_installed" in names
+    assert "openclaw_enroll_specialization" in names
 
 
 @dataclass

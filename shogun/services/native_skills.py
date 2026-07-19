@@ -1638,6 +1638,38 @@ NATIVE_TOOLS = [
     },
     {
         "type": "function",
+        "risk": "medium",
+        "category": "dojo",
+        "function": {
+            "name": "dojo_enroll_specialization",
+            "description": "Enroll the registered Shogun agent in an OpenClaw College specialization. Prior passed exams are evaluated immediately and eligible badges are awarded.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "specialization_id": {
+                        "type": "string",
+                        "description": "The OpenClaw specialization ID or slug.",
+                    },
+                },
+                "required": ["specialization_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "medium",
+        "category": "dojo",
+        "function": {
+            "name": "dojo_evaluate_achievements",
+            "description": "Reevaluate all enrolled OpenClaw College specializations and award every badge whose required skill exams have been passed.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
+    {
+        "type": "function",
         "risk": "low",
         "category": "dojo",
         "function": {
@@ -4735,6 +4767,10 @@ async def _execute_dojo_tool(name: str, args: dict[str, Any]) -> str:
             return await _dojo_list_installed()
         elif name == "dojo_take_exam":
             return await _dojo_take_exam(args)
+        elif name == "dojo_enroll_specialization":
+            return await _dojo_enroll_specialization(args)
+        elif name == "dojo_evaluate_achievements":
+            return await _dojo_evaluate_achievements()
         elif name == "dojo_get_achievements":
             return await _dojo_get_achievements()
         elif name == "dojo_get_transcript":
@@ -5087,6 +5123,11 @@ async def _dojo_take_exam(args: dict[str, Any]) -> str:
                     model_id=model_id,
                 )
 
+            if score >= pass_threshold:
+                from shogun.services.skill_memory_sync import mark_skill_achieved_and_sync
+
+                await mark_skill_achieved_and_sync(db, agent.id, openclaw_skill_id)
+
         return json.dumps({
             "status": "success",
             "openclaw_skill_id": openclaw_skill_id,
@@ -5143,6 +5184,9 @@ async def _dojo_get_achievements() -> str:
 
             async with get_openclaw_client() as client:
                 agent_data = await client.get_agent_by_id(agent.openclaw_agent_id)
+                badge_catalog = await client.get_badges() if agent_data else []
+                specialization_resp = await client.client.get(f"{client.base_url}/specializations")
+                specialization_catalog = specialization_resp.json() if specialization_resp.is_success else []
 
         test_results = (agent_data or {}).get("testResults", [])
         exams_passed = sum(
@@ -5151,14 +5195,33 @@ async def _dojo_get_achievements() -> str:
             or result.get("passed") is True
             or (result.get("score", 0) >= result.get("passThreshold", 85))
         )
+        badge_ids = (agent_data or {}).get("badges", [])
+        earned_badges = (agent_data or {}).get("earnedBadges") or [
+            {
+                **badge,
+                "name": badge.get("name") or badge.get("title"),
+                "description": badge.get("description") or badge.get("descriptionMd", ""),
+            }
+            for badge in badge_catalog
+            if badge.get("id") in badge_ids
+        ]
+        specialization_ids = (agent_data or {}).get("specializations", [])
+        earned_specializations = (agent_data or {}).get("earnedSpecializations") or [
+            {**item, "name": item.get("name") or item.get("title")}
+            for item in specialization_catalog
+            if item.get("id") in specialization_ids
+        ]
         return json.dumps({
             "status": "success",
             "registered": True,
             "openclaw_agent_id": agent.openclaw_agent_id,
             "agent_name": (agent_data or {}).get("name", agent.name),
-            "badges": (agent_data or {}).get("earnedBadges", []),
-            "specializations_earned": (agent_data or {}).get("earnedSpecializations", []),
-            "skills_completed": (agent_data or {}).get("skillsCompleted", 0),
+            "badges": earned_badges,
+            "specializations_earned": earned_specializations,
+            "enrollments": (agent_data or {}).get("enrollments", []),
+            "skills_completed": (agent_data or {}).get("skillsCompleted", len({
+                result.get("skillId") for result in test_results if result.get("skillId")
+            })),
             "skills_installed": installed_count,
             "installed_skill_ids": installed_skill_ids,
             "exams_passed": exams_passed,
@@ -5166,6 +5229,51 @@ async def _dojo_get_achievements() -> str:
         })
     except Exception as exc:
         logger.error(f"dojo_get_achievements failed: {exc}", exc_info=True)
+        return json.dumps({"status": "error", "message": str(exc)})
+
+
+async def _dojo_enroll_specialization(args: dict[str, Any]) -> str:
+    """Enroll the primary agent and apply prior exam credit immediately."""
+    specialization_id = str(args.get("specialization_id") or "").strip()
+    if not specialization_id:
+        return json.dumps({"status": "error", "message": "specialization_id is required."})
+    try:
+        from shogun.db.engine import async_session_factory
+        from shogun.integrations.openclaw_client import get_openclaw_client
+
+        async with async_session_factory() as db:
+            agent = await _dojo_get_primary_agent(db)
+            if not agent or not agent.openclaw_agent_id:
+                return json.dumps({"status": "error", "message": "Agent is not registered with OpenClaw College."})
+            async with get_openclaw_client(
+                actor_id=agent.openclaw_agent_id,
+                api_key=agent.openclaw_api_key or None,
+            ) as client:
+                result = await client.enroll_specialization(specialization_id, agent.openclaw_agent_id)
+        return json.dumps({"status": "success", **result}, default=str)
+    except Exception as exc:
+        logger.error("dojo_enroll_specialization failed: %s", exc, exc_info=True)
+        return json.dumps({"status": "error", "message": str(exc)})
+
+
+async def _dojo_evaluate_achievements() -> str:
+    """Reevaluate all College enrollments for the primary agent."""
+    try:
+        from shogun.db.engine import async_session_factory
+        from shogun.integrations.openclaw_client import get_openclaw_client
+
+        async with async_session_factory() as db:
+            agent = await _dojo_get_primary_agent(db)
+            if not agent or not agent.openclaw_agent_id:
+                return json.dumps({"status": "error", "message": "Agent is not registered with OpenClaw College."})
+            async with get_openclaw_client(
+                actor_id=agent.openclaw_agent_id,
+                api_key=agent.openclaw_api_key or None,
+            ) as client:
+                result = await client.evaluate_achievements(agent.openclaw_agent_id)
+        return json.dumps({"status": "success", **result}, default=str)
+    except Exception as exc:
+        logger.error("dojo_evaluate_achievements failed: %s", exc, exc_info=True)
         return json.dumps({"status": "error", "message": str(exc)})
 
 

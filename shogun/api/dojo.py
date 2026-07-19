@@ -291,6 +291,7 @@ async def register_with_openclaw(
         resp_data = await client.register_agent(
             name=body.agent_name,
             public_key=pub_pem,
+            private_key_pem=priv_pem,
         )
 
     # The College returns { message, membershipId, profileUrl }
@@ -298,14 +299,16 @@ async def register_with_openclaw(
     if not membership_id:
         raise HTTPException(status_code=502, detail="Registration succeeded but no membershipId returned")
 
-    # Step 2: Cryptographically verify identity (proves we own the private key)
-    verify_result = None
-    try:
-        async with get_openclaw_client() as client:
-            verify_result = await client.verify_agent(membership_id, priv_pem)
-        logger.info(f"Agent verified with College: {verify_result.get('trustStatus')}")
-    except Exception as e:
-        logger.warning(f"Agent verification failed (non-fatal): {e}")
+    # Step 2: Registration normally completes the digital handshake in one call.
+    # Keep the separate endpoint as a compatibility fallback for older servers.
+    verify_result = resp_data
+    if resp_data.get("trustStatus") != "certified":
+        try:
+            async with get_openclaw_client() as client:
+                verify_result = await client.verify_agent(membership_id, priv_pem)
+            logger.info(f"Agent verified with College: {verify_result.get('trustStatus')}")
+        except Exception as e:
+            logger.warning(f"Agent verification failed (non-fatal): {e}")
 
     # Step 3: Resolve the internal agent ID the College uses for lookups
     async with get_openclaw_client() as client:
@@ -323,7 +326,7 @@ async def register_with_openclaw(
         "registered": True,
         "openclaw_agent_id": agent.openclaw_agent_id,
         "membership_id": membership_id,
-        "trust_status": verify_result.get("trustStatus") if verify_result else "unverified",
+        "trust_status": verify_result.get("trustStatus") if verify_result else "handshake_required",
         "agent_name": agent.name,
         "college_response": resp_data,
     })
@@ -355,6 +358,9 @@ async def get_achievements(db: AsyncSession = Depends(get_db)):
     # Fetch live data from College
     async with get_openclaw_client() as client:
         agent_data = await client.get_agent_by_id(agent.openclaw_agent_id)
+        badge_catalog = await client.get_badges() if agent_data else []
+        specialization_resp = await client.client.get(f"{client.base_url}/specializations")
+        specialization_catalog = specialization_resp.json() if specialization_resp.is_success else []
 
     if not agent_data:
         return ApiResponse(data={
@@ -392,14 +398,33 @@ async def get_achievements(db: AsyncSession = Depends(get_db)):
         or tr.get("passed") is True
         or (tr.get("score", 0) >= tr.get("passThreshold", 85))
     )
+    badge_ids = agent_data.get("badges", [])
+    earned_badges = agent_data.get("earnedBadges") or [
+        {
+            **badge,
+            "name": badge.get("name") or badge.get("title"),
+            "description": badge.get("description") or badge.get("descriptionMd", ""),
+        }
+        for badge in badge_catalog
+        if badge.get("id") in badge_ids
+    ]
+    specialization_ids = agent_data.get("specializations", [])
+    earned_specializations = agent_data.get("earnedSpecializations") or [
+        {**item, "name": item.get("name") or item.get("title")}
+        for item in specialization_catalog
+        if item.get("id") in specialization_ids
+    ]
 
     return ApiResponse(data={
         "registered": True,
         "openclaw_agent_id": agent.openclaw_agent_id,
         "agent_name": agent_data.get("name", agent.name),
-        "badges": agent_data.get("earnedBadges", []),
-        "specializations_earned": agent_data.get("earnedSpecializations", []),
-        "skills_completed": agent_data.get("skillsCompleted", 0),
+        "badges": earned_badges,
+        "specializations_earned": earned_specializations,
+        "enrollments": agent_data.get("enrollments", []),
+        "skills_completed": agent_data.get("skillsCompleted", len({
+            result.get("skillId") for result in test_results if result.get("skillId")
+        })),
         "skills_installed": installed_count,
         "installed_skill_ids": installed_skill_ids,
         "exams_passed": exams_passed,
@@ -423,6 +448,43 @@ async def get_installed_openclaw_skills(db: AsyncSession = Depends(get_db)):
         .where(SkillInstallation.status == "installed")
         .options(joinedload(SkillInstallation.skill))
     )
+
+
+@router.post("/openclaw/specializations/{specialization_id}/enroll", response_model=ApiResponse)
+async def enroll_openclaw_specialization(
+    specialization_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Enroll the primary Shogun and apply all prior exam credit."""
+    result = await db.execute(
+        select(Agent).where(Agent.is_primary.is_(True), Agent.is_deleted.is_(False))
+    )
+    agent = result.scalars().first()
+    if not agent or not agent.openclaw_agent_id:
+        raise HTTPException(status_code=401, detail="Agent not registered with OpenClaw College")
+    async with get_openclaw_client(
+        actor_id=agent.openclaw_agent_id,
+        api_key=agent.openclaw_api_key or None,
+    ) as client:
+        enrollment = await client.enroll_specialization(specialization_id, agent.openclaw_agent_id)
+    return ApiResponse(data=enrollment)
+
+
+@router.post("/openclaw/achievements/evaluate", response_model=ApiResponse)
+async def evaluate_openclaw_achievements(db: AsyncSession = Depends(get_db)):
+    """Reevaluate every enrolled specialization for the primary Shogun."""
+    result = await db.execute(
+        select(Agent).where(Agent.is_primary.is_(True), Agent.is_deleted.is_(False))
+    )
+    agent = result.scalars().first()
+    if not agent or not agent.openclaw_agent_id:
+        raise HTTPException(status_code=401, detail="Agent not registered with OpenClaw College")
+    async with get_openclaw_client(
+        actor_id=agent.openclaw_agent_id,
+        api_key=agent.openclaw_api_key or None,
+    ) as client:
+        evaluation = await client.evaluate_achievements(agent.openclaw_agent_id)
+    return ApiResponse(data=evaluation)
     installations = list(result.scalars().all())
 
     skills: list[dict[str, Any]] = []
@@ -507,6 +569,20 @@ class InstallSkillRequest(BaseModel):
     capabilities: list[str] = Field(default_factory=list)
 
 
+async def _sync_primary_agent_skill_memories(db: AsyncSession) -> None:
+    """Refresh the primary agent's Archives Skills layer, if configured."""
+    result = await db.execute(
+        select(Agent.id).where(Agent.is_primary.is_(True), Agent.is_deleted.is_(False)).limit(1)
+    )
+    agent_id = result.scalar_one_or_none()
+    if agent_id:
+        from shogun.services.skill_memory_sync import sync_skills_to_memory
+
+        await sync_skills_to_memory(db, agent_id)
+    else:
+        await db.commit()
+
+
 @router.post("/openclaw/install", response_model=ApiResponse)
 async def install_openclaw_skill(
     body: InstallSkillRequest,
@@ -551,6 +627,7 @@ async def install_openclaw_skill(
     )
     existing = result.scalars().first()
     if existing and not existing.is_deleted:
+        await _sync_primary_agent_skill_memories(db)
         return ApiResponse(data={
             "already_installed": True,
             "skill_id": str(existing.id),
@@ -591,7 +668,8 @@ async def install_openclaw_skill(
         installed_by="dojo",
     )
     db.add(installation)
-    await db.commit()
+    await db.flush()
+    await _sync_primary_agent_skill_memories(db)
 
     return ApiResponse(data={
         "installed": True,
@@ -975,6 +1053,11 @@ async def auto_take_exam(
             agent_name=agent.name,
             model_id=model_id,
         )
+
+    if score >= pass_threshold:
+        from shogun.services.skill_memory_sync import mark_skill_achieved_and_sync
+
+        await mark_skill_achieved_and_sync(db, agent.id, body.skill_id)
 
     return ApiResponse(data={
         "test_id": test_id,

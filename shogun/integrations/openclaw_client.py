@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -269,16 +270,41 @@ class OpenClawClient:
         self,
         name: str,
         public_key: str,
+        private_key_pem: str | None = None,
     ) -> dict[str, Any]:
-        """Register the Shogun agent with OpenClaw College.
+        """Register and optionally prove key possession in one handshake.
 
-        The College API expects ``agentName`` and ``publicKey``.
-        Returns ``{ message, membershipId, profileUrl }``.
+        When the private key is supplied, registration includes a fresh signed
+        proof and the College certifies the agent immediately.
         """
         payload = {
             "agentName": name,
             "publicKey": public_key,
         }
+        if private_key_pem:
+            import secrets
+            from datetime import datetime, timezone
+
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
+
+            timestamp = datetime.now(timezone.utc).isoformat()
+            nonce = secrets.token_hex(16)
+            private_key = serialization.load_pem_private_key(
+                private_key_pem.encode("utf-8"),
+                password=None,
+            )
+            proof = f"REGISTER{name}{timestamp}{nonce}{public_key}"
+            signature = private_key.sign(
+                proof.encode("utf-8"),
+                asym_padding.PKCS1v15(),
+                hashes.SHA256(),
+            )
+            payload.update({
+                "timestamp": timestamp,
+                "nonce": nonce,
+                "signature": signature.hex(),
+            })
         resp = await self.client.post(f"{self.base_url}/v1/agents/register", json=payload)
         resp.raise_for_status()
         return resp.json()
@@ -311,7 +337,7 @@ class OpenClawClient:
 
         Signs a payload with the agent's RSA private key and sends it to
         the ``/verify`` endpoint.  On success the College upgrades
-        ``trustStatus`` from ``unverified`` → ``certified``.
+        ``trustStatus`` from ``handshake_required`` to ``certified``.
 
         Signature payload: ``METHOD + URL_PATH + TIMESTAMP + NONCE + BODY``
         Algorithm: RSA-PKCS1v15-SHA256
@@ -368,8 +394,8 @@ class OpenClawClient:
         Returns:
             (public_key_pem, private_key_pem) — both as PEM strings.
         """
-        from cryptography.hazmat.primitives.asymmetric import rsa
         from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
 
         private_key = rsa.generate_private_key(
             public_exponent=65537,
@@ -405,6 +431,30 @@ class OpenClawClient:
     async def get_badges(self) -> list[dict[str, Any]]:
         """Fetch all available badges from OpenClaw College."""
         resp = await self.client.get(f"{self.base_url}/badges")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def enroll_specialization(
+        self,
+        specialization_id: str,
+        agent_id: str,
+    ) -> dict[str, Any]:
+        """Enroll an agent and retroactively evaluate its passed exams."""
+        resp = await self.client.post(
+            f"{self.base_url}/v1/specializations/{quote(specialization_id, safe='')}/enroll",
+            json={"agentId": agent_id},
+            headers=self._auth_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def evaluate_achievements(self, agent_id: str) -> dict[str, Any]:
+        """Reevaluate every enrolled specialization for an agent."""
+        resp = await self.client.post(
+            f"{self.base_url}/v1/agents/{quote(agent_id, safe='')}/evaluate-badges",
+            json={"agentId": agent_id},
+            headers=self._auth_headers(),
+        )
         resp.raise_for_status()
         return resp.json()
 

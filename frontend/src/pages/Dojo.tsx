@@ -73,6 +73,7 @@ export function Dojo() {
   const [urlMessage, setUrlMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [expandedSpec, setExpandedSpec] = useState<string | null>(null);
+  const [enrollingSpec, setEnrollingSpec] = useState<string | null>(null);
   const [expandedBundle, setExpandedBundle] = useState<string | null>(null);
   const [collapsedFaculties, setCollapsedFaculties] = useState<Record<string, boolean>>({});
 
@@ -143,8 +144,12 @@ export function Dojo() {
         const res = await axios.get('/api/v1/dojo/openclaw/bundles');
         setBundles(res.data.data || []);
       } else if (activeTab === 'specializations') {
-        const res = await axios.get('/api/v1/dojo/openclaw/specializations');
+        const [res, achievementRes] = await Promise.all([
+          axios.get('/api/v1/dojo/openclaw/specializations'),
+          axios.get('/api/v1/dojo/openclaw/achievements').catch(() => null),
+        ]);
         setSpecializations(res.data.data || []);
+        if (achievementRes) setAchievements(achievementRes.data.data);
       } else if (activeTab === 'achieved') {
         const [badgesRes, achieveRes, installedRes] = await Promise.all([
           axios.get('/api/v1/dojo/openclaw/badges'),
@@ -288,6 +293,33 @@ export function Dojo() {
     } finally {
       setInstalling(null);
       setTimeout(() => setInstallMessage(null), 4000);
+    }
+  };
+
+  const handleEnrollSpecialization = async (specialization: any) => {
+    setEnrollingSpec(specialization.id);
+    setInstallMessage(null);
+    try {
+      const response = await axios.post(
+        `/api/v1/dojo/openclaw/specializations/${encodeURIComponent(specialization.id)}/enroll`,
+      );
+      const awarded = response.data.data?.awarded || [];
+      setInstallMessage({
+        type: 'success',
+        text: awarded.length
+          ? `Enrolled and awarded ${awarded.length} badge${awarded.length === 1 ? '' : 's'}!`
+          : `Enrolled in ${specialization.name || specialization.title}.`,
+      });
+      const achievementRes = await axios.get('/api/v1/dojo/openclaw/achievements');
+      setAchievements(achievementRes.data.data);
+    } catch (error: any) {
+      setInstallMessage({
+        type: 'error',
+        text: error.response?.data?.detail || 'Specialization enrollment failed.',
+      });
+    } finally {
+      setEnrollingSpec(null);
+      setTimeout(() => setInstallMessage(null), 5000);
     }
   };
 
@@ -873,6 +905,27 @@ export function Dojo() {
                                    <span className="text-[9px] px-2 py-0.5 bg-purple-500/10 text-purple-400 rounded font-mono">{spec.badgeId}</span>
                                  </div>
                                )}
+                               <button
+                                 type="button"
+                                 onClick={() => handleEnrollSpecialization(spec)}
+                                 disabled={
+                                   enrollingSpec === spec.id
+                                   || achievements?.enrollments?.some((item: any) => (
+                                     (typeof item === 'string' ? item : item.specializationId) === spec.id
+                                   ))
+                                 }
+                                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-300 text-xs font-bold uppercase tracking-wider hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                               >
+                                 {enrollingSpec === spec.id ? (
+                                   <><Loader2 className="w-4 h-4 animate-spin" /> Enrolling…</>
+                                 ) : achievements?.enrollments?.some((item: any) => (
+                                   (typeof item === 'string' ? item : item.specializationId) === spec.id
+                                 )) ? (
+                                   <><CheckCircle2 className="w-4 h-4" /> Enrolled</>
+                                 ) : (
+                                   <><GraduationCap className="w-4 h-4" /> Enroll &amp; Evaluate</>
+                                 )}
+                               </button>
                              </div>
                            )}
                          </div>
