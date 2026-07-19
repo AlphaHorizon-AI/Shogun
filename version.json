@@ -1,8 +1,8 @@
 {
-  "version": "1.28.0",
+  "version": "1.28.1",
   "name": "Shogun OS",
-  "build": 103,
+  "build": 104,
   "channel": "stable",
-  "released": "2026-07-19T16:30:00Z",
-  "changelog": "Record and display immutable model provenance on achieved skills, badges, and specializations, including explicit legacy markers."
+  "released": "2026-07-19T18:15:00Z",
+  "changelog": "Restore Dojo achievement display by using the private agent transcript endpoint and falling back to authoritative achievement records."
 }

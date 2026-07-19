@@ -169,13 +169,19 @@ export function Dojo() {
         setSpecializations(res.data.data || []);
         if (achievementRes) setAchievements(achievementRes.data.data);
       } else if (activeTab === 'achieved') {
-        const [badgesRes, achieveRes, installedRes] = await Promise.all([
+        const [badgesRes, achieveRes, installedRes, transcriptRes] = await Promise.all([
           axios.get('/api/v1/dojo/openclaw/badges'),
           axios.get('/api/v1/dojo/openclaw/achievements'),
           axios.get('/api/v1/dojo/openclaw/installed'),
+          axios.get('/api/v1/dojo/openclaw/transcript').catch(() => null),
         ]);
         setBadges(badgesRes.data.data || []);
-        setAchievements(achieveRes.data.data);
+        const achievementData = achieveRes.data.data;
+        setAchievements(achievementData);
+        setTranscript(transcriptRes?.data.data || {
+          test_results: achievementData?.achieved_skills || [],
+          transcript: [],
+        });
         const installed = installedRes.data.data || [];
         setInstalledSkillDetails(installed);
         setInstalledSkills(new Set(installed.map((s: any) => s.openclaw_skill_id).filter(Boolean)));

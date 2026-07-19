@@ -653,20 +653,11 @@ class OpenClawClient:
     async def get_agent_transcript(self, agent_id: str) -> dict[str, Any] | None:
         """Fetch agent profile including full transcript and testResults.
 
-        GET /api/agents/:id
+        Uses the authenticated private self endpoint. The former generic
+        ``/api/agents/:id`` route was intentionally removed when public agent
+        profiles were retired.
         """
-        try:
-            resp = await self.client.get(
-                f"{self.base_url}/agents/{agent_id}",
-                headers=self._auth_headers(),
-            )
-            if resp.status_code == 404:
-                return None
-            resp.raise_for_status()
-            return resp.json()
-        except Exception as e:
-            logger.warning(f"Failed to fetch transcript for {agent_id}: {e}")
-            return None
+        return await self.get_agent_by_id(agent_id)
 
     # ── Helpers ───────────────────────────────────────────────
 

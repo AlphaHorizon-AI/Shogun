@@ -97,6 +97,33 @@ async def test_private_agent_read_retries_with_platform_key():
 
 
 @pytest.mark.asyncio
+async def test_transcript_uses_private_self_endpoint():
+    requested_paths: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requested_paths.append(request.url.raw_path.decode("ascii"))
+        return httpx.Response(200, json={
+            "id": "ag/primary",
+            "testResults": [{"skillId": "skill-1", "score": 100}],
+        })
+
+    transport_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = OpenClawClient(
+        base_url="https://college.test/api",
+        actor_id="ag/primary",
+        api_key=OPENCLAW_API_KEY,
+    )
+    client._client = transport_client
+    try:
+        result = await client.get_agent_transcript("ag/primary")
+    finally:
+        await transport_client.aclose()
+
+    assert result["testResults"][0]["skillId"] == "skill-1"
+    assert requested_paths == ["/api/v1/agents/ag%2Fprimary/self"]
+
+
+@pytest.mark.asyncio
 async def test_exam_submission_includes_genuine_review():
     captured: dict = {}
 
