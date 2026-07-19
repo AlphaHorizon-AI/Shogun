@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.config import settings
 from shogun.db.models.active_skill_run import ActiveSkillRun
+from shogun.db.models.memory_record import MemoryRecord
 from shogun.db.models.skill import Skill
 from shogun.db.models.skill_installation import SkillInstallation
 from shogun.schemas.skills import SkillActivationRequest
@@ -115,7 +116,15 @@ class SkillContextComposer:
         used = 0
         for candidate in selected:
             skill: Skill = candidate["skill"]
-            brief = skill.brief_text or cls.default_brief(skill)
+            archive_content = candidate.get("archive_content")
+            if archive_content:
+                brief = (
+                    f"ACTIVE SKILL: {skill.name}\n"
+                    "CANONICAL ARCHIVES INSTRUCTIONS:\n"
+                    f"{archive_content}"
+                )
+            else:
+                brief = skill.brief_text or cls.default_brief(skill)
             per_skill = min(skill.max_context_tokens or settings.active_skill_default_context_tokens, budget - used)
             if per_skill <= 0:
                 candidate["brief"] = ""
@@ -462,6 +471,31 @@ class SkillActivationService:
         )
         return list(result.scalars().all())
 
+    async def _archive_content(self, skills: list[Skill]) -> dict[str, str]:
+        """Load canonical instructions from the Archives Skills layer."""
+        if not skills:
+            return {}
+        skill_ids = [skill.id for skill in skills]
+        result = await self.session.execute(
+            select(MemoryRecord).where(
+                MemoryRecord.source_ref_id.in_(skill_ids),
+                MemoryRecord.memory_type.in_(("skills", "skill")),
+                MemoryRecord.is_archived.is_(False),
+            )
+        )
+        records = list(result.scalars().all())
+        # A global skill may be mirrored into multiple agent-scoped Archives.
+        # Their canonical content is identical; prefer the newest populated row.
+        records.sort(
+            key=lambda record: record.updated_at or record.created_at or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        content: dict[str, str] = {}
+        for record in records:
+            if record.source_ref_id and record.content:
+                content.setdefault(str(record.source_ref_id), record.content)
+        return content
+
     async def activate(self, request: SkillActivationRequest) -> dict[str, Any]:
         run_id = request.run_id or str(uuid.uuid4())
         if (
@@ -496,6 +530,7 @@ class SkillActivationService:
             },
         )
         skills = await self._installed_skills()
+        archive_content = await self._archive_content(skills)
         for skill in skills:
             SkillMetadataService.normalize(skill)
             if not skill.brief_text:
@@ -521,7 +556,12 @@ class SkillActivationService:
                 hierarchy.get("boosts", {}).get(str(skill.id), 0.0),
                 hierarchy.get("paths", {}).get(str(skill.id), []),
             )
-            candidate = {"skill": skill, "score": score, "reason": reason}
+            candidate = {
+                "skill": skill,
+                "score": score,
+                "reason": reason,
+                "archive_content": archive_content.get(str(skill.id)),
+            }
             blocked_reason = SkillCompatibilityService.blocked_reason(skill, request)
             if blocked_reason:
                 candidate["blocked_reason"] = blocked_reason

@@ -10,13 +10,16 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import shogun.db.models  # noqa: F401
 import shogun.engine.vector_store as vector_store_module
 from shogun.db.base import Base
+from shogun.db.models.agent import Agent
 from shogun.db.models.memory_record import MemoryRecord
 from shogun.db.models.skill import Skill
 from shogun.db.models.skill_installation import SkillInstallation
+from shogun.db.models.skillopt import SkillOptCandidate, SkillOptTrainingRun, SkillVersion
 from shogun.services.skill_memory_sync import (
     mark_skill_achieved_and_sync,
     sync_skills_to_memory,
 )
+from shogun.services.skillopt.promotion import SkillPromotionService
 
 
 class FakeVectorStore:
@@ -144,3 +147,73 @@ async def test_sync_migrates_legacy_records_and_includes_every_installed_skill(s
 
     repeat = await sync_skills_to_memory(session, agent_id)
     assert repeat == {"added": 0, "updated": 0, "archived": 0, "errors": 0, "total": 3}
+
+
+@pytest.mark.asyncio
+async def test_skillopt_promotion_replaces_the_canonical_archive_markdown(skill_sync_context, tmp_path):
+    session, _ = skill_sync_context
+    agent = Agent(agent_type="shogun", name="Primary", slug="primary", status="active", is_primary=True)
+    skill = Skill(
+        name="Optimizable Skill",
+        slug="optimizable-skill",
+        version="1.0.0",
+        status="installed",
+        body_text="# Original\n\nOriginal procedure.",
+        manifest={"canonical_content_source": "openclaw_college"},
+    )
+    session.add_all([agent, skill])
+    await session.flush()
+
+    original_path = tmp_path / "original.md"
+    original_path.write_text(skill.body_text, encoding="utf-8")
+    version = SkillVersion(
+        skill_id=skill.id,
+        version_number=1,
+        status="active",
+        content_path=str(original_path),
+        content_hash="original",
+        created_by="openclaw_college",
+    )
+    session.add(version)
+    await session.flush()
+    skill.active_version_id = version.id
+
+    run = SkillOptTrainingRun(
+        skill_id=skill.id,
+        base_version_id=version.id,
+        status="completed",
+    )
+    session.add(run)
+    await session.flush()
+    optimized_markdown = "# Optimized\n\nUse the improved golden procedure."
+    candidate_path = tmp_path / "candidate.md"
+    candidate_path.write_text(optimized_markdown, encoding="utf-8")
+    diff_path = tmp_path / "candidate.diff"
+    diff_path.write_text("optimized", encoding="utf-8")
+    candidate = SkillOptCandidate(
+        training_run_id=run.id,
+        skill_id=skill.id,
+        base_version_id=version.id,
+        candidate_content_path=str(candidate_path),
+        candidate_diff_path=str(diff_path),
+        status="validated",
+        validation_score=0.9,
+    )
+    session.add(candidate)
+    await session.commit()
+
+    assert await SkillPromotionService(session).promote_candidate(candidate.id) is True
+
+    record = (
+        await session.execute(
+            select(MemoryRecord).where(
+                MemoryRecord.agent_id == agent.id,
+                MemoryRecord.source_ref_id == skill.id,
+                MemoryRecord.is_archived.is_(False),
+            )
+        )
+    ).scalar_one()
+    assert skill.body_text == optimized_markdown
+    assert skill.manifest["optimized_by"] == "skillopt"
+    assert record.content == optimized_markdown
+    assert candidate.status == "promoted"

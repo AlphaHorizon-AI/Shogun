@@ -1,5 +1,6 @@
 """Skill Promotion Service."""
 
+import hashlib
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +13,8 @@ from shogun.services.skillopt.versioning import SkillVersionService
 
 class SkillPromotionService(BaseService):
     def __init__(self, db_session: AsyncSession):
-        super().__init__(db_session)
+        super().__init__(SkillOptCandidate, db_session)
+        self.db = db_session
         self.version_service = SkillVersionService(db_session)
 
     async def promote_candidate(self, candidate_id: uuid.UUID, created_by: str = "system") -> bool:
@@ -26,7 +28,7 @@ class SkillPromotionService(BaseService):
 
         # Read the candidate content
         try:
-            with open(candidate.candidate_content_path, "r", encoding="utf-8") as f:
+            with open(candidate.candidate_content_path, encoding="utf-8") as f:
                 content = f.read()
         except FileNotFoundError:
             raise ValueError(f"Candidate content file not found at {candidate.candidate_content_path}")
@@ -44,10 +46,24 @@ class SkillPromotionService(BaseService):
         # Update the active version on the skill
         skill = await self.db.get(Skill, candidate.skill_id)
         skill.active_version_id = new_version.id
+        # The promoted Markdown becomes the canonical skill instructions.
+        # Archives is refreshed below, and runtime activation reads from there.
+        skill.body_text = content
+        skill.local_path = candidate.candidate_content_path
+        skill.hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        skill.brief_text = None
+        manifest = dict(skill.manifest or {})
+        manifest["canonical_content_source"] = "skills_archive"
+        manifest["optimized_by"] = "skillopt"
+        manifest["active_version"] = new_version.version_number
+        skill.manifest = manifest
 
         # Update candidate status
         candidate.status = "promoted"
-        await self.db.commit()
+        await self.db.flush()
+        from shogun.services.skill_memory_sync import sync_skills_to_all_agent_memories
+
+        await sync_skills_to_all_agent_memories(self.db)
         return True
 
     async def reject_candidate(self, candidate_id: uuid.UUID, reason: str) -> bool:
@@ -55,7 +71,7 @@ class SkillPromotionService(BaseService):
         candidate = await self.db.get(SkillOptCandidate, candidate_id)
         if not candidate:
             return False
-            
+
         candidate.status = "rejected"
         candidate.rejection_reason = reason
         await self.db.commit()

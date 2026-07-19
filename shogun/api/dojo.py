@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.api.deps import get_db
+from shogun.config import settings
 from shogun.db.models.agent import Agent
 from shogun.integrations.openclaw_client import (
     OPENCLAW_BASE_URL,
@@ -506,6 +507,23 @@ async def get_installed_openclaw_skills(db: AsyncSession = Depends(get_db)):
         .where(SkillInstallation.status == "installed")
         .options(joinedload(SkillInstallation.skill))
     )
+    installations = list(result.scalars().unique().all())
+    return ApiResponse(
+        data=[
+            {
+                "skill_id": str(installation.skill_id),
+                "openclaw_skill_id": installation.openclaw_skill_id,
+                "name": installation.skill.name,
+                "version": installation.installed_version,
+                "faculty": (installation.skill.manifest or {}).get("faculty"),
+                "canonical_content_source": (installation.skill.manifest or {}).get(
+                    "canonical_content_source"
+                ),
+            }
+            for installation in installations
+            if installation.skill and not installation.skill.is_deleted
+        ]
+    )
 
 
 @router.post("/openclaw/specializations/{specialization_id}/enroll", response_model=ApiResponse)
@@ -656,6 +674,23 @@ async def install_openclaw_skill(
     from shogun.db.models.skill import Skill
     from shogun.db.models.skill_installation import SkillInstallation
     from shogun.db.models.skill_source import SkillSource
+    from shogun.services.skillopt.versioning import SkillVersionService
+
+    # Resolve the install payload against College itself. Catalog cards and
+    # clients may carry only summaries; the installed canonical record must
+    # contain the real current-version Markdown instructions.
+    try:
+        async with get_openclaw_client() as client:
+            college_skill = await client.get_skill_by_id(body.openclaw_skill_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Could not retrieve the skill Markdown from OpenClaw College") from exc
+    if not college_skill or not college_skill.description_md.strip():
+        raise HTTPException(status_code=422, detail="OpenClaw College did not provide Markdown instructions for this skill")
+
+    canonical_markdown = college_skill.description_md.strip()
+    canonical_name = college_skill.name or body.skill_name
+    canonical_version = college_skill.version or body.version
+    canonical_capabilities = list(college_skill.capabilities or body.capabilities)
 
     # Ensure an OpenClaw skill source exists
     result = await db.execute(
@@ -677,7 +712,11 @@ async def install_openclaw_skill(
         await db.flush()
 
     # Build a slug from the skill name if not provided
-    slug = body.slug or body.skill_name.lower().replace(" ", "-").replace("&", "and")[:100]
+    raw_slug = college_skill.slug or body.slug or canonical_name.lower().replace("&", "and")
+    slug = re.sub(r"[^a-z0-9-]+", "-", raw_slug.lower()).strip("-")[:100]
+    if not slug:
+        raise HTTPException(status_code=422, detail="Skill has no valid slug")
+    canonical_path = settings.vault_path / "skills" / "openclaw" / slug / "SKILL.md"
 
     # Check for duplicate install
     result = await db.execute(
@@ -685,6 +724,26 @@ async def install_openclaw_skill(
     )
     existing = result.scalars().first()
     if existing and not existing.is_deleted:
+        # Never replace an explicitly promoted SkillOpt version with an
+        # upstream refresh. Otherwise repair older summary-only installs.
+        if (existing.manifest or {}).get("optimized_by") != "skillopt":
+            canonical_path.parent.mkdir(parents=True, exist_ok=True)
+            canonical_path.write_text(canonical_markdown + "\n", encoding="utf-8")
+            existing.body_text = canonical_markdown
+            existing.local_path = str(canonical_path)
+            existing.version = canonical_version
+            existing.brief_text = None
+            existing.manifest = {
+                **(existing.manifest or {}),
+                "openclaw_id": body.openclaw_skill_id,
+                "description": college_skill.short_description or canonical_name,
+                "canonical_content_source": "openclaw_college",
+            }
+            await db.flush()
+            if not existing.active_version_id:
+                await SkillVersionService(db).create_initial_version(
+                    existing, str(canonical_path), canonical_markdown, created_by="openclaw_college"
+                )
         await _sync_primary_agent_skill_memories(db)
         return ApiResponse(data={
             "already_installed": True,
@@ -694,29 +753,32 @@ async def install_openclaw_skill(
 
     # Create the Skill record
     trigger_terms = [
-        term for term in re.split(r"[^a-z0-9+.#-]+", f"{body.skill_name} {' '.join(body.capabilities)}".lower())
+        term for term in re.split(
+            r"[^a-z0-9+.#-]+", f"{canonical_name} {' '.join(canonical_capabilities)}".lower()
+        )
         if len(term) >= 3
     ]
     skill = Skill(
         source_id=source.id,
-        name=body.skill_name,
+        name=canonical_name,
         slug=slug,
-        version=body.version,
+        version=canonical_version,
         skill_type="single",
         manifest={
             "openclaw_id": body.openclaw_skill_id,
-            "risk_tier": body.risk_tier,
-            "description": body.description,
+            "risk_tier": college_skill.risk_tier or body.risk_tier,
+            "description": college_skill.short_description or canonical_name,
             "permissions": body.permissions,
-            "capabilities": body.capabilities,
-            "instructions": body.description,
+            "capabilities": canonical_capabilities,
+            "canonical_content_source": "openclaw_college",
         },
         risk_score={"shrine": 0.9, "elevated": 0.6, "tactical": 0.3}.get(body.risk_tier, 0.1),
         trust_score=80,
         status="installed",
-        body_text=body.description or None,
-        brief_text=body.description or None,
-        tags=list(dict.fromkeys(body.capabilities + trigger_terms))[:40],
+        local_path=str(canonical_path),
+        body_text=canonical_markdown,
+        brief_text=None,
+        tags=list(dict.fromkeys(canonical_capabilities + trigger_terms))[:40],
         triggers=list(dict.fromkeys(trigger_terms))[:20],
         use_when=[f"The task requires {body.skill_name.lower()}"],
         verification_checklist=[
@@ -734,7 +796,7 @@ async def install_openclaw_skill(
         openclaw_skill_id=body.openclaw_skill_id,
         target_type="global",
         status="installed",
-        installed_version=body.version,
+        installed_version=canonical_version,
         auto_update=False,
         quarantine_status="cleared",
         installed_at=datetime.now(timezone.utc),
@@ -742,6 +804,11 @@ async def install_openclaw_skill(
     )
     db.add(installation)
     await db.flush()
+    canonical_path.parent.mkdir(parents=True, exist_ok=True)
+    canonical_path.write_text(canonical_markdown + "\n", encoding="utf-8")
+    await SkillVersionService(db).create_initial_version(
+        skill, str(canonical_path), canonical_markdown, created_by="openclaw_college"
+    )
     await _sync_primary_agent_skill_memories(db)
 
     return ApiResponse(data={

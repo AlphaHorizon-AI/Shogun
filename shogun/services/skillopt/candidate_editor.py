@@ -2,19 +2,19 @@
 
 import uuid
 import os
-from typing import Optional, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.db.models.skill import Skill
-from shogun.db.models.skillopt import SkillOptCandidate, SkillOptTrainingRun, SkillVersion
+from shogun.db.models.skillopt import SkillOptCandidate, SkillOptTrainingRun
 from shogun.services.base_service import BaseService
 from shogun.config import settings
 
 
 class SkillCandidateEditor(BaseService):
     def __init__(self, db_session: AsyncSession):
-        super().__init__(db_session)
+        super().__init__(SkillOptCandidate, db_session)
+        self.db = db_session
 
     async def generate_candidate(
         self,

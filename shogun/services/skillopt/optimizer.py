@@ -12,7 +12,8 @@ from shogun.services.base_service import BaseService
 
 class SkillOptService(BaseService):
     def __init__(self, db_session: AsyncSession):
-        super().__init__(db_session)
+        super().__init__(SkillOptTrainingRun, db_session)
+        self.db = db_session
 
     async def start_training_run(
         self,

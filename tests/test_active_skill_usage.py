@@ -14,6 +14,7 @@ from shogun.api.deps import get_db
 from shogun.api.skills import router as skills_router
 from shogun.config import settings
 from shogun.db.base import Base
+from shogun.db.models.memory_record import MemoryRecord
 from shogun.db.models.skill import Skill
 from shogun.schemas.skills import SkillActivationRequest
 from shogun.services import active_skill_service as module
@@ -127,6 +128,46 @@ async def test_every_task_searches_archives_and_can_activate_achieved_skill(skil
     assert "Triage a production incident" in query
     assert "API is returning errors" in query
     assert [item["name"] for item in result["active_skills"]] == ["Incident Triage"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_injects_canonical_markdown_from_archives(skill_session, monkeypatch):
+    skill = make_skill("Canonical Runbook", triggers=["canonical runbook"])
+    skill.body_text = "STALE SKILL TABLE COPY"
+    skill.brief_text = "STALE BRIEF"
+    skill_session.add(skill)
+    await skill_session.flush()
+    skill_session.add(
+        MemoryRecord(
+            agent_id=uuid.uuid4(),
+            memory_type="skills",
+            source_ref_id=skill.id,
+            source_type="dojo_skill",
+            title="Skill: Canonical Runbook",
+            content="# Real Skill\n\nFollow the golden Archive procedure.",
+            is_pinned=True,
+            decay_class="pinned",
+            tags=[f"skill:{skill.slug}"],
+        )
+    )
+    await skill_session.flush()
+    monkeypatch.setattr(
+        SkillEmbeddingService,
+        "search",
+        AsyncMock(return_value={str(skill.id): 0.99}),
+    )
+
+    result = await SkillActivationService(skill_session).activate(
+        SkillActivationRequest(
+            objective="Use the canonical runbook",
+            posture="campaign",
+            available_tools=["chat"],
+        )
+    )
+
+    assert "CANONICAL ARCHIVES INSTRUCTIONS" in result["context_block"]
+    assert "Follow the golden Archive procedure" in result["context_block"]
+    assert "STALE BRIEF" not in result["context_block"]
 
 
 @pytest.mark.asyncio

@@ -13,7 +13,8 @@ from shogun.services.base_service import BaseService
 
 class SkillUsageTrackingService(BaseService):
     def __init__(self, db_session: AsyncSession):
-        super().__init__(db_session)
+        super().__init__(SkillUsageEvent, db_session)
+        self.db = db_session
 
     async def log_usage(
         self,

@@ -3,17 +3,16 @@
 import uuid
 from typing import List
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shogun.db.models.skill import Skill
-from shogun.db.models.skillopt import SkillOptCandidate, SkillOptEvalResult, SkillVersion
+from shogun.db.models.skillopt import SkillOptCandidate, SkillOptEvalResult
 from shogun.services.base_service import BaseService
 
 
 class SkillValidationService(BaseService):
     def __init__(self, db_session: AsyncSession):
-        super().__init__(db_session)
+        super().__init__(SkillOptCandidate, db_session)
+        self.db = db_session
 
     async def static_validate(self, candidate_id: uuid.UUID) -> bool:
         """Perform static checks on a candidate skill (e.g. valid markdown, safety)."""

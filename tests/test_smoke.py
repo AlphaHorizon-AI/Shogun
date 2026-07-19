@@ -8,7 +8,7 @@ import pytest
 def test_version():
     """Package version is set."""
     import shogun
-    assert shogun.__version__ == "1.29.1"
+    assert shogun.__version__ == "1.30.0"
 
 
 def test_app_factory():

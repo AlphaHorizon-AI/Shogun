@@ -2,7 +2,6 @@
 
 import uuid
 import hashlib
-from datetime import datetime
 from typing import Optional, List
 
 from sqlalchemy import select
@@ -15,7 +14,8 @@ from shogun.services.base_service import BaseService
 
 class SkillVersionService(BaseService):
     def __init__(self, db_session: AsyncSession):
-        super().__init__(db_session)
+        super().__init__(SkillVersion, db_session)
+        self.db = db_session
 
     async def get_active_version(self, skill_id: uuid.UUID) -> Optional[SkillVersion]:
         """Get the currently active version of a skill."""

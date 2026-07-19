@@ -1,8 +1,8 @@
 {
-  "version": "1.29.1",
+  "version": "1.30.0",
   "name": "Shogun OS",
-  "build": 106,
+  "build": 107,
   "channel": "stable",
-  "released": "2026-07-19T19:30:00Z",
-  "changelog": "Make Dojo achievements authoritative and independently rendered so auxiliary transcript, catalog, or install failures cannot blank earned credentials."
+  "released": "2026-07-19T19:31:00Z",
+  "changelog": "Make the Archives Skills layer canonical: persist full OpenClaw Markdown, hydrate legacy installs, inject Archive instructions at runtime, and publish SkillOpt promotions back to every agent Archive."
 }
