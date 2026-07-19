@@ -1,8 +1,8 @@
 {
-  "version": "1.24.4",
+  "version": "1.24.5",
   "name": "Shogun OS",
-  "build": 94,
+  "build": 95,
   "channel": "stable",
-  "released": "2026-07-18T20:45:00Z",
-  "changelog": "Skills Memory Layer: Persist all installed skills as pinned memories, increase activation limits, and inject run_id context."
+  "released": "2026-07-19T10:58:27Z",
+  "changelog": "Fix active-skill activation by exposing manifest-backed skill descriptions and verify the agent activation/retrieval pipeline."
 }

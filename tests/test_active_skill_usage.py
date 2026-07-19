@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from unittest.mock import AsyncMock
 
@@ -21,6 +22,7 @@ from shogun.services.active_skill_service import (
     SkillCompatibilityService,
     SkillContextComposer,
 )
+from shogun.services.native_skills import _execute_active_skill_tool
 
 
 @pytest.fixture
@@ -60,6 +62,16 @@ def make_skill(name: str, *, triggers=None, status="installed", exam="passed", p
     )
 
 
+def test_skill_description_is_backed_by_manifest():
+    skill = make_skill("Manifest Description")
+
+    assert skill.description == "Operational guidance for Manifest Description"
+
+    skill.description = "Updated operational guidance"
+
+    assert skill.manifest["description"] == "Updated operational guidance"
+
+
 @pytest.mark.asyncio
 async def test_relevant_passed_skill_activates_and_failed_skill_is_blocked(skill_session):
     good = make_skill("Build Paper Writer", triggers=["build paper", "implementation spec"])
@@ -76,6 +88,7 @@ async def test_relevant_passed_skill_activates_and_failed_skill_is_blocked(skill
 
     assert [item["name"] for item in result["active_skills"]] == ["Build Paper Writer"]
     assert result["active_skills"][0]["brief"].startswith("ACTIVE SKILL")
+    assert "Build Paper Writer: Operational guidance for Build Paper Writer" in result["context_block"]
     assert result["total_injected_tokens"] <= settings.active_skill_max_total_context_tokens
     assert any(item["name"] == "Unsafe Writer" and item["blocked_reason"] == "exam:failed"
                for item in result["blocked_skills"])
@@ -176,3 +189,36 @@ async def test_activation_and_run_detail_api(skill_session):
         detail = await client.get("/api/v1/skills/active-runs", params={"run_id": "api-run-1"})
         assert detail.status_code == 200
         assert detail.json()["data"][0]["skill_name"] == "API Writing Skill"
+
+
+@pytest.mark.asyncio
+async def test_agent_skill_tools_activate_then_retrieve_and_explain(skill_session, monkeypatch):
+    from shogun.api import security as security_api
+
+    skill = make_skill("Agent Pipeline Skill", triggers=["pipeline regression"])
+    skill_session.add(skill)
+    await skill_session.flush()
+    monkeypatch.setattr(
+        security_api,
+        "_get_agent_posture",
+        AsyncMock(return_value={"active_tier": "campaign", "ide_enabled": False}),
+    )
+
+    activated = json.loads(await _execute_active_skill_tool(
+        "skills_request_activation",
+        {"run_id": "agent-pipeline-run", "objective": "Run a pipeline regression"},
+        skill_session,
+    ))
+    active = json.loads(await _execute_active_skill_tool(
+        "skills_get_active", {"run_id": "agent-pipeline-run"}, skill_session
+    ))
+    explained = json.loads(await _execute_active_skill_tool(
+        "skills_explain_active", {"run_id": "agent-pipeline-run"}, skill_session
+    ))
+
+    assert activated["status"] == "success"
+    assert [item["name"] for item in activated["active_skills"]] == ["Agent Pipeline Skill"]
+    assert active["total"] == 1
+    assert active["active_skills"][0]["name"] == "Agent Pipeline Skill"
+    assert explained["total"] == 1
+    assert explained["active_skills"][0]["reason"]

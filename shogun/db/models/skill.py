@@ -67,3 +67,21 @@ class Skill(Base, UUIDMixin, AuditMixin, SoftDeleteMixin):
     )
 
     source = relationship("SkillSource", lazy="joined")
+
+    @property
+    def description(self) -> str:
+        """Return the canonical description stored in the skill manifest.
+
+        Skill descriptions predate the active-skill pipeline and are persisted
+        in ``manifest`` rather than in a dedicated database column.  Exposing
+        this compatibility property keeps model consumers aligned with that
+        storage contract without duplicating data or requiring a migration.
+        """
+        manifest = self.manifest or {}
+        return str(manifest.get("description") or manifest.get("purpose") or "")
+
+    @description.setter
+    def description(self, value: str | None) -> None:
+        manifest = dict(self.manifest or {})
+        manifest["description"] = value or ""
+        self.manifest = manifest
