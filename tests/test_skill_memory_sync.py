@@ -60,7 +60,16 @@ async def test_sync_migrates_legacy_records_and_includes_every_installed_skill(s
         status="available",
         manifest={},
     )
-    session.add_all([direct_skill, installation_skill])
+    achieved_skill = Skill(
+        name="Achieved Skill",
+        slug="achieved-skill",
+        version="1.0.0",
+        status="available",
+        exam_status="passed",
+        body_text="A full achieved-skill workflow with task-specific validation.",
+        manifest={"description": "Passed previously."},
+    )
+    session.add_all([direct_skill, installation_skill, achieved_skill])
     await session.flush()
     session.add_all(
         [
@@ -105,25 +114,33 @@ async def test_sync_migrates_legacy_records_and_includes_every_installed_skill(s
         ).scalars()
     )
     active = [record for record in records if not record.is_archived]
-    assert stats == {"added": 1, "updated": 1, "archived": 1, "errors": 0, "total": 2}
-    assert len(active) == 2
+    assert stats == {"added": 2, "updated": 1, "archived": 1, "errors": 0, "total": 3}
+    assert len(active) == 3
     assert {record.memory_type for record in active} == {"skills"}
     assert {record.title for record in active} == {
         "Skill: Direct Skill",
         "Skill: Installation Skill",
+        "Skill: Achieved Skill",
     }
     assert legacy_record.id in {record.id for record in active}
     assert next(record for record in active if record.title.endswith("Installation Skill")).content == (
         "Installation Skill"
     )
     assert removed_record.is_archived is True
-    assert len(vector_store.points) == 2
+    assert len(vector_store.points) == 3
     assert {point["payload"]["memory_type"] for point in vector_store.points.values()} == {"skills"}
+    assert {point["payload"]["skill_id"] for point in vector_store.points.values()} == {
+        str(direct_skill.id), str(installation_skill.id), str(achieved_skill.id),
+    }
+    achieved_point = next(
+        point for point in vector_store.points.values()
+        if point["payload"]["skill_id"] == str(achieved_skill.id)
+    )
+    assert "full achieved-skill workflow" in achieved_point["text"]
 
     assert await mark_skill_achieved_and_sync(session, agent_id, "college-direct") is True
     assert direct_skill.exam_status == "passed"
     assert "exam:passed" in legacy_record.tags
 
     repeat = await sync_skills_to_memory(session, agent_id)
-    assert repeat == {"added": 0, "updated": 0, "archived": 0, "errors": 0, "total": 2}
-
+    assert repeat == {"added": 0, "updated": 0, "archived": 0, "errors": 0, "total": 3}

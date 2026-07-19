@@ -1,8 +1,8 @@
 {
-  "version": "1.26.2",
+  "version": "1.27.0",
   "name": "Shogun OS",
-  "build": 100,
+  "build": 101,
   "channel": "stable",
-  "released": "2026-07-19T13:45:00Z",
-  "changelog": "Fix OpenClaw College POST authentication for agents with missing or stale stored credentials by applying the current platform-key fallback consistently to enrollment, badge evaluation, exams, feedback, and suggestions."
+  "released": "2026-07-19T14:42:47Z",
+  "changelog": "Retrieve achieved and installed skills from Archives semantic memory for every task, inject only relevant skill guidance, install full College content, and replace answer-key exam shortcuts with configured-model reasoning at a hardened 90% pass threshold."
 }

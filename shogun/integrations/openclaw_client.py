@@ -34,6 +34,7 @@ class OpenClawSkill:
     slug: str
     name: str
     short_description: str
+    description_md: str
     faculty_id: str
     subcategory_id: str
     author_name: str
@@ -659,6 +660,7 @@ class OpenClawClient:
             slug=data.get("slug", ""),
             name=data.get("name", ""),
             short_description=data.get("shortDescription", ""),
+            description_md=version_data.get("descriptionMd", ""),
             faculty_id=data.get("facultyId", ""),
             subcategory_id=data.get("subcategoryId", ""),
             author_name=data.get("authorName", ""),

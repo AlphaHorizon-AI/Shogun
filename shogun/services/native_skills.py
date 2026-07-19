@@ -5080,39 +5080,53 @@ async def _dojo_take_exam(args: dict[str, Any]) -> str:
                     })
 
                 test_id = test["id"]
-                pass_threshold = test.get("passThreshold", 85)
+                pass_threshold = max(90, int(test.get("passThreshold", 90)))
+                skill_name = test.get("name", "Unknown Skill")
+                skill_content = ""
+                faculty = "technical"
+                try:
+                    skill_data = await client.get_skill_by_id(openclaw_skill_id)
+                    if skill_data:
+                        faculty = getattr(skill_data, "faculty_id", None) or "technical"
+                        skill_name = getattr(skill_data, "name", skill_name) or skill_name
+                        skill_content = (
+                            getattr(skill_data, "description_md", None)
+                            or getattr(skill_data, "short_description", None)
+                            or ""
+                        )
+                except Exception:
+                    logger.warning(
+                        "Could not load skill content for native exam %s",
+                        openclaw_skill_id,
+                        exc_info=True,
+                    )
+
                 questions = test.get("questions", [])
                 if not questions:
                     exam = await client.get_test_questions(test_id)
                     questions = exam.get("questions", []) if isinstance(exam, dict) else []
 
                 if not questions:
-                    skill_name = test.get("name", "Unknown Skill")
-                    faculty = "technical"
-                    try:
-                        skill_data = await client.get_skill_by_id(openclaw_skill_id)
-                        if skill_data:
-                            faculty = getattr(skill_data, "faculty_id", None) or "technical"
-                            skill_name = getattr(skill_data, "name", skill_name) or skill_name
-                    except Exception:
-                        pass
                     questions = _generate_exam_questions(skill_name, faculty)
 
-                total = len(questions)
-                correct = 0
-                for question in questions:
-                    options = question.get("options", [""])
-                    selected = question.get("correctAnswer", options[0] if options else "")
-                    if selected == question.get("correctAnswer", selected):
-                        correct += 1
+                from shogun.services.openclaw_exam_service import answer_exam_questions
 
-                score = int((correct / total) * 100) if total > 0 else 100
+                exam_attempt = await answer_exam_questions(
+                    db,
+                    agent,
+                    skill_name=skill_name,
+                    skill_content=skill_content,
+                    questions=questions,
+                )
+                total = exam_attempt["total"]
+                correct = exam_attempt["correct"]
+                score = exam_attempt["score"]
                 model_id = await _dojo_resolve_primary_model(agent, db)
                 log_artifact = (
                     f"Native Dojo exam by {agent.name} ({agent.openclaw_agent_id})\n"
                     f"Model: {model_id}\n"
                     f"Test: {test_id} | Questions: {total} | Score: {score}%\n"
-                    f"Answered {correct}/{total} correctly"
+                    f"Model-grounded answers: {correct}/{total} correct"
                 )
                 college_result = await client.submit_test_result(
                     test_id=test_id,

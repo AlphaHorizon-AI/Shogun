@@ -25,7 +25,11 @@ async def _installed_skills(session: AsyncSession) -> list[Skill]:
     result = await session.execute(
         select(Skill).where(
             Skill.is_deleted.is_(False),
-            or_(Skill.id.in_(installed_ids), Skill.status == "installed"),
+            or_(
+                Skill.id.in_(installed_ids),
+                Skill.status == "installed",
+                Skill.exam_status == "passed",
+            ),
         )
     )
     return list(result.scalars().all())
@@ -70,7 +74,7 @@ async def sync_skills_to_memory(session: AsyncSession, agent_id: str | uuid.UUID
         store = None
     for skill in skills:
         installed_slugs.add(skill.slug)
-        content = skill.brief_text or skill.body_text or skill.description or skill.name
+        content = skill.body_text or skill.brief_text or skill.description or skill.name
         tags = [
             f"skill:{skill.slug}",
             f"exam:{skill.exam_status or 'untested'}",
@@ -125,6 +129,8 @@ async def sync_skills_to_memory(session: AsyncSession, agent_id: str | uuid.UUID
                     payload={
                         "memory_type": SKILLS_MEMORY_TYPE,
                         "agent_id": str(agent_uuid),
+                        "skill_id": str(skill.id),
+                        "source_ref_id": str(skill.id),
                         "title": record.title,
                         "importance_score": record.importance_score,
                         "decay_class": record.decay_class,

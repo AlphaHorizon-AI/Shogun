@@ -10,17 +10,18 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import shogun.db.models  # noqa: F401
+from shogun.api.deps import get_db
+from shogun.api.skills import router as skills_router
 from shogun.config import settings
 from shogun.db.base import Base
 from shogun.db.models.skill import Skill
 from shogun.schemas.skills import SkillActivationRequest
-from shogun.api.deps import get_db
-from shogun.api.skills import router as skills_router
 from shogun.services import active_skill_service as module
 from shogun.services.active_skill_service import (
     SkillActivationService,
     SkillCompatibilityService,
     SkillContextComposer,
+    SkillEmbeddingService,
 )
 from shogun.services.native_skills import _execute_active_skill_tool
 
@@ -79,19 +80,52 @@ async def test_relevant_passed_skill_activates_and_failed_skill_is_blocked(skill
     skill_session.add_all([good, failed])
     await skill_session.flush()
 
-    result = await SkillActivationService(skill_session).activate(SkillActivationRequest(
-        run_id="chat-1",
-        objective="Write a Shogun build paper and implementation spec",
-        posture="campaign",
-        available_tools=["chat"],
-    ))
+    result = await SkillActivationService(skill_session).activate(
+        SkillActivationRequest(
+            run_id="chat-1",
+            objective="Write a Shogun build paper and implementation spec",
+            posture="campaign",
+            available_tools=["chat"],
+        )
+    )
 
     assert [item["name"] for item in result["active_skills"]] == ["Build Paper Writer"]
     assert result["active_skills"][0]["brief"].startswith("ACTIVE SKILL")
-    assert "Build Paper Writer: Operational guidance for Build Paper Writer" in result["context_block"]
+    assert "Archives semantic memory was searched" in result["context_block"]
+    assert "evaluated 2 available skills and injected the 1 most relevant" in result["context_block"]
     assert result["total_injected_tokens"] <= settings.active_skill_max_total_context_tokens
-    assert any(item["name"] == "Unsafe Writer" and item["blocked_reason"] == "exam:failed"
-               for item in result["blocked_skills"])
+    assert any(
+        item["name"] == "Unsafe Writer" and item["blocked_reason"] == "exam:failed" for item in result["blocked_skills"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_every_task_searches_archives_and_can_activate_achieved_skill(skill_session, monkeypatch):
+    achieved = make_skill(
+        "Incident Triage",
+        triggers=["production incident", "triage"],
+        status="available",
+        exam="passed",
+    )
+    skill_session.add(achieved)
+    await skill_session.flush()
+    archive_search = AsyncMock(return_value={str(achieved.id): 0.97})
+    monkeypatch.setattr(SkillEmbeddingService, "search", archive_search)
+
+    result = await SkillActivationService(skill_session).activate(
+        SkillActivationRequest(
+            objective="Triage a production incident",
+            context="The API is returning errors after deployment",
+            posture="campaign",
+            available_tools=["chat"],
+        )
+    )
+
+    archive_search.assert_awaited_once()
+    query = archive_search.await_args.args[0]
+    assert "Triage a production incident" in query
+    assert "API is returning errors" in query
+    assert [item["name"] for item in result["active_skills"]] == ["Incident Triage"]
 
 
 @pytest.mark.asyncio
@@ -101,9 +135,9 @@ async def test_conflict_group_keeps_highest_ranked_skill(skill_session):
     skill_session.add_all([short, long])
     await skill_session.flush()
 
-    result = await SkillActivationService(skill_session).activate(SkillActivationRequest(
-        objective="Create a LinkedIn reply", posture="campaign", available_tools=["chat"]
-    ))
+    result = await SkillActivationService(skill_session).activate(
+        SkillActivationRequest(objective="Create a LinkedIn reply", posture="campaign", available_tools=["chat"])
+    )
     assert [item["name"] for item in result["active_skills"]] == ["Short Reply"]
     assert result["conflict_notes"] and "Long Essay suppressed" in result["conflict_notes"][0]
 
@@ -114,12 +148,18 @@ def test_posture_and_ide_tool_gates_are_deterministic():
     assert SkillCompatibilityService.blocked_reason(ronin, request) == "posture_requires:ronin"
 
     ide = make_skill(
-        "Safe Patching", triggers=["patch code"], minimum_posture="campaign", risk_tier="medium",
-        requires_tools=["ide.file.read", "ide.file.apply_patch"], activation_mode="tool_gated",
+        "Safe Patching",
+        triggers=["patch code"],
+        minimum_posture="campaign",
+        risk_tier="medium",
+        requires_tools=["ide.file.read", "ide.file.apply_patch"],
+        activation_mode="tool_gated",
     )
     no_ide = SkillActivationRequest(
-        objective="patch code", posture="campaign",
-        available_tools=["ide.file.read", "ide.file.apply_patch"], ide_enabled=False,
+        objective="patch code",
+        posture="campaign",
+        available_tools=["ide.file.read", "ide.file.apply_patch"],
+        ide_enabled=False,
     )
     assert SkillCompatibilityService.blocked_reason(ide, no_ide) == "ide_mode_disabled"
     assert SkillCompatibilityService.blocked_reason(ide, no_ide.model_copy(update={"ide_enabled": True})) is None
@@ -142,9 +182,11 @@ async def test_outcome_updates_run_and_skill_stats(skill_session):
     skill = make_skill("Verifier", triggers=["verify"])
     skill_session.add(skill)
     await skill_session.flush()
-    result = await SkillActivationService(skill_session).activate(SkillActivationRequest(
-        run_id="run-outcome", objective="verify the output", posture="guarded", available_tools=[]
-    ))
+    result = await SkillActivationService(skill_session).activate(
+        SkillActivationRequest(
+            run_id="run-outcome", objective="verify the output", posture="guarded", available_tools=[]
+        )
+    )
     active_id = result["active_skills"][0]["active_skill_run_id"]
     record = await SkillActivationService(skill_session).outcome(active_id, "success", "Checklist passed")
     assert record.outcome == "success"
@@ -157,11 +199,13 @@ async def test_defaults_seed_operational_validated_skills(skill_session):
     service = SkillActivationService(skill_session)
     await service.ensure_defaults()
     await skill_session.flush()
-    result = await service.activate(SkillActivationRequest(
-        objective="Write a complete Shogun implementation build paper",
-        posture="campaign",
-        available_tools=["chat", "agent_flow", "stacks"],
-    ))
+    result = await service.activate(
+        SkillActivationRequest(
+            objective="Write a complete Shogun implementation build paper",
+            posture="campaign",
+            available_tools=["chat", "agent_flow", "stacks"],
+        )
+    )
     names = {item["name"] for item in result["active_skills"]}
     assert "Build Paper Writer" in names
     assert "Shogun Architecture" in names
@@ -180,10 +224,15 @@ async def test_activation_and_run_detail_api(skill_session):
 
     app.dependency_overrides[get_db] = override_db
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        activated = await client.post("/api/v1/skills/activate", json={
-            "run_id": "api-run-1", "objective": "Write a release note",
-            "posture": "campaign", "available_tools": ["chat"],
-        })
+        activated = await client.post(
+            "/api/v1/skills/activate",
+            json={
+                "run_id": "api-run-1",
+                "objective": "Write a release note",
+                "posture": "campaign",
+                "available_tools": ["chat"],
+            },
+        )
         assert activated.status_code == 200
         assert activated.json()["data"]["active_skills"][0]["name"] == "API Writing Skill"
         detail = await client.get("/api/v1/skills/active-runs", params={"run_id": "api-run-1"})
@@ -204,17 +253,19 @@ async def test_agent_skill_tools_activate_then_retrieve_and_explain(skill_sessio
         AsyncMock(return_value={"active_tier": "campaign", "ide_enabled": False}),
     )
 
-    activated = json.loads(await _execute_active_skill_tool(
-        "skills_request_activation",
-        {"run_id": "agent-pipeline-run", "objective": "Run a pipeline regression"},
-        skill_session,
-    ))
-    active = json.loads(await _execute_active_skill_tool(
-        "skills_get_active", {"run_id": "agent-pipeline-run"}, skill_session
-    ))
-    explained = json.loads(await _execute_active_skill_tool(
-        "skills_explain_active", {"run_id": "agent-pipeline-run"}, skill_session
-    ))
+    activated = json.loads(
+        await _execute_active_skill_tool(
+            "skills_request_activation",
+            {"run_id": "agent-pipeline-run", "objective": "Run a pipeline regression"},
+            skill_session,
+        )
+    )
+    active = json.loads(
+        await _execute_active_skill_tool("skills_get_active", {"run_id": "agent-pipeline-run"}, skill_session)
+    )
+    explained = json.loads(
+        await _execute_active_skill_tool("skills_explain_active", {"run_id": "agent-pipeline-run"}, skill_session)
+    )
 
     assert activated["status"] == "success"
     assert [item["name"] for item in activated["active_skills"]] == ["Agent Pipeline Skill"]

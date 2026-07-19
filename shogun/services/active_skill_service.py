@@ -10,7 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import inspect as sa_inspect, or_, select
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.config import settings
@@ -125,26 +126,25 @@ class SkillContextComposer:
             candidate["injected_tokens"] = injected
             used += injected
             blocks.append(brief)
-            
+
         header = (
             "SKILL AWARENESS PROTOCOL:\n"
-            "Before starting any task, review the active skills and full inventory below.\n"
-            "If a skill matches the current task, follow its procedure and verification checklist.\n"
+            "Archives semantic memory was searched for this task before execution.\n"
+            "Follow each retrieved skill's procedure and verification checklist.\n"
             "If multiple skills apply, combine their guidance. Skills do not grant tools or permissions.\n"
             "After completing a task, note which skills were used.\n\n"
             "ACTIVE SKILLS FOR THIS RUN\n"
             "Apply these compact, validated procedures."
         )
-        
+
         main_block = header + "\n\n" + "\n\n---\n\n".join(blocks) if blocks else ""
-        
-        if all_skills:
-            catalog = [f"FULL SKILL INVENTORY ({len(all_skills)} installed, {len(selected)} detailed above):"]
-            for s in all_skills:
-                exam = s.exam_status or "untested"
-                catalog.append(f"- {s.name}: {s.description} [exam:{exam}]")
-            main_block += "\n\n---\n\n" + "\n".join(catalog)
-            
+
+        if all_skills and main_block:
+            main_block += (
+                f"\n\nArchives retrieval evaluated {len(all_skills)} available skills "
+                f"and injected the {len(selected)} most relevant within the context budget."
+            )
+
         return main_block, used
 
 
@@ -175,12 +175,15 @@ class SkillEmbeddingService:
 
         try:
             hits = await asyncio.to_thread(
-                get_vector_store().search, query, memory_types=["skill"], limit=limit
+                get_vector_store().search, query, memory_types=["skills", "skill"], limit=limit
             )
-            return {
-                str((hit.get("payload") or {}).get("skill_id") or hit.get("memory_id")): float(hit["score"])
-                for hit in hits
-            }
+            scores: dict[str, float] = {}
+            for hit in hits:
+                payload = hit.get("payload") or {}
+                skill_id = payload.get("skill_id") or payload.get("source_ref_id")
+                if skill_id:
+                    scores[str(skill_id)] = max(scores.get(str(skill_id), 0.0), float(hit["score"]))
+            return scores
         except Exception as exc:
             logger.debug("Skill semantic search unavailable; using metadata retrieval: %s", exc)
             return {}
@@ -304,17 +307,19 @@ class SkillActivationService:
     async def _tables_available(self) -> bool:
         connection = await self.session.connection()
         return await connection.run_sync(
-            lambda sync: all(
-                sa_inspect(sync).has_table(name) for name in ("skills", "active_skill_runs")
-            )
+            lambda sync: all(sa_inspect(sync).has_table(name) for name in ("skills", "active_skill_runs"))
         )
 
     async def _installed_skills(self) -> list[Skill]:
         installed = select(SkillInstallation.skill_id).where(SkillInstallation.status == "installed")
         result = await self.session.execute(
             select(Skill).where(
-                Skill.is_deleted == False,
-                or_(Skill.id.in_(installed), Skill.status == "installed"),
+                Skill.is_deleted.is_(False),
+                or_(
+                    Skill.id.in_(installed),
+                    Skill.status == "installed",
+                    Skill.exam_status == "passed",
+                ),
             )
         )
         return list(result.scalars().all())
@@ -326,20 +331,41 @@ class SkillActivationService:
             or not settings.active_skill_auto_activate
             or not await self._tables_available()
         ):
-            return {"run_id": run_id, "context_block": "", "total_injected_tokens": 0,
-                    "active_skills": [], "considered_skills": [], "blocked_skills": [], "conflict_notes": []}
-        await self._emit("skill.activation.started", "Active skill selection started", {
-            "run_id": run_id, "stack_run_id": str(request.stack_run_id) if request.stack_run_id else None,
-            "posture": request.posture, "usage_location": request.usage_location,
-        })
+            return {
+                "run_id": run_id,
+                "context_block": "",
+                "total_injected_tokens": 0,
+                "active_skills": [],
+                "considered_skills": [],
+                "blocked_skills": [],
+                "conflict_notes": [],
+            }
+        await self._emit(
+            "skill.activation.started",
+            "Active skill selection started",
+            {
+                "run_id": run_id,
+                "stack_run_id": str(request.stack_run_id) if request.stack_run_id else None,
+                "posture": request.posture,
+                "usage_location": request.usage_location,
+            },
+        )
         skills = await self._installed_skills()
         for skill in skills:
             SkillMetadataService.normalize(skill)
             if not skill.brief_text:
                 skill.brief_text = SkillContextComposer.default_brief(skill)
-        semantic = await SkillEmbeddingService.search(request.objective, limit=max(20, len(skills))) if any(
-            skill.embedding_id for skill in skills
-        ) else {}
+        # Archives is the canonical skill-memory layer. Search it for every new
+        # task, including legacy/achieved skills that predate direct embedding
+        # IDs on the Skill row. Metadata ranking remains the offline fallback.
+        semantic = (
+            await SkillEmbeddingService.search(
+                f"{request.objective}\n{request.context}",
+                limit=max(20, min(100, len(skills))),
+            )
+            if skills
+            else {}
+        )
         ranked: list[dict[str, Any]] = []
         blocked: list[dict[str, Any]] = []
         for skill in skills:
@@ -349,10 +375,18 @@ class SkillActivationService:
             if blocked_reason:
                 candidate["blocked_reason"] = blocked_reason
                 blocked.append(candidate)
-                await self._emit("skill.blocked", f"Skill '{skill.name}' blocked", {
-                    "run_id": run_id, "skill_id": str(skill.id), "blocked_reason": blocked_reason,
-                    "relevance_score": score, "posture": request.posture,
-                }, result="blocked")
+                await self._emit(
+                    "skill.blocked",
+                    f"Skill '{skill.name}' blocked",
+                    {
+                        "run_id": run_id,
+                        "skill_id": str(skill.id),
+                        "blocked_reason": blocked_reason,
+                        "relevance_score": score,
+                        "posture": request.posture,
+                    },
+                    result="blocked",
+                )
             else:
                 ranked.append(candidate)
         ranked.sort(key=lambda item: (item["score"], item["skill"].priority), reverse=True)
@@ -369,8 +403,12 @@ class SkillActivationService:
 
         trajectory_service = SkillTrajectoryService(self.session)
         await trajectory_service.log_candidates(
-            request=request, run_id=run_id, candidates=ranked, selected=selected,
-            blocked=blocked, conflict_notes=conflict_notes,
+            request=request,
+            run_id=run_id,
+            candidates=ranked,
+            selected=selected,
+            blocked=blocked,
+            conflict_notes=conflict_notes,
         )
         active_items: list[dict[str, Any]] = []
         now = datetime.now(timezone.utc)
@@ -394,51 +432,96 @@ class SkillActivationService:
             skill.last_used_at = now
             skill.usage_count = (skill.usage_count or 0) + 1
             episode_data = await trajectory_service.start_episode(
-                active_run=record, skill=skill, request=request,
-                selection_reason=candidate["reason"], retrieval_score=candidate["score"],
+                active_run=record,
+                skill=skill,
+                request=request,
+                selection_reason=candidate["reason"],
+                retrieval_score=candidate["score"],
                 brief=candidate["brief"],
             )
             episode, trajectory = episode_data if episode_data else (None, None)
-            active_items.append({
-                "active_skill_run_id": record.id, "skill_id": skill.id, "name": skill.name,
-                "skill_type": skill.skill_type, "relevance_score": candidate["score"],
-                "activation_reason": candidate["reason"], "activation_mode": skill.activation_mode,
-                "brief": candidate["brief"], "injected_tokens": candidate["injected_tokens"],
-                "verification_checklist": skill.verification_checklist or [], "model_hint": skill.model_hint,
-                "skill_episode_id": episode.id if episode else None,
-                "trajectory_id": trajectory.id if trajectory else None,
-            })
-            await self._emit("skill.activated", f"Skill '{skill.name}' activated", {
-                "run_id": run_id, "stack_run_id": str(request.stack_run_id) if request.stack_run_id else None,
-                "step_run_id": str(request.step_run_id) if request.step_run_id else None,
-                "skill_id": str(skill.id), "posture": request.posture,
-                "activation_reason": candidate["reason"], "relevance_score": candidate["score"],
-                "injected_tokens": candidate["injected_tokens"], "usage_location": request.usage_location,
-            })
+            active_items.append(
+                {
+                    "active_skill_run_id": record.id,
+                    "skill_id": skill.id,
+                    "name": skill.name,
+                    "skill_type": skill.skill_type,
+                    "relevance_score": candidate["score"],
+                    "activation_reason": candidate["reason"],
+                    "activation_mode": skill.activation_mode,
+                    "brief": candidate["brief"],
+                    "injected_tokens": candidate["injected_tokens"],
+                    "verification_checklist": skill.verification_checklist or [],
+                    "model_hint": skill.model_hint,
+                    "skill_episode_id": episode.id if episode else None,
+                    "trajectory_id": trajectory.id if trajectory else None,
+                }
+            )
+            await self._emit(
+                "skill.activated",
+                f"Skill '{skill.name}' activated",
+                {
+                    "run_id": run_id,
+                    "stack_run_id": str(request.stack_run_id) if request.stack_run_id else None,
+                    "step_run_id": str(request.step_run_id) if request.step_run_id else None,
+                    "skill_id": str(skill.id),
+                    "posture": request.posture,
+                    "activation_reason": candidate["reason"],
+                    "relevance_score": candidate["score"],
+                    "injected_tokens": candidate["injected_tokens"],
+                    "usage_location": request.usage_location,
+                },
+            )
         if context_block:
-            await self._emit("skill.context.injected", "Active skill context injected", {
-                "run_id": run_id, "skill_ids": [str(item["skill_id"]) for item in active_items],
-                "token_count": total_tokens, "usage_location": request.usage_location,
-            })
+            await self._emit(
+                "skill.context.injected",
+                "Active skill context injected",
+                {
+                    "run_id": run_id,
+                    "skill_ids": [str(item["skill_id"]) for item in active_items],
+                    "token_count": total_tokens,
+                    "usage_location": request.usage_location,
+                },
+            )
         if conflict_notes:
-            await self._emit("skill.conflict_resolved", "Skill conflicts resolved", {
-                "run_id": run_id, "notes": conflict_notes,
-            })
+            await self._emit(
+                "skill.conflict_resolved",
+                "Skill conflicts resolved",
+                {
+                    "run_id": run_id,
+                    "notes": conflict_notes,
+                },
+            )
         considered = [
-            {"skill_id": item["skill"].id, "name": item["skill"].name,
-             "relevance_score": item["score"], "reason": item["reason"], "blocked_reason": None}
-            for item in ranked if item not in selected
+            {
+                "skill_id": item["skill"].id,
+                "name": item["skill"].name,
+                "relevance_score": item["score"],
+                "reason": item["reason"],
+                "blocked_reason": None,
+            }
+            for item in ranked
+            if item not in selected
         ]
         blocked_items = [
-            {"skill_id": item["skill"].id, "name": item["skill"].name,
-             "relevance_score": item["score"], "reason": item["reason"],
-             "blocked_reason": item["blocked_reason"]}
+            {
+                "skill_id": item["skill"].id,
+                "name": item["skill"].name,
+                "relevance_score": item["score"],
+                "reason": item["reason"],
+                "blocked_reason": item["blocked_reason"],
+            }
             for item in blocked
         ]
-        return {"run_id": run_id, "context_block": context_block,
-                "total_injected_tokens": total_tokens, "active_skills": active_items,
-                "considered_skills": considered, "blocked_skills": blocked_items,
-                "conflict_notes": conflict_notes}
+        return {
+            "run_id": run_id,
+            "context_block": context_block,
+            "total_injected_tokens": total_tokens,
+            "active_skills": active_items,
+            "considered_skills": considered,
+            "blocked_skills": blocked_items,
+            "conflict_notes": conflict_notes,
+        }
 
     async def outcome(self, record_id: uuid.UUID, outcome: str, summary: str | None = None) -> ActiveSkillRun:
         if outcome not in OUTCOMES:
@@ -455,10 +538,17 @@ class SkillActivationService:
                 skill.success_count = (skill.success_count or 0) + 1
             elif outcome == "failed":
                 skill.failure_count = (skill.failure_count or 0) + 1
-        await self._emit("skill.outcome.recorded", f"Skill outcome recorded: {outcome}", {
-            "active_skill_run_id": str(record.id), "run_id": record.run_id,
-            "skill_id": str(record.skill_id), "outcome": outcome, "summary": summary,
-        })
+        await self._emit(
+            "skill.outcome.recorded",
+            f"Skill outcome recorded: {outcome}",
+            {
+                "active_skill_run_id": str(record.id),
+                "run_id": record.run_id,
+                "skill_id": str(record.skill_id),
+                "outcome": outcome,
+                "summary": summary,
+            },
+        )
         from shogun.services.skill_trajectory_service import SkillTrajectoryService
 
         await SkillTrajectoryService(self.session).finalize_active_run(record, outcome, summary)
@@ -471,46 +561,85 @@ class SkillActivationService:
             except OSError:
                 pass
         skill.brief_text = SkillContextComposer.default_brief(skill)
-        await self._emit("skill.brief.rebuilt", f"Skill brief rebuilt for '{skill.name}'", {
-            "skill_id": str(skill.id), "token_count": _estimate_tokens(skill.brief_text),
-        })
+        await self._emit(
+            "skill.brief.rebuilt",
+            f"Skill brief rebuilt for '{skill.name}'",
+            {
+                "skill_id": str(skill.id),
+                "token_count": _estimate_tokens(skill.brief_text),
+            },
+        )
         return skill.brief_text
 
     async def ensure_defaults(self) -> None:
         defaults = [
-            ("build-paper-writer", "Build Paper Writer", "instruction",
-             ["build paper", "implementation spec", "architecture"],
-             ["build paper", "implementation", "acceptance criteria"],
-             ["Confirm purpose, scope, non-goals, architecture, data model, APIs, UI, tests, acceptance criteria, and build order."],
-             "Produce complete implementation papers for coding agents."),
-            ("shogun-architecture", "Shogun Architecture", "instruction",
-             ["shogun", "architecture", "afm"], ["shogun", "agent flow", "flow stack"],
-             ["Use existing Shogun services, posture controls, and EventLogger."],
-             "Preserve Shogun terminology, governance, and architecture conventions."),
-            ("coding-campaign", "Coding Campaign", "tool",
-             ["code", "feature", "repository"], ["build", "implement", "fix bug"],
-             ["Inspect before editing; patch safely; run focused tests; verify the build."],
-             "Execute governed software changes through inspect, patch, test, and verify."),
-            ("test-failure-analysis", "Test Failure Analysis", "verification",
-             ["test", "failure", "debug"], ["tests fail", "failing test", "regression"],
-             ["Identify the first causal failure, reproduce it, patch the cause, and rerun focused tests."],
-             "Diagnose test failures from evidence instead of symptoms."),
-            ("output-self-verification", "Output Self-Verification", "verification",
-             ["verify", "review", "quality"], ["verify", "final review", "complete"],
-             ["Check requested outcomes, evidence, permissions, and unresolved failures before completion."],
-             "Check work against the task and active skill checklists before declaring completion."),
+            (
+                "build-paper-writer",
+                "Build Paper Writer",
+                "instruction",
+                ["build paper", "implementation spec", "architecture"],
+                ["build paper", "implementation", "acceptance criteria"],
+                [
+                    "Confirm purpose, scope, non-goals, architecture, data model, APIs, UI, tests, acceptance criteria, and build order."
+                ],
+                "Produce complete implementation papers for coding agents.",
+            ),
+            (
+                "shogun-architecture",
+                "Shogun Architecture",
+                "instruction",
+                ["shogun", "architecture", "afm"],
+                ["shogun", "agent flow", "flow stack"],
+                ["Use existing Shogun services, posture controls, and EventLogger."],
+                "Preserve Shogun terminology, governance, and architecture conventions.",
+            ),
+            (
+                "coding-campaign",
+                "Coding Campaign",
+                "tool",
+                ["code", "feature", "repository"],
+                ["build", "implement", "fix bug"],
+                ["Inspect before editing; patch safely; run focused tests; verify the build."],
+                "Execute governed software changes through inspect, patch, test, and verify.",
+            ),
+            (
+                "test-failure-analysis",
+                "Test Failure Analysis",
+                "verification",
+                ["test", "failure", "debug"],
+                ["tests fail", "failing test", "regression"],
+                ["Identify the first causal failure, reproduce it, patch the cause, and rerun focused tests."],
+                "Diagnose test failures from evidence instead of symptoms.",
+            ),
+            (
+                "output-self-verification",
+                "Output Self-Verification",
+                "verification",
+                ["verify", "review", "quality"],
+                ["verify", "final review", "complete"],
+                ["Check requested outcomes, evidence, permissions, and unresolved failures before completion."],
+                "Check work against the task and active skill checklists before declaring completion.",
+            ),
         ]
         for slug, name, skill_type, tags, triggers, checklist, description in defaults:
             existing = await self.session.execute(select(Skill).where(Skill.slug == slug))
             skill = existing.scalar_one_or_none()
             values = {
-                "name": name, "version": "1.0.0", "skill_type": skill_type,
-                "manifest": {"source": "built_in", "description": description}, "status": "installed",
-                "exam_status": "passed", "tags": tags, "triggers": triggers, "use_when": triggers,
+                "name": name,
+                "version": "1.0.0",
+                "skill_type": skill_type,
+                "manifest": {"source": "built_in", "description": description},
+                "status": "installed",
+                "exam_status": "passed",
+                "tags": tags,
+                "triggers": triggers,
+                "use_when": triggers,
                 "minimum_posture": "campaign" if slug == "coding-campaign" else "guarded",
-                "risk_tier": "medium" if slug == "coding-campaign" else "low", "priority": 80,
+                "risk_tier": "medium" if slug == "coding-campaign" else "low",
+                "priority": 80,
                 "requires_tools": ["ide.file.read", "ide.file.apply_patch", "ide.task.run"]
-                if slug == "coding-campaign" else [],
+                if slug == "coding-campaign"
+                else [],
                 "max_context_tokens": 600,
                 "activation_mode": "tool_gated" if slug == "coding-campaign" else "advisory",
                 "verification_checklist": checklist,

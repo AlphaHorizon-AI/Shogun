@@ -133,7 +133,8 @@ async def openclaw_skills(
                 "id": s.id,
                 "slug": s.slug,
                 "name": s.name,
-                "description": s.short_description,
+                "description": s.description_md or s.short_description,
+                "short_description": s.short_description,
                 "faculty": s.faculty_id,
                 "subcategory": s.subcategory_id,
                 "risk_tier": s.risk_tier,
@@ -165,7 +166,8 @@ async def openclaw_skill_detail(skill_id: str):
             "id": skill.id,
             "slug": skill.slug,
             "name": skill.name,
-            "description": skill.short_description,
+            "description": skill.description_md or skill.short_description,
+            "short_description": skill.short_description,
             "faculty": skill.faculty_id,
             "subcategory": skill.subcategory_id,
             "author": skill.author_name,
@@ -635,6 +637,10 @@ async def install_openclaw_skill(
         })
 
     # Create the Skill record
+    trigger_terms = [
+        term for term in re.split(r"[^a-z0-9+.#-]+", f"{body.skill_name} {' '.join(body.capabilities)}".lower())
+        if len(term) >= 3
+    ]
     skill = Skill(
         source_id=source.id,
         name=body.skill_name,
@@ -647,10 +653,21 @@ async def install_openclaw_skill(
             "description": body.description,
             "permissions": body.permissions,
             "capabilities": body.capabilities,
+            "instructions": body.description,
         },
         risk_score={"shrine": 0.9, "elevated": 0.6, "tactical": 0.3}.get(body.risk_tier, 0.1),
         trust_score=80,
         status="installed",
+        body_text=body.description or None,
+        brief_text=body.description or None,
+        tags=list(dict.fromkeys(body.capabilities + trigger_terms))[:40],
+        triggers=list(dict.fromkeys(trigger_terms))[:20],
+        use_when=[f"The task requires {body.skill_name.lower()}"],
+        verification_checklist=[
+            "Follow the installed skill workflow and decision rules.",
+            "Produce every required output artifact or explicitly mark missing inputs.",
+            "Run the skill's validation checks before reporting completion.",
+        ],
     )
     db.add(skill)
     await db.flush()
@@ -988,7 +1005,8 @@ async def auto_take_exam(
             raise HTTPException(status_code=404, detail=f"No exam found for skill {body.skill_id}")
 
         test_id = test["id"]
-        pass_threshold = test.get("passThreshold", 85)
+        pass_threshold = max(90, int(test.get("passThreshold", 90)))
+        skill_data = await client.get_skill_by_id(body.skill_id)
 
         # Step 2: Get questions (from College or generate locally)
         questions = test.get("questions", [])
@@ -997,53 +1015,34 @@ async def auto_take_exam(
             questions = exam.get("questions", []) if isinstance(exam, dict) else []
 
         if not questions:
-            skill_name = test.get("name", "Unknown Skill")
+            skill_name = skill_data.name if skill_data else test.get("name", "Unknown Skill")
             faculty = "technical"
-            try:
-                skill_data = await client.get_skill_by_id(body.skill_id)
-                if skill_data:
-                    faculty = getattr(skill_data, "faculty_id", None) or "technical"
-            except Exception:
-                pass
+            if skill_data:
+                faculty = getattr(skill_data, "faculty_id", None) or "technical"
             questions = _generate_exam_questions(skill_name, faculty)
 
-        # Step 3: Agent answers all questions (using correctAnswer)
-        total = len(questions)
-        correct = 0
-        answers_log = []
-        questions_review = []
-        for q in questions:
-            correct_answer = q.get("correctAnswer", q.get("options", [""])[0])
-            # Simulate realistic agent behavior — occasional mistakes
-            agent_selected = correct_answer  # Agent uses known correct answers
-            is_correct = agent_selected == correct_answer
-            answers_log.append({
-                "questionId": q.get("id"),
-                "selected": agent_selected,
-                "correct": is_correct,
-            })
-            questions_review.append({
-                "id": q.get("id"),
-                "text": q.get("text", ""),
-                "options": q.get("options", []),
-                "correctAnswer": correct_answer,
-                "agentAnswer": agent_selected,
-                "isCorrect": is_correct,
-            })
-            if is_correct:
-                correct += 1
+        from shogun.services.openclaw_exam_service import answer_exam_questions
 
-        score = int((correct / total) * 100) if total > 0 else 100
+        try:
+            exam_attempt = await answer_exam_questions(
+                db,
+                agent,
+                skill_name=skill_data.name if skill_data else test.get("name", "Unknown Skill"),
+                skill_content=(skill_data.description_md if skill_data else ""),
+                questions=questions,
+            )
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-        # Step 4: Resolve the model name used for this exam
+        total = exam_attempt["total"]
+        correct = exam_attempt["correct"]
+        score = exam_attempt["score"]
         model_id = await _resolve_primary_model(agent, db)
-
-        # Step 5: Submit to College — locked to agent + model
         log_artifact = (
-            f"Auto-exam by {agent.name} ({agent.openclaw_agent_id})\n"
+            f"Model-scored exam by {agent.name} ({agent.openclaw_agent_id})\n"
             f"Model: {model_id}\n"
             f"Test: {test_id} | Questions: {total} | Score: {score}%\n"
-            f"Answered {correct}/{total} correctly"
+            f"Answered {correct}/{total} correctly without answer-key access"
         )
         result_data = await client.submit_test_result(
             test_id=test_id,
@@ -1054,25 +1053,24 @@ async def auto_take_exam(
             model_id=model_id,
         )
 
-    if score >= pass_threshold:
-        from shogun.services.skill_memory_sync import mark_skill_achieved_and_sync
+        if score >= pass_threshold:
+            from shogun.services.skill_memory_sync import mark_skill_achieved_and_sync
 
-        await mark_skill_achieved_and_sync(db, agent.id, body.skill_id)
+            await mark_skill_achieved_and_sync(db, agent.id, body.skill_id)
 
-    return ApiResponse(data={
-        "test_id": test_id,
-        "skill_id": body.skill_id,
-        "questions_total": total,
-        "questions_correct": correct,
-        "score": score,
-        "pass_threshold": pass_threshold,
-        "passed": score >= pass_threshold,
-        "agent_name": agent.name,
-        "model_id": model_id,
-        "college_result": result_data,
-        "questions_review": questions_review,
-    })
-
+        return ApiResponse(data={
+            "test_id": test_id,
+            "skill_id": body.skill_id,
+            "questions_total": total,
+            "questions_correct": correct,
+            "score": score,
+            "pass_threshold": pass_threshold,
+            "passed": score >= pass_threshold,
+            "agent_name": agent.name,
+            "model_id": model_id,
+            "college_result": result_data,
+            "questions_review": exam_attempt["questions_review"],
+        })
 
 @router.get("/openclaw/transcript", response_model=ApiResponse)
 async def get_transcript(db: AsyncSession = Depends(get_db)):
