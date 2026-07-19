@@ -667,7 +667,7 @@ export const ShogunProfile = () => {
 
       {/* Tabs */}
       <div className="flex border-b border-shogun-border">
-        {(['general', 'models', 'behavior', 'permissions', 'operations'] as TabType[]).map((tab) => (
+        {(['general', 'behavior', 'permissions', 'operations'] as TabType[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}

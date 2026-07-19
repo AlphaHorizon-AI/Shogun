@@ -569,6 +569,7 @@ export function Katana() {
   // ── Routing profile state ────────────────────────────────────
   const [routingProfiles, setRoutingProfiles]   = useState<any[]>([]);
   const [showCreateProfile, setShowCreateProfile] = useState(false);
+  const [showRoutingProfileEditor, setShowRoutingProfileEditor] = useState(false);
   const [profileSaving, setProfileSaving]       = useState(false);
   const [expandedProfileId, setExpandedProfileId] = useState<string | null>(null);
   const [showAddRule, setShowAddRule]           = useState(false);
@@ -2797,8 +2798,12 @@ export function Katana() {
         ════════════════════════════════════════════════════════ */}
         {activeTab === 'routing' && (
           <div className="space-y-6">
-            <ModelRoutingPanel />
+            <ModelRoutingPanel
+              isEditingProfiles={showRoutingProfileEditor}
+              onEditProfiles={() => setShowRoutingProfileEditor(value => !value)}
+            />
 
+            {showRoutingProfileEditor && <div className="space-y-6 animate-in slide-in-from-top-2 duration-200">
             {/* ── Header ──────────────────────────────────────── */}
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
@@ -3234,6 +3239,7 @@ export function Katana() {
                 })}
               </div>
             )}
+            </div>}
           </div>
         )}
 

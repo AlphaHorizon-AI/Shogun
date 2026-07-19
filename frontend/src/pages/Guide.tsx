@@ -400,7 +400,7 @@ export function Guide() {
                 <div className="space-y-4">
                    {[
                      { step: 1, title: 'Add Your First AI Provider', color: 'text-shogun-blue', icon: Key, desc: 'Navigate to Katana → Cloud Providers. Click "Add Provider." Choose the provider type (e.g., OpenAI), paste your API key, and save. Within seconds, all available models from that provider will appear as options throughout Shogun.' },
-                     { step: 2, title: 'Select a Primary Model', color: 'text-shogun-blue', icon: Cpu, desc: 'Go to Shogun Profile → Models tab. In the "Primary Model" dropdown, select which AI brain the Shogun will use by default. This is the model that answers every question and powers every decision unless a routing rule overrides it.' },
+                     { step: 2, title: 'Choose a Routing Profile', color: 'text-shogun-blue', icon: Cpu, desc: 'Go to Katana → Model Routing. Choose a routing profile, or use Custom to select an ordered primary and fallback model list from your connected providers.' },
                      { step: 3, title: 'Review Your Security Posture', color: 'text-red-400', icon: Lock, desc: 'Visit Torii (Security). The default posture is TACTICAL — a balanced setting that gives the AI enough freedom for productive work while keeping dangerous operations locked down. Read the tier descriptions and choose the level that matches your risk comfort.' },
                      { step: 4, title: 'Write Your Constitution (Optional)', color: 'text-shogun-gold', icon: FileText, desc: 'Open Kaizen → Constitution tab. This is the AI\'s "rule book." The default constitution covers essential safety rules. You can add your own rules here — for example, "Never send emails without my approval" or "Always respond in formal English." Click "Publish Edicts" when done.' },
                      { step: 5, title: 'Deploy Your First Samurai (Optional)', color: 'text-shogun-gold', icon: Users, desc: 'Head to Samurai Network. Click "Deploy Samurai," choose a role (e.g., Researcher, Analyst), give it a name, and deploy. Your first sub-agent is now ready to receive delegated tasks from the main Shogun.' },
@@ -471,7 +471,7 @@ export function Guide() {
                    {[
                      { name: 'Tenshu (Dashboard)', purpose: 'Your home screen. See stat cards, active agents, recent events, quick actions, and the Harakiri button. The first thing you see when you open Shogun.', icon: Layout, color: 'text-shogun-blue' },
                      { name: 'Comms (Chat)', purpose: 'Talk directly to your Shogun. Send questions or commands. Responses stream in real time. View chat history and restore old sessions. Also includes an integrated email client and calendar.', icon: MessageSquare, color: 'text-shogun-blue' },
-                     { name: 'Shogun Profile', purpose: 'Configure your AI\'s identity — name, personality, primary model, fallback models, behavioral directives, permissions, and scheduled jobs.', icon: Cpu, color: 'text-shogun-gold' },
+                     { name: 'Shogun Profile', purpose: 'Configure your AI\'s identity, personality, behavioral directives, permissions, and scheduled jobs. Model selection lives in Katana.', icon: Cpu, color: 'text-shogun-gold' },
                      { name: 'Samurai Network', purpose: 'Deploy and manage specialized sub-agents. Each Samurai has a role, routing profile, and spawn policy. Monitor their tasks and status.', icon: Users, color: 'text-shogun-gold' },
                      { name: 'Katana (System Forge)', purpose: 'Plug in AI providers (cloud or local), create routing profiles, manage tools, and configure Telegram integration.', icon: Sword, color: 'text-shogun-blue' },
                      { name: 'Archives (Memory)', purpose: 'Search, browse, create, and manage the AI\'s memories. Supports semantic search, salience pinning, and memory type filtering.', icon: Database, color: 'text-shogun-gold' },
@@ -520,7 +520,7 @@ export function Guide() {
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-green-500/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-green-500" /> Add Fallback Models</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Don't rely on a single AI provider. In Shogun Profile → Models, add at least one fallback model from a different provider. If your primary (e.g., OpenAI) goes down, the system automatically switches to the next available brain.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Don't rely on a single AI provider. In Katana → Model Routing, edit Custom routing and add at least one fallback model from a different provider. If the primary goes down, the router tries the next eligible model.</p>
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-green-500/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Star className="w-4 h-4 text-green-500" /> Pin Important Memories</div>
@@ -745,8 +745,8 @@ export function Guide() {
                       <p className="text-xs text-shogun-subdued leading-relaxed">Set the Shogun's name, choose an active "Persona" (a pre-built personality template), and write a description. On the right side, adjust the <strong>Autonomy Level</strong> slider (how much freedom the AI gets), <strong>Tone</strong> (e.g., Analytical, Direct), <strong>Risk Tolerance</strong>, <strong>Verbosity</strong> (how detailed responses are), <strong>Planning Depth</strong>, <strong>Tool Usage</strong>, <strong>Security Bias</strong>, and <strong>Memory Style</strong>. Click the avatar image to upload a custom picture.</p>
                    </div>
                    <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-shogun-gold" /> Models Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Choose exactly which AI brain the Shogun uses. Has two cards: <strong>Primary Model</strong> (the main brain used for every request) — select from a dropdown grouped by provider. <strong>Fallback Models</strong> — add backup brains in priority order. If the primary is unavailable, these are tried in order. Drag to reorder priorities. Also has a <strong>Routing Strategy</strong> dropdown to choose a routing profile.</p>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-shogun-gold" /> Model Selection</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Model selection is configured centrally in <strong>Katana → Model Routing</strong>, where providers, routing profiles, capability requirements, primary models, and fallback order share one source of truth.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-shogun-gold" /> Behavior Tab</div>

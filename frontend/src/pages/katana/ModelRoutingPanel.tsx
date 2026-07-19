@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Activity, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Gauge, Play, RefreshCw, Route, Server, X, Zap } from 'lucide-react';
+import { Activity, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Edit2, Gauge, Play, RefreshCw, Route, Server, X, Zap } from 'lucide-react';
 
 type Profile = {
   id: string; name: string; description?: string; is_default: boolean;
@@ -20,8 +20,47 @@ const TASKS = ['simple_chat', 'summarization', 'planning', 'complex_reasoning', 
   'test_failure_analysis', 'visual_understanding', 'browser_task', 'desktop_task', 'self_verification',
   'final_review', 'stack_planning', 'stack_step_execution', 'context_compaction'];
 const CAPS = ['reasoning', 'coding', 'vision', 'tool_use', 'long_context', 'json_mode'];
+const CAP_LABELS: Record<string, string> = {
+  reasoning: 'Reasoning',
+  coding: 'Coding',
+  vision: 'Images & vision',
+  tool_use: 'Tool use',
+  long_context: 'Long documents',
+  json_mode: 'Structured output',
+};
 
-export default function ModelRoutingPanel() {
+const TIER_OPTIONS = {
+  quality_tier: [
+    { value: 1, label: 'Basic', help: 'Simple and routine work' },
+    { value: 2, label: 'Standard', help: 'Everyday general tasks' },
+    { value: 3, label: 'Strong', help: 'Reliable professional work' },
+    { value: 4, label: 'Advanced', help: 'Difficult or specialized work' },
+    { value: 5, label: 'Frontier', help: 'Highest available capability' },
+  ],
+  cost_tier: [
+    { value: 1, label: 'Very low cost', help: 'Preferred by economy profiles' },
+    { value: 2, label: 'Low cost', help: 'Budget-friendly usage' },
+    { value: 3, label: 'Moderate cost', help: 'Balanced price point' },
+    { value: 4, label: 'High cost', help: 'Use for demanding work' },
+    { value: 5, label: 'Premium cost', help: 'Most expensive tier' },
+  ],
+  latency_tier: [
+    { value: 1, label: 'Fastest', help: 'Best for interactive work' },
+    { value: 2, label: 'Fast', help: 'Usually responds quickly' },
+    { value: 3, label: 'Moderate', help: 'Normal response time' },
+    { value: 4, label: 'Slow', help: 'Longer response time' },
+    { value: 5, label: 'Slowest', help: 'Use when speed is secondary' },
+  ],
+} as const;
+
+const COMPLEXITY_LABELS = ['Simple', 'Routine', 'Involved', 'Complex', 'Expert'];
+
+type ModelRoutingPanelProps = {
+  isEditingProfiles?: boolean;
+  onEditProfiles?: () => void;
+};
+
+export default function ModelRoutingPanel({ isEditingProfiles = false, onEditProfiles }: ModelRoutingPanelProps) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [models, setModels] = useState<RegistryModel[]>([]);
   const [usage, setUsage] = useState<Record<string, number>>({});
@@ -121,7 +160,12 @@ export default function ModelRoutingPanel() {
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
         <div><h3 className="font-bold flex items-center gap-2"><Route className="w-5 h-5 text-purple-400" /> Model Routing Profiles</h3>
           <p className="text-xs text-shogun-subdued mt-1">Cheapest sufficient model, with governed escalation and hard capability filters.</p></div>
-        <div className="px-3 py-2 rounded-lg border border-purple-400/30 bg-purple-400/10 text-xs"><span className="text-shogun-subdued">Active </span><strong className="text-purple-300">{activeProfile?.name || 'Balanced'}</strong></div>
+        <div className="flex items-center gap-2">
+          <div className="px-3 py-2 rounded-lg border border-purple-400/30 bg-purple-400/10 text-xs"><span className="text-shogun-subdued">Active </span><strong className="text-purple-300">{activeProfile?.name || 'Balanced'}</strong></div>
+          {onEditProfiles && <button onClick={onEditProfiles} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-colors ${isEditingProfiles ? 'border-purple-400 bg-purple-400/15 text-purple-300' : 'border-shogun-border text-shogun-subdued hover:border-purple-400/40 hover:text-purple-300'}`}>
+            <Edit2 className="w-3.5 h-3.5" /> {isEditingProfiles ? 'Close editor' : 'Edit profiles'}
+          </button>}
+        </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-2">
         {profiles.filter(item => ['Ultra Economy','Economy','Balanced','High Capability','Premium','Custom'].includes(item.name)).map(item =>
@@ -171,8 +215,8 @@ export default function ModelRoutingPanel() {
 
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
       <div className="xl:col-span-2 shogun-card">
-        <div className="flex items-center justify-between mb-4"><div><h4 className="font-bold flex items-center gap-2"><Server className="w-4 h-4 text-shogun-blue" /> Capability Registry</h4>
-          <p className="text-[10px] text-shogun-subdued mt-1">Connected local and API models. Capabilities are hard routing constraints.</p></div><button onClick={load}><RefreshCw className="w-4 h-4" /></button></div>
+        <div className="flex items-center justify-between mb-4"><div><h4 className="font-bold flex items-center gap-2"><Server className="w-4 h-4 text-shogun-blue" /> Model Capability Registry</h4>
+          <p className="text-[10px] text-shogun-subdued mt-1">Describe what each connected model can do, how capable it is, what it costs, and how quickly it responds. The router uses these as eligibility and preference signals.</p></div><button onClick={load}><RefreshCw className="w-4 h-4" /></button></div>
         <div className="space-y-3 max-h-[560px] overflow-y-auto pr-1">
           {models.map(item => <div key={item.id} className={`rounded-xl border p-4 ${item.enabled ? 'border-shogun-border bg-[#080b14]' : 'border-shogun-border/40 opacity-60'}`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -181,12 +225,20 @@ export default function ModelRoutingPanel() {
               <div className="flex items-center gap-2"><button onClick={() => testModel(item)} className="px-2 py-1 text-[9px] border border-shogun-border rounded hover:border-shogun-blue">{busy === `test-${item.id}` ? 'Testing…' : 'Test'}</button>
                 <button onClick={() => patchModel(item, { enabled: !item.enabled })} className={`w-10 h-5 rounded-full p-0.5 ${item.enabled ? 'bg-green-500' : 'bg-gray-700'}`}><span className={`block w-4 h-4 bg-white rounded-full transition-transform ${item.enabled ? 'translate-x-5' : ''}`} /></button></div>
             </div>
-            <div className="grid grid-cols-3 gap-2 my-3">
-              {(['quality_tier','cost_tier','latency_tier'] as const).map(key => <label key={key} className="text-[9px] uppercase text-shogun-subdued">{key.replace('_tier','')}
-                <select value={item[key]} onChange={event => patchModel(item, { [key]: Number(event.target.value) })} className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-1.5 text-xs">{[1,2,3,4,5].map(value => <option key={value}>{value}</option>)}</select></label>)}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 my-3">
+              {(['quality_tier','cost_tier','latency_tier'] as const).map(key => {
+                const selected = TIER_OPTIONS[key].find(option => option.value === item[key]) || TIER_OPTIONS[key][2];
+                return <label key={key} className="text-[9px] uppercase text-shogun-subdued">{key.replace('_tier','')}
+                  <select value={item[key]} onChange={event => patchModel(item, { [key]: Number(event.target.value) })} className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-1.5 text-xs normal-case">
+                    {TIER_OPTIONS[key].map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <span className="block mt-1 text-[8px] normal-case leading-tight text-shogun-subdued/70">{selected.help}</span>
+                </label>;
+              })}
             </div>
+            <p className="text-[8px] uppercase tracking-wider text-shogun-subdued mb-1.5">Supported task capabilities — click to enable or disable</p>
             <div className="flex flex-wrap gap-1.5">{CAPS.map(cap => <button key={cap} onClick={() => patchModel(item, { capabilities: { ...item.capabilities, [cap]: !item.capabilities?.[cap] } })}
-              className={`text-[8px] uppercase px-2 py-1 rounded border ${item.capabilities?.[cap] ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-300' : 'border-shogun-border text-shogun-subdued'}`}>{cap}</button>)}</div>
+              className={`text-[8px] uppercase px-2 py-1 rounded border ${item.capabilities?.[cap] ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-300' : 'border-shogun-border text-shogun-subdued'}`}>{CAP_LABELS[cap]}</button>)}</div>
             <div className="mt-2 flex flex-wrap gap-1">{(item.role_tags || []).map(tag => <span key={tag} className="rounded bg-purple-400/10 px-1.5 py-0.5 text-[8px] uppercase text-purple-300">{tag}</span>)}</div>
           </div>)}
           {!models.length && <p className="text-sm text-shogun-subdued text-center py-8">Connect a model provider to populate the registry.</p>}
@@ -197,11 +249,11 @@ export default function ModelRoutingPanel() {
         <div className="shogun-card"><h4 className="font-bold flex items-center gap-2 mb-4"><BrainCircuit className="w-4 h-4 text-shogun-gold" /> Preview Decision</h4>
           <div className="space-y-3"><label className="text-[9px] uppercase text-shogun-subdued">Task type<select value={taskType} onChange={event => setTaskType(event.target.value)} className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-2 text-xs">{TASKS.map(item => <option key={item}>{item}</option>)}</select></label>
             <label className="text-[9px] uppercase text-shogun-subdued">Profile<select value={profile} onChange={event => setProfile(event.target.value)} className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-2 text-xs">{profiles.map(item => <option key={item.id} value={item.name.toLowerCase().replaceAll(' ', '_')}>{item.name}</option>)}</select></label>
-            <label className="text-[9px] uppercase text-shogun-subdued">Complexity: {complexity}<input type="range" min="1" max="5" value={complexity} onChange={event => setComplexity(Number(event.target.value))} className="block w-full mt-2" /></label>
-            <div className="flex flex-wrap gap-1">{CAPS.map(cap => <button key={cap} onClick={() => setRequirements(current => current.includes(cap) ? current.filter(item => item !== cap) : [...current, cap])} className={`text-[8px] border rounded px-1.5 py-1 ${requirements.includes(cap) ? 'border-shogun-gold text-shogun-gold' : 'border-shogun-border text-shogun-subdued'}`}>{cap}</button>)}</div>
+            <label className="text-[9px] uppercase text-shogun-subdued">Task complexity: <strong className="text-shogun-text normal-case">{COMPLEXITY_LABELS[complexity - 1]}</strong><input type="range" min="1" max="5" value={complexity} onChange={event => setComplexity(Number(event.target.value))} className="block w-full mt-2" /></label>
+            <div className="flex flex-wrap gap-1">{CAPS.map(cap => <button key={cap} onClick={() => setRequirements(current => current.includes(cap) ? current.filter(item => item !== cap) : [...current, cap])} className={`text-[8px] border rounded px-1.5 py-1 ${requirements.includes(cap) ? 'border-shogun-gold text-shogun-gold' : 'border-shogun-border text-shogun-subdued'}`}>{CAP_LABELS[cap]}</button>)}</div>
             <button onClick={preview} disabled={busy === 'preview'} className="w-full flex items-center justify-center gap-2 p-2 rounded bg-purple-600 hover:bg-purple-500 font-bold text-xs"><Play className="w-3.5 h-3.5" /> Preview route</button>
           </div>
-          {decision && <div className="mt-4 p-3 rounded-lg border border-green-400/30 bg-green-400/5"><div className="font-bold text-sm text-green-300">{decision.selected_model}</div><div className="text-[9px] text-shogun-subdued">{decision.selected_provider} · fallback {decision.fallback_model || 'none'}</div><p className="text-[10px] mt-2 leading-relaxed">{decision.reason}</p><div className="flex gap-3 mt-2 text-[8px] uppercase text-shogun-subdued"><span>Complexity {decision.complexity_score}</span><span>Cost {decision.estimated_cost_tier}</span><span>Latency {decision.estimated_latency_tier}</span></div></div>}
+          {decision && <div className="mt-4 p-3 rounded-lg border border-green-400/30 bg-green-400/5"><div className="font-bold text-sm text-green-300">{decision.selected_model}</div><div className="text-[9px] text-shogun-subdued">{decision.selected_provider} · fallback {decision.fallback_model || 'none'}</div><p className="text-[10px] mt-2 leading-relaxed">{decision.reason}</p><div className="flex flex-wrap gap-3 mt-2 text-[8px] uppercase text-shogun-subdued"><span>{COMPLEXITY_LABELS[Math.max(1, Math.min(5, decision.complexity_score)) - 1]} task</span><span>{TIER_OPTIONS.cost_tier.find(option => option.value === decision.estimated_cost_tier)?.label || 'Unknown cost'}</span><span>{TIER_OPTIONS.latency_tier.find(option => option.value === decision.estimated_latency_tier)?.label || 'Unknown speed'}</span></div></div>}
         </div>
         <div className="shogun-card"><h4 className="font-bold flex items-center gap-2 mb-3"><Activity className="w-4 h-4 text-green-400" /> Usage</h4><div className="grid grid-cols-2 gap-2 text-center">
           <Metric icon={<Zap className="w-3 h-3" />} label="Events" value={usage.events || 0} /><Metric icon={<Gauge className="w-3 h-3" />} label="Avg latency" value={`${usage.average_latency_ms || 0} ms`} />

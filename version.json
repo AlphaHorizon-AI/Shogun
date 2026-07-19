@@ -1,8 +1,8 @@
 {
-  "version": "1.26.0",
+  "version": "1.26.1",
   "name": "Shogun OS",
-  "build": 98,
+  "build": 99,
   "channel": "stable",
-  "released": "2026-07-19T12:48:26Z",
-  "changelog": "Add OpenClaw specialization enrollment and automatic badge evaluation, certify agents through an automatic digital handshake, expose achievement actions through MCP and Dojo, and repair Dojo-to-Archives skill synchronization."
+  "released": "2026-07-19T13:21:07Z",
+  "changelog": "Centralize model selection in Katana, consolidate routing profile editing behind one overview, and replace opaque capability tier numbers with meaningful labels and guidance."
 }

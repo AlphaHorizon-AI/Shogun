@@ -1102,7 +1102,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
             </div> : (
               <div className="max-w-4xl mx-auto rounded-xl border border-purple-400/20 bg-purple-400/5 p-5 text-center">
                 <p className="text-sm font-bold text-purple-200">{ROUTING_PROFILES.find(item => item.id === routingProfile)?.name} routing will choose models automatically.</p>
-                <p className="text-[10px] text-[#888] mt-1">You can change the routing profile later in Shogun Profile or configure Custom routing in Katana.</p>
+                <p className="text-[10px] text-[#888] mt-1">You can change the routing profile or configure Custom routing later in Katana.</p>
               </div>
             )}
           </div>
