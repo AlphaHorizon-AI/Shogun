@@ -7,10 +7,12 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import shogun.db.models  # noqa: F401
+from shogun.api.model_router import set_active_profile
 from shogun.db.base import Base
+from shogun.db.models.agent import Agent
 from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_router import ModelRegistryEntry
-from shogun.schemas.model_router import ModelRouteRequest, ModelUsageCreate
+from shogun.schemas.model_router import ActiveProfileRequest, ModelRouteRequest, ModelUsageCreate
 from shogun.services.model_router import (
     ComplexityScoringService,
     ModelRoutingService,
@@ -72,11 +74,64 @@ async def _model(
 
 
 @pytest.mark.asyncio
-async def test_five_default_profiles_are_seeded_with_balanced_active(routing_session):
+async def test_default_profiles_include_custom_with_balanced_active(routing_session):
     service = ModelRoutingService(routing_session)
     profiles = await service.ensure_defaults()
-    assert {item.name for item in profiles} >= {"Ultra Economy", "Economy", "Balanced", "High Capability", "Premium"}
+    assert {item.name for item in profiles} >= {
+        "Ultra Economy", "Economy", "Balanced", "High Capability", "Premium", "Custom"
+    }
     assert (await service.active_profile()).name == "Balanced"
+
+
+@pytest.mark.asyncio
+async def test_custom_profile_routes_only_across_operator_selected_models(routing_session):
+    excluded = await _model(
+        routing_session, "excluded-premium", quality=5, cost=1,
+        capabilities={"chat": True, "coding": True},
+    )
+    primary = await _model(
+        routing_session, "chosen-primary", quality=3, cost=3,
+        capabilities={"chat": True, "coding": True},
+    )
+    fallback = await _model(
+        routing_session, "chosen-fallback", quality=4, cost=2,
+        capabilities={"chat": True, "coding": True},
+    )
+    service = ModelRoutingService(routing_session)
+    profiles = await service.ensure_defaults()
+    custom = next(item for item in profiles if item.name == "Custom")
+    custom.rules = [{
+        "task_type": "*",
+        "primary_model_id": str(primary.id),
+        "fallback_model_ids": [str(fallback.id)],
+    }]
+
+    result = await service.route(ModelRouteRequest(
+        prompt="Implement the requested change", task_type="coding_edit", profile_override=str(custom.id)
+    ))
+
+    assert result.selected.id == primary.id
+    assert excluded.id not in {result.selected.id, *(item.id for item in result.fallbacks)}
+    assert {item.id for item in result.fallbacks} == {fallback.id}
+
+
+@pytest.mark.asyncio
+async def test_activating_profile_keeps_primary_shogun_assignment_in_sync(routing_session):
+    agent = Agent(
+        agent_type="shogun", name="Primary", slug="primary", status="active", is_primary=True
+    )
+    routing_session.add(agent)
+    await routing_session.flush()
+
+    await set_active_profile(ActiveProfileRequest(profile="custom"), routing_session)
+    await routing_session.refresh(agent)
+    custom = next(
+        item for item in await ModelRoutingService(routing_session).ensure_defaults()
+        if item.name == "Custom"
+    )
+
+    assert agent.model_routing_profile_id == custom.id
+    assert custom.is_default is True
 
 
 def test_classifier_and_complexity_are_deterministic():

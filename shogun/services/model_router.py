@@ -71,6 +71,17 @@ DEFAULT_PROFILES = {
         "latency_weight": 0,
         "max_cost_tier": 5,
     },
+    "custom": {
+        "name": "Custom",
+        "description": (
+            "Uses only the operator's ordered model selection, while preserving capability and safety gates."
+        ),
+        "prefer_local": False,
+        "quality_bias": 1,
+        "cost_weight": 2,
+        "latency_weight": 2,
+        "max_cost_tier": 5,
+    },
 }
 
 SIMPLE_TYPES = {"simple_chat", "classification", "extraction", "memory_write", "memory_retrieval"}
@@ -516,6 +527,11 @@ class ModelRoutingService:
             for item in candidates
             if all((item.capabilities or {}).get(capability, False) for capability in requirements)
         ]
+        preferred_ids = self._legacy_preference(profile, task_type)
+        if profile_key == "custom":
+            if not preferred_ids:
+                raise NoEligibleModelError("Custom routing has no models configured.")
+            candidates = [item for item in candidates if self._matches_preference(item, preferred_ids)]
         if not candidates:
             required = ", ".join(sorted(requirements)) or "connected chat model"
             await self._audit(
@@ -545,7 +561,6 @@ class ModelRoutingService:
                 db_session=self.session,
             )
             raise NoEligibleModelError("Daily budget reached and no eligible lower-cost model is available.")
-        preferred_ids = self._legacy_preference(profile, task_type)
         ranked = sorted(
             candidates,
             key=lambda item: self._rank(item, complexity, task_type, request, profile_config, config, preferred_ids),
@@ -632,6 +647,16 @@ class ModelRoutingService:
         )
 
     @staticmethod
+    def _matches_preference(item: ModelRegistryEntry, preferred_ids: list[str]) -> bool:
+        identifiers = {
+            str(item.id),
+            str(item.provider_id),
+            item.model_id,
+            f"{item.provider_id}::{item.model_id}",
+        }
+        return any(preferred in identifiers for preferred in preferred_ids)
+
+    @staticmethod
     def _rank(
         item: ModelRegistryEntry,
         complexity: int,
@@ -655,10 +680,13 @@ class ModelRoutingService:
             score += 8 if (item.capabilities or {}).get("coding") else 0
         if task_type in {"final_review", "self_verification", "visual_self_verification"}:
             score += item.quality_tier * 2
-        identifiers = {str(item.id), str(item.provider_id), item.model_id}
+        identifiers = {str(item.id), str(item.provider_id), item.model_id, f"{item.provider_id}::{item.model_id}"}
         for index, preferred in enumerate(preferred_ids):
             if preferred in identifiers:
-                score += 50 - index * 5
+                # An explicit routing rule is an operator order, not a weak
+                # hint. Capability filters run first; among eligible selected
+                # models the declared primary/fallback order is authoritative.
+                score += 1000 - index * 100
         return score
 
     @staticmethod

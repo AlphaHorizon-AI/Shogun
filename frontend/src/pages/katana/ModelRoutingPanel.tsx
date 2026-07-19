@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Activity, BrainCircuit, CheckCircle2, Gauge, Play, RefreshCw, Route, Server, Zap } from 'lucide-react';
+import { Activity, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Gauge, Play, RefreshCw, Route, Server, X, Zap } from 'lucide-react';
 
-type Profile = { id: string; name: string; description?: string; is_default: boolean };
+type Profile = {
+  id: string; name: string; description?: string; is_default: boolean;
+  rules?: Array<{ task_type: string; primary_model_id: string; fallback_model_ids: string[] }>;
+};
 type RegistryModel = {
   id: string; model_id: string; display_name: string; provider: string; connection_type: string; enabled: boolean;
   capabilities: Record<string, boolean>; quality_tier: number; cost_tier: number; latency_tier: number;
@@ -30,6 +33,7 @@ export default function ModelRoutingPanel() {
   const [complexity, setComplexity] = useState(4);
   const [requirements, setRequirements] = useState<string[]>(['coding', 'tool_use']);
   const [decision, setDecision] = useState<Decision | null>(null);
+  const [customModels, setCustomModels] = useState<string[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -38,11 +42,17 @@ export default function ModelRoutingPanel() {
         axios.get('/api/v1/models/routing/profiles'), axios.get('/api/v1/models/registry'),
         axios.get('/api/v1/models/usage/summary'),
       ]);
-      setProfiles(profilesRes.data.data || []);
+      const loadedProfiles: Profile[] = profilesRes.data.data || [];
+      setProfiles(loadedProfiles);
       setModels(registryRes.data.data || []);
       setUsage(usageRes.data.data || {});
       const active = (profilesRes.data.data || []).find((item: Profile) => item.is_default);
       if (active) setProfile(active.name.toLowerCase().replaceAll(' ', '_'));
+      const custom = loadedProfiles.find(item => item.name === 'Custom');
+      const rule = custom?.rules?.find(item => item.task_type === '*') || custom?.rules?.[0];
+      setCustomModels(rule?.primary_model_id
+        ? [String(rule.primary_model_id), ...(rule.fallback_model_ids || []).map(String)]
+        : []);
     } catch (error: any) {
       setMessage(error?.response?.data?.detail || 'Model routing data could not be loaded.');
     } finally { setLoading(false); }
@@ -50,6 +60,7 @@ export default function ModelRoutingPanel() {
   useEffect(() => { load(); }, []);
 
   const activeProfile = useMemo(() => profiles.find(item => item.is_default), [profiles]);
+  const customProfile = useMemo(() => profiles.find(item => item.name === 'Custom'), [profiles]);
   const setActive = async (item: Profile) => {
     setBusy(item.id);
     try {
@@ -73,6 +84,25 @@ export default function ModelRoutingPanel() {
     catch (error: any) { setMessage(error?.response?.data?.detail || 'Connection test failed.'); }
     finally { setBusy(''); }
   };
+  const saveCustom = async () => {
+    if (!customProfile || customModels.length === 0) {
+      setMessage('Choose at least one model for Custom routing.');
+      return;
+    }
+    setBusy('custom');
+    try {
+      await axios.post(`/api/v1/models/routing/profiles/${customProfile.id}/update`, {
+        rules: [{
+          task_type: '*', primary_model_id: customModels[0], fallback_model_ids: customModels.slice(1),
+        }],
+      });
+      await axios.post('/api/v1/models/routing/profiles/active', { profile_id: customProfile.id });
+      setMessage('Custom routing saved and activated.');
+      await load();
+    } catch (error: any) {
+      setMessage(error?.response?.data?.detail || 'Custom routing could not be saved.');
+    } finally { setBusy(''); }
+  };
   const preview = async () => {
     setBusy('preview'); setDecision(null);
     try {
@@ -93,14 +123,50 @@ export default function ModelRoutingPanel() {
           <p className="text-xs text-shogun-subdued mt-1">Cheapest sufficient model, with governed escalation and hard capability filters.</p></div>
         <div className="px-3 py-2 rounded-lg border border-purple-400/30 bg-purple-400/10 text-xs"><span className="text-shogun-subdued">Active </span><strong className="text-purple-300">{activeProfile?.name || 'Balanced'}</strong></div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
-        {profiles.filter(item => ['Ultra Economy','Economy','Balanced','High Capability','Premium'].includes(item.name)).map(item =>
+      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-2">
+        {profiles.filter(item => ['Ultra Economy','Economy','Balanced','High Capability','Premium','Custom'].includes(item.name)).map(item =>
           <button key={item.id} onClick={() => setActive(item)} disabled={busy === item.id}
             className={`text-left p-3 rounded-lg border transition-all ${item.is_default ? 'border-purple-400 bg-purple-400/15' : 'border-shogun-border hover:border-purple-400/40'}`}>
             <div className="text-xs font-bold flex items-center gap-1.5">{item.is_default && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />}{item.name}</div>
             <p className="text-[9px] text-shogun-subdued mt-1 line-clamp-2">{item.description}</p>
           </button>)}
       </div>
+      {customProfile && <div className="mt-5 pt-5 border-t border-purple-400/20">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+          <div><h4 className="text-sm font-bold">Custom model order</h4>
+            <p className="text-[10px] text-shogun-subdued mt-1">Only these models may be routed. The first eligible model is preferred; capability and safety gates still apply.</p></div>
+          <button onClick={saveCustom} disabled={busy === 'custom' || customModels.length === 0}
+            className="px-3 py-2 rounded bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-[10px] font-bold">
+            {busy === 'custom' ? 'Saving…' : 'Save & activate Custom'}
+          </button>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="max-h-44 overflow-y-auto rounded-lg border border-shogun-border p-2 space-y-1">
+            {models.filter(item => item.enabled).map(item => {
+              const selected = customModels.includes(item.id);
+              return <button key={item.id} onClick={() => setCustomModels(current => selected ? current.filter(id => id !== item.id) : [...current, item.id])}
+                className={`w-full flex items-center justify-between gap-2 rounded p-2 text-left text-xs border ${selected ? 'border-purple-400/50 bg-purple-400/10' : 'border-transparent hover:border-shogun-border'}`}>
+                <span className="truncate"><strong>{item.display_name}</strong><span className="ml-2 text-[9px] text-shogun-subdued">{item.provider}</span></span>
+                {selected && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+              </button>;
+            })}
+          </div>
+          <div className="rounded-lg border border-shogun-border p-2 space-y-1">
+            {customModels.map((id, index) => {
+              const item = models.find(model => model.id === id);
+              if (!item) return null;
+              return <div key={id} className="flex items-center gap-2 rounded bg-[#080b14] border border-shogun-border p-2">
+                <span className="w-16 text-[8px] font-bold uppercase text-purple-300">{index === 0 ? 'Primary' : `Fallback ${index}`}</span>
+                <span className="text-xs flex-1 truncate">{item.display_name}</span>
+                <button disabled={index === 0} onClick={() => setCustomModels(current => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}><ChevronUp className="w-3.5 h-3.5" /></button>
+                <button disabled={index === customModels.length - 1} onClick={() => setCustomModels(current => { const next = [...current]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}><ChevronDown className="w-3.5 h-3.5" /></button>
+                <button onClick={() => setCustomModels(current => current.filter(value => value !== id))}><X className="w-3.5 h-3.5 text-red-400" /></button>
+              </div>;
+            })}
+            {!customModels.length && <p className="text-[10px] text-shogun-subdued text-center py-6">Select models from the registry.</p>}
+          </div>
+        </div>
+      </div>}
     </div>
 
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

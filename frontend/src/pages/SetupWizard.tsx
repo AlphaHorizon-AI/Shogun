@@ -40,6 +40,15 @@ const PROVIDER_CARDS = [
   { type: 'perplexity', label: 'Perplexity',   icon: '🔍', color: '#20b2aa' },
 ];
 
+const ROUTING_PROFILES = [
+  { id: 'ultra_economy', name: 'Ultra Economy', description: 'Lowest cost; strongly prefers local and cheap models.' },
+  { id: 'economy', name: 'Economy', description: 'Low-cost daily work with practical escalation.' },
+  { id: 'balanced', name: 'Balanced', description: 'Recommended balance of cost, speed, and quality.' },
+  { id: 'high_capability', name: 'High Capability', description: 'Uses stronger models earlier for complex work.' },
+  { id: 'premium', name: 'Premium', description: 'Maximum configured quality with visible cost controls.' },
+  { id: 'custom', name: 'Custom', description: 'Use only your ordered model selection with capability and safety gates.' },
+];
+
 const DEFAULT_DIRECTIVES = `priorities:
   - Safety before autonomy
   - Use existing trusted skills when possible
@@ -162,6 +171,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
   const [mandate, setMandate] = useState(DEFAULT_MANDATE);
 
   // Step 7: Models
+  const [routingProfile, setRoutingProfile] = useState('custom');
   const [primaryModel, setPrimaryModel] = useState('');
   const [fallbackModels, setFallbackModels] = useState<string[]>([]);
 
@@ -373,6 +383,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
         mandate,
         primary_model: primaryModel,
         fallback_models: fallbackModels,
+        routing_profile: routingProfile,
         ronin_enabled: roninEnabled,
       });
 
@@ -986,7 +997,18 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
             <div className="max-w-4xl mx-auto bg-[#0d1117]/60 border border-[#1a1f2e] rounded-xl p-4 text-sm text-[#999] leading-relaxed">
               <p>{t('setup.step7_explainer')}</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-w-5xl mx-auto">
+              {ROUTING_PROFILES.map(item => (
+                <button key={item.id} onClick={() => setRoutingProfile(item.id)}
+                  className={`text-left rounded-xl border p-3 transition-all ${routingProfile === item.id ? 'border-purple-400 bg-purple-400/10' : 'border-[#2a2f3e] bg-[#0d1117] hover:border-purple-400/40'}`}>
+                  <div className="flex items-center gap-2 text-xs font-bold text-white">
+                    {routingProfile === item.id && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />}{item.name}
+                  </div>
+                  <p className="text-[9px] text-[#777] mt-1 leading-relaxed">{item.description}</p>
+                </button>
+              ))}
+            </div>
+            {routingProfile === 'custom' ? <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
               {/* Primary */}
               <div className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-5 space-y-4">
                 <h3 className="text-sm font-bold text-[#3b82f6] uppercase tracking-widest flex items-center gap-2">
@@ -1077,7 +1099,12 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                   </>
                 )}
               </div>
-            </div>
+            </div> : (
+              <div className="max-w-4xl mx-auto rounded-xl border border-purple-400/20 bg-purple-400/5 p-5 text-center">
+                <p className="text-sm font-bold text-purple-200">{ROUTING_PROFILES.find(item => item.id === routingProfile)?.name} routing will choose models automatically.</p>
+                <p className="text-[10px] text-[#888] mt-1">You can change the routing profile later in Shogun Profile or configure Custom routing in Katana.</p>
+              </div>
+            )}
           </div>
         );
 
@@ -1361,7 +1388,8 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                 { label: t('setup.step3_autonomy'), value: `${autonomy}%`, color: '#3b82f6' },
                 { label: t('setup.step3_risk'), value: riskTolerance, color: '#3b82f6' },
                 { label: t('setup.step8_provider'), value: `${connectedProviders.length} ${t('setup.step5_connected')}`, color: connectedProviders.length > 0 ? '#22c55e' : '#888' },
-                { label: t('setup.step8_model'), value: primaryModel ? primaryModel.split('::')[1] : t('setup.step8_none_selected'), color: primaryModel ? '#d4a017' : '#888' },
+                { label: 'Routing Profile', value: ROUTING_PROFILES.find(item => item.id === routingProfile)?.name || routingProfile, color: '#a78bfa' },
+                { label: t('setup.step8_model'), value: routingProfile === 'custom' && primaryModel ? primaryModel.split('::')[1] : 'Automatic', color: routingProfile === 'custom' && primaryModel ? '#d4a017' : '#3b82f6' },
                 { label: t('setup.step8_security'), value: securityBias, color: '#3b82f6' },
                 { label: t('setup.step7_fallback'), value: `${fallbackModels.length}`, color: fallbackModels.length > 0 ? '#22c55e' : '#888' },
               ].map(item => (

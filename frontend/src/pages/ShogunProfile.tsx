@@ -359,14 +359,15 @@ export const ShogunProfile = () => {
       const results = await Promise.allSettled([
         axios.get('/api/v1/agents/shogun'),
         axios.get('/api/v1/personas'),
-        axios.get('/api/v1/model-routing-profiles'),
+        axios.get('/api/v1/models/routing/profiles'),
         axios.get('/api/v1/security/policies'),
         axios.get('/api/v1/system/health'),
         axios.get('/api/v1/model-providers'),
+        axios.get('/api/v1/models/registry'),
         axios.get('/api/v1/tools'),
       ]);
       
-      const [agentRes, personasRes, routingRes, policiesRes, healthRes, providersRes, toolsRes] = results;
+      const [agentRes, personasRes, routingRes, policiesRes, healthRes, providersRes, registryRes, toolsRes] = results;
 
       if (agentRes.status === 'fulfilled' && agentRes.value.data.data) {
         const agent = agentRes.value.data.data;
@@ -375,6 +376,19 @@ export const ShogunProfile = () => {
         const bs = agent.bushido_settings || {};
         let savedPrimary = bs.primary_model || '';
         let savedFallbacks: string[] = bs.fallback_models || [];
+        const loadedProfiles: any[] = routingRes.status === 'fulfilled' ? routingRes.value.data.data || [] : [];
+        const registryModels: any[] = registryRes.status === 'fulfilled' ? registryRes.value.data.data || [] : [];
+        const assignedProfile = loadedProfiles.find((profile: any) => profile.id === agent.model_routing_profile_id);
+        if (assignedProfile?.name === 'Custom') {
+          const rule = assignedProfile.rules?.find((item: any) => item.task_type === '*') || assignedProfile.rules?.[0];
+          const toProviderModelRef = (value: string): string => {
+            if (!value || value.includes('::')) return value;
+            const registryModel = registryModels.find((item: any) => item.id === value || item.model_id === value);
+            return registryModel?.provider_id ? `${registryModel.provider_id}::${registryModel.model_id}` : value;
+          };
+          if (rule?.primary_model_id) savedPrimary = toProviderModelRef(String(rule.primary_model_id));
+          if (rule?.fallback_model_ids) savedFallbacks = rule.fallback_model_ids.map((value: any) => toProviderModelRef(String(value)));
+        }
         if (bs.custom_permissions) setCustomPermissions(bs.custom_permissions);
 
         // ── Auto-heal stale frontend UUIDs ──
@@ -462,6 +476,20 @@ export const ShogunProfile = () => {
     setSaving(true);
     setStatusMessage(null);
     try {
+      const selectedRouting = routingProfiles.find(
+        (profile: any) => profile.id === shogunData.model_routing_profile_id
+      );
+      if (selectedRouting?.name === 'Custom') {
+        if (!primaryModel) throw new Error('Choose at least one model for Custom routing.');
+        await axios.post(`/api/v1/models/routing/profiles/${selectedRouting.id}/update`, {
+          rules: [{
+            task_type: '*', primary_model_id: primaryModel, fallback_model_ids: fallbackModels,
+          }],
+        });
+      }
+      if (selectedRouting) {
+        await axios.post('/api/v1/models/routing/profiles/active', { profile_id: selectedRouting.id });
+      }
       // Merge model selections + custom permissions into bushido_settings so they persist
       const payload = {
         ...shogunData,
@@ -475,8 +503,8 @@ export const ShogunProfile = () => {
       };
       await axios.patch(`/api/v1/agents/${(shogunData as any).id}`, payload);
       setStatusMessage({ type: 'success', text: 'Shogun configuration saved successfully.' });
-    } catch (error) {
-      setStatusMessage({ type: 'error', text: 'Failed to save configuration.' });
+    } catch (error: any) {
+      setStatusMessage({ type: 'error', text: error?.message || 'Failed to save configuration.' });
     } finally {
       setSaving(false);
       setTimeout(() => setStatusMessage(null), 3000);
@@ -854,16 +882,39 @@ export const ShogunProfile = () => {
                 providerType: prov.provider_type,
               }));
             });
+          const selectedRoutingProfile = routingProfiles.find(
+            (profile: any) => profile.id === shogunData.model_routing_profile_id
+          );
+          const isCustomRouting = selectedRoutingProfile?.name === 'Custom';
 
           return (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-6">
+              <div className="shogun-card space-y-3">
+                <div>
+                  <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
+                    <Workflow className="w-5 h-5 text-shogun-gold" /> {t('profile.routing_strategy', 'Routing Strategy')}
+                  </h3>
+                  <p className="text-[10px] text-shogun-subdued mt-1">The routing profile controls model selection. Presets choose automatically; Custom uses your ordered model list.</p>
+                </div>
+                <select
+                  value={shogunData.model_routing_profile_id || ''}
+                  onChange={e => setShogunData({ ...shogunData, model_routing_profile_id: e.target.value })}
+                  className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none transition-colors"
+                >
+                  <option value="">— Select routing strategy —</option>
+                  {routingProfiles.map((rp: any) => <option key={rp.id} value={rp.id}>{rp.name}</option>)}
+                </select>
+                {selectedRoutingProfile?.description && <p className="text-xs text-shogun-subdued">{selectedRoutingProfile.description}</p>}
+              </div>
+
+              {isCustomRouting ? <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* ── Primary Model ──────────────────────────────── */}
               <div className="shogun-card space-y-4">
                 <div>
                   <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                    <Cpu className="w-5 h-5 text-shogun-blue" /> {t('profile.primary_model', 'Primary Model')}
+                    <Cpu className="w-5 h-5 text-shogun-blue" /> Custom Primary Model
                   </h3>
-                  <p className="text-[10px] text-shogun-subdued mt-1">{t('profile.primary_model_desc', 'The default model used for all Shogun reasoning and task execution.')}</p>
+                  <p className="text-[10px] text-shogun-subdued mt-1">Preferred first when it satisfies the task's capability and safety requirements.</p>
                 </div>
 
                 {allModelOptions.length === 0 ? (
@@ -918,7 +969,7 @@ export const ShogunProfile = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
-                      <Workflow className="w-5 h-5 text-shogun-gold" /> {t('profile.fallback_models', 'Fallback Models')}
+                      <Workflow className="w-5 h-5 text-shogun-gold" /> Custom Fallback Models
                     </h3>
                     <p className="text-[10px] text-shogun-subdued mt-1">{t('profile.fallback_models_desc', 'Used when the primary is unavailable. Order matters.')}</p>
                   </div>
@@ -1014,28 +1065,13 @@ export const ShogunProfile = () => {
                   </div>
                 )}
 
-                {/* Routing Strategy */}
-                {routingProfiles.length > 0 && (
-                  <div className="space-y-2 pt-2 border-t border-shogun-border">
-                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t("profile.routing_strategy", "Routing Strategy")}</label>
-                    <select
-                      value={shogunData.model_routing_profile_id || ''}
-                      onChange={e => setShogunData({ ...shogunData, model_routing_profile_id: e.target.value })}
-                      className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none transition-colors"
-                    >
-                      <option value="">{t('profile.select_routing', '— Select routing strategy —')}</option>
-                      {routingProfiles.map((rp: any) => {
-                        const nameMap: Record<string,string> = {
-                          'Balanced (Default)': t('profile.routing_balanced', 'Balanced (Default)'),
-                          'Quality First': t('profile.routing_quality', 'Quality First'),
-                          'Cost Optimized': t('profile.routing_cost', 'Cost Optimized'),
-                        };
-                        return <option key={rp.id} value={rp.id}>{nameMap[rp.name] || rp.name}</option>;
-                      })}
-                    </select>
-                  </div>
-                )}
               </div>
+            </div> : (
+                <div className="shogun-card border-shogun-blue/20 bg-shogun-blue/5">
+                  <p className="text-sm font-medium">{selectedRoutingProfile?.name || 'No routing profile selected'} controls model choice automatically.</p>
+                  <p className="text-[10px] text-shogun-subdued mt-1">Choose Custom above to select and order the exact models Shogun may use.</p>
+                </div>
+              )}
             </div>
           );
         })()}

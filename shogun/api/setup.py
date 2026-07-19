@@ -221,6 +221,7 @@ class SetupCompletePayload(BaseModel):
     mandate: str | None = None
     primary_model: str = ""
     fallback_models: list[str] = Field(default_factory=list)
+    routing_profile: str = "custom"
     ronin_enabled: bool = False
 
 
@@ -332,12 +333,38 @@ async def complete_setup(payload: SetupCompletePayload):
         remapped_primary = _remap_model_ref(payload.primary_model)
         remapped_fallbacks = [_remap_model_ref(fb) for fb in payload.fallback_models]
 
+        # The routing profile is the model-selection authority.  Fresh setups
+        # default to Custom so the ordered models chosen in this wizard become
+        # the actual governed route rather than a disconnected legacy setting.
+        from shogun.services.model_router import ModelRoutingService
+
+        routing_service = ModelRoutingService(session)
+        await routing_service.registry.sync_connected()
+        routing_profiles = await routing_service.ensure_defaults()
+        requested_profile = (payload.routing_profile or "custom").lower().replace(" ", "_")
+        if requested_profile == "custom" and not remapped_primary:
+            requested_profile = "balanced"
+        selected_routing_profile = next(
+            (
+                profile for profile in routing_profiles
+                if profile.name.lower().replace(" ", "_") == requested_profile
+            ),
+            next(profile for profile in routing_profiles if profile.name == "Balanced"),
+        )
+        if selected_routing_profile.name == "Custom":
+            selected_routing_profile.rules = [{
+                "task_type": "*",
+                "primary_model_id": remapped_primary,
+                "fallback_model_ids": remapped_fallbacks,
+            }]
+        await routing_service.set_active(selected_routing_profile)
+
         # ── 2. Create/update Shogun agent ────────────────────────────
         result = await session.execute(
             select(Agent).where(
                 Agent.agent_type == "shogun",
-                Agent.is_primary == True,
-                Agent.is_deleted == False,
+                Agent.is_primary.is_(True),
+                Agent.is_deleted.is_(False),
             )
         )
         shogun = result.scalar_one_or_none()
@@ -358,6 +385,7 @@ async def complete_setup(payload: SetupCompletePayload):
             if payload.persona_id:
                 shogun.persona_id = uuid.UUID(payload.persona_id)
             shogun.bushido_settings = bushido_settings
+            shogun.model_routing_profile_id = selected_routing_profile.id
         else:
             shogun = Agent(
                 agent_type="shogun",
@@ -368,6 +396,7 @@ async def complete_setup(payload: SetupCompletePayload):
                 is_primary=True,
                 spawn_policy="manual",
                 bushido_settings=bushido_settings,
+                model_routing_profile_id=selected_routing_profile.id,
             )
             if payload.persona_id:
                 shogun.persona_id = uuid.UUID(payload.persona_id)

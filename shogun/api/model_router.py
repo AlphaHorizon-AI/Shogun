@@ -65,6 +65,18 @@ async def set_active_profile(body: ActiveProfileRequest, db: AsyncSession = Depe
     if not profile:
         raise HTTPException(404, "Routing profile not found.")
     await service.set_active(profile)
+    # Keep the primary Shogun aligned with the operator-visible active profile.
+    # Per-agent overrides remain available for Samurai, but the two primary UI
+    # selectors must not silently disagree about Shogun's route.
+    from sqlalchemy import update
+
+    from shogun.db.models.agent import Agent
+
+    await db.execute(
+        update(Agent)
+        .where(Agent.agent_type == "shogun", Agent.is_primary.is_(True), Agent.is_deleted.is_(False))
+        .values(model_routing_profile_id=profile.id)
+    )
     await db.commit()
     return ApiResponse(data=ModelRoutingProfileResponse.model_validate(profile))
 

@@ -1,8 +1,8 @@
 {
-  "version": "1.24.5",
+  "version": "1.25.0",
   "name": "Shogun OS",
-  "build": 95,
+  "build": 96,
   "channel": "stable",
-  "released": "2026-07-19T10:58:27Z",
-  "changelog": "Fix active-skill activation by exposing manifest-backed skill descriptions and verify the agent activation/retrieval pipeline."
+  "released": "2026-07-19T11:12:32Z",
+  "changelog": "Add governed Custom model routing, unify Shogun routing controls, and embed routing profile selection into first-run setup."
 }
