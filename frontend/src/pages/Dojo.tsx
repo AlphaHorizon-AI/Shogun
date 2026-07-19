@@ -114,6 +114,7 @@ export function Dojo() {
   const [installMessage, setInstallMessage] = useState<{type: 'success' | 'error' | 'info', text: string} | null>(null);
   const [installedSkills, setInstalledSkills] = useState<Set<string>>(new Set());
   const [installedSkillDetails, setInstalledSkillDetails] = useState<any[]>([]);
+  const [tabError, setTabError] = useState<string | null>(null);
 
   // ── Data Fetching ──────────────────────────────────────────
 
@@ -152,6 +153,7 @@ export function Dojo() {
 
   const fetchTabData = useCallback(async () => {
     setLoading(true);
+    setTabError(null);
     try {
       if (activeTab === 'catalog') {
         const params: any = { limit: 200 };
@@ -169,25 +171,41 @@ export function Dojo() {
         setSpecializations(res.data.data || []);
         if (achievementRes) setAchievements(achievementRes.data.data);
       } else if (activeTab === 'achieved') {
-        const [badgesRes, achieveRes, installedRes, transcriptRes] = await Promise.all([
-          axios.get('/api/v1/dojo/openclaw/badges'),
-          axios.get('/api/v1/dojo/openclaw/achievements'),
-          axios.get('/api/v1/dojo/openclaw/installed'),
-          axios.get('/api/v1/dojo/openclaw/transcript').catch(() => null),
-        ]);
-        setBadges(badgesRes.data.data || []);
+        // Achievements are authoritative. Never discard them because an
+        // auxiliary catalog, install, or transcript request failed.
+        const achieveRes = await axios.get('/api/v1/dojo/openclaw/achievements');
         const achievementData = achieveRes.data.data;
         setAchievements(achievementData);
-        setTranscript(transcriptRes?.data.data || {
+        setTranscript({
           test_results: achievementData?.achieved_skills || [],
           transcript: [],
         });
-        const installed = installedRes.data.data || [];
-        setInstalledSkillDetails(installed);
-        setInstalledSkills(new Set(installed.map((s: any) => s.openclaw_skill_id).filter(Boolean)));
+
+        const [badgesResult, installedResult, transcriptResult] = await Promise.allSettled([
+          axios.get('/api/v1/dojo/openclaw/badges'),
+          axios.get('/api/v1/dojo/openclaw/installed'),
+          axios.get('/api/v1/dojo/openclaw/transcript'),
+        ]);
+        if (badgesResult.status === 'fulfilled') {
+          setBadges(badgesResult.value.data.data || []);
+        }
+        if (installedResult.status === 'fulfilled') {
+          const installed = installedResult.value.data.data || [];
+          setInstalledSkillDetails(installed);
+          setInstalledSkills(new Set(installed.map((s: any) => s.openclaw_skill_id).filter(Boolean)));
+        }
+        if (transcriptResult.status === 'fulfilled' && transcriptResult.value.data.data) {
+          setTranscript(transcriptResult.value.data.data);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching tab data:', error);
+      setTabError(
+        error.response?.data?.detail
+        || error.response?.data?.message
+        || error.message
+        || 'Unable to load Dojo data.',
+      );
     } finally {
       setLoading(false);
     }
@@ -366,6 +384,9 @@ export function Dojo() {
     !searchTerm || s.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     s.description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  const achievedTestResults = transcript?.test_results?.length
+    ? transcript.test_results
+    : (achievements?.achieved_skills || []);
 
   // ── Tab Config ─────────────────────────────────────────────
 
@@ -707,6 +728,14 @@ export function Dojo() {
              </div>
            ) : (
              <>
+               {tabError && (
+                 <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-xs text-red-300">
+                   <div className="flex items-center gap-2 font-bold">
+                     <AlertCircle className="h-4 w-4" /> Dojo sync failed
+                   </div>
+                   <p className="mt-1 font-mono text-[10px]">{tabError}</p>
+                 </div>
+               )}
                {/* ── Skills Tab ──────────────────────────── */}
                {activeTab === 'catalog' && (
                  <div className="space-y-4">
@@ -1012,6 +1041,24 @@ export function Dojo() {
                           </div>
                        </div>
 
+                       {/* Earned Specializations */}
+                       {achievements.specializations_earned?.length > 0 && (
+                         <div className="space-y-4">
+                           <h3 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-[0.2em] flex items-center gap-2">
+                             <GraduationCap className="w-3.5 h-3.5 text-purple-400" /> Earned Specializations
+                           </h3>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             {achievements.specializations_earned.map((spec: any) => (
+                               <div key={spec.id || spec.name} className="shogun-card border-purple-500/20 text-center">
+                                 <GraduationCap className="w-7 h-7 text-purple-400 mx-auto mb-2" />
+                                 <p className="text-xs font-bold text-shogun-text">{spec.name || spec.title}</p>
+                                 <CredentialModels item={spec} />
+                               </div>
+                             ))}
+                           </div>
+                         </div>
+                       )}
+
                        {/* Earned Badges */}
                        <div className="space-y-4">
                          <h3 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-[0.2em] flex items-center gap-2">
@@ -1073,13 +1120,13 @@ export function Dojo() {
                         )}
 
                         {/* Certification Transcript */}
-                        {transcript?.test_results?.length > 0 && (
+                        {achievedTestResults.length > 0 && (
                           <div className="space-y-4">
                             <h3 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-[0.2em] flex items-center gap-2">
                               <GraduationCap className="w-3.5 h-3.5 text-shogun-blue" /> Achieved Skills &amp; Certification Transcript
                             </h3>
                             <div className="space-y-3">
-                              {transcript.test_results.map((tr: any, i: number) => {
+                              {achievedTestResults.map((tr: any, i: number) => {
                                 const passed = tr.verificationStatus === 'approved' || tr.score >= 85;
                                 const skillName = skills.find((s: any) => s.id === tr.skillId)?.name || tr.skillName || tr.testId;
                                 const passDate = tr.passedAt ? new Date(tr.passedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : null;
