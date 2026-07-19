@@ -54,6 +54,8 @@ class SkillPromotionService(BaseService):
         skill.brief_text = None
         manifest = dict(skill.manifest or {})
         manifest["canonical_content_source"] = "skills_archive"
+        manifest["canonical_content_hash"] = skill.hash
+        manifest["canonical_content_length"] = len(content)
         manifest["optimized_by"] = "skillopt"
         manifest["active_version"] = new_version.version_number
         skill.manifest = manifest

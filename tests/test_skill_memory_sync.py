@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
@@ -17,6 +18,7 @@ from shogun.db.models.skill_installation import SkillInstallation
 from shogun.db.models.skillopt import SkillOptCandidate, SkillOptTrainingRun, SkillVersion
 from shogun.services.skill_memory_sync import (
     mark_skill_achieved_and_sync,
+    sync_skills_to_all_agent_memories,
     sync_skills_to_memory,
 )
 from shogun.services.skillopt.promotion import SkillPromotionService
@@ -217,3 +219,106 @@ async def test_skillopt_promotion_replaces_the_canonical_archive_markdown(skill_
     assert skill.manifest["optimized_by"] == "skillopt"
     assert record.content == optimized_markdown
     assert candidate.status == "promoted"
+
+
+@pytest.mark.asyncio
+async def test_all_active_agent_mirrors_are_repaired_with_full_markdown(skill_sync_context):
+    session, _ = skill_sync_context
+    agents = [
+        Agent(agent_type="shogun", name="Primary", slug="primary-all", status="active", is_primary=True),
+        Agent(agent_type="samurai", name="Researcher", slug="researcher-all", status="active"),
+    ]
+    skill = Skill(
+        name="Shared Canonical Skill",
+        slug="shared-canonical-skill",
+        version="1.0.0",
+        status="installed",
+        body_text="# Full Skill\n\nComplete canonical procedure and verification.",
+        manifest={},
+    )
+    session.add_all([*agents, skill])
+    await session.flush()
+    session.add_all(
+        [
+            MemoryRecord(
+                agent_id=agent.id,
+                memory_type="skills",
+                title="Skill: Shared Canonical Skill",
+                content="Excerpt only",
+                tags=["skill:shared-canonical-skill"],
+            )
+            for agent in agents
+        ]
+    )
+    await session.commit()
+
+    stats = await sync_skills_to_all_agent_memories(session)
+
+    records = list(
+        (
+            await session.execute(
+                select(MemoryRecord).where(MemoryRecord.title == "Skill: Shared Canonical Skill")
+            )
+        ).scalars()
+    )
+    assert stats["agents"] == 2
+    assert len(records) == 2
+    assert {record.content for record in records} == {skill.body_text}
+    assert {record.source_ref_id for record in records} == {skill.id}
+    assert all(record.content_hash for record in records)
+
+
+@pytest.mark.asyncio
+async def test_sync_refetches_college_markdown_when_canonical_proof_is_missing(
+    skill_sync_context, monkeypatch, tmp_path
+):
+    session, _ = skill_sync_context
+    agent = Agent(agent_type="shogun", name="Primary", slug="primary-fetch", status="active", is_primary=True)
+    skill = Skill(
+        name="College Skill",
+        slug="college-skill",
+        version="1.0.0",
+        status="installed",
+        body_text="Short catalog excerpt",
+        manifest={
+            "openclaw_id": "college-123",
+            "canonical_content_source": "openclaw_college",
+        },
+    )
+    session.add_all([agent, skill])
+    await session.commit()
+    full_markdown = "# College Skill\n\n## Procedure\n\nUse every complete instruction.\n\n## Verification\n\nVerify it."
+
+    class FakeCollegeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get_skill_by_id(self, skill_id):
+            assert skill_id == "college-123"
+            return SimpleNamespace(
+                description_md=full_markdown,
+                version="2.0.0",
+                short_description="Complete College skill",
+            )
+
+    import shogun.integrations.openclaw_client as openclaw_module
+    from shogun.config import settings
+
+    monkeypatch.setattr(openclaw_module, "get_openclaw_client", lambda: FakeCollegeClient())
+    monkeypatch.setattr(settings, "vault_path", tmp_path)
+
+    await sync_skills_to_memory(session, agent.id)
+
+    record = (
+        await session.execute(select(MemoryRecord).where(MemoryRecord.source_ref_id == skill.id))
+    ).scalar_one()
+    assert skill.body_text == full_markdown
+    assert skill.manifest["canonical_content_length"] == len(full_markdown)
+    assert skill.manifest["canonical_content_hash"] == record.content_hash
+    assert record.content == full_markdown
+    assert (tmp_path / "skills" / "openclaw" / "college-skill" / "SKILL.md").read_text(
+        encoding="utf-8"
+    ).strip() == full_markdown

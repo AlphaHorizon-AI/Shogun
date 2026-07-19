@@ -1,8 +1,8 @@
 {
-  "version": "1.30.0",
+  "version": "1.30.1",
   "name": "Shogun OS",
-  "build": 107,
+  "build": 108,
   "channel": "stable",
-  "released": "2026-07-19T19:31:00Z",
-  "changelog": "Make the Archives Skills layer canonical: persist full OpenClaw Markdown, hydrate legacy installs, inject Archive instructions at runtime, and publish SkillOpt promotions back to every agent Archive."
+  "released": "2026-07-19T19:50:09Z",
+  "changelog": "Repair incomplete Skills Archive mirrors with verified full OpenClaw Markdown, expose canonical SKILL.md content in Archive details, and raise governed agent tool steps to 75."
 }

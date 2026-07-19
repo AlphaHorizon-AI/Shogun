@@ -1263,9 +1263,9 @@ export function Archives() {
                  <div className="col-span-8 p-8 border-r border-shogun-border space-y-8 bg-[#050508]/20">
                     <div className="space-y-4">
                        <h4 className="text-[10px] font-bold text-shogun-blue uppercase tracking-[0.2em] flex items-center gap-2">
-                         <Layers className="w-3.5 h-3.5" /> {selectedMemory.memory_type === 'programming' ? 'Verified Solution' : 'Intelligence Payload'}
+                         <Layers className="w-3.5 h-3.5" /> {selectedMemory.memory_type === 'programming' ? 'Verified Solution' : selectedMemory.memory_type === 'skills' ? 'Full Canonical SKILL.md' : 'Intelligence Payload'}
                        </h4>
-                       <div className="bg-shogun-bg border border-shogun-border p-6 rounded-2xl text-[13px] leading-relaxed text-shogun-text font-mono whitespace-pre-wrap shadow-inner min-h-[300px]">
+                       <div className="bg-shogun-bg border border-shogun-border p-6 rounded-2xl text-[13px] leading-relaxed text-shogun-text font-mono whitespace-pre-wrap break-words shadow-inner min-h-[300px]">
                           {selectedMemory.solution || selectedMemory.content || '(Fragment empty)'}
                        </div>
                     </div>

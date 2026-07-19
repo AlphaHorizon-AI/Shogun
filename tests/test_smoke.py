@@ -8,7 +8,14 @@ import pytest
 def test_version():
     """Package version is set."""
     import shogun
-    assert shogun.__version__ == "1.30.0"
+    assert shogun.__version__ == "1.30.1"
+
+
+def test_agent_tool_step_limit_supports_specializations():
+    """Long specialization runs get enough governed tool/model rounds."""
+    from shogun.config import settings
+
+    assert settings.agent_max_tool_steps == 75
 
 
 def test_app_factory():

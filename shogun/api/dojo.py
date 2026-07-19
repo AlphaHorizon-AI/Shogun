@@ -7,6 +7,7 @@ URL-based skill installation.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from typing import Any
@@ -688,6 +689,7 @@ async def install_openclaw_skill(
         raise HTTPException(status_code=422, detail="OpenClaw College did not provide Markdown instructions for this skill")
 
     canonical_markdown = college_skill.description_md.strip()
+    canonical_hash = hashlib.sha256(canonical_markdown.encode("utf-8")).hexdigest()
     canonical_name = college_skill.name or body.skill_name
     canonical_version = college_skill.version or body.version
     canonical_capabilities = list(college_skill.capabilities or body.capabilities)
@@ -738,6 +740,8 @@ async def install_openclaw_skill(
                 "openclaw_id": body.openclaw_skill_id,
                 "description": college_skill.short_description or canonical_name,
                 "canonical_content_source": "openclaw_college",
+                "canonical_content_hash": canonical_hash,
+                "canonical_content_length": len(canonical_markdown),
             }
             await db.flush()
             if not existing.active_version_id:
@@ -771,6 +775,8 @@ async def install_openclaw_skill(
             "permissions": body.permissions,
             "capabilities": canonical_capabilities,
             "canonical_content_source": "openclaw_college",
+            "canonical_content_hash": canonical_hash,
+            "canonical_content_length": len(canonical_markdown),
         },
         risk_score={"shrine": 0.9, "elevated": 0.6, "tactical": 0.3}.get(body.risk_tier, 0.1),
         trust_score=80,

@@ -24,6 +24,10 @@ SKILLS_MEMORY_TYPE = "skills"
 LEGACY_SKILLS_MEMORY_TYPE = "skill"
 
 
+def _content_hash(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
 async def _installed_skills(session: AsyncSession) -> list[Skill]:
     installed_ids = select(SkillInstallation.skill_id).where(SkillInstallation.status == "installed")
     result = await session.execute(
@@ -40,13 +44,18 @@ async def _installed_skills(session: AsyncSession) -> list[Skill]:
 
 
 async def _hydrate_legacy_openclaw_markdown(session: AsyncSession, skills: list[Skill]) -> int:
-    """Upgrade summary-only College installs to their real Markdown once."""
+    """Fetch real College Markdown whenever local canonical proof is missing."""
     legacy = [
         skill
         for skill in skills
         if (skill.manifest or {}).get("openclaw_id")
-        and (skill.manifest or {}).get("canonical_content_source") != "openclaw_college"
         and (skill.manifest or {}).get("optimized_by") != "skillopt"
+        and (
+            (skill.manifest or {}).get("canonical_content_source") != "openclaw_college"
+            or not (skill.manifest or {}).get("canonical_content_hash")
+            or not skill.body_text
+            or _content_hash(skill.body_text) != (skill.manifest or {}).get("canonical_content_hash")
+        )
     ]
     if not legacy:
         return 0
@@ -80,6 +89,8 @@ async def _hydrate_legacy_openclaw_markdown(session: AsyncSession, skills: list[
         skill.version = college_skill.version or skill.version
         manifest = dict(skill.manifest or {})
         manifest["canonical_content_source"] = "openclaw_college"
+        manifest["canonical_content_hash"] = _content_hash(content)
+        manifest["canonical_content_length"] = len(content)
         manifest["description"] = college_skill.short_description or skill.name
         skill.manifest = manifest
         if not skill.active_version_id:
@@ -96,7 +107,7 @@ async def _hydrate_legacy_openclaw_markdown(session: AsyncSession, skills: list[
                     version_number=1,
                     status="active",
                     content_path=str(content_path),
-                    content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                    content_hash=_content_hash(content),
                     created_by="openclaw_college",
                 )
                 session.add(version)
@@ -147,10 +158,13 @@ async def sync_skills_to_memory(session: AsyncSession, agent_id: str | uuid.UUID
     for skill in skills:
         installed_slugs.add(skill.slug)
         content = skill.body_text or skill.brief_text or skill.description or skill.name
+        canonical_hash = _content_hash(content)
+        openclaw_id = (skill.manifest or {}).get("openclaw_id")
         tags = [
             f"skill:{skill.slug}",
             f"exam:{skill.exam_status or 'untested'}",
             f"type:{skill.skill_type or 'unknown'}",
+            "canonical:skills-archive",
         ]
         record = existing_by_skill_id.get(str(skill.id)) or existing_by_slug.get(skill.slug)
         changed = False
@@ -168,6 +182,9 @@ async def sync_skills_to_memory(session: AsyncSession, agent_id: str | uuid.UUID
                 confidence_score=0.95,
                 tags=tags,
                 source_type="dojo_skill",
+                source_system="openclaw_college" if openclaw_id else "shogun",
+                source_external_id=str(openclaw_id) if openclaw_id else str(skill.id),
+                content_hash=canonical_hash,
             )
             session.add(record)
             added += 1
@@ -183,6 +200,9 @@ async def sync_skills_to_memory(session: AsyncSession, agent_id: str | uuid.UUID
                 "is_archived": False,
                 "decay_class": "pinned",
                 "source_type": "dojo_skill",
+                "source_system": "openclaw_college" if openclaw_id else "shogun",
+                "source_external_id": str(openclaw_id) if openclaw_id else str(skill.id),
+                "content_hash": canonical_hash,
             }
             for field, value in expected.items():
                 if getattr(record, field) != value:

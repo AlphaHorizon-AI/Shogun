@@ -1968,7 +1968,7 @@ BEHAVIOUR:
         _any_tool_executed = False
         _tool_enforcement_retried = False
         _tool_round = 0
-        _max_tool_rounds = 12
+        _max_tool_rounds = settings.agent_max_tool_steps
 
         while True:
             _tool_round += 1

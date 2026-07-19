@@ -108,6 +108,7 @@ class Settings(BaseSettings):
     active_skill_allow_failed_exams: bool = False
     active_skill_allow_deprecated: bool = False
     active_skill_preserve_during_compaction: bool = True
+    agent_max_tool_steps: int = 75
 
     # ── Telegram ─────────────────────────────────────────────
     telegram_bot_token: str | None = None
