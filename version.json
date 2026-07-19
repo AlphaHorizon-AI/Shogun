@@ -1,8 +1,8 @@
 {
-  "version": "1.27.1",
+  "version": "1.28.0",
   "name": "Shogun OS",
-  "build": 102,
+  "build": 103,
   "channel": "stable",
-  "released": "2026-07-19T15:10:35Z",
-  "changelog": "Require the configured model to produce a substantive post-exam review and submit it atomically with every OpenClaw College exam result."
+  "released": "2026-07-19T16:30:00Z",
+  "changelog": "Record and display immutable model provenance on achieved skills, badges, and specializations, including explicit legacy markers."
 }

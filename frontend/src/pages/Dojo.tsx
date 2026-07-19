@@ -51,6 +51,24 @@ interface RegistrationStatus {
   reason?: string;
 }
 
+function credentialModelIds(item: any): string[] {
+  const values = item?.credential_model_ids || item?.credentialModelIds || item?.modelIds;
+  if (Array.isArray(values) && values.length) return values;
+  return [item?.modelId || item?.model_id || 'unknown (legacy credential)'];
+}
+
+function CredentialModels({ item }: { item: any }) {
+  return (
+    <div className="mt-2 flex flex-wrap justify-center gap-1">
+      {credentialModelIds(item).map((modelId) => (
+        <span key={modelId} className="inline-flex items-center gap-1 rounded border border-shogun-border bg-[#050508] px-1.5 py-0.5 text-[8px] font-mono text-shogun-subdued">
+          <Lock className="h-2.5 w-2.5" /> {modelId}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function Dojo() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<DojoTab>('catalog');
@@ -853,7 +871,9 @@ export function Dojo() {
                      </div>
                    ) : (
                      <div className="grid grid-cols-1 gap-6">
-                       {filteredSpecs.map((spec) => (
+                       {filteredSpecs.map((spec) => {
+                         const earnedSpec = achievements?.specializations_earned?.find((item: any) => item.id === spec.id);
+                         return (
                          <div key={spec.id} className={cn("shogun-card group cursor-pointer transition-all", expandedSpec === spec.id ? "border-purple-400/50" : "hover:border-purple-400/50")} onClick={() => setExpandedSpec(expandedSpec === spec.id ? null : spec.id)}>
                            <div className="flex items-start gap-4">
                              <div className="w-14 h-14 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-center justify-center flex-shrink-0 text-2xl">
@@ -869,6 +889,13 @@ export function Dojo() {
                                <p className="text-xs text-shogun-subdued leading-relaxed line-clamp-2">
                                  {spec.title || spec.description}
                                </p>
+                               {earnedSpec && (
+                                 <div className="mt-2 flex items-center gap-2">
+                                   <BadgeCheck className="h-3.5 w-3.5 text-green-400" />
+                                   <span className="text-[9px] font-bold uppercase tracking-wider text-green-400">Earned with</span>
+                                   <CredentialModels item={earnedSpec} />
+                                 </div>
+                               )}
                                <div className="flex items-center gap-4 mt-3">
                                  <span className="text-[10px] text-shogun-subdued uppercase font-bold tracking-widest">
                                    Faculty: {spec.facultyId || spec.faculty || 'General'}
@@ -929,7 +956,8 @@ export function Dojo() {
                              </div>
                            )}
                          </div>
-                       ))}
+                         );
+                       })}
                      </div>
                    )}
                  </div>
@@ -992,6 +1020,7 @@ export function Dojo() {
                                  </div>
                                  <p className="text-xs font-bold text-shogun-text">{badge.name}</p>
                                  <p className="text-[9px] text-shogun-subdued mt-1 line-clamp-2">{badge.description}</p>
+                                 <CredentialModels item={badge} />
                                </div>
                              ))}
                            </div>
@@ -1041,7 +1070,7 @@ export function Dojo() {
                         {transcript?.test_results?.length > 0 && (
                           <div className="space-y-4">
                             <h3 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-[0.2em] flex items-center gap-2">
-                              <GraduationCap className="w-3.5 h-3.5 text-shogun-blue" /> Certification Transcript
+                              <GraduationCap className="w-3.5 h-3.5 text-shogun-blue" /> Achieved Skills &amp; Certification Transcript
                             </h3>
                             <div className="space-y-3">
                               {transcript.test_results.map((tr: any, i: number) => {
@@ -1087,11 +1116,14 @@ export function Dojo() {
                                               <Shield className="w-2.5 h-2.5" /> {tr.agentName}
                                             </span>
                                           )}
-                                          {tr.modelId && (
-                                            <span className="text-[9px] text-shogun-subdued flex items-center gap-1">
-                                              <Lock className="w-2.5 h-2.5" /> <span className="font-mono">{tr.modelId}</span>
-                                            </span>
-                                          )}
+                                          <span className="text-[9px] text-shogun-subdued flex items-center gap-1">
+                                            <Lock className="w-2.5 h-2.5" />
+                                            <span className="font-mono">{credentialModelIds(
+                                              achievements?.achieved_skills?.find((item: any) => (
+                                                item.testId === tr.testId || item.skillId === tr.skillId
+                                              )) || tr,
+                                            ).join(', ')}</span>
+                                          </span>
                                         </div>
                                       </div>
 
@@ -1130,7 +1162,8 @@ export function Dojo() {
                      {badges.length > 0 ? (
                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                          {badges.map((badge: any) => {
-                           const earned = achievements?.badges?.some((b: any) => b.id === badge.id);
+                           const earnedBadge = achievements?.badges?.find((b: any) => b.id === badge.id);
+                           const earned = Boolean(earnedBadge);
                            return (
                              <div key={badge.id || badge.name} className={cn(
                                "shogun-card text-center transition-all",
@@ -1150,6 +1183,7 @@ export function Dojo() {
                                {badge.description && (
                                  <p className="text-[8px] text-shogun-subdued mt-1 line-clamp-2">{badge.description}</p>
                                )}
+                               {earnedBadge && <CredentialModels item={earnedBadge} />}
                              </div>
                            );
                          })}

@@ -394,6 +394,40 @@ async def get_achievements(db: AsyncSession = Depends(get_db)):
 
     # Count exams passed from College test results
     test_results = agent_data.get("testResults", [])
+    credential_provenance = agent_data.get("credentialProvenance") or {}
+    skill_provenance = credential_provenance.get("skills") or {}
+    badge_provenance = credential_provenance.get("badges") or {}
+    specialization_provenance = credential_provenance.get("specializations") or {}
+    legacy_model = "unknown (legacy credential)"
+    specialization_by_id = {item.get("id"): item for item in specialization_catalog}
+    specialization_by_badge = {item.get("badgeId"): item for item in specialization_catalog}
+
+    def models_for_specialization(item):
+        required_ids = set(item.get("requiredSkillIds") or [])
+        models = {
+            tr.get("modelId") or tr.get("model_id") or legacy_model
+            for tr in test_results
+            if tr.get("skillId") in required_ids
+            and (
+                tr.get("verificationStatus") == "approved"
+                or tr.get("passed") is True
+                or tr.get("score", 0) >= tr.get("passThreshold", 85)
+            )
+        }
+        return sorted(models) or [legacy_model]
+    achieved_skills = [
+        {
+            **tr,
+            "credential_model_ids": (
+                skill_provenance.get(tr.get("skillId"), {}).get("modelIds")
+                or [tr.get("modelId") or tr.get("model_id") or legacy_model]
+            ),
+        }
+        for tr in test_results
+        if tr.get("verificationStatus") == "approved"
+        or tr.get("passed") is True
+        or (tr.get("score", 0) >= tr.get("passThreshold", 85))
+    ]
     exams_passed = sum(
         1 for tr in test_results
         if tr.get("verificationStatus") == "approved"
@@ -410,11 +444,31 @@ async def get_achievements(db: AsyncSession = Depends(get_db)):
         for badge in badge_catalog
         if badge.get("id") in badge_ids
     ]
+    earned_badges = [
+        {
+            **badge,
+            "credential_model_ids": (
+                badge_provenance.get(badge.get("id"), {}).get("modelIds")
+                or models_for_specialization(specialization_by_badge.get(badge.get("id"), {}))
+            ),
+        }
+        for badge in earned_badges
+    ]
     specialization_ids = agent_data.get("specializations", [])
     earned_specializations = agent_data.get("earnedSpecializations") or [
         {**item, "name": item.get("name") or item.get("title")}
         for item in specialization_catalog
         if item.get("id") in specialization_ids
+    ]
+    earned_specializations = [
+        {
+            **item,
+            "credential_model_ids": (
+                specialization_provenance.get(item.get("id"), {}).get("modelIds")
+                or models_for_specialization(specialization_by_id.get(item.get("id"), item))
+            ),
+        }
+        for item in earned_specializations
     ]
 
     return ApiResponse(data={
@@ -423,6 +477,8 @@ async def get_achievements(db: AsyncSession = Depends(get_db)):
         "agent_name": agent_data.get("name", agent.name),
         "badges": earned_badges,
         "specializations_earned": earned_specializations,
+        "achieved_skills": achieved_skills,
+        "credential_provenance": credential_provenance,
         "enrollments": agent_data.get("enrollments", []),
         "skills_completed": agent_data.get("skillsCompleted", len({
             result.get("skillId") for result in test_results if result.get("skillId")
