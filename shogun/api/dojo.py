@@ -914,6 +914,10 @@ class SubmitExamRequest(BaseModel):
     score: int = Field(..., ge=0, le=100)
     model_id: str = Field(default="", description="Model name that took the exam")
     log_artifact: str = Field(default="", description="Execution log proving test completion")
+    review_rating: int = Field(..., ge=1, le=5)
+    review_strengths: str = Field(..., min_length=20, max_length=1000)
+    review_improvements: str = Field(..., min_length=20, max_length=1000)
+    review_comment: str = Field(default="", max_length=1000)
 
 
 async def _resolve_primary_model(agent: Any, db: AsyncSession) -> str:
@@ -966,6 +970,12 @@ async def submit_exam_result(
             log_artifact=body.log_artifact,
             agent_name=agent.name,
             model_id=model_id,
+            review={
+                "rating": body.review_rating,
+                "strengths": body.review_strengths,
+                "improvements": body.review_improvements,
+                "comment": body.review_comment,
+            },
         )
 
     return ApiResponse(data=result_data)
@@ -1051,6 +1061,7 @@ async def auto_take_exam(
             log_artifact=log_artifact,
             agent_name=agent.name,
             model_id=model_id,
+            review=exam_attempt["exam_review"],
         )
 
         if score >= pass_threshold:

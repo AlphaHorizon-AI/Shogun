@@ -49,8 +49,9 @@ async def answer_exam_questions(
     ]
     system_prompt = """You are taking a closed-book professional certification exam.
 Answer from the supplied skill guidance and your domain reasoning. The answer key is not available.
-Return JSON only in this exact shape: {"answers": {"q-1": "exact option text"}}.
-Choose exactly one provided option for every question. Do not add explanations or markdown."""
+Return JSON only in this shape:
+{"answers":{"q-1":"exact option text"},"review":{"rating":4,"strengths":"specific substantive feedback","improvements":"specific substantive feedback","comment":"overall assessment","tags":["clear","challenging"]}}.
+Choose exactly one provided option for every question. The review must be genuine, specific to the supplied guidance and exam, and include at least 20 characters in both strengths and improvements. Do not add markdown."""
     user_message = json.dumps(
         {
             "skill": skill_name,
@@ -64,6 +65,18 @@ Choose exactly one provided option for every question. Do not add explanations o
     submitted = payload.get("answers")
     if not isinstance(submitted, dict):
         raise ValueError("The configured model did not return an answers mapping")
+    review = payload.get("review")
+    if not isinstance(review, dict):
+        raise ValueError("The configured model did not return its required post-exam review")
+    rating = review.get("rating")
+    strengths = str(review.get("strengths") or "").strip()
+    improvements = str(review.get("improvements") or "").strip()
+    comment = str(review.get("comment") or "").strip()
+    if not isinstance(rating, int) or not 1 <= rating <= 5:
+        raise ValueError("The configured model returned an invalid review rating")
+    if len(strengths) < 20 or len(improvements) < 20:
+        raise ValueError("The configured model returned an insufficiently substantive exam review")
+    tags = review.get("tags") if isinstance(review.get("tags"), list) else []
 
     correct = 0
     review: list[dict[str, Any]] = []
@@ -97,4 +110,11 @@ Choose exactly one provided option for every question. Do not add explanations o
         "score": int((correct / total) * 100) if total else 0,
         "provider_id": str(provider.id),
         "provider_name": provider.name,
+        "exam_review": {
+            "rating": rating,
+            "strengths": strengths[:1000],
+            "improvements": improvements[:1000],
+            "comment": comment[:1000],
+            "tags": [str(tag).strip() for tag in tags if str(tag).strip()][:8],
+        },
     }

@@ -178,6 +178,32 @@ class OpenClawClient:
             raise last_auth_error
         raise RuntimeError("OpenClaw authenticated POST failed before receiving a response")
 
+    async def _get_authenticated(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        """GET a private College resource with the same credential fallback."""
+        last_auth_error: httpx.HTTPStatusError | None = None
+        for headers in self._auth_header_candidates():
+            response = await self.client.get(
+                f"{self.base_url}/{path.lstrip('/')}",
+                params=params,
+                headers=headers,
+            )
+            if response.status_code in {401, 403}:
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    last_auth_error = exc
+                continue
+            response.raise_for_status()
+            return response
+        if last_auth_error:
+            raise last_auth_error
+        raise RuntimeError("OpenClaw authenticated GET failed before receiving a response")
+
     async def __aenter__(self):
         self._client = httpx.AsyncClient(timeout=self.timeout)
         return self
@@ -477,9 +503,9 @@ class OpenClawClient:
     # ── Agent Lookup ─────────────────────────────────────────
 
     async def get_agent_by_id(self, agent_id: str) -> dict[str, Any] | None:
-        """Fetch a registered agent's profile and achievements."""
+        """Fetch the authenticated agent's private profile and achievements."""
         try:
-            resp = await self.client.get(f"{self.base_url}/agents/{agent_id}")
+            resp = await self._get_authenticated(f"v1/agents/{quote(agent_id, safe='')}/self")
             if resp.status_code == 404:
                 return None
             resp.raise_for_status()
@@ -557,11 +583,7 @@ class OpenClawClient:
         GET /api/v1/tests?skillId={skillId}
         Returns test metadata (id, passThreshold) or None if not found.
         """
-        resp = await self.client.get(
-            f"{self.base_url}/v1/tests",
-            params={"skillId": skill_id},
-            headers=self._auth_headers(),
-        )
+        resp = await self._get_authenticated("v1/tests", params={"skillId": skill_id})
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
@@ -577,10 +599,7 @@ class OpenClawClient:
         GET /api/v1/tests/:id
         Returns 30-50 MCQ questions with id, text, and options.
         """
-        resp = await self.client.get(
-            f"{self.base_url}/v1/tests/{test_id}",
-            headers=self._auth_headers(),
-        )
+        resp = await self._get_authenticated(f"v1/tests/{test_id}")
         resp.raise_for_status()
         return resp.json()
 
@@ -592,6 +611,7 @@ class OpenClawClient:
         log_artifact: str = "",
         agent_name: str | None = None,
         model_id: str | None = None,
+        review: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Submit test results to the College.
 
@@ -610,6 +630,8 @@ class OpenClawClient:
             payload["agentName"] = agent_name
         if model_id:
             payload["modelId"] = model_id
+        if review:
+            payload["review"] = review
 
         return await self._post_authenticated(f"v1/tests/{test_id}/results", payload)
 
@@ -619,10 +641,7 @@ class OpenClawClient:
         GET /api/v1/test-results/:id
         """
         try:
-            resp = await self.client.get(
-                f"{self.base_url}/v1/test-results/{result_id}",
-                headers=self._auth_headers(),
-            )
+            resp = await self._get_authenticated(f"v1/test-results/{result_id}")
             if resp.status_code == 404:
                 return None
             resp.raise_for_status()

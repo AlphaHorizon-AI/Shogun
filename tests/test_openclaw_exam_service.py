@@ -17,7 +17,14 @@ async def test_exam_model_never_receives_answer_keys(monkeypatch):
 
     async def fake_call(_self, _provider, _system_prompt, user_message):
         captured["user_message"] = user_message
-        return '{"answers":{"q-1":"Use a staged rollout","q-2":"Not an option"}}'
+        return (
+            '{"answers":{"q-1":"Use a staged rollout","q-2":"Not an option"},'
+            '"review":{"rating":4,'
+            '"strengths":"The staged rollout guidance was concrete and directly applicable.",'
+            '"improvements":"The evidence question could use a more realistic operational scenario.",'
+            '"comment":"A demanding and useful deployment assessment.",'
+            '"tags":["clear","challenging"]}}'
+        )
 
     monkeypatch.setattr(
         InternalShogunAdapter,
@@ -52,3 +59,5 @@ async def test_exam_model_never_receives_answer_keys(monkeypatch):
     assert result["total"] == 2
     assert result["score"] == 50
     assert result["questions_review"][1]["agentAnswer"] == ""
+    assert result["exam_review"]["rating"] == 4
+    assert result["exam_review"]["tags"] == ["clear", "challenging"]

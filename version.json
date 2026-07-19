@@ -1,8 +1,8 @@
 {
-  "version": "1.27.0",
+  "version": "1.27.1",
   "name": "Shogun OS",
-  "build": 101,
+  "build": 102,
   "channel": "stable",
-  "released": "2026-07-19T14:42:47Z",
-  "changelog": "Retrieve achieved and installed skills from Archives semantic memory for every task, inject only relevant skill guidance, install full College content, and replace answer-key exam shortcuts with configured-model reasoning at a hardened 90% pass threshold."
+  "released": "2026-07-19T15:10:35Z",
+  "changelog": "Require the configured model to produce a substantive post-exam review and submit it atomically with every OpenClaw College exam result."
 }

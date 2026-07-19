@@ -5135,6 +5135,7 @@ async def _dojo_take_exam(args: dict[str, Any]) -> str:
                     log_artifact=log_artifact,
                     agent_name=agent.name,
                     model_id=model_id,
+                    review=exam_attempt["exam_review"],
                 )
 
             if score >= pass_threshold:
