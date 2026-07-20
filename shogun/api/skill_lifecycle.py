@@ -26,6 +26,16 @@ class AuthorSkillRequest(BaseModel):
     description: str = ""
     body_text: str = ""
     triggers: list[str] = Field(default_factory=list)
+    use_when: list[str] = Field(default_factory=list)
+    avoid_when: list[str] = Field(default_factory=list)
+    required_inputs: list[str] = Field(default_factory=list)
+    workflow_steps: list[str] = Field(default_factory=list)
+    decision_rules: list[str] = Field(default_factory=list)
+    output_requirements: list[str] = Field(default_factory=list)
+    success_criteria: list[str] = Field(default_factory=list)
+    failure_handling: list[str] = Field(default_factory=list)
+    example_input: str = ""
+    example_output: str = ""
     risk_tier: str = "low"
     requires_tools: list[str] = Field(default_factory=list)
     optional_tools: list[str] = Field(default_factory=list)
@@ -68,6 +78,16 @@ async def author_skill(body: AuthorSkillRequest, db: AsyncSession = Depends(get_
             description=body.description,
             body_text=body.body_text,
             triggers=body.triggers,
+            use_when=body.use_when,
+            avoid_when=body.avoid_when,
+            required_inputs=body.required_inputs,
+            workflow_steps=body.workflow_steps,
+            decision_rules=body.decision_rules,
+            output_requirements=body.output_requirements,
+            success_criteria=body.success_criteria,
+            failure_handling=body.failure_handling,
+            example_input=body.example_input,
+            example_output=body.example_output,
             risk_tier=body.risk_tier,
             requires_tools=body.requires_tools,
             optional_tools=body.optional_tools,
@@ -107,6 +127,7 @@ async def add_tests(
 async def list_tests(skill_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """List validation tests for a skill."""
     from sqlalchemy import select
+
     from shogun.db.models.skill_test import SkillTest
     result = await db.execute(
         select(SkillTest).where(SkillTest.skill_id == skill_id)
@@ -146,6 +167,7 @@ async def run_quality_gate(skill_id: uuid.UUID, db: AsyncSession = Depends(get_d
 async def get_validation_results(skill_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """Get validation/quality gate history for a skill."""
     from sqlalchemy import select
+
     from shogun.db.models.skill_test import SkillTest
     result = await db.execute(
         select(SkillTest).where(SkillTest.skill_id == skill_id).order_by(SkillTest.last_run_at.desc())
@@ -171,8 +193,8 @@ async def get_validation_results(skill_id: uuid.UUID, db: AsyncSession = Depends
 @router.post("/{skill_id}/validate")
 async def validate_skill(skill_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """Run quality gate and transition to 'validated' if passed."""
-    from shogun.services.skill_quality_gate import SkillQualityGateService
     from shogun.db.models.skill import Skill
+    from shogun.services.skill_quality_gate import SkillQualityGateService
     svc = SkillQualityGateService(db)
     result = await svc.run_quality_gate(skill_id)
     if result.get("status") == "error":
@@ -243,6 +265,7 @@ async def republish_skill(
 async def get_publication_status(skill_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """Get publication history for a skill."""
     from sqlalchemy import select
+
     from shogun.db.models.skill_publication import SkillPublication
     result = await db.execute(
         select(SkillPublication).where(SkillPublication.skill_id == skill_id)

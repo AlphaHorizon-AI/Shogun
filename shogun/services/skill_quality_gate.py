@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +56,23 @@ CREDENTIAL_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\b(sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,})\b"),
 ]
 
+REQUIRED_OPERATIONAL_SECTIONS: dict[str, tuple[str, ...]] = {
+    "purpose": ("purpose",),
+    "activation_criteria": ("activation criteria", "when to use"),
+    "required_inputs": ("required inputs",),
+    "workflow": ("workflow", "operating instructions"),
+    "permissions_and_safety": ("permissions and safety", "safety"),
+    "output_requirements": ("output requirements", "output standard"),
+    "success_criteria": ("success criteria", "validation criteria"),
+    "failure_handling": ("failure handling", "failure modes"),
+}
+
+PLACEHOLDER_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"(?i)\[TODO(?:\s*:|\])"),
+    re.compile(r"(?i)describe\s+the\s+(purpose|specific capability|outcome)"),
+    re.compile(r"(?i)no\s+triggers\s+defined"),
+)
+
 
 class SkillQualityGateService:
     """Runs the 14-point quality gate on a skill before publication."""
@@ -72,7 +90,9 @@ class SkillQualityGateService:
         details: dict[str, str] = {}
 
         # 1. Manifest exists and is non-empty
-        checks["manifest_exists"] = bool(skill.manifest and isinstance(skill.manifest, dict) and len(skill.manifest) > 0)
+        checks["manifest_exists"] = bool(
+            skill.manifest and isinstance(skill.manifest, dict) and len(skill.manifest) > 0
+        )
         if not checks["manifest_exists"]:
             details["manifest_exists"] = "Skill manifest is empty or missing."
 
@@ -101,6 +121,44 @@ class SkillQualityGateService:
         if not checks["activation_triggers_exist"]:
             details["activation_triggers_exist"] = "No activation triggers defined."
 
+        # Operational content must give the agent concrete execution guidance.
+        body = skill.body_text or ""
+        headings = {
+            match.group(1).strip().lower()
+            for match in re.finditer(r"(?m)^##\s+(.+?)\s*$", body)
+        }
+        missing_sections = [
+            key
+            for key, aliases in REQUIRED_OPERATIONAL_SECTIONS.items()
+            if not any(alias in headings for alias in aliases)
+        ]
+        checks["operational_structure_complete"] = not missing_sections
+        if missing_sections:
+            details["operational_structure_complete"] = (
+                "Missing operational sections: " + ", ".join(missing_sections)
+            )
+
+        unresolved = [
+            match.group(0)
+            for pattern in PLACEHOLDER_PATTERNS
+            if (match := pattern.search(body))
+        ]
+        checks["no_unresolved_placeholders"] = not unresolved
+        if unresolved:
+            details["no_unresolved_placeholders"] = (
+                "Replace draft placeholders before publication: " + ", ".join(unresolved[:3])
+            )
+
+        description = str((skill.manifest or {}).get("description") or "").strip()
+        checks["actionable_description_exists"] = (
+            len(description) >= 24
+            and not any(pattern.search(description) for pattern in PLACEHOLDER_PATTERNS)
+        )
+        if not checks["actionable_description_exists"]:
+            details["actionable_description_exists"] = (
+                "Description must state the capability, intended outcome, and activation context."
+            )
+
         # 5. Risk tier is assigned
         checks["risk_tier_declared"] = skill.risk_tier in ("low", "medium", "high", "critical")
         if not checks["risk_tier_declared"]:
@@ -110,8 +168,9 @@ class SkillQualityGateService:
         checks["tool_requirements_declared"] = isinstance(skill.requires_tools, list)
 
         # 7. Validation tests exist
+        from sqlalchemy import func, select
+
         from shogun.db.models.skill_test import SkillTest
-        from sqlalchemy import select, func
         test_count_result = await self.session.execute(
             select(func.count()).select_from(SkillTest).where(SkillTest.skill_id == skill_id)
         )
@@ -133,7 +192,6 @@ class SkillQualityGateService:
             details["validation_tests_passed"] = "No validation tests have been run yet."
 
         # 9. No forbidden instructions
-        body = skill.body_text or ""
         forbidden_found = []
         for pattern in FORBIDDEN_PATTERNS:
             match = pattern.search(body)
@@ -167,11 +225,15 @@ class SkillQualityGateService:
         if not checks["version_valid"]:
             details["version_valid"] = f"Version {skill.version!r} is not valid semver."
 
-        # 13. Changelog exists (check manifest or body for changelog markers)
-        has_changelog = "## Changelog" in body or "changelog" in (skill.manifest or {})
+        # 13. Changelog exists as package metadata, not agent instructions.
+        changelog_path = Path(skill.local_path).parent / "changelog.md" if skill.local_path else None
+        has_changelog = bool(
+            "changelog" in (skill.manifest or {})
+            or (changelog_path and changelog_path.is_file())
+        )
         checks["changelog_exists"] = has_changelog
         if not checks["changelog_exists"]:
-            details["changelog_exists"] = "No changelog section found in skill body or manifest."
+            details["changelog_exists"] = "No changelog file or manifest entry found."
 
         # 14. Audit event recorded (always true — we emit one now)
         checks["audit_event_recorded"] = True
@@ -180,10 +242,24 @@ class SkillQualityGateService:
         total = len(checks)
         passed = sum(1 for v in checks.values() if v)
         score = round(passed / total, 2) if total > 0 else 0.0
-        status = "passed" if score >= 0.7 and checks.get("no_forbidden_instructions") and checks.get("no_hidden_credentials") else "failed"
+        status = (
+            "passed"
+            if score >= 0.7
+            and checks.get("no_forbidden_instructions")
+            and checks.get("no_hidden_credentials")
+            else "failed"
+        )
 
         # Safety checks are hard gates — even with high score, fail on safety
-        if not checks.get("no_forbidden_instructions") or not checks.get("no_hidden_credentials") or not checks.get("no_posture_bypass"):
+        hard_gates = (
+            "no_forbidden_instructions",
+            "no_hidden_credentials",
+            "no_posture_bypass",
+            "operational_structure_complete",
+            "no_unresolved_placeholders",
+            "actionable_description_exists",
+        )
+        if any(not checks.get(check) for check in hard_gates):
             status = "failed"
 
         result = {

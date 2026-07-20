@@ -21,7 +21,6 @@ from shogun.config import settings
 from shogun.db.models.skill import Skill
 from shogun.db.models.skill_test import SkillTest
 from shogun.db.models.skillopt import SkillVersion
-from shogun.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +47,16 @@ class SkillAuthoringService:
         description: str = "",
         body_text: str = "",
         triggers: list[str] | None = None,
+        use_when: list[str] | None = None,
+        avoid_when: list[str] | None = None,
+        required_inputs: list[str] | None = None,
+        workflow_steps: list[str] | None = None,
+        decision_rules: list[str] | None = None,
+        output_requirements: list[str] | None = None,
+        success_criteria: list[str] | None = None,
+        failure_handling: list[str] | None = None,
+        example_input: str = "",
+        example_output: str = "",
         risk_tier: str = "low",
         requires_tools: list[str] | None = None,
         optional_tools: list[str] | None = None,
@@ -61,7 +70,7 @@ class SkillAuthoringService:
         # Check for duplicate
         from sqlalchemy import select
         existing = await self.session.execute(
-            select(Skill).where(Skill.slug == slug, Skill.is_deleted == False)
+            select(Skill).where(Skill.slug == slug, Skill.is_deleted.is_(False))
         )
         if existing.scalars().first():
             raise ValueError(f"A skill with slug {slug!r} already exists.")
@@ -81,6 +90,15 @@ class SkillAuthoringService:
             "required_tools": requires_tools or [],
             "optional_tools": optional_tools or [],
             "activation_triggers": triggers or [],
+            "triggers": triggers or [],
+            "use_when": use_when or [],
+            "avoid_when": avoid_when or [],
+            "required_inputs": required_inputs or [],
+            "workflow_steps": workflow_steps or [],
+            "decision_rules": decision_rules or [],
+            "output_requirements": output_requirements or [],
+            "success_criteria": success_criteria or [],
+            "failure_handling": failure_handling or [],
             "tags": tags or [],
             "validation_status": "pending",
             "publication_status": "draft",
@@ -92,7 +110,18 @@ class SkillAuthoringService:
                 name=name,
                 description=description,
                 triggers=triggers or [],
+                use_when=use_when or [],
+                avoid_when=avoid_when or [],
+                required_inputs=required_inputs or [],
+                workflow_steps=workflow_steps or [],
+                decision_rules=decision_rules or [],
+                output_requirements=output_requirements or [],
+                success_criteria=success_criteria or [],
+                failure_handling=failure_handling or [],
+                example_input=example_input,
+                example_output=example_output,
                 risk_tier=risk_tier,
+                requires_tools=requires_tools or [],
             )
 
         # Create skill record
@@ -106,9 +135,12 @@ class SkillAuthoringService:
             status="available",
             risk_tier=risk_tier,
             triggers=triggers or [],
+            use_when=use_when or [],
+            avoid_when=avoid_when or [],
             requires_tools=requires_tools or [],
             tags=tags or [],
             body_text=body_text,
+            verification_checklist=success_criteria or [],
             lifecycle_state="draft",
             publication_status="unpublished",
         )
@@ -116,11 +148,11 @@ class SkillAuthoringService:
         await self.session.flush()
         await self.session.refresh(skill)
 
-        # Save skill.md to disk
+        # Save the portable skill entrypoint to disk.
         skill_dir = settings.vault_path / "skills" / "authored" / slug
         os.makedirs(skill_dir, exist_ok=True)
 
-        skill_md_path = str(skill_dir / "skill.md")
+        skill_md_path = str(skill_dir / "SKILL.md")
         with open(skill_md_path, "w", encoding="utf-8") as f:
             f.write(body_text)
         skill.local_path = skill_md_path
@@ -208,11 +240,16 @@ class SkillAuthoringService:
                 },
                 "expected": {
                     "must_include": [],
-                    "must_not_include": ["error", "cannot", "unable"],
+                    "must_not_include": [],
                 },
                 "scoring": {
                     "pass_threshold": 0.70,
-                    "criteria": {"relevance": 0.40, "safety": 0.30, "concision": 0.30},
+                    "criteria": {
+                        "workflow_adherence": 0.35,
+                        "success_criteria_verification": 0.35,
+                        "safety": 0.20,
+                        "output_format": 0.10,
+                    },
                 },
             })
 
@@ -241,20 +278,30 @@ class SkillAuthoringService:
         if not skill:
             raise ValueError("Skill not found")
 
+        existing_manifest = skill.manifest or {}
         manifest = {
             "skill_id": f"{skill.slug}_v{skill.version.replace('.', '_')}",
             "name": skill.name,
             "version": skill.version,
-            "description": skill.brief_text or "",
+            "description": existing_manifest.get("description") or skill.brief_text or "",
             "category": skill.skill_type,
-            "author": (skill.manifest or {}).get("author", "operator"),
-            "source": (skill.manifest or {}).get("source", "shogun_authored"),
+            "author": existing_manifest.get("author", "operator"),
+            "source": existing_manifest.get("source", "shogun_authored"),
             "created_at": skill.created_at.isoformat() if skill.created_at else None,
             "updated_at": skill.updated_at.isoformat() if skill.updated_at else None,
             "minimum_shogun_version": "0.0.0",
             "risk_tier": skill.risk_tier,
             "required_tools": skill.requires_tools or [],
             "activation_triggers": skill.triggers or [],
+            "triggers": skill.triggers or [],
+            "use_when": skill.use_when or [],
+            "avoid_when": skill.avoid_when or [],
+            "required_inputs": existing_manifest.get("required_inputs", []),
+            "workflow_steps": existing_manifest.get("workflow_steps", []),
+            "decision_rules": existing_manifest.get("decision_rules", []),
+            "output_requirements": existing_manifest.get("output_requirements", []),
+            "success_criteria": skill.verification_checklist or existing_manifest.get("success_criteria", []),
+            "failure_handling": existing_manifest.get("failure_handling", []),
             "tags": skill.tags or [],
             "validation_status": skill.lifecycle_state,
             "publication_status": skill.publication_status,
@@ -265,66 +312,143 @@ class SkillAuthoringService:
         return manifest
 
     def _generate_default_body(
-        self, *, name: str, description: str, triggers: list[str], risk_tier: str
+        self,
+        *,
+        name: str,
+        description: str,
+        triggers: list[str],
+        use_when: list[str],
+        avoid_when: list[str],
+        required_inputs: list[str],
+        workflow_steps: list[str],
+        decision_rules: list[str],
+        output_requirements: list[str],
+        success_criteria: list[str],
+        failure_handling: list[str],
+        example_input: str,
+        example_output: str,
+        risk_tier: str,
+        requires_tools: list[str],
     ) -> str:
-        """Generate a default skill.md body."""
-        trigger_lines = "\n".join(f"  - {t}" for t in triggers) if triggers else "  - (no triggers defined)"
+        """Generate an operational skill draft with explicit authoring gaps."""
+
+        def bullets(items: list[str], placeholder: str) -> str:
+            values = [item.strip() for item in items if item and item.strip()]
+            if not values:
+                return f"- [TODO: {placeholder}]"
+            return "\n".join(f"- {item}" for item in values)
+
+        def numbered(items: list[str], placeholder: str) -> str:
+            values = [item.strip() for item in items if item and item.strip()]
+            if not values:
+                return f"1. [TODO: {placeholder}]"
+            return "\n".join(f"{index}. {item}" for index, item in enumerate(values, 1))
+
+        activation = use_when or triggers
+        safe_name = json.dumps(name, ensure_ascii=False)
+        activation_summary = "; ".join(item.strip() for item in activation if item.strip())
+        portable_description = description.strip()
+        if portable_description and activation_summary:
+            portable_description = f"{portable_description} Use when: {activation_summary}"
+        safe_description = json.dumps(
+            portable_description or f"[TODO: Describe the outcome and activation context for {name}.]",
+            ensure_ascii=False,
+        )
+        tool_section = ""
+        if requires_tools:
+            tool_instructions = [
+                f"Use `{tool}` only for the operation it is registered to perform."
+                for tool in requires_tools
+            ]
+            tool_section = f"""
+## Tool and resource usage
+
+{bullets(tool_instructions, 'Identify required tools or remove this section.')}
+
+Resolve relative resource paths from the directory containing this `SKILL.md`.
+"""
         return f"""---
-name: {name}
-version: 1.0.0
-category: general
-risk_tier: {risk_tier}
-activation_triggers:
-{trigger_lines}
-required_tools: []
+name: {safe_name}
+description: {safe_description}
 ---
 
-# Skill: {name}
+# {name}
 
 ## Purpose
 
-{description or 'Describe the purpose of this skill.'}
+{description.strip() or f'[TODO: Describe the specific capability and outcome produced by {name}.]'}
 
-## When To Use
+## Activation criteria
 
-Use when the user asks to perform tasks related to this skill's domain.
+Use this skill when:
 
-## Operating Instructions
+{bullets(activation, 'List concrete requests, inputs, or conditions that activate this skill.')}
 
-1. Understand the user's request.
-2. Apply the skill's domain knowledge.
-3. Produce a clear, actionable result.
-4. Verify the output meets quality standards.
+Do not use this skill when:
 
-## Output Standard
+{bullets(avoid_when, 'List adjacent tasks that belong elsewhere or conditions that make this skill unsuitable.')}
 
-The output should be:
+## Required inputs
 
-- clear
-- accurate
-- actionable
-- concise
+Identify and validate:
 
-## Failure Modes
+{bullets(
+    required_inputs,
+    'List the files, records, parameters, constraints, approvals, and desired output format required for execution.',
+)}
 
-Avoid:
+Apply a safe default when a missing detail does not materially affect the result. Ask the user only when the
+missing information changes the outcome or introduces unacceptable risk.
 
-- inventing unsupported details
-- exceeding scope
-- sending without approval
+## Workflow
 
-## Validation Criteria
+{numbered(workflow_steps, 'Write the domain-specific execution sequence, including inspection and verification.')}
 
-The skill passes if the output:
+## Decision rules
 
-- addresses the user's request
-- preserves factual accuracy
-- uses appropriate tone
-- is concise and usable
+{bullets(
+    decision_rules,
+    'Document the choices, thresholds, precedence rules, and safe defaults that materially affect execution.',
+)}
+{tool_section}
+## Permissions and safety
 
-## Changelog
+- Treat this as a `{risk_tier}`-risk skill.
+- Do not expand the requested scope or treat this skill as granting tools or permissions.
+- Preserve existing user content unless modification is required by the requested outcome.
+- Require explicit authorization before external communication or destructive, irreversible action.
+- Never expose credentials or secrets in output or logs.
+- Respect the active Shogun posture and all tool-risk controls.
 
-## 1.0.0
+## Output requirements
 
-- Initial draft created.
+{bullets(output_requirements, 'Specify the required artifact, format, location, schema, tone, and completion summary.')}
+
+## Success criteria
+
+The task is complete only when:
+
+{bullets(success_criteria, 'Define observable checks that prove the requested outcome is complete and correct.')}
+
+## Failure handling
+
+{bullets(
+    failure_handling,
+    'Describe safe recovery, retry limits, state preservation, and what to report when completion is blocked.',
+)}
+
+## Example
+
+Input:
+
+{example_input.strip() or '[TODO: Add a representative user request.]'}
+
+Expected behaviour:
+
+- Follow the workflow and decision rules above.
+- Verify the result against every success criterion.
+
+Expected output:
+
+{example_output.strip() or '[TODO: Add a representative final result or artifact description.]'}
 """

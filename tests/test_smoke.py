@@ -8,7 +8,7 @@ import pytest
 def test_version():
     """Package version is set."""
     import shogun
-    assert shogun.__version__ == "1.30.1"
+    assert shogun.__version__ == "1.30.2"
 
 
 def test_agent_tool_step_limit_supports_specializations():

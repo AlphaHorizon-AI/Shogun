@@ -160,8 +160,8 @@ class SkillPublishingService:
         package_dir = settings.vault_path / "skills" / "packages" / skill.slug / skill.version
         os.makedirs(package_dir, exist_ok=True)
 
-        # 1. Write skill.md
-        skill_md_path = package_dir / "skill.md"
+        # 1. Write the portable skill entrypoint.
+        skill_md_path = package_dir / "SKILL.md"
         with open(skill_md_path, "w", encoding="utf-8") as f:
             f.write(skill.body_text or "")
 

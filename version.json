@@ -1,8 +1,8 @@
 {
-  "version": "1.30.1",
+  "version": "1.30.2",
   "name": "Shogun OS",
-  "build": 108,
+  "build": 109,
   "channel": "stable",
-  "released": "2026-07-19T19:50:09Z",
-  "changelog": "Repair incomplete Skills Archive mirrors with verified full OpenClaw Markdown, expose canonical SKILL.md content in Archive details, and raise governed agent tool steps to 75."
+  "released": "2026-07-20T06:30:42Z",
+  "changelog": "Generate fuller operational SKILL.md foundations with explicit workflows, decision rules, outputs, success criteria, failure handling, and examples; block incomplete placeholders at the quality gate; and package the canonical uppercase entrypoint."
 }
