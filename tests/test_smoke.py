@@ -1,14 +1,25 @@
 """Smoke tests — verify the package can be imported and bootstrapped."""
 
+import json
+import re
 import sqlite3
+from pathlib import Path
 
 import pytest
 
 
 def test_version():
-    """Package version is set."""
+    """All release version sources agree so desktop updates remain discoverable."""
     import shogun
-    assert shogun.__version__ == "1.30.2"
+
+    root = Path(__file__).parents[1]
+    release = json.loads((root / "version.json").read_text(encoding="utf-8"))
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    project_version = re.search(r'^version = "([^"]+)"$', pyproject, re.MULTILINE)
+
+    assert project_version is not None
+    assert release["build"] > 0
+    assert shogun.__version__ == release["version"] == project_version.group(1)
 
 
 def test_agent_tool_step_limit_supports_specializations():

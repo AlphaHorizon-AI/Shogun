@@ -1,8 +1,8 @@
 {
-  "version": "1.30.2",
+  "version": "1.31.0",
   "name": "Shogun OS",
-  "build": 109,
+  "build": 110,
   "channel": "stable",
-  "released": "2026-07-20T06:30:42Z",
-  "changelog": "Generate fuller operational SKILL.md foundations with explicit workflows, decision rules, outputs, success criteria, failure handling, and examples; block incomplete placeholders at the quality gate; and package the canonical uppercase entrypoint."
+  "released": "2026-07-21T10:09:03Z",
+  "changelog": "Add proactive self-reinforced learning guidance and opt-in Agent Flow output memory infusion with provenance, redaction, deduplication, status gating, configurable retention, audit events, and flow-builder controls."
 }
