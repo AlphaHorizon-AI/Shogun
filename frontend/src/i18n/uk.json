@@ -709,6 +709,8 @@
     "routing_cost": "Оптимізація Вартості",
     "perm_cat_filesystem": "Файлова система",
     "perm_cat_network": "Мережа",
+    "perm_cat_network_mado": "Мережа та браузер Mado",
+    "perm_section_mado": "Браузер Mado",
     "perm_cat_shell": "Консоль (Shell)",
     "perm_cat_skills": "Навички",
     "perm_cat_subagents": "Під-агенти",

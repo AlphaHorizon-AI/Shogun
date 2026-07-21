@@ -19,6 +19,7 @@ import {
   X,
   GripVertical,
   Crosshair,
+  AppWindow,
 } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -213,10 +214,25 @@ export const ShogunProfile = () => {
       allow_arbitrary_paths: 'Whether the agent can access ANY folder on the system, even outside its designated workspace.',
     },
     network: {
-      _category: 'Controls whether the agent can make internet requests, call APIs, or reach external services.',
+      _category: 'Controls all external connectivity, including direct network requests and governed Mado browser sessions.',
       mode: 'How freely the agent can use the network. "Full" = unrestricted, "Allowlist" = only approved sites, "Disabled" = no internet.',
       allowed_domains: 'Specific websites or APIs the agent is allowed to contact when in Allowlist mode.',
       allow_arbitrary_requests: 'Whether the agent can contact ANY website or API, even ones not on the approved list.',
+    },
+    mado_browser: {
+      _category: 'Controls governed browser navigation, authenticated sessions, form interaction, downloads, uploads, screenshots, and verification.',
+      enabled: 'Whether Mado browser automation is available to the agent.',
+      allow_external_urls: 'Allow navigation to external websites, subject to the Network allowlist and posture controls.',
+      allow_login_profiles: 'Allow the agent to use operator-configured browser login profiles.',
+      allow_authenticated_sessions: 'Allow Mado to continue in authenticated browser sessions.',
+      allow_file_downloads: 'Allow files to be downloaded through Mado.',
+      allow_file_uploads: 'Allow local files to be uploaded through Mado.',
+      allow_form_submit: 'Allow Mado to submit forms, subject to ToolGate checks.',
+      allow_headless_mode: 'Allow browser sessions without a visible browser window.',
+      allow_visible_mode: 'Allow visible, operator-observable browser sessions.',
+      capture_screenshots: 'Allow Mado to capture page screenshots for evidence and visual inspection.',
+      require_verification: 'Require post-action verification before a browser task is considered complete.',
+      audit_all_actions: 'Record every Mado action in the audit log.',
     },
     shell: {
       _category: 'Controls whether the agent can run system commands (like terminal/command-line operations).',
@@ -1229,12 +1245,12 @@ delegation_rules:
                 )}
 
                 {activePermissions ? (
-                  Object.entries(activePermissions).filter(([category]) => category !== 'ide_mode' || idePostureEligible).map(([category, perms]: [string, any], i) => (
+                  Object.entries(activePermissions).filter(([category]) => category !== 'mado_browser' && (category !== 'ide_mode' || idePostureEligible)).map(([category, perms]: [string, any], i) => (
                     <div key={i} className="p-3 bg-[#050508] rounded-xl border border-shogun-border space-y-2">
                       <div className="flex items-center gap-2 pb-1 border-b border-shogun-border/50 group/cat">
                         <Shield className="w-3.5 h-3.5 text-shogun-gold" />
                         <div className="relative">
-                          <span className="text-xs font-bold uppercase tracking-wider text-shogun-text cursor-help">{t(`profile.perm_cat_${category}`, category === 'agentflow' ? 'AgentFlow' : category === 'flow_stack' ? 'Flow Stack' : category.replace(/_/g, ' '))}</span>
+                          <span className="text-xs font-bold uppercase tracking-wider text-shogun-text cursor-help">{category === 'network' ? t('profile.perm_cat_network_mado', 'Network & Mado Browser') : t(`profile.perm_cat_${category}`, category === 'agentflow' ? 'AgentFlow' : category === 'flow_stack' ? 'Flow Stack' : category.replace(/_/g, ' '))}</span>
                           {getTooltip(category) && (
                             <div className="absolute left-0 bottom-full mb-2 w-64 p-2.5 bg-[#0a0e1a] border border-shogun-gold/30 rounded-lg text-[10px] text-shogun-text leading-relaxed shadow-xl opacity-0 pointer-events-none group-hover/cat:opacity-100 transition-opacity duration-200 z-50">
                               <div className="absolute -bottom-1 left-4 w-2 h-2 bg-[#0a0e1a] border-r border-b border-shogun-gold/30 rotate-45" />
@@ -1436,6 +1452,42 @@ delegation_rules:
                         </div>
                       ) : (
                         <span className="text-[10px] text-shogun-subdued font-bold uppercase">{String(perms)}</span>
+                      )}
+                      {category === 'network' && activePermissions.mado_browser && (
+                        <div className="mt-3 border-t border-shogun-gold/20 pt-3 space-y-1">
+                          <div className="group/mado relative mb-2 flex items-center gap-2">
+                            <AppWindow className="w-3.5 h-3.5 text-cyan-400" />
+                            <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-cyan-300 cursor-help">{t('profile.perm_section_mado', 'Mado browser')}</span>
+                            <div className="absolute left-0 bottom-full mb-2 w-64 p-2.5 bg-[#0a0e1a] border border-cyan-400/30 rounded-lg text-[10px] text-shogun-text leading-relaxed shadow-xl opacity-0 pointer-events-none group-hover/mado:opacity-100 transition-opacity z-50">
+                              {getTooltip('mado_browser')}
+                            </div>
+                          </div>
+                          {Object.entries(activePermissions.mado_browser).map(([prop, propVal]: [string, any]) => (
+                            <div key={prop} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-[#0a0e1a] transition-colors">
+                              <div className="relative group/mado-tip">
+                                <span className={cn("text-[10px] text-shogun-subdued font-medium capitalize", getTooltip('mado_browser', prop) && "border-b border-dashed border-shogun-subdued/30 cursor-help")}>{t(`profile.perm_prop_${prop}`, prop.replace(/_/g, ' ').toLowerCase())}</span>
+                                {getTooltip('mado_browser', prop) && (
+                                  <div className="absolute left-0 bottom-full mb-2 w-56 p-2 bg-[#0a0e1a] border border-shogun-border rounded-lg text-[10px] text-shogun-text/80 leading-relaxed shadow-xl opacity-0 pointer-events-none group-hover/mado-tip:opacity-100 transition-opacity z-50">
+                                    {getTooltip('mado_browser', prop)}
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const updated = JSON.parse(JSON.stringify(activePermissions));
+                                  updated.mado_browser[prop] = !propVal;
+                                  setCustomPermissions(updated);
+                                }}
+                                className={cn(
+                                  "w-10 h-5 rounded-full relative transition-all duration-300 border",
+                                  propVal ? "bg-green-500/20 border-green-500/40" : "bg-red-500/10 border-red-500/30"
+                                )}
+                              >
+                                <div className={cn("absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300", propVal ? "left-5 bg-green-400" : "left-0.5 bg-red-400")} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   ))

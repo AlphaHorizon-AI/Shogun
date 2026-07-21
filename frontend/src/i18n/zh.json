@@ -709,6 +709,8 @@
     "routing_cost": "成本优化",
     "perm_cat_filesystem": "文件系统",
     "perm_cat_network": "网络",
+    "perm_cat_network_mado": "网络与 Mado 浏览器",
+    "perm_section_mado": "Mado 浏览器",
     "perm_cat_shell": "终端 (Shell)",
     "perm_cat_skills": "技能",
     "perm_cat_subagents": "子代理",

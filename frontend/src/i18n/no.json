@@ -709,6 +709,8 @@
     "routing_cost": "Kostnadsoptimalisert",
     "perm_cat_filesystem": "Filsystem",
     "perm_cat_network": "Nettverk",
+    "perm_cat_network_mado": "Nettverk og Mado-nettleser",
+    "perm_section_mado": "Mado-nettleser",
     "perm_cat_shell": "Shell",
     "perm_cat_skills": "Ferdigheter",
     "perm_cat_subagents": "Underagenter",

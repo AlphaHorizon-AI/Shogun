@@ -709,6 +709,8 @@
     "routing_cost": "Kostenoptimiert",
     "perm_cat_filesystem": "Dateisystem",
     "perm_cat_network": "Netzwerk",
+    "perm_cat_network_mado": "Netzwerk & Mado-Browser",
+    "perm_section_mado": "Mado-Browser",
     "perm_cat_shell": "Shell",
     "perm_cat_skills": "Fähigkeiten",
     "perm_cat_subagents": "Sub-Agenten",

@@ -1,8 +1,8 @@
 {
-  "version": "1.35.1",
+  "version": "1.36.0",
   "name": "Shogun OS",
-  "build": 115,
+  "build": 116,
   "channel": "stable",
-  "released": "2026-07-21T14:34:07Z",
-  "changelog": "Fix AgentFlow chat editing with genuine one-time inline ToolGate confirmations, truthful permission guidance, and race-free approval registration."
+  "released": "2026-07-21T19:25:28Z",
+  "changelog": "Merge Network and Mado permissions, honor direct AgentFlow edit instructions without phantom ToolGate prompts, expand Flow Stacking documentation, and restore fully translated Guide content in all supported languages."
 }

@@ -709,6 +709,8 @@
     "routing_cost": "コスト最適化",
     "perm_cat_filesystem": "ファイルシステム",
     "perm_cat_network": "ネットワーク",
+    "perm_cat_network_mado": "ネットワークとMadoブラウザ",
+    "perm_section_mado": "Madoブラウザ",
     "perm_cat_shell": "シェル",
     "perm_cat_skills": "スキル",
     "perm_cat_subagents": "サブエージェント",

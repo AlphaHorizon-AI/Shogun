@@ -63,17 +63,66 @@ import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
 
 type DocTab = 'onboarding' | 'architecture' | 'reference' | 'safety';
+type GuideCatalog = Record<string, string>;
+
+const guideCatalogModules = import.meta.glob('../i18n/guide/*.json', { eager: false }) as Record<
+  string,
+  () => Promise<{ default: GuideCatalog }>
+>;
+const guideCatalogCache: Record<string, GuideCatalog> = {};
+const guideOriginalText = new WeakMap<Text, string>();
+
+async function loadGuideCatalog(language: string): Promise<GuideCatalog> {
+  if (guideCatalogCache[language]) return guideCatalogCache[language];
+
+  const loader = guideCatalogModules[`../i18n/guide/${language}.json`];
+  if (!loader) return {};
+
+  try {
+    const catalog = (await loader()).default;
+    guideCatalogCache[language] = catalog;
+    return catalog;
+  } catch (error) {
+    console.error(`[guide-i18n] Failed to load the ${language} Guide catalog`, error);
+    return {};
+  }
+}
+
+function applyGuideCatalog(root: HTMLElement, catalog: GuideCatalog) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode() as Text | null;
+
+  while (node) {
+    const isTechnicalContent = Boolean(node.parentElement?.closest('code, pre, script, style, svg'));
+    if (!isTechnicalContent) {
+      const current = node.nodeValue ?? '';
+      const remembered = guideOriginalText.get(node);
+      const candidate = remembered ?? current;
+      const source = candidate.trim();
+
+      if (source && (remembered !== undefined || Object.prototype.hasOwnProperty.call(catalog, source))) {
+        if (remembered === undefined) guideOriginalText.set(node, candidate);
+        const leading = candidate.match(/^\s*/)?.[0] ?? '';
+        const trailing = candidate.match(/\s*$/)?.[0] ?? '';
+        node.nodeValue = `${leading}${catalog[source] ?? source}${trailing}`;
+      }
+    }
+    node = walker.nextNode() as Text | null;
+  }
+}
 
 export function Guide() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [activeTab, setActiveTab] = useState<DocTab>('onboarding');
   const [activeSection, setActiveSection] = useState<string>('ref-tenshu');
+  const guideRootRef = useRef<HTMLDivElement>(null);
   const refContentRef = useRef<HTMLDivElement>(null);
 
   const REFERENCE_SECTIONS = [
     { id: 'ref-tenshu', label: 'Tenshu', icon: Layout, color: 'text-shogun-blue' },
     { id: 'ref-comms', label: 'Comms', icon: MessageSquare, color: 'text-shogun-blue' },
     { id: 'ref-profile', label: 'Shogun Profile', icon: Cpu, color: 'text-shogun-gold' },
+    { id: 'ref-flowstack', label: 'Flow Stacking', icon: Layers, color: 'text-violet-400' },
     { id: 'ref-samurai', label: 'Samurai Network', icon: Users, color: 'text-shogun-gold' },
     { id: 'ref-katana', label: 'Katana', icon: Sword, color: 'text-shogun-blue' },
     { id: 'ref-telegram', label: 'Telegram Setup', icon: MessageSquare, color: 'text-sky-400' },
@@ -92,7 +141,6 @@ export function Guide() {
     { id: 'ref-gensui', label: 'Gensui', icon: ShieldAlert, color: 'text-indigo-400' },
     { id: 'ref-logs', label: 'Logs', icon: Terminal, color: 'text-shogun-subdued' },
     { id: 'ref-maintenance', label: 'Maintenance', icon: HardDrive, color: 'text-shogun-gold' },
-    { id: 'ref-flowstack', label: 'Flow Stacking', icon: Layers, color: 'text-violet-400' },
     { id: 'ref-visual-intake', label: 'Visual Intake', icon: Eye, color: 'text-cyan-400' },
     { id: 'ref-ide-mode', label: 'IDE Mode', icon: MonitorIcon, color: 'text-emerald-400' },
     { id: 'ref-model-router', label: 'Model Router', icon: RouteIcon, color: 'text-blue-400' },
@@ -130,8 +178,18 @@ export function Guide() {
     return () => { clearTimeout(timer); observer.disconnect(); };
   }, [activeTab]);
 
+  useEffect(() => {
+    let cancelled = false;
+    loadGuideCatalog(language).then((catalog) => {
+      if (!cancelled && guideRootRef.current) {
+        applyGuideCatalog(guideRootRef.current, catalog);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [activeTab, language]);
+
   return (
-    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
+    <div ref={guideRootRef} className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
@@ -576,6 +634,14 @@ export function Guide() {
              {/* Introduction */}
              <div className="text-center max-w-3xl mx-auto space-y-4">
                 <h3 className="text-3xl font-bold shogun-title">The Grand Reference</h3>
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('ref-flowstack')}
+                  className="mx-auto flex items-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-xs font-bold text-violet-300 transition-colors hover:bg-violet-500/20"
+                >
+                  <Layers className="h-4 w-4" />
+                  Flow Stacking &amp; Stack Orchestrator — full reference
+                </button>
                 <p className="text-shogun-subdued leading-relaxed">A deep-dive, page-by-page, tab-by-tab, button-by-button manual of every single capability within the Shogun platform. Written in plain language so anyone can understand it — no technical jargon required.</p>
              </div>
 
@@ -2215,7 +2281,8 @@ npm start`}</pre>
 
                  <div className="shogun-card space-y-2">
                     <div className="font-bold text-shogun-text flex items-center gap-2"><Search className="w-4 h-4 text-violet-400" /> Agent Inspection &amp; Editing</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">Shogun discovers stacks with <code className="text-violet-400">list_agent_flows</code> and reads their complete phases, subflow mappings, nodes, and edges with <code className="text-violet-400">get_flow_stack</code>. It can then create, edit, or delete Flow Stacks with the lifecycle tools. For a standard Agent Flow, it uses <code className="text-violet-400">get_agent_flow</code> and prefers <code className="text-violet-400">patch_agent_flow</code> for targeted graph changes that preserve untouched nodes and edges. Inspection is required before editing.</p>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">Shogun discovers stacks with <code className="text-violet-400">list_agent_flows</code> and reads their complete phases, subflow mappings, nodes, edges, orchestrator configuration, and lifecycle state with <code className="text-violet-400">get_flow_stack</code>. It can then use <code className="text-violet-400">create_flow_stack</code>, <code className="text-violet-400">edit_flow_stack</code>, or <code className="text-violet-400">delete_flow_stack</code> under the active posture and Flow Stack permissions.</p>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">For a standard Agent Flow, Shogun uses <code className="text-violet-400">get_agent_flow</code> and prefers <code className="text-violet-400">patch_agent_flow</code> for targeted graph changes that preserve untouched nodes and edges. A direct operator instruction to edit a flow authorizes that targeted patch for the current turn; Shogun still has to inspect first, remain at Tactical posture or above, and obey the separate create, activate, execute, template, and delete permissions.</p>
                  </div>
               </section>
 

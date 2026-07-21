@@ -709,6 +709,8 @@
     "routing_cost": "비용 최적화",
     "perm_cat_filesystem": "파일 시스템",
     "perm_cat_network": "네트워크",
+    "perm_cat_network_mado": "네트워크 및 Mado 브라우저",
+    "perm_section_mado": "Mado 브라우저",
     "perm_cat_shell": "셸 (Shell)",
     "perm_cat_skills": "기술",
     "perm_cat_subagents": "하위 에이전트",

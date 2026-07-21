@@ -718,6 +718,8 @@
     "routing_cost": "Omkostningsoptimeret",
     "perm_cat_filesystem": "Filsystem",
     "perm_cat_network": "Netværk",
+    "perm_cat_network_mado": "Netværk og Mado-browser",
+    "perm_section_mado": "Mado-browser",
     "perm_cat_shell": "Shell",
     "perm_cat_skills": "Færdigheder",
     "perm_cat_subagents": "Underagenter",

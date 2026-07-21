@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import shogun.db.models  # noqa: F401
+from shogun.api.agents import _operator_authorizes_agentflow_patch
 from shogun.db.base import Base
 from shogun.db.models.agent import Agent
 from shogun.db.models.agent_flow import AgentFlow, AgentFlowEdge, AgentFlowNode
@@ -32,6 +33,15 @@ def test_workflow_inspection_and_patch_tools_are_exposed() -> None:
     assert "get_flow_stack" not in WORKFLOW_TOOL_PERMISSIONS
     assert WORKFLOW_TOOL_PERMISSIONS["patch_agent_flow"] == ("agentflow", "allow_edit")
     assert WORKFLOW_ONE_TIME_CONFIRM_TOOLS == {"patch_agent_flow"}
+
+
+def test_direct_agentflow_edit_instruction_is_one_turn_authorization() -> None:
+    assert _operator_authorizes_agentflow_patch(
+        "Inspect Daily AI Brief first, then edit the AgentFlow and add two AI sources."
+    )
+    assert _operator_authorizes_agentflow_patch("Update my workflow nodes and replace the BBC source.")
+    assert not _operator_authorizes_agentflow_patch("Show me the current AgentFlow structure.")
+    assert not _operator_authorizes_agentflow_patch("Do not edit the AgentFlow; only inspect it.")
 
 
 def test_read_tools_remain_available_when_write_posture_is_disabled() -> None:
