@@ -11,6 +11,7 @@ from typing import Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from shogun.db.models.agent import Agent
 from shogun.db.models.memory_record import MemoryRecord
@@ -115,6 +116,141 @@ async def _hydrate_legacy_openclaw_markdown(session: AsyncSession, skills: list[
             skill.active_version_id = version.id
         hydrated += 1
     return hydrated
+
+
+async def refresh_installed_openclaw_skills(session: AsyncSession) -> dict[str, Any]:
+    """Refresh installed College skills from the live canonical Markdown.
+
+    Content hashes, rather than version labels alone, determine whether a new
+    local version is required. Skills promoted by SkillOpt are deliberately
+    protected from upstream replacement. After refresh, every active agent's
+    Archives Skills mirror is repaired from the selected canonical content.
+    """
+    result = await session.execute(
+        select(SkillInstallation)
+        .where(SkillInstallation.status == "installed")
+        .options(joinedload(SkillInstallation.skill))
+    )
+    installations = [
+        installation
+        for installation in result.scalars().unique().all()
+        if installation.skill
+        and not installation.skill.is_deleted
+        and (installation.openclaw_skill_id or (installation.skill.manifest or {}).get("openclaw_id"))
+    ]
+    report: dict[str, Any] = {
+        "total": len(installations),
+        "checked": 0,
+        "updated": 0,
+        "unchanged": 0,
+        "protected": 0,
+        "missing": 0,
+        "errors": 0,
+    }
+    refreshable: list[tuple[SkillInstallation, Skill, str]] = []
+    for installation in installations:
+        skill = installation.skill
+        if (skill.manifest or {}).get("optimized_by") == "skillopt":
+            report["protected"] += 1
+            continue
+        openclaw_id = str(
+            installation.openclaw_skill_id or (skill.manifest or {}).get("openclaw_id")
+        )
+        refreshable.append((installation, skill, openclaw_id))
+
+    responses: list[Any] = []
+    if refreshable:
+        from shogun.integrations.openclaw_client import get_openclaw_client
+
+        try:
+            async with get_openclaw_client() as client:
+                responses = list(
+                    await asyncio.gather(
+                        *(client.get_skill_by_id(openclaw_id) for _, _, openclaw_id in refreshable),
+                        return_exceptions=True,
+                    )
+                )
+        except Exception as exc:
+            log.warning("Could not refresh installed OpenClaw skills: %s", exc)
+            report["errors"] += len(refreshable)
+            responses = []
+
+    from shogun.config import settings
+
+    for (installation, skill, openclaw_id), college_skill in zip(refreshable, responses):
+        report["checked"] += 1
+        if isinstance(college_skill, Exception):
+            log.warning("OpenClaw refresh failed for %s: %s", skill.slug, college_skill)
+            report["errors"] += 1
+            continue
+        if not college_skill or not college_skill.description_md.strip():
+            report["missing"] += 1
+            continue
+
+        content = college_skill.description_md.strip()
+        content_hash = _content_hash(content)
+        upstream_version = college_skill.version or installation.installed_version or skill.version
+        manifest = dict(skill.manifest or {})
+        if (
+            skill.body_text == content
+            and manifest.get("canonical_content_hash") == content_hash
+            and skill.version == upstream_version
+        ):
+            installation.installed_version = upstream_version
+            report["unchanged"] += 1
+            continue
+
+        safe_slug = re.sub(r"[^a-z0-9-]+", "-", skill.slug.lower()).strip("-") or str(skill.id)
+        content_path = settings.vault_path / "skills" / "openclaw" / safe_slug / "SKILL.md"
+        content_path.parent.mkdir(parents=True, exist_ok=True)
+        content_path.write_text(content + "\n", encoding="utf-8")
+
+        parent_version_id = skill.active_version_id
+        if parent_version_id:
+            active_version = await session.get(SkillVersion, parent_version_id)
+            if active_version:
+                active_version.status = "archived"
+        version_result = await session.execute(
+            select(SkillVersion)
+            .where(SkillVersion.skill_id == skill.id)
+            .order_by(SkillVersion.version_number.desc())
+            .limit(1)
+        )
+        latest_version = version_result.scalars().first()
+        new_version = SkillVersion(
+            skill_id=skill.id,
+            version_number=(latest_version.version_number + 1) if latest_version else 1,
+            status="active",
+            content_path=str(content_path),
+            content_hash=content_hash,
+            parent_version_id=parent_version_id,
+            created_by="openclaw_college_refresh",
+            metadata_json={"upstream_version": upstream_version, "openclaw_id": openclaw_id},
+        )
+        session.add(new_version)
+        await session.flush()
+
+        skill.body_text = content
+        skill.brief_text = None
+        skill.local_path = str(content_path)
+        skill.version = upstream_version
+        skill.active_version_id = new_version.id
+        skill.manifest = {
+            **manifest,
+            "openclaw_id": openclaw_id,
+            "description": college_skill.short_description or skill.name,
+            "canonical_content_source": "openclaw_college",
+            "canonical_content_hash": content_hash,
+            "canonical_content_length": len(content),
+            "canonical_upstream_version": upstream_version,
+        }
+        installation.installed_version = upstream_version
+        report["updated"] += 1
+
+    archives_sync = await sync_skills_to_all_agent_memories(session)
+    report["archives"] = archives_sync
+    log.info("Installed OpenClaw refresh complete: %s", report)
+    return report
 
 
 async def sync_skills_to_memory(session: AsyncSession, agent_id: str | uuid.UUID) -> dict[str, int]:

@@ -111,6 +111,7 @@ export function Dojo() {
 
   // ── Skill Install ───────────────────────────────────────────
   const [installing, setInstalling] = useState<string | null>(null);
+  const [refreshingInstalled, setRefreshingInstalled] = useState(false);
   const [installMessage, setInstallMessage] = useState<{type: 'success' | 'error' | 'info', text: string} | null>(null);
   const [installedSkills, setInstalledSkills] = useState<Set<string>>(new Set());
   const [installedSkillDetails, setInstalledSkillDetails] = useState<any[]>([]);
@@ -335,6 +336,28 @@ export function Dojo() {
     } finally {
       setInstalling(null);
       setTimeout(() => setInstallMessage(null), 4000);
+    }
+  };
+
+  const handleRefreshInstalledSkills = async () => {
+    setRefreshingInstalled(true);
+    setInstallMessage(null);
+    try {
+      const response = await axios.post('/api/v1/dojo/openclaw/installed/refresh');
+      const report = response.data.data || {};
+      setInstallMessage({
+        type: 'success',
+        text: report.updated
+          ? `Updated ${report.updated} installed skill${report.updated === 1 ? '' : 's'} and synchronized Archives.`
+          : `Installed skills are current. ${report.protected || 0} SkillOpt version${report.protected === 1 ? '' : 's'} preserved.`,
+      });
+      await fetchInstalledSkills();
+      await fetchTabData();
+    } catch (error: any) {
+      setInstallMessage({ type: 'error', text: error.response?.data?.detail || 'Skill refresh failed.' });
+    } finally {
+      setRefreshingInstalled(false);
+      setTimeout(() => setInstallMessage(null), 6000);
     }
   };
 
@@ -1089,7 +1112,16 @@ export function Dojo() {
                           <div className="space-y-4">
                             <h3 className="text-[10px] font-bold text-shogun-subdued uppercase tracking-[0.2em] flex items-center gap-2">
                               <Package className="w-3.5 h-3.5 text-green-400" /> Installed Skills
-                              <span className="ml-auto text-[9px] px-2 py-0.5 bg-green-500/10 text-green-400 rounded-full font-mono">{installedSkillDetails.length}</span>
+                              <span className="text-[9px] px-2 py-0.5 bg-green-500/10 text-green-400 rounded-full font-mono">{installedSkillDetails.length}</span>
+                              <button
+                                onClick={handleRefreshInstalledSkills}
+                                disabled={refreshingInstalled}
+                                className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-shogun-blue/30 bg-shogun-blue/10 px-2.5 py-1.5 text-[9px] font-bold tracking-widest text-shogun-blue transition-colors hover:bg-shogun-blue/20 disabled:opacity-50"
+                                title="Fetch current canonical SKILL.md files and synchronize Archives"
+                              >
+                                <RefreshCw className={cn('h-3 w-3', refreshingInstalled && 'animate-spin')} />
+                                {refreshingInstalled ? 'Refreshing…' : 'Refresh Skills'}
+                              </button>
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {installedSkillDetails.map((skill: any) => {

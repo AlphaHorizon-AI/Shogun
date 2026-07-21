@@ -18,6 +18,7 @@ from shogun.db.models.skill_installation import SkillInstallation
 from shogun.db.models.skillopt import SkillOptCandidate, SkillOptTrainingRun, SkillVersion
 from shogun.services.skill_memory_sync import (
     mark_skill_achieved_and_sync,
+    refresh_installed_openclaw_skills,
     sync_skills_to_all_agent_memories,
     sync_skills_to_memory,
 )
@@ -322,3 +323,102 @@ async def test_sync_refetches_college_markdown_when_canonical_proof_is_missing(
     assert (tmp_path / "skills" / "openclaw" / "college-skill" / "SKILL.md").read_text(
         encoding="utf-8"
     ).strip() == full_markdown
+
+
+@pytest.mark.asyncio
+async def test_refresh_updates_upstream_content_and_preserves_skillopt(
+    skill_sync_context, monkeypatch, tmp_path
+):
+    session, _ = skill_sync_context
+    agent = Agent(agent_type="shogun", name="Primary", slug="primary-refresh", status="active", is_primary=True)
+    college_skill = Skill(
+        name="College Refresh",
+        slug="college-refresh",
+        version="1.0.0",
+        status="installed",
+        body_text="# Old\n\nShort instructions.",
+        manifest={"openclaw_id": "college-refresh", "canonical_content_source": "openclaw_college"},
+    )
+    protected_skill = Skill(
+        name="Protected Skill",
+        slug="protected-skill",
+        version="1.1.0",
+        status="installed",
+        body_text="# Optimized\n\nKeep this promoted version.",
+        manifest={"openclaw_id": "college-protected", "optimized_by": "skillopt"},
+    )
+    session.add_all([agent, college_skill, protected_skill])
+    await session.flush()
+    old_path = tmp_path / "old.md"
+    old_path.write_text(college_skill.body_text, encoding="utf-8")
+    old_version = SkillVersion(
+        skill_id=college_skill.id,
+        version_number=1,
+        status="active",
+        content_path=str(old_path),
+        content_hash="old",
+        created_by="openclaw_college",
+    )
+    session.add(old_version)
+    await session.flush()
+    college_skill.active_version_id = old_version.id
+    session.add_all([
+        SkillInstallation(
+            skill_id=college_skill.id,
+            openclaw_skill_id="college-refresh",
+            installed_version="1.0.0",
+            installed_at=datetime.now(timezone.utc),
+        ),
+        SkillInstallation(
+            skill_id=protected_skill.id,
+            openclaw_skill_id="college-protected",
+            installed_version="1.1.0",
+            installed_at=datetime.now(timezone.utc),
+        ),
+    ])
+    await session.commit()
+
+    refreshed_markdown = "# College Refresh\n\n## Operating workflow\n\n1. Follow the complete workflow.\n\n## Verification checklist\n\n- [ ] Verified."
+
+    class FakeCollegeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get_skill_by_id(self, skill_id):
+            assert skill_id == "college-refresh"
+            return SimpleNamespace(
+                description_md=refreshed_markdown,
+                version="2.0.0",
+                short_description="Complete refreshed instructions",
+            )
+
+    import shogun.integrations.openclaw_client as openclaw_module
+    from shogun.config import settings
+
+    monkeypatch.setattr(openclaw_module, "get_openclaw_client", lambda: FakeCollegeClient())
+    monkeypatch.setattr(settings, "vault_path", tmp_path)
+
+    report = await refresh_installed_openclaw_skills(session)
+
+    assert report["updated"] == 1
+    assert report["protected"] == 1
+    assert college_skill.body_text == refreshed_markdown
+    assert college_skill.version == "2.0.0"
+    assert college_skill.manifest["canonical_content_length"] == len(refreshed_markdown)
+    assert old_version.status == "archived"
+    assert protected_skill.body_text == "# Optimized\n\nKeep this promoted version."
+    memory = (
+        await session.execute(
+            select(MemoryRecord).where(
+                MemoryRecord.agent_id == agent.id,
+                MemoryRecord.source_ref_id == college_skill.id,
+            )
+        )
+    ).scalar_one()
+    assert memory.content == refreshed_markdown
+    assert (tmp_path / "skills" / "openclaw" / "college-refresh" / "SKILL.md").read_text(
+        encoding="utf-8"
+    ).strip() == refreshed_markdown

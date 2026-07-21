@@ -1,8 +1,8 @@
 {
-  "version": "1.33.0",
+  "version": "1.34.0",
   "name": "Shogun OS",
-  "build": 112,
+  "build": 113,
   "channel": "stable",
-  "released": "2026-07-21T11:09:18Z",
-  "changelog": "Bring the Guide Reference Manual up to date with current Agent Flow nodes and inspection tools, memory infusion and Archives behavior, Katana and Profile tabs, Dojo skill foundations, Flow Stack editing, and version-manifest updates."
+  "released": "2026-07-21T13:36:59Z",
+  "changelog": "Add version-aware refresh for installed OpenClaw College skills, preserve SkillOpt-customized variants, synchronize refreshed full Markdown into every agent's Skills Archive, and expose Refresh Skills in the Dojo."
 }

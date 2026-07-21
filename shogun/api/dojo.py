@@ -527,6 +527,19 @@ async def get_installed_openclaw_skills(db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.post("/openclaw/installed/refresh", response_model=ApiResponse)
+async def refresh_installed_openclaw_skills_route(db: AsyncSession = Depends(get_db)):
+    """Fetch current College Markdown and repair installed skills and Archives."""
+    from shogun.services.skill_memory_sync import refresh_installed_openclaw_skills
+
+    try:
+        report = await refresh_installed_openclaw_skills(db)
+    except Exception as exc:
+        logger.exception("Installed OpenClaw skill refresh failed")
+        raise HTTPException(status_code=502, detail="Could not refresh installed College skills") from exc
+    return ApiResponse(data=report)
+
+
 @router.post("/openclaw/specializations/{specialization_id}/enroll", response_model=ApiResponse)
 async def enroll_openclaw_specialization(
     specialization_id: str,
