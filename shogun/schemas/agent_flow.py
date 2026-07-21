@@ -2,13 +2,59 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from shogun.schemas.common import ShogunBase
+
+
+class MemoryInfusionDeduplication(BaseModel):
+    mode: str = "exact"
+    semantic_threshold: float = Field(default=0.92, ge=0.5, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_mode(self):
+        if self.mode not in {"none", "exact", "semantic"}:
+            raise ValueError("deduplication.mode must be none, exact, or semantic")
+        return self
+
+
+class MemoryInfusionConfig(BaseModel):
+    enabled: bool = False
+    memory_type: str = "episodic"
+    importance: float = Field(default=0.8, ge=0.0, le=1.0)
+    decay_type: str = "sticky"
+    tags: list[str] = Field(default_factory=lambda: ["auto-stored", "flow-output"], max_length=30)
+    title_template: str = Field(default="{flow_name} - {timestamp}", min_length=1, max_length=500)
+    content_fields: list[str] = Field(default_factory=lambda: ["result", "summary"], min_length=1, max_length=20)
+    redact_sensitive: bool = True
+    on_missing_field: str = "store_available"
+    max_content_length: int = Field(default=12000, ge=256, le=100000)
+    store_on: str = "success"
+    deduplication: MemoryInfusionDeduplication = Field(default_factory=MemoryInfusionDeduplication)
+
+    @model_validator(mode="after")
+    def validate_choices(self):
+        if self.memory_type not in {"episodic", "semantic", "procedural", "persona"}:
+            raise ValueError("memory_type must be episodic, semantic, procedural, or persona")
+        if self.decay_type not in {"fast", "medium", "slow", "sticky", "pinned"}:
+            raise ValueError("decay_type must be fast, medium, slow, sticky, or pinned")
+        if self.on_missing_field not in {"skip", "store_available", "fail"}:
+            raise ValueError("on_missing_field must be skip, store_available, or fail")
+        if self.store_on not in {"success", "partial", "always"}:
+            raise ValueError("store_on must be success, partial, or always")
+        if any(not field.strip() for field in self.content_fields):
+            raise ValueError("content_fields cannot contain empty field names")
+        placeholders = set(re.findall(r"{([^{}]+)}", self.title_template))
+        unsupported = placeholders - {"flow_name", "node_label", "timestamp", "run_id"}
+        if unsupported:
+            names = ", ".join(sorted(unsupported))
+            raise ValueError(f"Unsupported title_template placeholders: {names}")
+        return self
 
 
 # ── Node Schemas ─────────────────────────────────────────────
@@ -24,6 +70,13 @@ class AgentFlowNodeCreate(BaseModel):
     position_y: float = 0.0
     config: dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def validate_output_memory_infusion(self):
+        if self.node_type == "output" and "memory_infusion" in self.config:
+            normalized = MemoryInfusionConfig.model_validate(self.config["memory_infusion"])
+            self.config = {**self.config, "memory_infusion": normalized.model_dump()}
+        return self
+
 
 class AgentFlowNodeUpdate(BaseModel):
     """Partial update for a single node."""
@@ -32,6 +85,13 @@ class AgentFlowNodeUpdate(BaseModel):
     position_x: float | None = None
     position_y: float | None = None
     config: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def validate_memory_infusion(self):
+        if self.config and "memory_infusion" in self.config:
+            normalized = MemoryInfusionConfig.model_validate(self.config["memory_infusion"])
+            self.config = {**self.config, "memory_infusion": normalized.model_dump()}
+        return self
 
 
 class AgentFlowNodeResponse(ShogunBase):

@@ -297,6 +297,7 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                         node_map=node_map,
                         run_input=run_input,
                         governance_context=governance_context,
+                        flow_name=flow.name,
                     )
                 )
 
@@ -387,6 +388,7 @@ async def _execute_single_node(
     node_map: dict[str, AgentFlowNode],
     run_input: dict[str, Any] | None = None,
     governance_context: dict[str, Any] | None = None,
+    flow_name: str = "Agent Flow",
 ) -> Any:
     """Execute a single node and return its output."""
     node_id = str(node.id)
@@ -466,6 +468,23 @@ async def _execute_single_node(
                 node.label,
                 node_id,
             )
+            memory_config = config.get("memory_infusion") or {}
+            if memory_config.get("enabled"):
+                from shogun.services.flow_memory_infusion import infuse_flow_output_memory
+
+                async with async_session_factory() as memory_session:
+                    await infuse_flow_output_memory(
+                        session=memory_session,
+                        raw_config=memory_config,
+                        flow_id=node.flow_id,
+                        flow_name=flow_name,
+                        run_id=run_id,
+                        node_id=node.id,
+                        node_label=node.label,
+                        output=result,
+                        predecessor_outputs=predecessor_outputs,
+                    )
+                    await memory_session.commit()
         elif node_type == "mado_browser":
             result = await _exec_mado_browser(config, context_str, run_id, node_id, governance_context or {})
         elif node_type == "email_send":

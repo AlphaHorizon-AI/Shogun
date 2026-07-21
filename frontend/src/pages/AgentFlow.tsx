@@ -120,6 +120,24 @@ interface FlowEdgeData {
   config: Record<string, any>;
 }
 
+interface OutputMemoryInfusionConfig {
+  enabled?: boolean;
+  memory_type?: string;
+  importance?: number;
+  decay_type?: string;
+  tags?: string[];
+  title_template?: string;
+  content_fields?: string[];
+  redact_sensitive?: boolean;
+  on_missing_field?: string;
+  max_content_length?: number;
+  store_on?: string;
+  deduplication?: {
+    mode?: string;
+    semantic_threshold?: number;
+  };
+}
+
 export interface FlowListItem {
   id: string;
   name: string;
@@ -1076,6 +1094,7 @@ function NodeInspector({
   const color = nodeColors[nodeType] || '#d4a017';
   const Icon = nodeIcons[nodeType] || Users;
   const config: Record<string, any> = (node.data as Record<string, any>)?.config || {};
+  const memoryInfusion = (config.memory_infusion || {}) as OutputMemoryInfusionConfig;
   const [subflowValidation, setSubflowValidation] = useState<{valid: boolean; warnings: string[]; errors: string[]} | null>(null);
   const [validatingSubflow, setValidatingSubflow] = useState(false);
 
@@ -1088,6 +1107,10 @@ function NodeInspector({
 
   const updateLabel = (label: string) => {
     onUpdate(node.id, { ...node.data, label });
+  };
+
+  const updateMemoryInfusion = (key: keyof OutputMemoryInfusionConfig, value: unknown) => {
+    updateConfig('memory_infusion', { ...memoryInfusion, [key]: value });
   };
 
   const validateSelectedSubflow = async () => {
@@ -1812,6 +1835,91 @@ Content-Type: application/json
                 <option value="html">HTML</option>
                 <option value="plain">Plain Text</option>
               </select>
+            </div>
+            <div className="rounded-lg border border-[#f97316]/25 bg-[#f97316]/5 p-3 space-y-3">
+              <label className="flex items-center justify-between gap-3 cursor-pointer">
+                <span>
+                  <span className="block text-[9px] font-bold text-[#f97316] uppercase tracking-widest">Memory Infusion</span>
+                  <span className="block text-[8px] text-[#7a8899] mt-1">Store this output mechanically in Archives</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={memoryInfusion.enabled === true}
+                  onChange={(event) => updateConfig('memory_infusion', {
+                    memory_type: 'episodic', importance: 0.8, decay_type: 'sticky',
+                    tags: ['auto-stored', 'flow-output'],
+                    title_template: '{flow_name} - {timestamp}',
+                    content_fields: ['result', 'summary'], redact_sensitive: true,
+                    on_missing_field: 'store_available', max_content_length: 12000,
+                    store_on: 'success',
+                    deduplication: { mode: 'exact', semantic_threshold: 0.92 },
+                    ...memoryInfusion, enabled: event.target.checked,
+                  })}
+                  className="accent-[#f97316]"
+                />
+              </label>
+
+              {memoryInfusion.enabled === true && (
+                <div className="space-y-3 border-t border-[#f97316]/15 pt-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="space-y-1 text-[8px] uppercase text-[#7a8899]">Memory type
+                      <select value={memoryInfusion.memory_type || 'episodic'} onChange={(event) => updateMemoryInfusion('memory_type', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none">
+                        {['episodic', 'semantic', 'procedural', 'persona'].map((value) => <option key={value}>{value}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-[8px] uppercase text-[#7a8899]">Decay
+                      <select value={memoryInfusion.decay_type || 'sticky'} onChange={(event) => updateMemoryInfusion('decay_type', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none">
+                        {['fast', 'medium', 'slow', 'sticky', 'pinned'].map((value) => <option key={value}>{value}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="space-y-1 text-[8px] uppercase text-[#7a8899]">Importance
+                      <input type="number" min={0} max={1} step={0.05} value={memoryInfusion.importance ?? 0.8} onChange={(event) => updateMemoryInfusion('importance', Number(event.target.value))} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none" />
+                    </label>
+                    <label className="space-y-1 text-[8px] uppercase text-[#7a8899]">Store on
+                      <select value={memoryInfusion.store_on || 'success'} onChange={(event) => updateMemoryInfusion('store_on', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none">
+                        <option value="success">Success</option><option value="partial">Partial</option><option value="always">Always</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label className="block space-y-1 text-[8px] uppercase text-[#7a8899]">Title template
+                    <input value={memoryInfusion.title_template || '{flow_name} - {timestamp}'} onChange={(event) => updateMemoryInfusion('title_template', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded p-2 text-[10px] normal-case text-[#c8d0d8] outline-none" />
+                  </label>
+                  <label className="block space-y-1 text-[8px] uppercase text-[#7a8899]">Content fields
+                    <input value={(memoryInfusion.content_fields || ['result', 'summary']).join(', ')} onChange={(event) => updateMemoryInfusion('content_fields', event.target.value.split(',').map((value) => value.trim()).filter(Boolean))} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded p-2 text-[10px] normal-case text-[#c8d0d8] outline-none" />
+                  </label>
+                  <label className="block space-y-1 text-[8px] uppercase text-[#7a8899]">Tags
+                    <input value={(memoryInfusion.tags || ['auto-stored', 'flow-output']).join(', ')} onChange={(event) => updateMemoryInfusion('tags', event.target.value.split(',').map((value) => value.trim()).filter(Boolean))} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded p-2 text-[10px] normal-case text-[#c8d0d8] outline-none" />
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="space-y-1 text-[8px] uppercase text-[#7a8899]">Missing fields
+                      <select value={memoryInfusion.on_missing_field || 'store_available'} onChange={(event) => updateMemoryInfusion('on_missing_field', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none">
+                        <option value="store_available">Store available</option><option value="skip">Skip memory</option><option value="fail">Fail node</option>
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-[8px] uppercase text-[#7a8899]">Max characters
+                      <input type="number" min={256} max={100000} value={memoryInfusion.max_content_length || 12000} onChange={(event) => updateMemoryInfusion('max_content_length', Number(event.target.value))} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none" />
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="space-y-1 text-[8px] uppercase text-[#7a8899]">Deduplication
+                      <select value={memoryInfusion.deduplication?.mode || 'exact'} onChange={(event) => updateMemoryInfusion('deduplication', { semantic_threshold: 0.92, ...memoryInfusion.deduplication, mode: event.target.value })} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none">
+                        <option value="none">None</option><option value="exact">Exact hash</option><option value="semantic">Semantic</option>
+                      </select>
+                    </label>
+                    {memoryInfusion.deduplication?.mode === 'semantic' && (
+                      <label className="space-y-1 text-[8px] uppercase text-[#7a8899]">Similarity
+                        <input type="number" min={0.5} max={1} step={0.01} value={memoryInfusion.deduplication?.semantic_threshold ?? 0.92} onChange={(event) => updateMemoryInfusion('deduplication', { ...memoryInfusion.deduplication, mode: 'semantic', semantic_threshold: Number(event.target.value) })} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none" />
+                      </label>
+                    )}
+                  </div>
+                  <label className="flex items-center gap-2 text-[9px] text-[#c8d0d8] cursor-pointer">
+                    <input type="checkbox" checked={memoryInfusion.redact_sensitive !== false} onChange={(event) => updateMemoryInfusion('redact_sensitive', event.target.checked)} className="accent-[#f97316]" />
+                    Redact credentials and secrets before storage
+                  </label>
+                </div>
+              )}
             </div>
           </>
         )}
