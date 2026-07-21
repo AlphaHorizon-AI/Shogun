@@ -736,7 +736,7 @@ export function Guide() {
                    <Cpu className="w-6 h-6 text-shogun-gold" />
                    <div>
                       <h4 className="text-xl font-bold uppercase tracking-widest">Shogun Profile — Your AI's Identity</h4>
-                      <p className="text-xs text-shogun-subdued">Configure the personality, intelligence, and behavior of your main Shogun agent. Has 5 tabs.</p>
+                      <p className="text-xs text-shogun-subdued">Configure the personality, intelligence, behavior, permissions, and scheduled operations of your main Shogun agent. Has 4 tabs.</p>
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -804,26 +804,35 @@ export function Guide() {
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
                          <div className="font-bold text-shogun-text flex items-center gap-2"><Workflow className="w-4 h-4 text-violet-400" /> Agent Flow — Workflow Builder</div>
-                         <p className="text-xs text-shogun-subdued leading-relaxed">A visual drag-and-drop canvas for designing multi-step AI pipelines using your Samurai. Build workflows by chaining six node types:</p>
+                         <p className="text-xs text-shogun-subdued leading-relaxed">A visual drag-and-drop canvas for designing multi-step AI pipelines. Build workflows by chaining 12 node types:</p>
                          <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
                             <li><strong>Input:</strong> The entry point — accepts user text, data, or triggers.</li>
                             <li><strong>Samurai:</strong> Delegates a task to a specific sub-agent.</li>
                             <li><strong>Shogun Approval:</strong> Pauses the flow for human confirmation.</li>
                             <li><strong>Logic:</strong> A conditional gate — routes based on a condition.</li>
                             <li><strong>Mado Browser:</strong> Automates a web browsing action.</li>
-                            <li><strong>Output:</strong> Collects and presents the workflow's result.</li>
+                            <li><strong>Email Send / Telegram &amp; Teams:</strong> Delivers results through configured channels.</li>
+                            <li><strong>Workspace / Office:</strong> Performs governed file operations or works with Office documents.</li>
+                            <li><strong>Subflow:</strong> Runs a reusable child Agent Flow.</li>
+                            <li><strong>Stack Orchestrator:</strong> Supervises a long-running Flow Stack.</li>
+                            <li><strong>Output:</strong> Collects and presents the final result, with optional memory infusion.</li>
                          </ul>
                       </div>
                       <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
                          <div className="font-bold text-shogun-text flex items-center gap-2"><GitBranch className="w-4 h-4 text-violet-400" /> Canvas, Execution & AI Creation</div>
                          <p className="text-xs text-shogun-subdued leading-relaxed">Position nodes freely on the visual canvas and draw directed edges between them. Edges define execution order — data flows from source to target. The canvas supports pan, zoom, and node reordering. Workflows are saved to the database.</p>
                          <p className="text-xs text-shogun-subdued leading-relaxed mt-2">Click <strong>Execute</strong> to run a workflow. Nodes process in topological order, passing outputs as inputs to the next. Shogun Approval nodes pause until you confirm.</p>
-                         <p className="text-xs text-shogun-subdued leading-relaxed mt-2">You can also ask the Shogun to <strong>build workflows for you</strong> via the <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">create_agent_flow</code> native skill.</p>
+                         <p className="text-xs text-shogun-subdued leading-relaxed mt-2">Shogun can manage workflows natively: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">list_agent_flows</code> discovers flows and stacks, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">get_agent_flow</code> reads a complete graph, and <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">patch_agent_flow</code> safely changes selected nodes or edges. It can also create, replace, and delete flows. The agent is instructed to inspect a flow before editing it.</p>
                       </div>
                       <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
                          <div className="font-bold text-shogun-text flex items-center gap-2"><Package className="w-4 h-4 text-violet-400" /> Template Gallery</div>
-                         <p className="text-xs text-shogun-subdued leading-relaxed">Click <strong>New Flow</strong> to browse 137 pre-built workflow templates across 10 different categories (e.g., Data Analysis, Content Creation, Document Processing). Templates range in difficulty from <strong>Beginner</strong> to <strong>Advanced</strong>.</p>
+                         <p className="text-xs text-shogun-subdued leading-relaxed">Click <strong>New Flow</strong> to browse 140 pre-built workflow templates across 10 different categories (e.g., Data Analysis, Content Creation, Document Processing). Templates range in difficulty from <strong>Beginner</strong> to <strong>Advanced</strong>.</p>
                          <p className="text-xs text-shogun-subdued leading-relaxed mt-2">When you select a template, the canvas is automatically populated. Samurai nodes inside templates use <strong>Ephemeral (Ad-Hoc)</strong> agents by default to keep your Fleet clean, but can be manually linked to a permanent Fleet Samurai via the node properties panel.</p>
+                      </div>
+                      <div className="shogun-card space-y-2 border-l-2 border-orange-400/40 md:col-span-2">
+                         <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-orange-400" /> Output Memory Infusion</div>
+                         <p className="text-xs text-shogun-subdued leading-relaxed">An Output node can opt into <strong>Memory Infusion</strong>. When its configured completion state is reached, the flow engine—not the model—stores selected output fields in Archives. Configure the memory type, importance, decay, tags, title template, content fields, maximum length, sensitive-data redaction, and behavior when fields are missing.</p>
+                         <p className="text-xs text-shogun-subdued leading-relaxed">Storage can run on success, partial completion, or always. Exact-hash or semantic deduplication prevents repeated memories and reinforces an existing match. Every stored, skipped, or deduplicated result carries flow/run/node provenance and an audit event. Memory Infusion is disabled by default and must be enabled per Output node.</p>
                       </div>
                    </div>
                 </div>
@@ -837,17 +846,17 @@ export function Guide() {
                    <Cpu className="w-6 h-6 text-shogun-blue" />
                    <div>
                       <h4 className="text-xl font-bold uppercase tracking-widest">Katana — The System Forge</h4>
-                      <p className="text-xs text-shogun-subdued">Where you plug in AI "brains", connect tools, and set up routing rules. Has nine tabs.</p>
+                      <p className="text-xs text-shogun-subdued">Where you connect models, tools, formats, channels, desktop capabilities, and routing rules. Shows 12 tabs normally and 13 when IDE Mode is available in Campaign or Ronin posture.</p>
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Key className="w-4 h-4 text-shogun-blue" /> Cloud Providers Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Lists every cloud AI service you have connected (OpenAI, Anthropic, Google Gemini, Perplexity, etc.). Each provider card shows its <strong>name</strong>, <strong>type</strong>, <strong>status</strong> (active/disabled), and which <strong>models</strong> it provides. You can <strong>add a new provider</strong> by clicking the button, entering a name, selecting the type, pasting your API key, and optionally listing specific model names. Each card has <strong>Edit</strong> and <strong>Delete</strong> buttons.</p>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Key className="w-4 h-4 text-shogun-blue" /> AI Model Provider Tab</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Lists every cloud or local AI service you have connected (OpenAI, Anthropic, Google Gemini, Perplexity, Ollama, etc.). Each provider card shows its <strong>name</strong>, <strong>type</strong>, <strong>status</strong>, and available <strong>models</strong>. Add, edit, enable, disable, or delete provider connections here; credentials are stored through the backend rather than displayed after saving.</p>
                    </div>
                    <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><HardDrive className="w-4 h-4 text-shogun-blue" /> Local Models Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">For AI models running on your own computer (via Ollama). Shows a list of <strong>discovered models</strong> on your machine, each with its size and format. You can <strong>pull new models</strong> from the Ollama library with a real-time download progress bar showing speed and percentage.</p>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-shogun-blue" /> File Formats Tab</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Controls the file-format registry used by governed tools. Review recognized extensions, MIME types, capability categories, safety classifications, size limits, and which operations are available for each format.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Binary className="w-4 h-4 text-shogun-blue" /> Routing Profiles Tab</div>
@@ -856,6 +865,10 @@ export function Guide() {
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Network className="w-4 h-4 text-shogun-blue" /> Toolbox Tab</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Lists all the external tools the Shogun can use — web search, file access, database connections, code execution, etc. Each tool shows its <strong>name</strong>, <strong>type</strong>, and <strong>status</strong> (enabled/disabled). You can <strong>register new tools</strong> and toggle existing ones on or off.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-shogun-blue" /> Skills · Active Usage Tab</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Shows which Dojo skills are actually retrieved and injected during agent runs, along with usage outcomes, trajectory evidence, and improvement candidates. See <strong>Active Skills &amp; Trajectory Capture</strong> below for the complete runtime lifecycle.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 text-shogun-blue" /> Office App Mode Tab</div>
@@ -1165,19 +1178,32 @@ npm start`}</pre>
                          <li><strong>Semantic:</strong> Facts and knowledge (e.g., "The capital of France is Paris").</li>
                          <li><strong>Episodic:</strong> Experiences and events (e.g., "User asked about pricing on April 15").</li>
                          <li><strong>Procedural:</strong> How-to instructions and workflows.</li>
+                         <li><strong>Persona:</strong> Durable identity, relationship, and communication context.</li>
+                         <li><strong>Skills:</strong> Canonical achieved-skill content synchronized from the Dojo.</li>
+                         <li><strong>Programming:</strong> Reusable coding solutions with evidence, validation, files, languages, and sources.</li>
                       </ul>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Star className="w-4 h-4 text-shogun-gold" /> Salience Score</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Each memory has a "salience" score (0.0 to 1.0) that represents how important it is. High-salience memories are prioritized when the AI retrieves context. The system automatically adjusts salience over time — frequently used memories rise, rarely used ones fade. You can manually <strong>pin</strong> a memory to lock its salience at maximum.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Each memory has relevance and importance signals that influence retrieval. Frequently reused memories can be reinforced, while decay policies control retention: <strong>fast</strong>, <strong>medium</strong>, <strong>slow</strong>, <strong>sticky</strong>, or <strong>pinned</strong>. Pin critical memories to keep them at maximum priority.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-shogun-gold" /> Inscribe Memory (+ Button)</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Click the "+" button to manually add a new memory. You choose the <strong>type</strong> (semantic, episodic, etc.), write the <strong>content</strong>, and optionally set the <strong>salience</strong>. This is useful for injecting facts, rules, or context that the AI should always know about.</p>
                    </div>
-                   <div className="shogun-card space-y-2 md:col-span-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-gold" /> Memory Cards</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Each memory is shown as a card with: the content text, memory type badge, salience bar, creation date, and action buttons. You can <strong>delete</strong> individual memories via the trash icon. The total count and an "Export" option are available in the header.</p>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-gold" /> Browse, Filter &amp; Lifecycle</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Filter by memory type, decay policy, or agent, then sort chronologically or by salience/importance. Each card exposes its content, provenance, scores, dates, and tags. Normal memories move to the archive instead of being hard-deleted; Programming memories use an explicit permanent-delete action.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-shogun-gold" /> Import &amp; Export</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Import Memories</strong> accepts OpenClaw exports, Shogun exports, and generic Markdown from files, ZIP archives, or folders. It parses input as inert data, validates a preview, reports duplicates/conflicts, supports embedding retries and rollback, and blocks ZIP path traversal.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Export Memory</strong> creates an OpenClaw-compatible Markdown bundle. Scope and filter by agent, project, memory type, date, and minimum importance; optionally include archived, private, sticky, analysis, raw, or secret-bearing content. Sensitive exports require confirmation and remain available in export history.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 md:col-span-2 border-l-2 border-shogun-gold/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><BrainCircuit className="w-4 h-4 text-shogun-gold" /> Self-Reinforced Learning</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">In Mission Mode, Shogun is instructed to proactively retain durable guidance when you explicitly correct it, tool use reveals verified information likely to help future work, or you confirm a reusable decision, preference, or idea. It must avoid transient, speculative, duplicated, sensitive, or task-local material and record source and confidence where applicable.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Two cases also have dedicated automatic capture: explicit operator corrections become durable semantic memories, and completed Mado web research becomes a sourced procedural memory. Existing matches are reused or reinforced instead of blindly duplicated. Governed Chat mechanically captures explicit corrections but cannot browse or use Mission tools.</p>
                    </div>
                 </div>
              </section>
@@ -1208,11 +1234,11 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-shogun-gold" /> Achieved Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Shows all the certifications your agents have already passed. Each entry shows the skill name, exam score, pass/fail status, and date achieved. This is your "trophy room" — proof that your AI has been tested and verified on specific capabilities.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Shows all the certifications your agents have already passed. Each entry shows the skill name, exam score, pass/fail status, and date achieved. Achieved skills are synchronized into the Archives <strong>Skills</strong> memory layer so their canonical instructions can participate in runtime retrieval.</p>
                    </div>
                    <div className="shogun-card space-y-2 md:col-span-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-shogun-gold" /> Skill Detail & Exams</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">When you click on any individual skill, you see its full detail pane: the training literature (textbooks and reference material), the risk tier, and a <strong>"Take Exam"</strong> button. Exams are 30–50 multiple-choice questions. The AI agent answers them automatically. A passing score certifies the agent on that skill and appears in the "Achieved" tab.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">When you click a skill, its detail pane shows canonical training content, source material, and risk tier plus a <strong>Take Exam</strong> action. Canonical skill content is structured as an operational instruction foundation: purpose, use conditions, inputs, workflow, decision rules, outputs, safety constraints, failure handling, examples, and success criteria. Exams contain 30–50 multiple-choice questions; passing certifies the agent and records the achievement.</p>
                    </div>
                 </div>
              </section>
@@ -2138,7 +2164,8 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-emerald-500/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-emerald-400" /> System Updates</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Navigate to <strong>Updates</strong> in the sidebar. The system automatically checks for new versions every 6 hours. When an update is available, a green <strong>NEW</strong> badge appears on the sidebar. Click <strong>Install Update</strong> to download, extract, and rebuild — your data, configs, and environment are always preserved.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Navigate to <strong>Updates</strong> in the sidebar. The automatic checker reads the repository's <code>version.json</code> manifest, compares its numeric build with the installed build, and caches the result for 6 hours. <strong>Check for Updates</strong> forces a fresh check; an available release displays an <strong>UPDATE</strong> badge in the sidebar.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Click <strong>Install Update</strong> to download the current <code>main</code> branch, replace application code, and rebuild the frontend while preserving your database, configurations, environment, and virtual environment. Restart Shogun when installation completes. Private repositories can use a locally encrypted GitHub token configured on the Updates page.</p>
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-amber-500/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-amber-400" /> Restore & Recovery</div>
@@ -2184,6 +2211,11 @@ npm start`}</pre>
                  <div className="shogun-card space-y-2">
                     <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-violet-400" /> Governed Permissions</div>
                     <p className="text-xs text-shogun-subdued leading-relaxed">Flow Stacking is gated by 6 posture-level permissions: <code className="text-violet-400">agentflow_create</code>, <code className="text-violet-400">agentflow_execute</code>, <code className="text-violet-400">agentflow_autonomous</code>, <code className="text-violet-400">flowstack_create</code>, <code className="text-violet-400">flowstack_execute</code>, <code className="text-violet-400">flowstack_autonomous</code>. All require <strong>Tactical</strong> tier or above. Configure approval policies: approve the entire plan, approve individual steps, or run fully autonomous.</p>
+                 </div>
+
+                 <div className="shogun-card space-y-2">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Search className="w-4 h-4 text-violet-400" /> Agent Inspection &amp; Editing</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">Shogun discovers stacks with <code className="text-violet-400">list_agent_flows</code> and reads their complete phases, subflow mappings, nodes, and edges with <code className="text-violet-400">get_flow_stack</code>. It can then create, edit, or delete Flow Stacks with the lifecycle tools. For a standard Agent Flow, it uses <code className="text-violet-400">get_agent_flow</code> and prefers <code className="text-violet-400">patch_agent_flow</code> for targeted graph changes that preserve untouched nodes and edges. Inspection is required before editing.</p>
                  </div>
               </section>
 

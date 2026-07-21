@@ -1,8 +1,8 @@
 {
-  "version": "1.32.0",
+  "version": "1.33.0",
   "name": "Shogun OS",
-  "build": 111,
+  "build": 112,
   "channel": "stable",
-  "released": "2026-07-21T10:35:45Z",
-  "changelog": "Give agents complete read access to AgentFlow graphs and Flow Stack phases, add safe targeted node and edge patching that preserves untouched graph elements, and require inspection before workflow edits."
+  "released": "2026-07-21T11:09:18Z",
+  "changelog": "Bring the Guide Reference Manual up to date with current Agent Flow nodes and inspection tools, memory infusion and Archives behavior, Katana and Profile tabs, Dojo skill foundations, Flow Stack editing, and version-manifest updates."
 }
