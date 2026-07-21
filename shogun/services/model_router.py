@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_router import ModelRegistryEntry, ModelRoutingDecision, ModelUsageEvent
 from shogun.db.models.model_routing import ModelRoutingProfile
 from shogun.schemas.model_router import ModelRouteRequest, ModelUsageCreate
+
+log = logging.getLogger(__name__)
 
 
 class NoEligibleModelError(ValueError):
@@ -739,6 +742,15 @@ class ModelUsageLogger:
             duration_ms=body.latency_ms,
             db_session=self.session,
         )
+        try:
+            from shogun.services.college_telemetry import queue_model_usage
+
+            decision = None
+            if body.routing_decision_id:
+                decision = await self.session.get(ModelRoutingDecision, body.routing_decision_id)
+            queue_model_usage(body, decision)
+        except Exception as exc:
+            log.debug("College ecosystem telemetry could not be queued: %s", exc)
         return item
 
     async def list(self, stack_run_id: uuid.UUID | None = None, limit: int = 200) -> list[ModelUsageEvent]:

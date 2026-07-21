@@ -3,6 +3,7 @@ from typing import Any
 from shogun.engine.vector_store import get_vector_store
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from shogun.config import settings, PROJECT_ROOT
@@ -19,6 +20,26 @@ from shogun.db.models.agent import Agent
 from shogun.db.models.mission import Mission
 
 router = APIRouter(prefix="/system", tags=["System"])
+
+
+class CollegeTelemetryUpdate(BaseModel):
+    enabled: bool
+
+
+@router.get("/college-telemetry", response_model=ApiResponse)
+async def get_college_telemetry_settings():
+    """Return the operator-controlled, privacy-safe College sharing policy."""
+    from shogun.services.college_telemetry import public_config
+
+    return ApiResponse(data=public_config())
+
+
+@router.put("/college-telemetry", response_model=ApiResponse)
+async def update_college_telemetry_settings(body: CollegeTelemetryUpdate):
+    """Opt this installation into or out of anonymous ecosystem intelligence."""
+    from shogun.services.college_telemetry import save_config
+
+    return ApiResponse(data=save_config(enabled=body.enabled))
 
 
 @router.get("/notifications", response_model=ApiResponse)

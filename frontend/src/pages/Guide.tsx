@@ -2337,6 +2337,11 @@ npm start`}</pre>
                        <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-blue-400" /> Decision & Usage Logs</div>
                        <p className="text-xs text-shogun-subdued leading-relaxed">Every routing decision is persisted: which task type, complexity score, selected model, fallback model, and reason. Usage telemetry tracks input/output tokens, cost estimates, and latency. View summaries and per-stack breakdowns.</p>
                     </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-cyan-400" /> OpenClaw College Ecosystem Intelligence</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">In <strong>Updates</strong>, the operator can explicitly opt into anonymous ecosystem benchmarks. Sharing is disabled by default. When enabled, Shogun sends only model/provider, coarse task type, success, bucketed tokens/latency/cost, local-versus-cloud, country code, Shogun version, and a weekly rotating anonymous installation hash.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Never transmitted:</strong> prompts, outputs, files, error contents, agent names, credentials, or exact IP addresses. College publishes rankings only after at least 20 events from five anonymous installations and retains raw telemetry for 31 days.</p>
+                    </div>
                  </div>
               </section>
 
