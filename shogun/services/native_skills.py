@@ -2461,6 +2461,11 @@ WORKFLOW_TOOL_PERMISSIONS = {
     "delete_flow_stack": ("flow_stack", "allow_delete"),
 }
 
+# Targeted edits are recoverable and preserve untouched graph elements. Keep the
+# persistent permission as the fast path, but allow an operator to grant a
+# single interactive approval when that permission is disabled.
+WORKFLOW_ONE_TIME_CONFIRM_TOOLS = {"patch_agent_flow"}
+
 
 async def _shogun_workflow_permission(db_session, category: str, permission: str) -> bool:
     """Read an explicit Shogun workflow permission; missing always means denied."""
@@ -2482,9 +2487,16 @@ async def _shogun_workflow_permission(db_session, category: str, permission: str
     return bool((permissions or {}).get(category, {}).get(permission, False))
 
 
-async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> str:
+async def execute_native_tool(
+    name: str,
+    args: dict[str, Any],
+    db_session,
+    *,
+    operator_confirmed_permissions: set[tuple[str, str]] | None = None,
+) -> str:
     """Route tool execution from LLM to underlying services."""
     logger.info(f"Executing native skill: {name} with args {args}")
+    confirmed_permissions = operator_confirmed_permissions or set()
     
     try:
         if name.startswith("file_"):
@@ -3268,8 +3280,20 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
                     })
             except Exception:
                 return json.dumps({"status": "error", "message": "Could not verify the AgentFlow posture permission."})
-            if not await _shogun_workflow_permission(db_session, "agentflow", "allow_edit"):
-                return json.dumps({"status": "error", "message": "Shogun's AgentFlow editing permission is disabled."})
+            edit_permission = ("agentflow", "allow_edit")
+            if (
+                edit_permission not in confirmed_permissions
+                and not await _shogun_workflow_permission(db_session, *edit_permission)
+            ):
+                return json.dumps({
+                    "status": "permission_required",
+                    "permission": "agentflow.allow_edit",
+                    "message": (
+                        "AgentFlow editing is disabled. Enable AgentFlow > Allow Edit in "
+                        "Shogun Profile > Permissions, or approve the one-time inline "
+                        "ToolGate confirmation when patch_agent_flow is called from Chat."
+                    ),
+                })
 
             import uuid as _uuid
 

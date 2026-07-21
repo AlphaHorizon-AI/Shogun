@@ -13,7 +13,12 @@ from shogun.db.base import Base
 from shogun.db.models.agent import Agent
 from shogun.db.models.agent_flow import AgentFlow, AgentFlowEdge, AgentFlowNode
 from shogun.services import posture_guard
-from shogun.services.native_skills import NATIVE_TOOLS, WORKFLOW_TOOL_PERMISSIONS, execute_native_tool
+from shogun.services.native_skills import (
+    NATIVE_TOOLS,
+    WORKFLOW_ONE_TIME_CONFIRM_TOOLS,
+    WORKFLOW_TOOL_PERMISSIONS,
+    execute_native_tool,
+)
 from shogun.services.posture_guard import filter_tools_by_posture
 
 
@@ -26,6 +31,7 @@ def test_workflow_inspection_and_patch_tools_are_exposed() -> None:
     assert "get_agent_flow" not in WORKFLOW_TOOL_PERMISSIONS
     assert "get_flow_stack" not in WORKFLOW_TOOL_PERMISSIONS
     assert WORKFLOW_TOOL_PERMISSIONS["patch_agent_flow"] == ("agentflow", "allow_edit")
+    assert WORKFLOW_ONE_TIME_CONFIRM_TOOLS == {"patch_agent_flow"}
 
 
 def test_read_tools_remain_available_when_write_posture_is_disabled() -> None:
@@ -201,6 +207,50 @@ async def test_patch_agent_flow_preserves_untouched_graph_elements(monkeypatch) 
         assert nodes[str(new_node_id)]["node_type"] == "mado_browser"
         assert str(original_edge.id) in edge_ids
         assert len(edge_ids) == 2
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_patch_agent_flow_accepts_one_time_operator_confirmation(monkeypatch) -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(posture_guard, "get_posture_permissions", lambda: _allowed_posture())
+
+    async with sessions() as session:
+        shogun = Agent(
+            agent_type="shogun",
+            name="Shogun",
+            slug="shogun-confirmed-flow-editor",
+            status="active",
+            is_primary=True,
+            bushido_settings={"custom_permissions": {"agentflow": {"allow_edit": False}}},
+        )
+        flow = AgentFlow(name="One-time approval", flow_type="standard")
+        session.add_all([shogun, flow])
+        await session.commit()
+
+        denied = json.loads(await execute_native_tool(
+            "patch_agent_flow",
+            {"flow_id": str(flow.id), "node_operations": [], "edge_operations": []},
+            session,
+        ))
+        assert denied["status"] == "permission_required"
+        assert denied["permission"] == "agentflow.allow_edit"
+
+        approved = json.loads(await execute_native_tool(
+            "patch_agent_flow",
+            {
+                "flow_id": str(flow.id),
+                "node_operations": [{"op": "add", "node_type": "input", "label": "Input"}],
+                "edge_operations": [],
+            },
+            session,
+            operator_confirmed_permissions={("agentflow", "allow_edit")},
+        ))
+        assert approved["status"] == "success", approved
 
     await engine.dispose()
 

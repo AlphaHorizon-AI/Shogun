@@ -1202,7 +1202,12 @@ async def _shogun_chat_internal(
     from shogun.db.models.model_routing import ModelRoutingProfile
     from shogun.db.models.operator import Operator
     from shogun.api.deps import get_db
-    from shogun.services.native_skills import NATIVE_TOOLS, WORKFLOW_TOOL_PERMISSIONS, execute_native_tool
+    from shogun.services.native_skills import (
+        NATIVE_TOOLS,
+        WORKFLOW_ONE_TIME_CONFIRM_TOOLS,
+        WORKFLOW_TOOL_PERMISSIONS,
+        execute_native_tool,
+    )
     from shogun.services.posture_guard import check_kill_switch, get_posture_tool_filter, filter_tools_by_posture
     from shogun.config import settings
     from sqlalchemy import select
@@ -1771,6 +1776,7 @@ BEHAVIOUR:
 
         # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ 7. Native Skills Setup ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
         active_tools = []
+        _workflow_confirmation_tools: set[str] = set()
         _policy_name = None
         async for db in get_db():
             if agent.security_policy_id:
@@ -1798,8 +1804,11 @@ BEHAVIOUR:
                             continue
                         workflow_permission = WORKFLOW_TOOL_PERMISSIONS.get(tool_name)
                         if workflow_permission and not perms.get(workflow_permission[0], {}).get(workflow_permission[1], False):
-                            _denied_tools.append(tool_name)
-                            continue
+                            if tool_name in WORKFLOW_ONE_TIME_CONFIRM_TOOLS:
+                                _workflow_confirmation_tools.add(tool_name)
+                            else:
+                                _denied_tools.append(tool_name)
+                                continue
                         active_tools.append(tool)
 
                     try:
@@ -1836,6 +1845,7 @@ BEHAVIOUR:
         # This additional layer enforces the GLOBAL posture tier constraints,
         # stripping tools that the current tier does not permit.
         active_tools, _posture_denied = filter_tools_by_posture(active_tools, _posture_filter)
+        _workflow_confirmation_tools.difference_update(_posture_denied)
 
         # ━━ 7c-opt. Intent-based tool filtering for small local models ━━
         _small_model = _is_small_local_model(provider, model_name)
@@ -1864,6 +1874,17 @@ BEHAVIOUR:
         # tool descriptions into the system prompt and rely on text-based parsing.
         _prompt_injected_tools = False
         _active_tool_names = [t["function"]["name"] for t in active_tools]
+        _workflow_confirmation_tools.intersection_update(_active_tool_names)
+        if _workflow_confirmation_tools:
+            messages[0]["content"] += (
+                "\n\nAUTHORITATIVE WORKFLOW PERMISSION STATE:\n"
+                "- patch_agent_flow is available with one-time operator confirmation because "
+                "AgentFlow Allow Edit is currently disabled. Call patch_agent_flow normally. "
+                "The backend will emit a real inline ToolGate card in Chat.\n"
+                "- Never claim that an approval is pending unless you actually called the tool "
+                "and the backend emitted a toolgate_confirm event. There is no separate Torii "
+                "approval inbox.\n"
+            )
         if active_tools and not _model_supports_tools:
             from shogun.services.native_skills import generate_tool_prompt
             _tool_prompt = generate_tool_prompt(active_tools)
@@ -2250,7 +2271,12 @@ BEHAVIOUR:
                             args = {}
                             
                         # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ ToolGate enforcement ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
-                        from shogun.services.tool_gate import check_tool_access, GateAction
+                        from shogun.services.tool_gate import (
+                            GateAction,
+                            GateDecision,
+                            RiskLevel,
+                            check_tool_access,
+                        )
                         _tg_tier = _posture_filter.get("active_tier", "tactical")
                         _tg_mode = (
                             "ronin_desktop"
@@ -2264,12 +2290,25 @@ BEHAVIOUR:
                             from shogun.services.campaign_presets import get_preset as _get_preset
                             _tg_campaign = _get_preset(_tg_preset_key)
 
-                        _tg_decision = await check_tool_access(
-                            mode=_tg_mode,
-                            tool_name=func_name,
-                            args=args,
-                            campaign_preset=_tg_campaign,
-                        )
+                        if func_name in _workflow_confirmation_tools:
+                            _tg_decision = GateDecision(
+                                action=GateAction.CONFIRM,
+                                reason=(
+                                    "One-time operator approval required because the persistent "
+                                    "AgentFlow Allow Edit permission is disabled."
+                                ),
+                                risk_level=RiskLevel.MEDIUM,
+                                tool_name=func_name,
+                            )
+                        else:
+                            _tg_decision = await check_tool_access(
+                                mode=_tg_mode,
+                                tool_name=func_name,
+                                args=args,
+                                campaign_preset=_tg_campaign,
+                            )
+
+                        _operator_confirmed_permissions: set[tuple[str, str]] = set()
 
                         if _tg_decision.action == GateAction.BLOCK:
                             res_str = json.dumps({
@@ -2304,16 +2343,19 @@ BEHAVIOUR:
                                 'risk': _tg_decision.risk_level.value,
                                 'reason': _tg_decision.reason,
                             }
-                            yield f"data: {json.dumps(_confirm_evt)}\n\n"
-
-                            from shogun.services.toolgate_confirm import request_confirmation
-                            _tg_approved = await request_confirmation(
+                            from shogun.services.toolgate_confirm import (
+                                register_confirmation,
+                                wait_for_confirmation,
+                            )
+                            register_confirmation(
                                 confirm_id=_confirm_id,
                                 tool_name=func_name,
                                 args=args,
                                 risk_level=_tg_decision.risk_level.value,
                                 reason=_tg_decision.reason,
                             )
+                            yield f"data: {json.dumps(_confirm_evt)}\n\n"
+                            _tg_approved = await wait_for_confirmation(_confirm_id)
 
                             if not _tg_approved:
                                 res_str = json.dumps({
@@ -2338,6 +2380,8 @@ BEHAVIOUR:
                                 messages.append({"role": "tool", "tool_call_id": tcall["id"], "name": func_name, "content": res_str})
                                 continue
                             else:
+                                if func_name in _workflow_confirmation_tools:
+                                    _operator_confirmed_permissions.add(WORKFLOW_TOOL_PERMISSIONS[func_name])
                                 yield f"data: {json.dumps({'type': 'toolgate_resolved', 'confirm_id': _confirm_id, 'approved': True})}\n\n"
                                 try:
                                     import asyncio as _aio_tg3
@@ -2355,7 +2399,12 @@ BEHAVIOUR:
 
                         # Execute (allow or approved confirm)
                         yield f"data: {json.dumps({'type': 'action', 'content': f'Executing {func_name}...'})}\n\n"
-                        res_str = await execute_native_tool(func_name, args, db)
+                        res_str = await execute_native_tool(
+                            func_name,
+                            args,
+                            db,
+                            operator_confirmed_permissions=_operator_confirmed_permissions,
+                        )
                         await _link_active_skill_tool(classification, tcall.get("id"), func_name, args, res_str)
                         # -- Prompt injection containment: wrap untrusted external content --
                         from shogun.services.content_wrapper import wrap_tool_result
@@ -2594,7 +2643,12 @@ BEHAVIOUR:
                                 _log.info(f"[Shogun] Text-mode tool '{func_name}' parsed args: {args}")
 
                             # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ ToolGate enforcement (text-mode path) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
-                            from shogun.services.tool_gate import check_tool_access, GateAction
+                            from shogun.services.tool_gate import (
+                                GateAction,
+                                GateDecision,
+                                RiskLevel,
+                                check_tool_access,
+                            )
                             _tg_tier = _posture_filter.get("active_tier", "tactical")
                             _tg_mode = (
                                 "ronin_desktop"
@@ -2608,12 +2662,23 @@ BEHAVIOUR:
                                 from shogun.services.campaign_presets import get_preset as _get_preset
                                 _tg_campaign = _get_preset(_tg_preset_key)
 
-                            _tg_decision = await check_tool_access(
-                                mode=_tg_mode,
-                                tool_name=func_name,
-                                args=args,
-                                campaign_preset=_tg_campaign,
-                            )
+                            if func_name in _workflow_confirmation_tools:
+                                _tg_decision = GateDecision(
+                                    action=GateAction.CONFIRM,
+                                    reason=(
+                                        "One-time operator approval required because the persistent "
+                                        "AgentFlow Allow Edit permission is disabled."
+                                    ),
+                                    risk_level=RiskLevel.MEDIUM,
+                                    tool_name=func_name,
+                                )
+                            else:
+                                _tg_decision = await check_tool_access(
+                                    mode=_tg_mode,
+                                    tool_name=func_name,
+                                    args=args,
+                                    campaign_preset=_tg_campaign,
+                                )
 
                             if _tg_decision.action == GateAction.BLOCK:
                                 res_str = json.dumps({
@@ -2637,16 +2702,19 @@ BEHAVIOUR:
                                         'risk': _tg_decision.risk_level.value,
                                         'reason': _tg_decision.reason,
                                     }
-                                    yield f"data: {json.dumps(_confirm_evt)}\n\n"
-
-                                    from shogun.services.toolgate_confirm import request_confirmation as _req_confirm
-                                    _tg_approved = await _req_confirm(
+                                    from shogun.services.toolgate_confirm import (
+                                        register_confirmation as _register_confirmation,
+                                        wait_for_confirmation as _wait_for_confirmation,
+                                    )
+                                    _register_confirmation(
                                         confirm_id=_confirm_id,
                                         tool_name=func_name,
                                         args=args,
                                         risk_level=_tg_decision.risk_level.value,
                                         reason=_tg_decision.reason,
                                     )
+                                    yield f"data: {json.dumps(_confirm_evt)}\n\n"
+                                    _tg_approved = await _wait_for_confirmation(_confirm_id)
 
                                     if not _tg_approved:
                                         res_str = json.dumps({
@@ -2662,7 +2730,13 @@ BEHAVIOUR:
                                         _log.info(f"[Shogun] Text-mode tool '{func_name}' APPROVED by operator")
                                         # Execute (approved confirm)
                                         yield f"data: {json.dumps({'type': 'action', 'content': f'Executing {func_name}...'})}\n\n"
-                                        res_str = await execute_native_tool(func_name, args, db)
+                                        _confirmed = {WORKFLOW_TOOL_PERMISSIONS[func_name]} if func_name in _workflow_confirmation_tools else set()
+                                        res_str = await execute_native_tool(
+                                            func_name,
+                                            args,
+                                            db,
+                                            operator_confirmed_permissions=_confirmed,
+                                        )
                                         await _link_active_skill_tool(classification, None, func_name, args, res_str)
                                         from shogun.services.content_wrapper import wrap_tool_result as _wtrc
                                         res_str = _wtrc(func_name, res_str)

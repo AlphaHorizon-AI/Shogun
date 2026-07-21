@@ -1,8 +1,8 @@
 {
-  "version": "1.35.0",
+  "version": "1.35.1",
   "name": "Shogun OS",
-  "build": 114,
+  "build": 115,
   "channel": "stable",
-  "released": "2026-07-21T13:57:31Z",
-  "changelog": "Launch privacy-safe OpenClaw College ecosystem intelligence with explicit opt-in telemetry, coarse model performance signals, weekly rotating anonymous identifiers, and documented privacy controls."
+  "released": "2026-07-21T14:34:07Z",
+  "changelog": "Fix AgentFlow chat editing with genuine one-time inline ToolGate confirmations, truthful permission guidance, and race-free approval registration."
 }

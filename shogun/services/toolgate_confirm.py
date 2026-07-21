@@ -60,18 +60,46 @@ async def request_confirmation(
 
     Returns True if approved, False if denied or timed out.
     """
-    entry = PendingConfirmation(
+    register_confirmation(
         confirm_id=confirm_id,
         tool_name=tool_name,
         args=args,
         risk_level=risk_level,
         reason=reason,
     )
-    _pending[confirm_id] = entry
+    return await wait_for_confirmation(confirm_id, timeout=timeout)
+
+
+def register_confirmation(
+    confirm_id: str,
+    tool_name: str,
+    args: dict[str, Any],
+    risk_level: str,
+    reason: str,
+) -> None:
+    """Register a confirmation synchronously before its SSE event is emitted."""
+    _pending[confirm_id] = PendingConfirmation(
+        confirm_id=confirm_id,
+        tool_name=tool_name,
+        args=args,
+        risk_level=risk_level,
+        reason=reason,
+    )
     log.info(
         "Confirmation requested: %s for tool '%s' (risk=%s)",
         confirm_id, tool_name, risk_level,
     )
+
+
+async def wait_for_confirmation(
+    confirm_id: str,
+    timeout: float = CONFIRMATION_TIMEOUT_SECONDS,
+) -> bool:
+    """Wait for a previously registered confirmation to resolve."""
+    entry = _pending.get(confirm_id)
+    if not entry:
+        log.warning("Confirmation %s was not registered before waiting", confirm_id)
+        return False
 
     try:
         await asyncio.wait_for(entry.event.wait(), timeout=timeout)
