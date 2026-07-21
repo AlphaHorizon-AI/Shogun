@@ -1,8 +1,8 @@
 {
-  "version": "1.31.0",
+  "version": "1.32.0",
   "name": "Shogun OS",
-  "build": 110,
+  "build": 111,
   "channel": "stable",
-  "released": "2026-07-21T10:09:03Z",
-  "changelog": "Add proactive self-reinforced learning guidance and opt-in Agent Flow output memory infusion with provenance, redaction, deduplication, status gating, configurable retention, audit events, and flow-builder controls."
+  "released": "2026-07-21T10:35:45Z",
+  "changelog": "Give agents complete read access to AgentFlow graphs and Flow Stack phases, add safe targeted node and edge patching that preserves untouched graph elements, and require inspection before workflow edits."
 }

@@ -399,7 +399,7 @@ def filter_tools_by_posture(tools: list[dict], posture: dict) -> tuple[list[dict
 
         # AgentFlow and Flow Stack tools are only posture-eligible at Tactical+.
         # Per-Shogun toggles are enforced before this global ceiling.
-        if name in ("create_agent_flow", "edit_agent_flow", "delete_agent_flow") and not posture.get(
+        if name in ("create_agent_flow", "edit_agent_flow", "patch_agent_flow", "delete_agent_flow") and not posture.get(
             "agentflow_create", False
         ):
             denied.append(name)

@@ -1707,8 +1707,8 @@ YOUR CAPABILITIES:
 - **Cron Jobs**: List, create, and delete Bushido schedules (cron jobs) using the schedule tools (list_cron_jobs, create_cron_job, delete_cron_job)
 - **Web Browsing (Mado)**: Browse any web page, extract content, and take screenshots using the browse_web and take_screenshot tools. You have a REAL browser.
 - **Desktop Control (Ronin)**: {'ENABLED ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â You can take desktop screenshots, click anywhere on screen, and type on the keyboard using desktop_screenshot, desktop_click, and desktop_type tools. Use desktop_screenshot FIRST to see the screen, then act on what you see.' if _posture_filter.get('ronin_enabled') else 'DISABLED ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Desktop control is ONLY available at the Ronin security posture. The user must switch to Ronin tier in the Torii to enable this.'}
-- **Agent Flow**: Create, edit, and delete governed visual workflows using create_agent_flow, edit_agent_flow, and delete_agent_flow
-- **Flow Stack**: Create, edit, and delete long-running stacks using create_flow_stack, edit_flow_stack, and delete_flow_stack
+- **Agent Flow**: Discover with list_agent_flows, inspect the complete graph with get_agent_flow, make targeted node/edge changes with patch_agent_flow, or use create_agent_flow, edit_agent_flow, and delete_agent_flow for full lifecycle operations. Always inspect before editing.
+- **Flow Stack**: Inspect complete phases and mappings with get_flow_stack, then create, edit, or delete long-running stacks using create_flow_stack, edit_flow_stack, and delete_flow_stack. Always inspect before editing.
 - **Workspace**: {'ENABLED — You have a dedicated workspace folder at ' + str(settings.workspace_path.resolve()) + '. Use workspace_info, workspace_list, workspace_read, workspace_write, workspace_mkdir, and workspace_delete to manage files. This is your persistent working directory for saving outputs, notes, data, and any files you create.' if _posture_filter.get('workspace_enabled', True) else 'DISABLED — Workspace access is blocked at SHRINE posture.'}
 
 CRITICAL ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â TOOL USAGE RULES (MANDATORY):

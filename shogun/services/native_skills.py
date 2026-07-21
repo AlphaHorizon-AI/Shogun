@@ -425,7 +425,7 @@ NATIVE_TOOLS = [
         "category": "workflow",
         "function": {
             "name": "list_agent_flows",
-            "description": "List all existing Agent Flows in the system. Use this to discover available workflows, find a flow ID before editing or deleting, check if a flow already exists, or audit active vs draft flows.",
+            "description": "List AgentFlows and Flow Stacks with IDs, types, status, and graph sizes. Use this to discover a workflow before inspecting it with get_agent_flow or get_flow_stack.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -448,6 +448,38 @@ NATIVE_TOOLS = [
                     },
                 },
                 "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "low",
+        "category": "workflow",
+        "function": {
+            "name": "get_agent_flow",
+            "description": "Read one complete AgentFlow, including metadata, every node and node config, and every edge. Always inspect a flow with this tool before editing its graph.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "flow_id": {"type": "string", "description": "UUID of the AgentFlow returned by list_agent_flows."},
+                },
+                "required": ["flow_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "low",
+        "category": "workflow",
+        "function": {
+            "name": "get_flow_stack",
+            "description": "Read one complete Flow Stack, including its ordered phases, child AgentFlow references, mappings, node configs, and edges. Always inspect a stack before editing it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "flow_stack_id": {"type": "string", "description": "UUID of a Flow Stack returned by list_agent_flows."},
+                },
+                "required": ["flow_stack_id"],
             },
         },
     },
@@ -1836,8 +1868,62 @@ NATIVE_TOOLS = [
         "risk": "medium",
         "category": "workflow",
         "function": {
+            "name": "patch_agent_flow",
+            "description": "Safely add, update, or delete selected AgentFlow nodes and edges while preserving everything else. Call get_agent_flow first and use the returned UUIDs. Prefer config_patch for targeted config changes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "flow_id": {"type": "string", "description": "UUID of the existing standard AgentFlow."},
+                    "node_operations": {
+                        "type": "array",
+                        "description": "Targeted node operations. Deleting a node also deletes its connected edges.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "op": {"type": "string", "enum": ["add", "update", "delete"]},
+                                "node_id": {"type": "string", "description": "Existing node UUID for update/delete; optional new UUID for add."},
+                                "node_type": {"type": "string"},
+                                "label": {"type": "string"},
+                                "position_x": {"type": "number"},
+                                "position_y": {"type": "number"},
+                                "config": {"type": "object", "description": "Complete replacement config."},
+                                "config_patch": {"type": "object", "description": "Top-level config fields to merge into the existing config."},
+                            },
+                            "required": ["op"],
+                        },
+                    },
+                    "edge_operations": {
+                        "type": "array",
+                        "description": "Targeted edge operations using node and edge UUIDs from get_agent_flow.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "op": {"type": "string", "enum": ["add", "update", "delete"]},
+                                "edge_id": {"type": "string", "description": "Existing edge UUID for update/delete; optional new UUID for add."},
+                                "source_node_id": {"type": "string"},
+                                "target_node_id": {"type": "string"},
+                                "source_handle": {"type": "string"},
+                                "target_handle": {"type": "string"},
+                                "label": {"type": "string"},
+                                "edge_type": {"type": "string"},
+                                "config": {"type": "object", "description": "Complete replacement config."},
+                                "config_patch": {"type": "object", "description": "Top-level config fields to merge into the existing config."},
+                            },
+                            "required": ["op"],
+                        },
+                    },
+                },
+                "required": ["flow_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "medium",
+        "category": "workflow",
+        "function": {
             "name": "edit_agent_flow",
-            "description": "Edit an existing AgentFlow's metadata and optionally replace its nodes and connections. Activation is governed separately.",
+            "description": "Edit AgentFlow metadata or replace its complete graph. Inspect with get_agent_flow first; prefer patch_agent_flow for targeted graph changes that preserve untouched elements. Activation is governed separately.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -2294,12 +2380,81 @@ def generate_tool_prompt(tools: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _serialize_flow_for_agent(flow, *, include_phases: bool = False) -> dict[str, Any]:
+    """Return the complete, stable graph representation exposed to read tools."""
+    ordered_nodes = sorted(flow.nodes or [], key=lambda node: (node.position_x, node.position_y, str(node.id)))
+    ordered_edges = sorted(flow.edges or [], key=lambda edge: str(edge.id))
+    payload: dict[str, Any] = {
+        "flow_id": str(flow.id),
+        "name": flow.name,
+        "description": flow.description or "",
+        "status": flow.status,
+        "flow_type": flow.flow_type,
+        "trigger_type": flow.trigger_type,
+        "schedule_config": flow.schedule_config or {},
+        "viewport": flow.viewport or {},
+        "version": flow.version,
+        "input_contract": flow.input_contract or {},
+        "output_contract": flow.output_contract or {},
+        "risk_tier": flow.risk_tier,
+        "default_timeout_seconds": flow.default_timeout_seconds,
+        "allow_as_subflow": flow.allow_as_subflow,
+        "required_tools": flow.required_tools or [],
+        "nodes": [
+            {
+                "node_id": str(node.id),
+                "node_type": node.node_type,
+                "label": node.label,
+                "position_x": node.position_x,
+                "position_y": node.position_y,
+                "config": node.config or {},
+            }
+            for node in ordered_nodes
+        ],
+        "edges": [
+            {
+                "edge_id": str(edge.id),
+                "source_node_id": str(edge.source_node_id),
+                "target_node_id": str(edge.target_node_id),
+                "source_handle": edge.source_handle,
+                "target_handle": edge.target_handle,
+                "label": edge.label,
+                "edge_type": edge.edge_type,
+                "config": edge.config or {},
+            }
+            for edge in ordered_edges
+        ],
+    }
+    if include_phases:
+        payload["phases"] = [
+            {
+                "phase": index,
+                "node_id": str(node.id),
+                "label": node.label,
+                "child_flow_id": (node.config or {}).get("child_flow_id"),
+                "version_mode": (node.config or {}).get("child_flow_version_mode"),
+                "child_flow_version": (node.config or {}).get("child_flow_version"),
+                "execution_mode": (node.config or {}).get("execution_mode"),
+                "timeout_seconds": (node.config or {}).get("timeout_seconds"),
+                "on_failure": (node.config or {}).get("on_failure"),
+                "input_mapping": (node.config or {}).get("input_mapping", {}),
+                "output_mapping": (node.config or {}).get("output_mapping", {}),
+            }
+            for index, node in enumerate(
+                (node for node in ordered_nodes if node.node_type == "subflow"),
+                start=1,
+            )
+        ]
+    return payload
+
+
 WORKFLOW_TOOL_PERMISSIONS = {
     # list_agent_flows is intentionally omitted — it is read-only and should
     # always be available when the tool passes posture filtering, so the agent
     # can discover flow IDs before editing / deleting.
     "create_agent_flow": ("agentflow", "allow_create"),
     "edit_agent_flow": ("agentflow", "allow_edit"),
+    "patch_agent_flow": ("agentflow", "allow_edit"),
     "delete_agent_flow": ("agentflow", "allow_delete"),
     "create_flow_stack": ("flow_stack", "allow_create"),
     "edit_flow_stack": ("flow_stack", "allow_edit"),
@@ -2988,6 +3143,7 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
                     "name": r.name,
                     "description": r.description or "",
                     "status": r.status,
+                    "flow_type": r.flow_type,
                     "node_count": len(r.nodes) if r.nodes else 0,
                     "edge_count": len(r.edges) if r.edges else 0,
                     "created_at": r.created_at.isoformat() if r.created_at else None,
@@ -3001,6 +3157,30 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
                 "page": page,
                 "per_page": per_page,
             })
+
+        elif name in {"get_agent_flow", "get_flow_stack"}:
+            import uuid as _uuid
+
+            from shogun.services.agent_flow_service import AgentFlowService
+
+            argument_name = "flow_id" if name == "get_agent_flow" else "flow_stack_id"
+            try:
+                flow_id = _uuid.UUID(str(args[argument_name]))
+            except (KeyError, ValueError):
+                return json.dumps({"status": "error", "message": f"{argument_name} must be a valid UUID."})
+            flow = await AgentFlowService(db_session).get_flow_full(flow_id)
+            expected_type = "standard" if name == "get_agent_flow" else "stack"
+            if not flow or flow.flow_type != expected_type or flow.is_template:
+                label = "AgentFlow" if expected_type == "standard" else "Flow Stack"
+                return json.dumps({"status": "error", "message": f"{label} not found."})
+            return json.dumps(
+                {
+                    "status": "success",
+                    "flow": _serialize_flow_for_agent(flow, include_phases=expected_type == "stack"),
+                },
+                default=str,
+                ensure_ascii=False,
+            )
 
         elif name == "create_agent_flow":
             # ── Posture enforcement: requires agentflow_autonomous ──
@@ -3075,6 +3255,50 @@ async def execute_native_tool(name: str, args: dict[str, Any], db_session) -> st
                 "flow_id": str(flow.id),
                 "flow_status": "active" if activate else "draft",
             })
+
+        elif name == "patch_agent_flow":
+            try:
+                from shogun.services.posture_guard import get_posture_tool_filter
+
+                posture = await get_posture_tool_filter()
+                if not posture.get("agentflow_create", False):
+                    return json.dumps({
+                        "status": "error",
+                        "message": "AgentFlow editing is only available in Tactical, Campaign, or Ronin posture.",
+                    })
+            except Exception:
+                return json.dumps({"status": "error", "message": "Could not verify the AgentFlow posture permission."})
+            if not await _shogun_workflow_permission(db_session, "agentflow", "allow_edit"):
+                return json.dumps({"status": "error", "message": "Shogun's AgentFlow editing permission is disabled."})
+
+            import uuid as _uuid
+
+            from shogun.services.agent_flow_service import AgentFlowService
+
+            try:
+                flow_id = _uuid.UUID(str(args["flow_id"]))
+                flow_svc = AgentFlowService(db_session)
+                flow = await flow_svc.get_flow_full(flow_id)
+                if not flow or flow.flow_type != "standard" or flow.is_template:
+                    return json.dumps({"status": "error", "message": "Editable AgentFlow not found."})
+                updated = await flow_svc.patch_flow_graph(
+                    flow_id,
+                    node_operations=list(args.get("node_operations") or []),
+                    edge_operations=list(args.get("edge_operations") or []),
+                )
+                await db_session.commit()
+            except (KeyError, ValueError, TypeError) as exc:
+                await db_session.rollback()
+                return json.dumps({"status": "error", "message": str(exc)})
+            return json.dumps(
+                {
+                    "status": "success",
+                    "message": f"AgentFlow '{updated.name}' patched without replacing untouched graph elements.",
+                    "flow": _serialize_flow_for_agent(updated),
+                },
+                default=str,
+                ensure_ascii=False,
+            )
 
         elif name == "edit_agent_flow":
             try:

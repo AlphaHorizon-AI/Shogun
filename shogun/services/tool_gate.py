@@ -130,8 +130,12 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     # Agents
     "spawn_samurai":          {"risk": "medium",   "category": "agents"},
     # Workflows
+    "list_agent_flows":        {"risk": "low",      "category": "workflow"},
+    "get_agent_flow":          {"risk": "low",      "category": "workflow"},
+    "get_flow_stack":          {"risk": "low",      "category": "workflow"},
     "create_agent_flow":      {"risk": "medium",   "category": "workflow"},
     "edit_agent_flow":        {"risk": "medium",   "category": "workflow"},
+    "patch_agent_flow":       {"risk": "medium",   "category": "workflow"},
     "create_flow_stack":      {"risk": "medium",   "category": "workflow"},
     "edit_flow_stack":        {"risk": "medium",   "category": "workflow"},
     # Skills

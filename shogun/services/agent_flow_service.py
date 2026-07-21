@@ -177,6 +177,140 @@ class AgentFlowService(BaseService[AgentFlow]):
         # Reload the full flow
         return await self.get_flow_full(flow_id)
 
+    async def patch_flow_graph(
+        self,
+        flow_id: uuid.UUID,
+        node_operations: list[dict[str, Any]] | None = None,
+        edge_operations: list[dict[str, Any]] | None = None,
+    ) -> AgentFlow | None:
+        """Apply targeted graph mutations while preserving untouched nodes and edges."""
+        flow = await self.get_flow_full(flow_id)
+        if flow is None:
+            return None
+
+        node_operations = node_operations or []
+        edge_operations = edge_operations or []
+        if not node_operations and not edge_operations:
+            raise ValueError("At least one node or edge operation is required.")
+
+        nodes = {str(node.id): node for node in flow.nodes}
+        edges = {str(edge.id): edge for edge in flow.edges}
+
+        def operation_id(payload: dict[str, Any], key: str) -> str:
+            value = str(payload.get(key) or "").strip()
+            if not value:
+                raise ValueError(f"{key} is required for this graph operation.")
+            return value
+
+        for operation in node_operations:
+            action = str(operation.get("op") or "").lower()
+            if action == "add":
+                raw_id = str(operation.get("node_id") or uuid.uuid4())
+                try:
+                    node_id = uuid.UUID(raw_id)
+                except ValueError as exc:
+                    raise ValueError("node_id must be a UUID when provided.") from exc
+                if str(node_id) in nodes:
+                    raise ValueError(f"Node {node_id} already exists.")
+                node_type = str(operation.get("node_type") or "").strip()
+                if not node_type:
+                    raise ValueError("node_type is required when adding a node.")
+                node = AgentFlowNode(
+                    id=node_id,
+                    flow_id=flow_id,
+                    node_type=node_type,
+                    label=str(operation.get("label") or "Untitled"),
+                    position_x=float(operation.get("position_x", 0.0)),
+                    position_y=float(operation.get("position_y", 0.0)),
+                    config=dict(operation.get("config") or {}),
+                )
+                self.session.add(node)
+                nodes[str(node_id)] = node
+            elif action == "update":
+                node_id = operation_id(operation, "node_id")
+                node = nodes.get(node_id)
+                if node is None:
+                    raise ValueError(f"Node {node_id} was not found in this AgentFlow.")
+                for key in ("node_type", "label", "position_x", "position_y"):
+                    if key in operation:
+                        setattr(node, key, operation[key])
+                if "config" in operation:
+                    node.config = dict(operation["config"] or {})
+                if "config_patch" in operation:
+                    node.config = {**(node.config or {}), **dict(operation["config_patch"] or {})}
+            elif action == "delete":
+                node_id = operation_id(operation, "node_id")
+                node = nodes.pop(node_id, None)
+                if node is None:
+                    raise ValueError(f"Node {node_id} was not found in this AgentFlow.")
+                for edge_id, edge in list(edges.items()):
+                    if str(edge.source_node_id) == node_id or str(edge.target_node_id) == node_id:
+                        await self.session.delete(edge)
+                        edges.pop(edge_id)
+                await self.session.delete(node)
+            else:
+                raise ValueError("Node operation op must be add, update, or delete.")
+
+        await self.session.flush()
+
+        for operation in edge_operations:
+            action = str(operation.get("op") or "").lower()
+            if action == "add":
+                raw_id = str(operation.get("edge_id") or uuid.uuid4())
+                try:
+                    edge_id = uuid.UUID(raw_id)
+                except ValueError as exc:
+                    raise ValueError("edge_id must be a UUID when provided.") from exc
+                if str(edge_id) in edges:
+                    raise ValueError(f"Edge {edge_id} already exists.")
+                source_id = operation_id(operation, "source_node_id")
+                target_id = operation_id(operation, "target_node_id")
+                if source_id not in nodes or target_id not in nodes:
+                    raise ValueError("New edges must reference nodes in this AgentFlow.")
+                edge = AgentFlowEdge(
+                    id=edge_id,
+                    flow_id=flow_id,
+                    source_node_id=uuid.UUID(source_id),
+                    target_node_id=uuid.UUID(target_id),
+                    source_handle=operation.get("source_handle"),
+                    target_handle=operation.get("target_handle"),
+                    label=operation.get("label"),
+                    edge_type=str(operation.get("edge_type") or "default"),
+                    config=dict(operation.get("config") or {}),
+                )
+                self.session.add(edge)
+                edges[str(edge_id)] = edge
+            elif action == "update":
+                edge_id = operation_id(operation, "edge_id")
+                edge = edges.get(edge_id)
+                if edge is None:
+                    raise ValueError(f"Edge {edge_id} was not found in this AgentFlow.")
+                source_id = str(operation.get("source_node_id") or edge.source_node_id)
+                target_id = str(operation.get("target_node_id") or edge.target_node_id)
+                if source_id not in nodes or target_id not in nodes:
+                    raise ValueError("Updated edges must reference nodes in this AgentFlow.")
+                edge.source_node_id = uuid.UUID(source_id)
+                edge.target_node_id = uuid.UUID(target_id)
+                for key in ("source_handle", "target_handle", "label", "edge_type"):
+                    if key in operation:
+                        setattr(edge, key, operation[key])
+                if "config" in operation:
+                    edge.config = dict(operation["config"] or {})
+                if "config_patch" in operation:
+                    edge.config = {**(edge.config or {}), **dict(operation["config_patch"] or {})}
+            elif action == "delete":
+                edge_id = operation_id(operation, "edge_id")
+                edge = edges.pop(edge_id, None)
+                if edge is None:
+                    raise ValueError(f"Edge {edge_id} was not found in this AgentFlow.")
+                await self.session.delete(edge)
+            else:
+                raise ValueError("Edge operation op must be add, update, or delete.")
+
+        flow.version = int(flow.version or 1) + 1
+        await self.session.flush()
+        return await self.get_flow_full(flow_id)
+
     # ── Duplicate a flow ─────────────────────────────────────
 
     async def duplicate_flow(self, flow_id: uuid.UUID) -> AgentFlow | None:
