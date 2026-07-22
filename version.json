@@ -1,8 +1,8 @@
 {
-  "version": "1.37.0",
+  "version": "1.37.1",
   "name": "Shogun OS",
-  "build": 118,
+  "build": 119,
   "channel": "stable",
-  "released": "2026-07-22T08:09:22Z",
-  "changelog": "Add Single-user and Team installation modes, Primary Admin-only platform access, Telegram and Teams member identity mapping, member-specific pinned memories, safe no-tools member chat, and Team Member HARAKIRI protection."
+  "released": "2026-07-22T10:29:27Z",
+  "changelog": "Localize the complete Setup Wizard in all 14 supported languages, apply language changes instantly without reloads, and add automated translation completeness and placeholder validation."
 }

@@ -138,12 +138,12 @@ Reliability and consistency build trust.`;
 // ── Component ──────────────────────────────────────────────────
 
 export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
-  const { t, setLanguage: setI18nLanguage } = useTranslation();
+  const { t, language: activeLanguage, setLanguage: setI18nLanguage } = useTranslation();
   const [step, setStep] = useState(1);
   const [animDir, setAnimDir] = useState<'left' | 'right'>('left');
 
   // Step 1: Language & Identity
-  const [language, setLanguage] = useState('en');
+  const [language, setLanguage] = useState(activeLanguage);
   const [operatorName, setOperatorName] = useState('Daimyo');
   const [installationMode, setInstallationMode] = useState<'single' | 'team'>('single');
   const [teamMembers, setTeamMembers] = useState<TeamMemberConfig[]>([]);
@@ -234,7 +234,11 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
         ]);
         if (statusRes.status === 'fulfilled') {
           setDataPath(statusRes.value.data.data?.data_path || '');
-          setLanguage(statusRes.value.data.data?.language || 'en');
+          const configuredLanguage = statusRes.value.data.data?.language;
+          if (configuredLanguage && AVAILABLE_LANGUAGES.some(item => item.code === configuredLanguage)) {
+            setLanguage(configuredLanguage);
+            void setI18nLanguage(configuredLanguage);
+          }
         }
         if (personasRes.status === 'fulfilled') {
           setPersonas(personasRes.value.data.data || []);
@@ -242,7 +246,20 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
       } catch {}
     };
     load();
-  }, []);
+  }, [setI18nLanguage]);
+
+  const formatTranslation = (key: string, values: Record<string, string | number>) => {
+    return Object.entries(values).reduce(
+      (result, [name, value]) => result.replaceAll(`{${name}}`, String(value)),
+      t(key),
+    );
+  };
+
+  const routingProfiles = ROUTING_PROFILES.map(item => ({
+    ...item,
+    name: t(`setup.routing_${item.id}`),
+    description: t(`setup.routing_${item.id}_desc`),
+  }));
 
   // ── Navigation ───────────────────────────────────────────────
   const goNext = useCallback(() => {
@@ -451,7 +468,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
       }, 2500);
     } catch (err) {
       console.error('Setup failed:', err);
-      let message = 'Setup could not be completed. Restart Tenshu to apply database repairs, then try again.';
+      let message = t('setup.completion_error_help');
       if (axios.isAxiosError(err)) {
         const detail = err.response?.data?.detail;
         if (typeof detail === 'string' && detail.trim()) message = detail;
@@ -548,8 +565,8 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                   className={`p-4 rounded-xl border-2 text-left transition-all ${installationMode === 'single' ? 'border-[#d4a017] bg-[#d4a017]/10' : 'border-[#2a2f3e] bg-[#0d1117]'}`}
                 >
                   <User className="w-5 h-5 text-[#d4a017] mb-2" />
-                  <p className="font-bold text-white">Single-user mode</p>
-                  <p className="text-xs text-[#777] mt-1">One Primary Admin uses Shogun personally.</p>
+                  <p className="font-bold text-white">{t('setup.mode_single')}</p>
+                  <p className="text-xs text-[#777] mt-1">{t('setup.mode_single_desc')}</p>
                 </button>
                 <button
                   type="button"
@@ -560,14 +577,14 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                   className={`p-4 rounded-xl border-2 text-left transition-all ${installationMode === 'team' ? 'border-[#3b82f6] bg-[#3b82f6]/10' : 'border-[#2a2f3e] bg-[#0d1117]'}`}
                 >
                   <Users className="w-5 h-5 text-[#3b82f6] mb-2" />
-                  <p className="font-bold text-white">Team mode</p>
-                  <p className="text-xs text-[#777] mt-1">Admin uses the platform; members talk through Telegram or Teams.</p>
+                  <p className="font-bold text-white">{t('setup.mode_team')}</p>
+                  <p className="text-xs text-[#777] mt-1">{t('setup.mode_team_desc')}</p>
                 </button>
               </div>
 
               <div>
                 <label className="text-[10px] text-[#888] uppercase tracking-widest font-bold block mb-1.5">
-                  {installationMode === 'team' ? 'Primary Admin name' : 'Your Calling Name'}
+                  {installationMode === 'team' ? t('setup.primary_admin_name') : t('setup.calling_name')}
                 </label>
                 <input
                   type="text"
@@ -578,8 +595,8 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                 />
                 <p className="text-[10px] text-[#666] mt-2">
                   {installationMode === 'team'
-                    ? 'This is the only person with platform and Primary Admin authority.'
-                    : 'Shogun will address you by this title.'}
+                    ? t('setup.primary_admin_desc')
+                    : t('setup.calling_name_desc')}
                 </p>
               </div>
 
@@ -587,40 +604,40 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-bold text-white">Team members</p>
-                      <p className="text-[10px] text-[#666]">Each identity is remembered separately and remains non-admin.</p>
+                      <p className="text-sm font-bold text-white">{t('setup.team_members')}</p>
+                      <p className="text-[10px] text-[#666]">{t('setup.team_members_desc')}</p>
                     </div>
                     <button type="button" onClick={addTeamMember} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#3b82f6]/15 text-[#60a5fa] text-xs font-bold hover:bg-[#3b82f6]/25">
-                      <UserPlus className="w-4 h-4" /> Add member
+                      <UserPlus className="w-4 h-4" /> {t('setup.add_member')}
                     </button>
                   </div>
                   {teamMembers.map((member, index) => (
                     <div key={member.id} className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-4 space-y-3">
                       <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-[#3b82f6] uppercase tracking-widest">Member {index + 1}</p>
+                        <p className="text-xs font-bold text-[#3b82f6] uppercase tracking-widest">{formatTranslation('setup.member_number', { number: index + 1 })}</p>
                         <button type="button" onClick={() => setTeamMembers(prev => prev.filter(item => item.id !== member.id))} className="text-[#666] hover:text-red-400">
                           <X className="w-4 h-4" />
                         </button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <input value={member.display_name} onChange={e => updateTeamMember(member.id, { display_name: e.target.value })} placeholder="Full name" className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#3b82f6] outline-none" />
-                        <input value={member.email} onChange={e => updateTeamMember(member.id, { email: e.target.value })} placeholder="Email (optional)" className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#3b82f6] outline-none" />
+                        <input value={member.display_name} onChange={e => updateTeamMember(member.id, { display_name: e.target.value })} placeholder={t('setup.full_name')} className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#3b82f6] outline-none" />
+                        <input value={member.email} onChange={e => updateTeamMember(member.id, { email: e.target.value })} placeholder={t('setup.email_optional')} className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#3b82f6] outline-none" />
                         <select value={member.channel} onChange={e => updateTeamMember(member.id, { channel: e.target.value as TeamMemberConfig['channel'] })} className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#3b82f6] outline-none">
                           <option value="telegram">Telegram</option>
                           <option value="microsoft_teams">Microsoft Teams</option>
                         </select>
                         {member.channel === 'telegram' ? (
-                          <input value={member.telegram_user_id} onChange={e => updateTeamMember(member.id, { telegram_user_id: e.target.value })} placeholder="Telegram numeric user ID" className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none" />
+                          <input value={member.telegram_user_id} onChange={e => updateTeamMember(member.id, { telegram_user_id: e.target.value })} placeholder={t('setup.telegram_user_id')} className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none" />
                         ) : (
-                          <input value={member.teams_user_principal_name} onChange={e => updateTeamMember(member.id, { teams_user_principal_name: e.target.value })} placeholder="Teams sign-in email / UPN" className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none" />
+                          <input value={member.teams_user_principal_name} onChange={e => updateTeamMember(member.id, { teams_user_principal_name: e.target.value })} placeholder={t('setup.teams_upn')} className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none" />
                         )}
                       </div>
                       {member.channel === 'microsoft_teams' && (
-                        <input value={member.teams_aad_object_id} onChange={e => updateTeamMember(member.id, { teams_aad_object_id: e.target.value })} placeholder="Entra Object ID (optional if sign-in email is entered)" className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none" />
+                        <input value={member.teams_aad_object_id} onChange={e => updateTeamMember(member.id, { teams_aad_object_id: e.target.value })} placeholder={t('setup.teams_object_id')} className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none" />
                       )}
                     </div>
                   ))}
-                  {!teamSetupValid && <p className="text-xs text-amber-400">Add at least one named member and their Telegram ID or Teams identity.</p>}
+                  {!teamSetupValid && <p className="text-xs text-amber-400">{t('setup.team_validation')}</p>}
                 </div>
               )}
             </div>
@@ -644,7 +661,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
             <div className="max-w-xl mx-auto">
               <div className="bg-[#0d1117] border border-[#d4a017]/30 rounded-xl p-6 space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] text-[#888] uppercase tracking-widest font-bold">Data Directory</label>
+                  <label className="text-[10px] text-[#888] uppercase tracking-widest font-bold">{t('setup.step2_data_dir')}</label>
                   <input
                     type="text"
                     value={dataPath}
@@ -652,15 +669,15 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                     placeholder="C:\Users\you\Shogun\data"
                     className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-[#d4a017] focus:border-[#d4a017] outline-none transition-colors"
                   />
-                  <p className="text-[10px] text-[#555]">Enter the absolute path where Shogun data should live. The directory will be created if it doesn't exist.</p>
+                  <p className="text-[10px] text-[#555]">{t('setup.step2_path_help')}</p>
                 </div>
                 <div className="h-px bg-[#2a2f3e]" />
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { icon: Database, label: 'Database', sub: 'shogun.db' },
-                    { icon: HardDrive, label: 'Vector Memory', sub: 'qdrant/' },
-                    { icon: Settings, label: 'Configurations', sub: 'configs/' },
-                    { icon: ScrollText, label: 'Logs & Audit', sub: 'logs/' },
+                    { icon: Database, label: t('setup.step2_database'), sub: 'shogun.db' },
+                    { icon: HardDrive, label: t('setup.step2_vector'), sub: 'qdrant/' },
+                    { icon: Settings, label: t('setup.step2_configs'), sub: 'configs/' },
+                    { icon: ScrollText, label: t('setup.step2_logs'), sub: 'logs/' },
                   ].map(({ icon: Icon, label, sub }) => (
                     <div key={label} className="flex items-center gap-2.5 p-2.5 rounded-lg bg-[#0a0e1a] border border-[#1a1f2e]">
                       <Icon className="w-4 h-4 text-[#3b82f6]" />
@@ -694,32 +711,32 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               {/* Left: Identity */}
               <div className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-5 space-y-4">
                 <h3 className="text-sm font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-2">
-                  <User className="w-4 h-4" /> Identity
+                  <User className="w-4 h-4" /> {t('setup.step8_identity')}
                 </h3>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Agent Name</label>
+                  <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step3_agent_name')}</label>
                   <input
                     type="text"
                     value={agentName}
                     onChange={e => setAgentName(e.target.value)}
-                    placeholder="Shogun Prime"
+                    placeholder={t('setup.step3_agent_name_placeholder')}
                     className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#d4a017] outline-none transition-colors"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Description</label>
+                  <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step3_description')}</label>
                   <textarea
                     value={description}
                     onChange={e => setDescription(e.target.value)}
-                    placeholder="Master orchestrator of the Samurai Network."
+                    placeholder={t('setup.step3_description_placeholder')}
                     className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#d4a017] outline-none transition-colors min-h-[80px] resize-y"
                   />
                 </div>
                 {personas.length > 0 && (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Active Persona</label>
+                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step3_persona')}</label>
                     <Select value={personaId} onChange={handlePersonaChange}>
-                      <option value="">Select a persona...</option>
+                      <option value="">{t('setup.step3_select_persona')}</option>
                       {personas.map((p: any) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
@@ -731,11 +748,11 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               {/* Right: Autonomy & Logic */}
               <div className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-5 space-y-4">
                 <h3 className="text-sm font-bold text-[#3b82f6] uppercase tracking-widest flex items-center gap-2">
-                  <Zap className="w-4 h-4" /> Autonomy & Logic
+                  <Zap className="w-4 h-4" /> {t('setup.autonomy_logic')}
                 </h3>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Autonomy Level</label>
+                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step3_autonomy')}</label>
                     <span className="text-[#3b82f6] font-mono font-bold text-sm">{autonomy}%</span>
                   </div>
                   <input type="range" min="0" max="100" step="10" value={autonomy}
@@ -744,61 +761,61 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                 </div>
                 <div className="grid grid-cols-2 gap-2.5">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Tone</label>
+                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step3_tone')}</label>
                     <Select value={tone} onChange={setTone}>
-                      <option value="analytical">Analytical</option>
-                      <option value="direct">Direct</option>
-                      <option value="supportive">Supportive</option>
-                      <option value="strategic">Strategic</option>
+                      <option value="analytical">{t('setup.step3_tone_analytical')}</option>
+                      <option value="direct">{t('setup.step3_tone_direct')}</option>
+                      <option value="supportive">{t('setup.step3_tone_supportive')}</option>
+                      <option value="strategic">{t('setup.step3_tone_strategic')}</option>
                     </Select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Risk</label>
+                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step3_risk')}</label>
                     <Select value={riskTolerance} onChange={setRiskTolerance}>
-                      <option value="low">Low (Cautious)</option>
-                      <option value="medium">Medium (Balanced)</option>
-                      <option value="high">High (Aggressive)</option>
+                      <option value="low">{t('setup.step3_risk_low')}</option>
+                      <option value="medium">{t('setup.step3_risk_medium')}</option>
+                      <option value="high">{t('setup.step3_risk_high')}</option>
                     </Select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Verbosity</label>
+                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step3_verbosity')}</label>
                     <Select value={verbosity} onChange={setVerbosity}>
-                      <option value="low">Concise</option>
-                      <option value="medium">Moderate</option>
-                      <option value="high">Detailed</option>
+                      <option value="low">{t('setup.step3_verbosity_low')}</option>
+                      <option value="medium">{t('setup.step3_verbosity_medium')}</option>
+                      <option value="high">{t('setup.step3_verbosity_high')}</option>
                     </Select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Planning</label>
+                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step3_planning')}</label>
                     <Select value={planningDepth} onChange={setPlanningDepth}>
-                      <option value="low">Shallow</option>
-                      <option value="medium">Standard</option>
-                      <option value="high">Deep</option>
+                      <option value="low">{t('setup.step3_planning_low')}</option>
+                      <option value="medium">{t('setup.step3_planning_medium')}</option>
+                      <option value="high">{t('setup.step3_planning_high')}</option>
                     </Select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Tools</label>
+                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step3_tool_usage')}</label>
                     <Select value={toolUsage} onChange={setToolUsage}>
-                      <option value="conservative">Conservative</option>
-                      <option value="balanced">Balanced</option>
-                      <option value="aggressive">Aggressive</option>
+                      <option value="conservative">{t('setup.step3_tool_conservative')}</option>
+                      <option value="balanced">{t('setup.step3_tool_balanced')}</option>
+                      <option value="aggressive">{t('setup.step3_tool_aggressive')}</option>
                     </Select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Security</label>
+                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step3_security_bias')}</label>
                     <Select value={securityBias} onChange={setSecurityBias}>
-                      <option value="strict">Strict</option>
-                      <option value="balanced">Balanced</option>
-                      <option value="open">Open</option>
+                      <option value="strict">{t('setup.step3_security_strict')}</option>
+                      <option value="balanced">{t('setup.step3_security_balanced')}</option>
+                      <option value="open">{t('setup.step3_security_open')}</option>
                     </Select>
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Memory Style</label>
+                  <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step3_memory')}</label>
                   <Select value={memoryStyle} onChange={setMemoryStyle}>
-                    <option value="conservative">Conservative</option>
-                    <option value="focused">Focused (Task-relevant)</option>
-                    <option value="expansive">Expansive (Broad context)</option>
+                    <option value="conservative">{t('setup.step3_memory_conservative')}</option>
+                    <option value="focused">{t('setup.step3_memory_focused')}</option>
+                    <option value="expansive">{t('setup.step3_memory_expansive')}</option>
                   </Select>
                 </div>
               </div>
@@ -823,12 +840,12 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
             <div className="max-w-3xl mx-auto">
               <div className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2 border-b border-[#2a2f3e] bg-[#0a0e1a]">
-                  <span className="text-[10px] font-bold text-[#888] uppercase tracking-widest">YAML Configuration</span>
+                  <span className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.yaml_configuration')}</span>
                   <button
                     onClick={() => setDirectives(DEFAULT_DIRECTIVES)}
                     className="text-[10px] font-bold text-[#3b82f6] hover:text-[#d4a017] uppercase tracking-widest transition-colors"
                   >
-                    Reset to Defaults
+                    {t('setup.step4_reset')}
                   </button>
                 </div>
                 <textarea
@@ -897,7 +914,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Provider Name</label>
+                  <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step5_provider_name')}</label>
                   <input
                     value={activeProv.name}
                     onChange={e => updateProvider(activeProv.id, { name: e.target.value })}
@@ -907,7 +924,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
 
                 {['ollama', 'lmstudio', 'local'].includes(activeProv.provider_type) ? (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Base URL</label>
+                    <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.step5_base_url')}</label>
                     <input
                       value={activeProv.base_url}
                       onChange={e => updateProvider(activeProv.id, { base_url: e.target.value })}
@@ -918,18 +935,18 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                 ) : (
                   <>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Auth Type</label>
+                      <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.auth_type')}</label>
                       <Select
                         value={activeProv.auth_type}
                         onChange={(val: string) => updateProvider(activeProv.id, { auth_type: val })}
                       >
-                        <option value="api_key">API Key</option>
+                        <option value="api_key">{t('setup.step5_api_key')}</option>
                         <option value="oauth">OAuth</option>
                       </Select>
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">
-                        {activeProv.auth_type === 'oauth' ? 'OAuth Token' : 'API Key'}
+                        {activeProv.auth_type === 'oauth' ? t('setup.oauth_token') : t('setup.step5_api_key')}
                       </label>
                       <input
                         type="password"
@@ -946,8 +963,8 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                 {activeProv.discoveredModels.length > 0 && (
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">Available Models</label>
-                      <span className="text-[10px] text-[#555]">{activeProv.discoveredModels.length} found · double-click to add</span>
+                      <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">{t('setup.available_models')}</label>
+                      <span className="text-[10px] text-[#555]">{formatTranslation('setup.models_found', { count: activeProv.discoveredModels.length })}</span>
                     </div>
                     <div className="bg-[#050508] border border-[#2a2f3e] rounded-lg max-h-40 overflow-y-auto">
                       {activeProv.discoveredModels.map(m => {
@@ -980,9 +997,9 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                 {/* ── Selected Models (used in Step 7) ── */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">Selected Models</label>
+                    <label className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">{t('setup.selected_models')}</label>
                     {activeProv.models.length > 0 && (
-                      <span className="text-[10px] text-[#d4a017] font-bold">{activeProv.models.length} selected</span>
+                      <span className="text-[10px] text-[#d4a017] font-bold">{formatTranslation('setup.models_selected', { count: activeProv.models.length })}</span>
                     )}
                   </div>
                   {activeProv.models.length > 0 ? (
@@ -1000,11 +1017,12 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-[10px] text-[#555] italic py-2 text-center">No models selected yet. {activeProv.discoveredModels.length > 0 ? 'Double-click above to add.' : 'Click "Test Connection" to discover, or add manually.'}</p>
+                    <p className="text-[10px] text-[#555] italic py-2 text-center">{t('setup.no_models_selected')} {activeProv.discoveredModels.length > 0 ? t('setup.double_click_add') : t('setup.test_or_add_model')}</p>
                   )}
                   <div className="flex gap-2">
                     <input
-                      placeholder="Or type a model name..."
+                      data-manual-model-input
+                      placeholder={t('setup.type_model_name')}
                       className="flex-1 bg-[#050508] border border-[#2a2f3e] rounded-lg p-2 text-xs font-mono text-white focus:border-[#3b82f6] outline-none transition-colors"
                       onKeyDown={e => {
                         if (e.key === 'Enter') {
@@ -1018,7 +1036,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                     />
                     <button
                       onClick={() => {
-                        const input = document.querySelector<HTMLInputElement>('input[placeholder="Or type a model name..."]');
+                        const input = document.querySelector<HTMLInputElement>('[data-manual-model-input]');
                         if (input && input.value.trim()) {
                           const val = input.value.trim();
                           if (!activeProv.models.includes(val)) {
@@ -1029,7 +1047,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                       }}
                       className="px-3 py-2 rounded-lg bg-[#1a1f2e] border border-[#2a2f3e] text-[10px] font-bold text-[#888] hover:text-white hover:border-[#3b82f6] transition-all"
                     >
-                      Add
+                      {t('setup.add')}
                     </button>
                   </div>
                 </div>
@@ -1041,16 +1059,16 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                     className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#3b82f6] hover:bg-[#3b82f6]/80 text-white text-sm font-bold transition-all disabled:opacity-50"
                   >
                     {activeProv.status === 'testing' ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Testing...</>
+                      <><Loader2 className="w-4 h-4 animate-spin" /> {t('setup.step5_testing')}</>
                     ) : (
-                      <><Zap className="w-4 h-4" /> Test Connection</>
+                      <><Zap className="w-4 h-4" /> {t('setup.step5_test')}</>
                     )}
                   </button>
                   {activeProv.status === 'connected' && (
-                    <span className="text-sm text-green-400 flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Connected</span>
+                    <span className="text-sm text-green-400 flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> {t('setup.step5_connected')}</span>
                   )}
                   {activeProv.status === 'failed' && (
-                    <span className="text-sm text-red-400 flex items-center gap-1"><AlertCircle className="w-4 h-4" /> Failed</span>
+                    <span className="text-sm text-red-400 flex items-center gap-1"><AlertCircle className="w-4 h-4" /> {t('setup.step5_failed')}</span>
                   )}
                 </div>
               </div>
@@ -1077,10 +1095,10 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               {/* Constitution */}
               <div className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2 border-b border-[#2a2f3e] bg-[#0a0e1a]">
-                  <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">⚖️ Constitution (YAML)</span>
+                  <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">⚖️ {t('setup.step6_constitution')} (YAML)</span>
                   <button onClick={() => setConstitution(DEFAULT_CONSTITUTION)}
                     className="text-[10px] font-bold text-[#3b82f6] hover:text-[#d4a017] uppercase tracking-widest transition-colors">
-                    Use Defaults
+                    {t('setup.step6_use_defaults')}
                   </button>
                 </div>
                 <textarea
@@ -1093,10 +1111,10 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               {/* Mandate */}
               <div className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2 border-b border-[#2a2f3e] bg-[#0a0e1a]">
-                  <span className="text-[10px] font-bold text-[#3b82f6] uppercase tracking-widest">📜 Mandate (Markdown)</span>
+                  <span className="text-[10px] font-bold text-[#3b82f6] uppercase tracking-widest">📜 {t('setup.step6_mandate')} (Markdown)</span>
                   <button onClick={() => setMandate(DEFAULT_MANDATE)}
                     className="text-[10px] font-bold text-[#3b82f6] hover:text-[#d4a017] uppercase tracking-widest transition-colors">
-                    Use Defaults
+                    {t('setup.step6_use_defaults')}
                   </button>
                 </div>
                 <textarea
@@ -1125,7 +1143,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               <p>{t('setup.step7_explainer')}</p>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-w-5xl mx-auto">
-              {ROUTING_PROFILES.map(item => (
+              {routingProfiles.map(item => (
                 <button key={item.id} onClick={() => setRoutingProfile(item.id)}
                   className={`text-left rounded-xl border p-3 transition-all ${routingProfile === item.id ? 'border-purple-400 bg-purple-400/10' : 'border-[#2a2f3e] bg-[#0d1117] hover:border-purple-400/40'}`}>
                   <div className="flex items-center gap-2 text-xs font-bold text-white">
@@ -1139,18 +1157,18 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               {/* Primary */}
               <div className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-5 space-y-4">
                 <h3 className="text-sm font-bold text-[#3b82f6] uppercase tracking-widest flex items-center gap-2">
-                  <Cpu className="w-4 h-4" /> Primary Model
+                  <Cpu className="w-4 h-4" /> {t('setup.step7_primary')}
                 </h3>
-                <p className="text-[10px] text-[#666]">The default model used for all Shogun reasoning and task execution.</p>
+                <p className="text-[10px] text-[#666]">{t('setup.step7_primary_desc')}</p>
                 {allModelOptions.length === 0 ? (
-                  <p className="text-xs text-[#888] italic text-center py-4">No connected providers. Go back to Step 5 or configure later.</p>
+                  <p className="text-xs text-[#888] italic text-center py-4">{t('setup.step7_no_providers')}</p>
                 ) : (
                   <select
                     value={primaryModel}
                     onChange={e => setPrimaryModel(e.target.value)}
                     className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-3 text-sm font-mono text-white focus:border-[#d4a017] outline-none transition-colors"
                   >
-                    <option value="">— Choose a model —</option>
+                    <option value="">— {t('setup.step7_select_model')} —</option>
                     {allModelOptions.map(opt => (
                       <option key={opt.value} value={opt.value}>{opt.label} ({opt.group})</option>
                     ))}
@@ -1160,18 +1178,18 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                   <div className="flex items-center gap-2 p-2.5 rounded-lg bg-[#d4a017]/5 border border-[#d4a017]/20">
                     <CheckCircle2 className="w-3.5 h-3.5 text-[#d4a017] shrink-0" />
                     <span className="text-xs font-mono text-[#d4a017] font-bold truncate">{primaryModel.split('::')[1]}</span>
-                    <span className="text-[9px] text-[#888] ml-auto shrink-0">PRIMARY</span>
+                    <span className="text-[9px] text-[#888] ml-auto shrink-0">{t('setup.step7_primary').toUpperCase()}</span>
                   </div>
                 )}
               </div>
               {/* Fallback */}
               <div className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-5 space-y-4">
                 <h3 className="text-sm font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-2">
-                  <Sparkles className="w-4 h-4" /> Fallback Models
+                  <Sparkles className="w-4 h-4" /> {t('setup.step7_fallback')}
                 </h3>
-                <p className="text-[10px] text-[#666]">Used when the primary is unavailable. Order matters — drag to reorder.</p>
+                <p className="text-[10px] text-[#666]">{t('setup.step7_fallback_desc')}</p>
                 {allModelOptions.length === 0 ? (
-                  <p className="text-xs text-[#888] italic text-center py-4">No connected providers.</p>
+                  <p className="text-xs text-[#888] italic text-center py-4">{t('setup.step7_no_providers')}</p>
                 ) : (
                   <>
                     <select
@@ -1184,7 +1202,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                       }}
                       className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-3 text-sm font-mono text-white focus:border-[#3b82f6] outline-none transition-colors"
                     >
-                      <option value="">— Add a fallback model —</option>
+                      <option value="">— {t('setup.step7_add_fallback')} —</option>
                       {allModelOptions
                         .filter(opt => opt.value !== primaryModel && !fallbackModels.includes(opt.value))
                         .map(opt => (
@@ -1221,15 +1239,15 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-[11px] text-[#888] italic text-center py-2">No fallbacks selected.</p>
+                      <p className="text-[11px] text-[#888] italic text-center py-2">{t('setup.step7_no_fallbacks')}</p>
                     )}
                   </>
                 )}
               </div>
             </div> : (
               <div className="max-w-4xl mx-auto rounded-xl border border-purple-400/20 bg-purple-400/5 p-5 text-center">
-                <p className="text-sm font-bold text-purple-200">{ROUTING_PROFILES.find(item => item.id === routingProfile)?.name} routing will choose models automatically.</p>
-                <p className="text-[10px] text-[#888] mt-1">You can change the routing profile or configure Custom routing later in Katana.</p>
+                <p className="text-sm font-bold text-purple-200">{formatTranslation('setup.routing_automatic', { profile: routingProfiles.find(item => item.id === routingProfile)?.name || routingProfile })}</p>
+                <p className="text-[10px] text-[#888] mt-1">{t('setup.routing_later')}</p>
               </div>
             )}
           </div>
@@ -1258,10 +1276,10 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               setRoninInstallResult('success');
               handleRoninCheck(); // refresh status
             } else {
-              setRoninInstallResult(res.data.data?.message || 'Installation failed.');
+              setRoninInstallResult(res.data.data?.message || t('setup.installation_failed'));
             }
           } catch {
-            setRoninInstallResult('Network error during installation.');
+            setRoninInstallResult(t('setup.installation_network_error'));
           } finally {
             setRoninInstalling(false);
           }
@@ -1274,18 +1292,14 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
           <div className="space-y-6">
             <div className="text-center">
               <Crosshair className="w-12 h-12 text-[#f97316] mx-auto mb-4" />
-              <h2 className="text-3xl font-bold text-white">Desktop Control (Ronin)</h2>
+              <h2 className="text-3xl font-bold text-white">{t('setup.ronin_title')}</h2>
               <p className="text-sm text-[#888] mt-2 max-w-lg mx-auto">
-                Optional — Enable AI-powered desktop automation for mouse, keyboard, and screenshot control.
+                {t('setup.ronin_subtitle')}
               </p>
             </div>
 
             <div className="max-w-3xl mx-auto bg-[#0d1117]/60 border border-[#1a1f2e] rounded-xl p-4 text-sm text-[#999] leading-relaxed">
-              <p>
-                Ronin gives Shogun the ability to see your screen, move your mouse, and type on your keyboard.
-                This is completely optional and can be enabled later in the Shogun Profile settings.
-                When enabled, all actions are governed by your security posture in the Torii.
-              </p>
+              <p>{t('setup.ronin_explainer')}</p>
             </div>
 
             {/* Enable toggle */}
@@ -1295,8 +1309,8 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                   <div className="flex items-center gap-3">
                     <Monitor className="w-5 h-5 text-[#f97316]" />
                     <div>
-                      <h3 className="text-sm font-bold text-white">Enable Ronin Desktop Control</h3>
-                      <p className="text-[10px] text-[#666]">Install dependencies and enable desktop automation capabilities</p>
+                      <h3 className="text-sm font-bold text-white">{t('setup.ronin_enable')}</h3>
+                      <p className="text-[10px] text-[#666]">{t('setup.ronin_enable_desc')}</p>
                     </div>
                   </div>
                   <button
@@ -1319,20 +1333,20 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                 {roninCheck && (
                   <div className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-5 space-y-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-[#3b82f6] uppercase tracking-widest">System Detection</h3>
+                      <h3 className="text-sm font-bold text-[#3b82f6] uppercase tracking-widest">{t('setup.ronin_system_detection')}</h3>
                       <button onClick={handleRoninCheck} className="text-[10px] text-[#3b82f6] hover:text-[#d4a017] font-bold uppercase tracking-widest">
-                        Refresh
+                        {t('common.refresh')}
                       </button>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-[#0a0e1a] border border-[#1a1f2e] rounded-lg p-3">
-                        <p className="text-[9px] text-[#888] uppercase tracking-widest font-bold">Operating System</p>
+                        <p className="text-[9px] text-[#888] uppercase tracking-widest font-bold">{t('setup.ronin_operating_system')}</p>
                         <p className="text-sm font-bold text-white mt-1">{roninCheck.os}</p>
                       </div>
                       {roninCheck.display_server && (
                         <div className="bg-[#0a0e1a] border border-[#1a1f2e] rounded-lg p-3">
-                          <p className="text-[9px] text-[#888] uppercase tracking-widest font-bold">Display Server</p>
+                          <p className="text-[9px] text-[#888] uppercase tracking-widest font-bold">{t('setup.ronin_display_server')}</p>
                           <p className="text-sm font-bold text-white mt-1 uppercase">{roninCheck.display_server}</p>
                         </div>
                       )}
@@ -1340,7 +1354,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
 
                     {/* Dependency status — click to install missing */}
                     <div className="space-y-2">
-                      <p className="text-[9px] text-[#888] uppercase tracking-widest font-bold">Dependencies <span className="text-[#555] normal-case font-normal">— click to install missing</span></p>
+                      <p className="text-[9px] text-[#888] uppercase tracking-widest font-bold">{t('setup.ronin_dependencies')} <span className="text-[#555] normal-case font-normal">— {t('setup.ronin_click_missing')}</span></p>
                       <div className="grid grid-cols-2 gap-2">
                         {Object.entries(roninCheck.deps || {}).map(([name, info]: [string, any]) => {
                           const isInstalling = (roninCheck as any)?.[`_installing_${name}`];
@@ -1356,10 +1370,10 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                                   if (res.data.data?.status === 'success') {
                                     handleRoninCheck();
                                   } else {
-                                    setRoninInstallResult(res.data.data?.message || `Failed to install ${name}`);
+                                    setRoninInstallResult(res.data.data?.message || formatTranslation('setup.ronin_failed_dep', { name }));
                                   }
                                 } catch {
-                                  setRoninInstallResult(`Failed to install ${name}`);
+                                  setRoninInstallResult(formatTranslation('setup.ronin_failed_dep', { name }));
                                 } finally {
                                   setRoninCheck((prev: any) => ({ ...prev, [`_installing_${name}`]: false }));
                                 }
@@ -1381,8 +1395,8 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                               <div>
                                 <p className="text-xs font-bold text-white">{name}</p>
                                 <p className="text-[9px] text-[#666]">{
-                                  isInstalling ? 'Installing...' :
-                                  info.installed ? `v${info.version}` : 'Click to install'
+                                  isInstalling ? t('setup.ronin_installing') :
+                                  info.installed ? `v${info.version}` : t('setup.ronin_click_install')
                                 }</p>
                               </div>
                             </button>
@@ -1399,9 +1413,9 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                         className="w-full py-3 rounded-lg bg-[#f97316] hover:bg-[#f97316]/80 text-black font-bold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                       >
                         {roninInstalling ? (
-                          <><Loader2 className="w-4 h-4 animate-spin" /> Installing dependencies...</>
+                          <><Loader2 className="w-4 h-4 animate-spin" /> {t('setup.ronin_installing_dependencies')}</>
                         ) : (
-                          <>Install Ronin Dependencies</>
+                          <>{t('setup.ronin_install_dependencies')}</>
                         )}
                       </button>
                     )}
@@ -1409,7 +1423,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                     {roninInstallResult === 'success' && (
                       <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
                         <CheckCircle2 className="w-4 h-4 text-green-500" />
-                        <span className="text-sm text-green-500 font-medium">Ronin dependencies installed successfully!</span>
+                        <span className="text-sm text-green-500 font-medium">{t('setup.ronin_install_success')}</span>
                       </div>
                     )}
                     {roninInstallResult && roninInstallResult !== 'success' && (
@@ -1424,7 +1438,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                       <div className="bg-orange-500/5 border border-orange-500/20 rounded-lg p-3 space-y-1">
                         <div className="flex items-center gap-2">
                           <AlertTriangle className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                          <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">Platform Notes</span>
+                          <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">{t('setup.ronin_platform_notes')}</span>
                         </div>
                         {roninCheck.notes.map((note: string, i: number) => (
                           <p key={i} className="text-[11px] text-[#999] leading-relaxed pl-5">{note}</p>
@@ -1436,12 +1450,12 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
 
                 {/* Capabilities preview */}
                 <div className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-5">
-                  <h3 className="text-sm font-bold text-[#d4a017] uppercase tracking-widest mb-3">Ronin Capabilities</h3>
+                  <h3 className="text-sm font-bold text-[#d4a017] uppercase tracking-widest mb-3">{t('setup.ronin_capabilities')}</h3>
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { icon: Camera, label: 'Screenshots', desc: 'See your screen' },
-                      { icon: Mouse, label: 'Mouse Control', desc: 'Click & move cursor' },
-                      { icon: Keyboard, label: 'Keyboard', desc: 'Type text & hotkeys' },
+                      { icon: Camera, label: t('setup.ronin_screenshots'), desc: t('setup.ronin_screenshots_desc') },
+                      { icon: Mouse, label: t('setup.ronin_mouse'), desc: t('setup.ronin_mouse_desc') },
+                      { icon: Keyboard, label: t('setup.ronin_keyboard'), desc: t('setup.ronin_keyboard_desc') },
                     ].map(({ icon: Icon, label, desc }) => (
                       <div key={label} className="bg-[#0a0e1a] border border-[#1a1f2e] rounded-lg p-3 text-center">
                         <Icon className="w-6 h-6 text-[#f97316] mx-auto mb-2" />
@@ -1462,11 +1476,8 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                       className="mt-1 accent-[#f97316] w-4 h-4 shrink-0"
                     />
                     <div>
-                      <p className="text-sm font-bold text-white">I understand the risks</p>
-                      <p className="text-[10px] text-[#999] leading-relaxed mt-1">
-                        Ronin gives the AI direct control of my mouse and keyboard. All actions are logged and governed by the Torii security posture.
-                        I can disable this at any time via the Torii kill switch or by pressing Escape three times (Komainu guardian).
-                      </p>
+                      <p className="text-sm font-bold text-white">{t('setup.ronin_acknowledge')}</p>
+                      <p className="text-[10px] text-[#999] leading-relaxed mt-1">{t('setup.ronin_acknowledge_desc')}</p>
                     </div>
                   </label>
                 </div>
@@ -1479,7 +1490,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
       // ═══════════════════════════════════════════════════════════
       // STEP 9: Complete Setup
       // ═══════════════════════════════════════════════════════════
-      case 9:
+      case 9: {
         if (completed) {
           return (
             <div className="flex flex-col items-center justify-center min-h-[400px] animate-in fade-in zoom-in duration-700">
@@ -1511,13 +1522,13 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               {[
                 { label: t('setup.step8_language'), value: selectedLang ? `${selectedLang.flag} ${selectedLang.name}` : language, color: '#d4a017' },
                 { label: t('setup.step8_identity'), value: agentName, color: '#d4a017' },
-                { label: t('setup.step3_tone'), value: tone, color: '#3b82f6' },
+                { label: t('setup.step3_tone'), value: t(`setup.step3_tone_${tone}`), color: '#3b82f6' },
                 { label: t('setup.step3_autonomy'), value: `${autonomy}%`, color: '#3b82f6' },
-                { label: t('setup.step3_risk'), value: riskTolerance, color: '#3b82f6' },
+                { label: t('setup.step3_risk'), value: t(`setup.step3_risk_${riskTolerance}`), color: '#3b82f6' },
                 { label: t('setup.step8_provider'), value: `${connectedProviders.length} ${t('setup.step5_connected')}`, color: connectedProviders.length > 0 ? '#22c55e' : '#888' },
-                { label: 'Routing Profile', value: ROUTING_PROFILES.find(item => item.id === routingProfile)?.name || routingProfile, color: '#a78bfa' },
-                { label: t('setup.step8_model'), value: routingProfile === 'custom' && primaryModel ? primaryModel.split('::')[1] : 'Automatic', color: routingProfile === 'custom' && primaryModel ? '#d4a017' : '#3b82f6' },
-                { label: t('setup.step8_security'), value: securityBias, color: '#3b82f6' },
+                { label: t('setup.routing_profile'), value: routingProfiles.find(item => item.id === routingProfile)?.name || routingProfile, color: '#a78bfa' },
+                { label: t('setup.step8_model'), value: routingProfile === 'custom' && primaryModel ? primaryModel.split('::')[1] : t('setup.automatic'), color: routingProfile === 'custom' && primaryModel ? '#d4a017' : '#3b82f6' },
+                { label: t('setup.step8_security'), value: t(`setup.step3_security_${securityBias}`), color: '#3b82f6' },
                 { label: t('setup.step7_fallback'), value: `${fallbackModels.length}`, color: fallbackModels.length > 0 ? '#22c55e' : '#888' },
               ].map(item => (
                 <div key={item.label} className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-3.5 text-center">
@@ -1550,7 +1561,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               <div className="max-w-2xl mx-auto flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-left">
                 <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-bold text-red-300">Setup could not be completed</p>
+                  <p className="text-sm font-bold text-red-300">{t('setup.completion_error_title')}</p>
                   <p className="text-xs text-red-200/80 mt-1 leading-relaxed">{completionError}</p>
                 </div>
               </div>
@@ -1595,6 +1606,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
             </div>
           </div>
         );
+      }
 
       default:
         return null;
@@ -1611,8 +1623,8 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
       <div className="relative max-w-5xl mx-auto px-6 py-10">
         {/* Header */}
         <div className="text-center mb-6">
-          <h1 className="text-sm font-bold text-[#d4a017] uppercase tracking-[0.3em]">Shogun Setup</h1>
-          <p className="text-[11px] text-[#555] mt-1">Step {step} of {TOTAL_STEPS}</p>
+          <h1 className="text-sm font-bold text-[#d4a017] uppercase tracking-[0.3em]">{t('setup.wizard_title')}</h1>
+          <p className="text-[11px] text-[#555] mt-1">{formatTranslation('setup.progress', { current: step, total: TOTAL_STEPS })}</p>
         </div>
 
         {/* Progress bar */}
@@ -1631,14 +1643,14 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               disabled={step === 1}
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-[#2a2f3e] text-sm font-bold text-[#888] hover:text-white hover:border-[#555] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              <ChevronLeft className="w-4 h-4" /> Back
+              <ChevronLeft className="w-4 h-4" /> {t('setup.back')}
             </button>
             {step === 5 && providers.filter(p => p.status === 'connected').length === 0 ? (
               <button
                 onClick={goNext}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold text-[#888] hover:text-[#d4a017] transition-all"
               >
-                Skip for now <ChevronRight className="w-4 h-4" />
+                {t('setup.skip')} <ChevronRight className="w-4 h-4" />
               </button>
             ) : null}
             <button
@@ -1646,7 +1658,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               disabled={step === 1 && (!operatorName.trim() || !teamSetupValid)}
               className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[#3b82f6] hover:bg-[#3b82f6]/80 text-sm font-bold text-white shadow-lg shadow-[#3b82f6]/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              Next <ChevronRight className="w-4 h-4" />
+              {t('setup.next')} <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         )}
@@ -1658,14 +1670,14 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               onClick={goBack}
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-[#2a2f3e] text-sm font-bold text-[#888] hover:text-white hover:border-[#555] transition-all"
             >
-              <ChevronLeft className="w-4 h-4" /> Back
+              <ChevronLeft className="w-4 h-4" /> {t('setup.back')}
             </button>
             {!roninEnabled && (
               <button
                 onClick={goNext}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold text-[#888] hover:text-[#d4a017] transition-all"
               >
-                Skip — I don't need desktop control <ChevronRight className="w-4 h-4" />
+                {t('setup.ronin_skip')} <ChevronRight className="w-4 h-4" />
               </button>
             )}
             <button
@@ -1673,7 +1685,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               disabled={roninEnabled && !roninAcknowledged}
               className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[#3b82f6] hover:bg-[#3b82f6]/80 text-sm font-bold text-white shadow-lg shadow-[#3b82f6]/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              Next <ChevronRight className="w-4 h-4" />
+              {t('setup.next')} <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         )}
