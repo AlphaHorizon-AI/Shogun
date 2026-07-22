@@ -1,0 +1,4 @@
+interface:
+  display_name: "AgentFlow Operator"
+  short_description: "Build and operate reliable AgentFlows"
+  default_prompt: "Use $agentflow-operator to inspect, create, edit, activate, or troubleshoot an AgentFlow."

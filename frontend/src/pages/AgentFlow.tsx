@@ -70,6 +70,7 @@ import {
   Layers3,
   Network,
   BookmarkPlus,
+  Power,
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from '../lib/utils';
@@ -2558,7 +2559,7 @@ Content-Type: application/json
 export function AgentFlowCanvas({
   flow,
   onBack,
-  onFlowUpdate: _onFlowUpdate,
+  onFlowUpdate,
   agents,
   routingProfiles,
   availableFlows,
@@ -2570,7 +2571,6 @@ export function AgentFlowCanvas({
   routingProfiles: any[];
   availableFlows: FlowListItem[];
 }) {
-  void _onFlowUpdate; // reserved for Phase 2 execution engine
   const reactFlowInstance = useReactFlow();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
@@ -2606,6 +2606,10 @@ export function AgentFlowCanvas({
   const [dirty, setDirty] = useState(false);
   const [flowName, setFlowName] = useState(flow.name);
   const [editingName, setEditingName] = useState(false);
+  const [flowStatus, setFlowStatus] = useState(flow.status);
+  const [changingStatus, setChangingStatus] = useState(false);
+
+  useEffect(() => setFlowStatus(flow.status), [flow.id, flow.status]);
 
   useEffect(() => {
     logSamuraiDiagnostic('agent_flow.canvas.mount', {
@@ -2931,7 +2935,7 @@ export function AgentFlowCanvas({
   }, [setNodes, setEdges]);
 
   // Save flow
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (): Promise<boolean> => {
     setSaving(true);
     try {
       // Update flow name if changed
@@ -2996,15 +3000,34 @@ export function AgentFlowCanvas({
       }
 
       setDirty(false);
+      return true;
     } catch (err) {
       console.error('Failed to save flow:', err);
+      window.alert('Could not save this AgentFlow.');
+      return false;
     } finally {
       setSaving(false);
     }
   }, [flow.id, flow.name, flow.trigger_type, flowName, nodes, edges, reactFlowInstance]);
 
+  const handleToggleStatus = useCallback(async () => {
+    if (changingStatus) return;
+    if (dirty && !(await handleSave())) return;
+    const nextStatus = flowStatus === 'active' ? 'paused' : 'active';
+    setChangingStatus(true);
+    try {
+      const resp = await axios.post(`/api/v1/agent-flows/${flow.id}/${nextStatus === 'active' ? 'activate' : 'pause'}`);
+      setFlowStatus(resp.data?.data?.status || nextStatus);
+      onFlowUpdate();
+    } catch (err: any) {
+      window.alert(err?.response?.data?.detail || `Could not set this AgentFlow to ${nextStatus}.`);
+    } finally {
+      setChangingStatus(false);
+    }
+  }, [changingStatus, dirty, flow.id, flowStatus, handleSave, onFlowUpdate]);
+
   const handleSaveAsTemplate = useCallback(async () => {
-    if (dirty) await handleSave();
+    if (dirty && !(await handleSave())) return;
     const templateName = window.prompt('Template name', flowName);
     if (!templateName) return;
     const category = window.prompt('Template category', 'My Templates') || 'My Templates';
@@ -3023,7 +3046,7 @@ export function AgentFlowCanvas({
   const handleRun = useCallback(async () => {
     if (executing) return;
     // Auto-save before running
-    if (dirty) await handleSave();
+    if (dirty && !(await handleSave())) return;
     setExecuting(true);
     setRunStatus('pending');
     setDisplayedRunId(null);
@@ -3180,13 +3203,13 @@ export function AgentFlowCanvas({
 
             <span className={cn(
               "text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border",
-              flow.status === 'active'
+              flowStatus === 'active'
                 ? "text-green-400 bg-green-500/10 border-green-500/20"
-                : flow.status === 'paused'
+                : flowStatus === 'paused'
                   ? "text-[#4a8cc7] bg-[#4a8cc7]/10 border-[#4a8cc7]/20"
                   : "text-[#7a8899] bg-[#7a8899]/10 border-[#7a8899]/20"
             )}>
-              {flow.status}
+              {flowStatus}
             </span>
 
             {dirty && (
@@ -3222,6 +3245,25 @@ export function AgentFlowCanvas({
             </div>
 
             <div className="h-5 w-px bg-[#1a2040]" />
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={flowStatus === 'active'}
+              onClick={handleToggleStatus}
+              disabled={changingStatus || saving}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all",
+                flowStatus === 'active'
+                  ? "bg-green-500/15 text-green-400 border-green-500/30 hover:bg-green-500/25"
+                  : "bg-[#0e1225] text-[#7a8899] border-[#2a3060] hover:text-[#c8d0d8]",
+                (changingStatus || saving) && "opacity-60 cursor-wait",
+              )}
+              title={flowStatus === 'active' ? 'Pause this AgentFlow and disable its schedule' : 'Activate this AgentFlow'}
+            >
+              {changingStatus ? <Loader2 className="w-3 h-3 animate-spin" /> : <Power className="w-3 h-3" />}
+              {flowStatus === 'active' ? 'Active' : 'Activate'}
+            </button>
 
             <button
               onClick={handleSave}

@@ -8,6 +8,7 @@ prompt and the chat lane is required to use the native workflow tools.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 
 WORKFLOW_READ_TOOLS = {
@@ -20,6 +21,7 @@ WORKFLOW_MUTATION_TOOLS = {
     "create_agent_flow",
     "edit_agent_flow",
     "patch_agent_flow",
+    "set_agent_flow_status",
     "delete_agent_flow",
     "create_flow_stack",
     "edit_flow_stack",
@@ -67,7 +69,7 @@ def operator_authorized_workflow_tools(message: str) -> set[str]:
 
     Delete operations intentionally remain outside this set. They must pass the
     interactive ToolGate confirmation even when the operator requested deletion.
-    Activation is also enforced separately by the persistent activation setting.
+    Activation is separately governed by posture and the activation setting.
     """
     text = " ".join(str(message or "").lower().split())
     if not is_workflow_request(text) or _NEGATED_MUTATION.search(text):
@@ -83,6 +85,8 @@ def operator_authorized_workflow_tools(message: str) -> set[str]:
             authorized.add("edit_flow_stack")
         else:
             authorized.update({"patch_agent_flow", "edit_agent_flow"})
+    if not is_stack and re.search(r"\b(activate|enable|deactivate|disable|pause)\b", text):
+        authorized.add("set_agent_flow_status")
     return authorized
 
 
@@ -93,7 +97,7 @@ def workflow_intent_keywords(message: str) -> list[str]:
     return ["workflow"]
 
 
-WORKFLOW_OPERATOR_GUIDE = """
+_FALLBACK_WORKFLOW_OPERATOR_GUIDE = """
 MANDATORY AGENTFLOW & FLOW STACK OPERATOR GUIDE (SYSTEM-MANAGED)
 
 This guide is authoritative and MUST be followed for every AgentFlow or Flow Stack request.
@@ -141,3 +145,26 @@ RECOVERY
 - Do not retry the same failed mutation repeatedly. Stop after the bounded tool-step limit
   and report the last verified state.
 """.strip()
+
+
+AGENTFLOW_OPERATOR_SKILL_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "resources"
+    / "skills"
+    / "agentflow-operator"
+    / "SKILL.md"
+)
+
+
+def _load_workflow_operator_guide() -> str:
+    """Load the bundled canonical guide, retaining a safe packaged fallback."""
+    try:
+        guide = AGENTFLOW_OPERATOR_SKILL_PATH.read_text(encoding="utf-8").strip()
+        if "# AgentFlow Operator" in guide and "## Node reference" in guide:
+            return guide
+    except OSError:
+        pass
+    return _FALLBACK_WORKFLOW_OPERATOR_GUIDE
+
+
+WORKFLOW_OPERATOR_GUIDE = _load_workflow_operator_guide()

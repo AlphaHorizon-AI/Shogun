@@ -849,6 +849,51 @@ class SkillActivationService:
                     setattr(skill, key, value)
             skill.brief_text = SkillContextComposer.default_brief(skill)
             self.session.add(skill)
+
+        # The AgentFlow guide is also injected deterministically by the chat
+        # workflow lane. Persist it as a built-in skill so it remains visible,
+        # searchable, and recoverable through Shogun's skill-memory layer.
+        from shogun.services.workflow_operator import (
+            AGENTFLOW_OPERATOR_SKILL_PATH,
+            WORKFLOW_OPERATOR_GUIDE,
+        )
+
+        result = await self.session.execute(select(Skill).where(Skill.slug == "agentflow-operator"))
+        agentflow_skill = result.scalar_one_or_none()
+        agentflow_values = {
+            "name": "AgentFlow Operator",
+            "version": "1.0.0",
+            "skill_type": "instruction",
+            "manifest": {
+                "source": "built_in",
+                "description": (
+                    "Canonical node reference and operating procedure for AgentFlow and Flow Stack work."
+                ),
+            },
+            "status": "installed",
+            "exam_status": "passed",
+            "tags": ["agentflow", "workflow", "flow stack", "nodes", "telegram", "teams"],
+            "triggers": ["agentflow", "workflow", "flow stack", "activate flow", "telegram node"],
+            "use_when": ["create flow", "edit flow", "troubleshoot flow", "configure nodes"],
+            "minimum_posture": "guarded",
+            "risk_tier": "low",
+            "priority": 100,
+            "requires_tools": [],
+            "max_context_tokens": 4000,
+            "activation_mode": "advisory",
+            "verification_checklist": [
+                "Inspect before mutation; use supported node types; verify graph and lifecycle status."
+            ],
+            "body_text": WORKFLOW_OPERATOR_GUIDE,
+            "brief_text": WORKFLOW_OPERATOR_GUIDE,
+            "local_path": str(AGENTFLOW_OPERATOR_SKILL_PATH),
+        }
+        if agentflow_skill is None:
+            agentflow_skill = Skill(slug="agentflow-operator", **agentflow_values)
+        else:
+            for key, value in agentflow_values.items():
+                setattr(agentflow_skill, key, value)
+        self.session.add(agentflow_skill)
         await self.session.flush()
 
 

@@ -1003,6 +1003,9 @@ async def _process_telegram_message(
             # Telegram has no graphical mode selector, so default to the
             # tool-capable Mission lane. Torii still gates every tool call.
             prompt_msg, mode, classification = _select_telegram_chat_mode(prompt_msg, history)
+            # Telegram cannot render or resolve the Dojo chat confirmation card.
+            # This marker prevents the backend from waiting on an unreachable prompt.
+            classification["_channel"] = "telegram"
             if member:
                 classification["_speaker_name"] = member.display_name
                 classification["_speaker_member_id"] = str(member.id)

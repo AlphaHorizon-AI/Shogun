@@ -1,6 +1,6 @@
 [project]
 name = "shogun"
-version = "1.39.2"
+version = "1.40.0"
 description = "Shogun — A GUI-first AI agent framework with structured memory, governed autonomy, and OpenClaw compatibility"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -92,6 +92,8 @@ include = ["shogun*"]
 [tool.setuptools.package-data]
 shogun = [
     "resources/*.json",
+    "resources/skills/**/*.md",
+    "resources/skills/**/*.yaml",
     "ui/static/**/*",
     "ui/static/images/*",
 ]

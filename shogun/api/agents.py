@@ -1849,7 +1849,11 @@ BEHAVIOUR:
                             continue
                         workflow_permission = WORKFLOW_TOOL_PERMISSIONS.get(tool_name)
                         if workflow_permission and not perms.get(workflow_permission[0], {}).get(workflow_permission[1], False):
-                            if tool_name in _operator_authorized_workflow_tools:
+                            campaign_activation = (
+                                tool_name == "set_agent_flow_status"
+                                and _posture_filter.get("active_tier") in {"campaign", "ronin"}
+                            )
+                            if campaign_activation or tool_name in _operator_authorized_workflow_tools:
                                 pass
                             elif tool_name in WORKFLOW_ONE_TIME_CONFIRM_TOOLS:
                                 _workflow_confirmation_tools.add(tool_name)
@@ -2379,11 +2383,12 @@ BEHAVIOUR:
                             )
                             _operator_confirmed_permissions.add(WORKFLOW_TOOL_PERMISSIONS[func_name])
                         elif func_name in _workflow_confirmation_tools:
+                            _permission_name = ".".join(WORKFLOW_TOOL_PERMISSIONS[func_name])
                             _tg_decision = GateDecision(
                                 action=GateAction.CONFIRM,
                                 reason=(
                                     "One-time operator approval required because the persistent "
-                                    "AgentFlow Allow Edit permission is disabled."
+                                    f"{_permission_name} permission is disabled."
                                 ),
                                 risk_level=RiskLevel.MEDIUM,
                                 tool_name=func_name,
@@ -2395,6 +2400,24 @@ BEHAVIOUR:
                                 args=args,
                                 campaign_preset=_tg_campaign,
                             )
+
+                        if (
+                            _tg_decision.action == GateAction.CONFIRM
+                            and (classification or {}).get("_channel") in {"telegram", "microsoft_teams"}
+                        ):
+                            channel_name = str(classification.get("_channel")).replace("_", " ").title()
+                            res_str = json.dumps({
+                                "status": "permission_required",
+                                "message": (
+                                    f"{channel_name} cannot display or resolve an interactive ToolGate confirmation. "
+                                    "Repeat an explicit instruction for this workflow action, enable its persistent "
+                                    "permission, or use Campaign/Ronin posture for AgentFlow activation."
+                                ),
+                                "reason": _tg_decision.reason,
+                            })
+                            _any_tool_executed = True
+                            messages.append({"role": "tool", "tool_call_id": tcall["id"], "name": func_name, "content": res_str})
+                            continue
 
                         if _tg_decision.action == GateAction.BLOCK:
                             res_str = json.dumps({
@@ -2756,11 +2779,12 @@ BEHAVIOUR:
                                     tool_name=func_name,
                                 )
                             elif func_name in _workflow_confirmation_tools:
+                                _permission_name = ".".join(WORKFLOW_TOOL_PERMISSIONS[func_name])
                                 _tg_decision = GateDecision(
                                     action=GateAction.CONFIRM,
                                     reason=(
                                         "One-time operator approval required because the persistent "
-                                        "AgentFlow Allow Edit permission is disabled."
+                                        f"{_permission_name} permission is disabled."
                                     ),
                                     risk_level=RiskLevel.MEDIUM,
                                     tool_name=func_name,
@@ -2773,7 +2797,24 @@ BEHAVIOUR:
                                     campaign_preset=_tg_campaign,
                                 )
 
-                            if _tg_decision.action == GateAction.BLOCK:
+                            if (
+                                _tg_decision.action == GateAction.CONFIRM
+                                and (classification or {}).get("_channel") in {"telegram", "microsoft_teams"}
+                            ):
+                                channel_name = str(classification.get("_channel")).replace("_", " ").title()
+                                res_str = json.dumps({
+                                    "status": "permission_required",
+                                    "message": (
+                                        f"{channel_name} cannot display or resolve an interactive ToolGate confirmation. "
+                                        "Repeat an explicit instruction for this workflow action, enable its persistent "
+                                        "permission, or use Campaign/Ronin posture for AgentFlow activation."
+                                    ),
+                                    "reason": _tg_decision.reason,
+                                })
+                                _any_tool_executed = True
+                                _text_tool_results.append((func_name, args, res_str))
+                                _log.info("[Shogun] ToolGate confirmation is unavailable on %s", channel_name)
+                            elif _tg_decision.action == GateAction.BLOCK:
                                 res_str = json.dumps({
                                     "status": "blocked",
                                     "message": f"ToolGate blocked '{func_name}': {_tg_decision.reason}",

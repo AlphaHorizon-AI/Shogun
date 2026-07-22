@@ -40,9 +40,11 @@ def test_workflow_inspection_and_patch_tools_are_exposed() -> None:
     assert tools["get_agent_flow"]["risk"] == "low"
     assert tools["get_flow_stack"]["risk"] == "low"
     assert tools["patch_agent_flow"]["risk"] == "medium"
+    assert tools["set_agent_flow_status"]["risk"] == "medium"
     assert "get_agent_flow" not in WORKFLOW_TOOL_PERMISSIONS
     assert "get_flow_stack" not in WORKFLOW_TOOL_PERMISSIONS
     assert WORKFLOW_TOOL_PERMISSIONS["patch_agent_flow"] == ("agentflow", "allow_edit")
+    assert WORKFLOW_TOOL_PERMISSIONS["set_agent_flow_status"] == ("agentflow", "allow_activate")
     assert WORKFLOW_ONE_TIME_CONFIRM_TOOLS == set(WORKFLOW_TOOL_PERMISSIONS)
 
 
@@ -78,10 +80,11 @@ def test_workflow_requests_always_select_mission_and_retain_workflow_tools() -> 
 
 
 def test_workflow_operator_guide_is_fixed_and_requires_verified_execution() -> None:
-    assert "list_agent_flows first" in WORKFLOW_OPERATOR_GUIDE
-    assert "After every successful create, edit, patch, or delete" in WORKFLOW_OPERATOR_GUIDE
+    assert "Call `list_agent_flows` before" in WORKFLOW_OPERATOR_GUIDE
+    assert "`channel_send` node for Telegram or Teams" in WORKFLOW_OPERATOR_GUIDE
+    assert "Do not tell a Telegram or Teams operator" in WORKFLOW_OPERATOR_GUIDE
     assert "Never claim" in WORKFLOW_OPERATOR_GUIDE
-    assert "A UUID does not bypass that mismatch" in WORKFLOW_OPERATOR_GUIDE
+    assert "A UUID cannot bypass that mismatch" in WORKFLOW_OPERATOR_GUIDE
 
 
 @pytest.mark.asyncio
@@ -118,6 +121,9 @@ def test_explicit_workflow_writes_authorize_medium_risk_tools_only() -> None:
     }
     assert operator_authorized_workflow_tools("Delete the Daily Brief AgentFlow.") == set()
     assert operator_authorized_workflow_tools("Do not edit the AgentFlow; inspect it.") == set()
+    assert operator_authorized_workflow_tools("Activate the Daily Brief AgentFlow.") == {
+        "set_agent_flow_status"
+    }
     assert WORKFLOW_MUTATION_TOOLS == set(WORKFLOW_TOOL_PERMISSIONS)
 
 

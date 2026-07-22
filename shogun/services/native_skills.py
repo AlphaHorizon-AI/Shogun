@@ -431,7 +431,7 @@ NATIVE_TOOLS = [
                 "properties": {
                     "status": {
                         "type": "string",
-                        "enum": ["all", "active", "draft"],
+                        "enum": ["all", "active", "draft", "paused"],
                         "description": "Filter by status. Defaults to 'all'.",
                     },
                     "search": {
@@ -488,6 +488,34 @@ NATIVE_TOOLS = [
         "risk": "medium",
         "category": "workflow",
         "function": {
+            "name": "set_agent_flow_status",
+            "description": (
+                "Activate or pause one existing AgentFlow by ID. Inspect the flow first. "
+                "Campaign and Ronin posture may perform this lifecycle change autonomously; "
+                "lower postures require AgentFlow activation permission or one-time approval."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "flow_id": {
+                        "type": "string",
+                        "description": "UUID of the AgentFlow returned by list_agent_flows.",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["active", "paused"],
+                        "description": "Set active to enable the flow/schedule or paused to disable it.",
+                    },
+                },
+                "required": ["flow_id", "status"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "medium",
+        "category": "workflow",
+        "function": {
             "name": "create_agent_flow",
             "description": "Create a new Agent Flow workflow with nodes and edges. Use this when the user asks you to build, design, or create a workflow or pipeline for orchestrating AI agents.",
             "parameters": {
@@ -511,7 +539,17 @@ NATIVE_TOOLS = [
                             "type": "object",
                             "properties": {
                                 "id": {"type": "string", "description": "Unique node ID (e.g. 'node-1', 'node-2')."},
-                                "node_type": {"type": "string", "enum": ["input", "samurai", "shogun_approval", "logic", "output", "mado_browser", "subflow", "stack_orchestrator"], "description": "Type of node."},
+                                "node_type": {
+                                    "type": "string",
+                                    "enum": [
+                                        "input", "samurai", "shogun_approval", "logic", "output",
+                                        "mado_browser", "email_send", "channel_send", "workspace",
+                                        "office", "subflow", "stack_orchestrator",
+                                    ],
+                                    "description": (
+                                        "Type of node. Use channel_send—not output—for Telegram or Teams delivery."
+                                    ),
+                                },
                                 "label": {"type": "string", "description": "Display label for the node."},
                                 "position_x": {"type": "number", "description": "X position on canvas (start at 100, space 300 apart)."},
                                 "position_y": {"type": "number", "description": "Y position on canvas (start at 200, space 150 apart)."},
@@ -2455,6 +2493,7 @@ WORKFLOW_TOOL_PERMISSIONS = {
     "create_agent_flow": ("agentflow", "allow_create"),
     "edit_agent_flow": ("agentflow", "allow_edit"),
     "patch_agent_flow": ("agentflow", "allow_edit"),
+    "set_agent_flow_status": ("agentflow", "allow_activate"),
     "delete_agent_flow": ("agentflow", "allow_delete"),
     "create_flow_stack": ("flow_stack", "allow_create"),
     "edit_flow_stack": ("flow_stack", "allow_edit"),
@@ -2486,6 +2525,24 @@ async def _shogun_workflow_permission(db_session, category: str, permission: str
         policy = await db_session.get(SecurityPolicy, shogun.security_policy_id)
         permissions = policy.permissions if policy else None
     return bool((permissions or {}).get(category, {}).get(permission, False))
+
+
+async def _shogun_workflow_activation_allowed(
+    db_session,
+    category: str,
+    confirmed_permissions: set[tuple[str, str]],
+) -> bool:
+    """Allow lifecycle control autonomously at Campaign/Ronin, or by permission below it."""
+    from shogun.services.posture_guard import get_posture_tool_filter
+
+    posture = await get_posture_tool_filter()
+    if posture.get("active_tier", "tactical") in {"campaign", "ronin"}:
+        return True
+    permission = (category, "allow_activate")
+    return (
+        permission in confirmed_permissions
+        or await _shogun_workflow_permission(db_session, *permission)
+    )
 
 
 async def execute_native_tool(
@@ -3264,6 +3321,62 @@ async def execute_native_tool(
                 ensure_ascii=False,
             )
 
+        elif name == "set_agent_flow_status":
+            import uuid as _uuid
+
+            from shogun.api.agent_flow import _sync_live_flow_schedule
+            from shogun.services.agent_flow_service import AgentFlowService
+            from shogun.services.posture_guard import get_posture_tool_filter
+
+            posture = await get_posture_tool_filter()
+            if not posture.get("agentflow_create", False):
+                return json.dumps({
+                    "status": "error",
+                    "message": "AgentFlow lifecycle control requires Tactical, Campaign, or Ronin posture.",
+                })
+            if not await _shogun_workflow_activation_allowed(
+                db_session, "agentflow", confirmed_permissions
+            ):
+                return json.dumps({
+                    "status": "permission_required",
+                    "permission": "agentflow.allow_activate",
+                    "message": (
+                        "AgentFlow activation and pausing require Campaign/Ronin posture, "
+                        "the persistent Allow Activate permission, or one-time approval."
+                    ),
+                })
+            try:
+                flow_id = _uuid.UUID(str(args["flow_id"]))
+            except (KeyError, ValueError):
+                return json.dumps({"status": "error", "message": "flow_id must be a valid UUID."})
+            requested_status = str(args.get("status") or "").lower()
+            if requested_status not in {"active", "paused"}:
+                return json.dumps({
+                    "status": "error",
+                    "message": "status must be 'active' or 'paused'.",
+                })
+            flow_svc = AgentFlowService(db_session)
+            flow = await flow_svc.get_flow_full(flow_id)
+            if not flow or flow.flow_type != "standard" or flow.is_template:
+                return json.dumps({"status": "error", "message": "AgentFlow not found."})
+            updated = await flow_svc.update_status(flow_id, requested_status)
+            try:
+                await _sync_live_flow_schedule(updated)
+                await db_session.commit()
+            except Exception as exc:
+                await db_session.rollback()
+                return json.dumps({
+                    "status": "error",
+                    "message": f"AgentFlow lifecycle change could not be synchronized: {exc}",
+                })
+            return json.dumps({
+                "status": "success",
+                "message": f"AgentFlow '{updated.name}' is now {requested_status}.",
+                "flow_id": str(updated.id),
+                "flow_status": requested_status,
+                "posture": posture.get("active_tier", "tactical"),
+            })
+
         elif name == "create_agent_flow":
             # ── Posture enforcement: requires agentflow_autonomous ──
             try:
@@ -3290,24 +3403,48 @@ async def execute_native_tool(
                     ),
                 })
             activate = bool(args.get("activate", False))
-            if activate and not await _shogun_workflow_permission(db_session, "agentflow", "allow_activate"):
+            if activate and not await _shogun_workflow_activation_allowed(
+                db_session, "agentflow", confirmed_permissions
+            ):
                 return json.dumps({"status": "error", "message": "Shogun may create this AgentFlow as a draft, but AgentFlow activation permission is disabled."})
 
+            from shogun.api.agent_flow import _normalized_schedule_config
             from shogun.services.agent_flow_service import AgentFlowService
             flow_svc = AgentFlowService(db_session)
 
             # Create the flow
             flow_name = args.get("name", "Untitled Flow")
             flow_desc = args.get("description", "Auto-generated by Shogun")
+            requested_nodes = list(args.get("nodes", []))
+            input_config = next(
+                (
+                    dict(node.get("config") or {})
+                    for node in requested_nodes
+                    if node.get("node_type") == "input"
+                ),
+                {},
+            )
+            input_type = str(input_config.get("input_type") or "manual").lower()
+            trigger_type = input_type if input_type in {"scheduled", "api", "event"} else "manual"
+            schedule_config: dict = {}
+            if trigger_type == "scheduled":
+                schedule_config = _normalized_schedule_config({
+                    "frequency": input_config.get("schedule_frequency", "nightly"),
+                    "schedule_time": input_config.get("schedule_time", "07:00"),
+                    "schedule_days": input_config.get("schedule_days"),
+                    "schedule_day": input_config.get("schedule_day"),
+                    "minute_offset": input_config.get("schedule_minute_offset", 0),
+                })
             flow = await flow_svc.create(
                 name=flow_name,
                 description=flow_desc,
-                trigger_type="manual",
+                trigger_type=trigger_type,
+                schedule_config=schedule_config,
             )
 
             # Build node and edge payloads
             nodes_data = []
-            for i, n in enumerate(args.get("nodes", [])):
+            for i, n in enumerate(requested_nodes):
                 nodes_data.append({
                     "id": n.get("id", f"node-auto-{i}"),
                     "node_type": n.get("node_type", "samurai"),
@@ -3338,7 +3475,10 @@ async def execute_native_tool(
                 viewport={"x": 0, "y": 0, "zoom": 0.8},
             )
             if activate:
-                await flow_svc.update_status(flow.id, "active")
+                from shogun.api.agent_flow import _sync_live_flow_schedule
+
+                activated = await flow_svc.update_status(flow.id, "active")
+                await _sync_live_flow_schedule(activated)
 
             await db_session.commit()
 
@@ -3427,7 +3567,9 @@ async def execute_native_tool(
                     ),
                 })
             activate = bool(args.get("activate", False))
-            if activate and not await _shogun_workflow_permission(db_session, "agentflow", "allow_activate"):
+            if activate and not await _shogun_workflow_activation_allowed(
+                db_session, "agentflow", confirmed_permissions
+            ):
                 return json.dumps({"status": "error", "message": "AgentFlow activation permission is disabled."})
 
             import uuid as _uuid
@@ -3446,7 +3588,10 @@ async def execute_native_tool(
                     return json.dumps({"status": "error", "message": "Provide both nodes and edges when replacing an AgentFlow graph."})
                 await flow_svc.save_flow_graph(flow_id, args["nodes"], args["edges"], flow.viewport)
             if activate:
-                await flow_svc.update_status(flow_id, "active")
+                from shogun.api.agent_flow import _sync_live_flow_schedule
+
+                activated = await flow_svc.update_status(flow_id, "active")
+                await _sync_live_flow_schedule(activated)
             await db_session.commit()
             updated = await flow_svc.get_flow_full(flow_id)
             return json.dumps({
