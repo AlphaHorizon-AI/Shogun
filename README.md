@@ -80,6 +80,55 @@ In Team mode:
 - Private member context is isolated and is not disclosed to other members.
 - Team members cannot invoke Primary Admin-only operations such as HARAKIRI.
 
+### Server mode (Docker)
+
+Server mode runs Shogun and The Tenshu continuously in containers with dedicated PostgreSQL and Qdrant services. It is the recommended deployment for an always-on Team-mode installation.
+
+| Platform | Server installer | Run it |
+|---|---|---|
+| **Linux/macOS server** | [⬇️ Shogun-Server-Install.sh](https://github.com/AlphaHorizon-AI/Shogun/releases/latest/download/Shogun-Server-Install.sh) | Run `bash Shogun-Server-Install.sh` |
+| **Windows Server/Desktop** | [⬇️ Shogun-Server-Install.bat](https://github.com/AlphaHorizon-AI/Shogun/releases/latest/download/Shogun-Server-Install.bat) | Double-click the downloaded file |
+
+The Server installer:
+
+- Generates independent application, vault-encryption, and PostgreSQL secrets.
+- Builds Shogun and The Tenshu as a non-root container.
+- Starts PostgreSQL and Qdrant on an internal Docker network.
+- Stores application data, memories, configuration, vault content, and logs in named volumes.
+- Enables health checks and automatic restart.
+- Preserves `.env.server` and Docker volumes during upgrades.
+- Keeps The Tenshu bound to `127.0.0.1` by default.
+
+After installation, the Primary Admin opens [http://127.0.0.1:8000/setup](http://127.0.0.1:8000/setup) on the server and selects Single-user or Team mode. Team members communicate through Telegram or Microsoft Teams; they do not receive access to The Tenshu.
+
+> **Secure by default:** Do not change `SHOGUN_BIND_ADDRESS` to a public interface without placing The Tenshu behind an authenticated HTTPS reverse proxy. For remote administration, prefer a VPN or SSH tunnel.
+
+Ronin host desktop control is disabled in Server mode because a container cannot safely control the host desktop. Mado browser automation, Agent Flows, Flow Stacking, Telegram, Teams, Nexus, memory, ToolGate, and HARAKIRI remain available.
+
+<details>
+<summary><strong>Start Server mode from a source checkout</strong></summary>
+
+```bash
+cp .env.server.example .env.server
+# Replace every change-me value in .env.server.
+docker compose --env-file .env.server -f docker-compose.server.yml up -d --build
+```
+
+Useful commands:
+
+```bash
+# Status
+docker compose --env-file .env.server -f docker-compose.server.yml ps
+
+# Shogun logs
+docker compose --env-file .env.server -f docker-compose.server.yml logs -f shogun
+
+# Stop containers without deleting persistent volumes
+docker compose --env-file .env.server -f docker-compose.server.yml down
+```
+
+</details>
+
 ### Launch, update, and uninstall
 
 | Platform | Launch Shogun |

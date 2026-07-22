@@ -3,7 +3,7 @@ import {
   Globe, FolderOpen, User, Shield, Cpu, FileText, Zap, ChevronRight,
   ChevronLeft, Check, CheckCircle2, AlertCircle, Database, HardDrive,
   Settings, ScrollText, X, GripVertical, Loader2, Sparkles, Crosshair,
-  Monitor, Mouse, Keyboard, Camera, AlertTriangle, Users, UserPlus
+  Monitor, Mouse, Keyboard, Camera, AlertTriangle, Users, UserPlus, Server
 } from 'lucide-react';
 import axios from 'axios';
 import { AVAILABLE_LANGUAGES, useTranslation } from '../i18n';
@@ -218,6 +218,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
   const [roninInstalling, setRoninInstalling] = useState(false);
   const [roninInstallResult, setRoninInstallResult] = useState<string | null>(null);
   const [roninAcknowledged, setRoninAcknowledged] = useState(false);
+  const [serverMode, setServerMode] = useState(false);
 
   // Step 9: Completing
   const [completing, setCompleting] = useState(false);
@@ -234,6 +235,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
         ]);
         if (statusRes.status === 'fulfilled') {
           setDataPath(statusRes.value.data.data?.data_path || '');
+          setServerMode(statusRes.value.data.data?.deployment_mode === 'server');
           const configuredLanguage = statusRes.value.data.data?.language;
           if (configuredLanguage && AVAILABLE_LANGUAGES.some(item => item.code === configuredLanguage)) {
             setLanguage(configuredLanguage);
@@ -1260,6 +1262,27 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
       // STEP 8: Ronin Desktop Control (Optional)
       // ═══════════════════════════════════════════════════════════
       case 8: {
+        if (serverMode) {
+          return (
+            <div className="space-y-6">
+              <div className="text-center">
+                <Server className="w-12 h-12 text-[#3b82f6] mx-auto mb-4" />
+                <h2 className="text-3xl font-bold text-white">{t('setup.server_mode_title')}</h2>
+                <p className="text-sm text-[#888] mt-2 max-w-lg mx-auto">{t('setup.server_mode_subtitle')}</p>
+              </div>
+              <div className="max-w-3xl mx-auto bg-[#0d1117] border border-[#3b82f6]/30 rounded-xl p-6">
+                <div className="flex items-start gap-4">
+                  <Shield className="w-6 h-6 text-[#3b82f6] shrink-0" />
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-bold text-white">{t('setup.server_mode_ronin_unavailable')}</h3>
+                    <p className="text-xs text-[#999] leading-relaxed">{t('setup.server_mode_ronin_explainer')}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
         const handleRoninCheck = async () => {
           try {
             const res = await axios.get('/api/v1/setup/ronin-check');
@@ -1672,7 +1695,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
             >
               <ChevronLeft className="w-4 h-4" /> {t('setup.back')}
             </button>
-            {!roninEnabled && (
+            {!roninEnabled && !serverMode && (
               <button
                 onClick={goNext}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold text-[#888] hover:text-[#d4a017] transition-all"

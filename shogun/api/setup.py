@@ -179,6 +179,8 @@ async def get_setup_status():
             "operator_name": setup.get("operator_name", "Daimyo"),
             "installation_mode": setup.get("installation_mode", "single"),
             "team_members": setup.get("team_members", []),
+            "deployment_mode": settings.deployment_mode,
+            "ronin_available": settings.deployment_mode == "desktop",
             "data_path": setup.get("data_path", str(PROJECT_ROOT / "data")),
             "config_path": str(settings.config_path),
         }
@@ -566,6 +568,19 @@ def _detect_os_info() -> dict:
 @router.get("/ronin-check", response_model=ApiResponse)
 async def check_ronin_deps():
     """Check Ronin desktop control dependency status and OS compatibility."""
+    if settings.deployment_mode == "server":
+        return ApiResponse(
+            data={
+                "os": "Container",
+                "display_server": None,
+                "deps": {},
+                "all_core_installed": False,
+                "recommendation": "unavailable",
+                "ronin_enabled_in_setup": False,
+                "notes": ["Ronin host desktop control is unavailable in Shogun Server mode."],
+            }
+        )
+
     os_info = _detect_os_info()
 
     deps = {
@@ -602,6 +617,14 @@ async def check_ronin_deps():
 @router.post("/ronin-install", response_model=ApiResponse)
 async def install_ronin_deps():
     """Install Ronin desktop control dependencies via pip."""
+    if settings.deployment_mode == "server":
+        return ApiResponse(
+            data={
+                "status": "error",
+                "message": "Ronin host desktop control is unavailable in Shogun Server mode.",
+            }
+        )
+
     import subprocess
     import sys
 

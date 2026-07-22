@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     # ── Application ──────────────────────────────────────────
     app_env: Literal["development", "staging", "production"] = "production"
+    deployment_mode: Literal["desktop", "server"] = "desktop"
     debug: bool = False
     api_host: str = "0.0.0.0"
     api_port: int = 8000

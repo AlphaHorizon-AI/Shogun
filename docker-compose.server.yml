@@ -1,0 +1,115 @@
+name: shogun-server
+
+services:
+  shogun:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: shogun-server:local
+    container_name: shogun-server
+    restart: unless-stopped
+    ports:
+      - "${SHOGUN_BIND_ADDRESS:-127.0.0.1}:${SHOGUN_PORT:-8000}:8000"
+    environment:
+      APP_ENV: production
+      DEBUG: "false"
+      DEPLOYMENT_MODE: server
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      SHOGUN_NO_BROWSER: "true"
+      SECRET_KEY: ${SECRET_KEY}
+      VAULT_ENCRYPTION_KEY: ${VAULT_ENCRYPTION_KEY}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-shogun}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-shogun}
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_PATH: /app/data/qdrant
+      VAULT_PATH: /app/vault
+      LOG_PATH: /app/logs
+      CONFIG_PATH: /app/configs
+      UPLOADS_PATH: /app/data/uploads
+      MADO_PATH: /app/data/mado
+      RONIN_PATH: /app/data/ronin
+      OFFICE_PATH: /app/data/office
+      WORKSPACE_PATH: /app/data/workspace
+      VISUAL_ARTIFACTS_PATH: /app/data/artifacts/images
+      MEMORY_EXPORTS_PATH: /app/data/memory_exports
+      MEMORY_IMPORTS_PATH: /app/data/memory_imports
+      SHOGUN_INTERNAL_API_URL: http://127.0.0.1:8000
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ALLOWED_CHAT_IDS: ${TELEGRAM_ALLOWED_CHAT_IDS:-}
+      TEAMS_ADAPTER_ENABLED: ${TEAMS_ADAPTER_ENABLED:-false}
+      TEAMS_DEPLOYMENT_MODE: ${TEAMS_DEPLOYMENT_MODE:-bridge}
+      TEAMS_TENANT_MODE: ${TEAMS_TENANT_MODE:-single}
+      TEAMS_ALLOWED_TENANT_IDS: ${TEAMS_ALLOWED_TENANT_IDS:-}
+      TEAMS_BOT_APP_ID: ${TEAMS_BOT_APP_ID:-}
+      TEAMS_BOT_CLIENT_SECRET_REF: ${TEAMS_BOT_CLIENT_SECRET_REF:-}
+      TEAMS_PUBLIC_MESSAGING_ENDPOINT: ${TEAMS_PUBLIC_MESSAGING_ENDPOINT:-}
+      GENSUI_ENABLED: ${GENSUI_ENABLED:-false}
+      GENSUI_SERVER_URL: ${GENSUI_SERVER_URL:-http://host.docker.internal:8787}
+      GENSUI_ENROLLMENT_TOKEN: ${GENSUI_ENROLLMENT_TOKEN:-}
+      GENSUI_INSTANCE_NAME: ${GENSUI_INSTANCE_NAME:-Shogun Server}
+      GENSUI_ENVIRONMENT: ${GENSUI_ENVIRONMENT:-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    volumes:
+      - shogun_data:/app/data
+      - shogun_vault:/app/vault
+      - shogun_logs:/app/logs
+      - shogun_configs:/app/configs
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /app/tmp:size=512m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 5
+    networks:
+      - shogun_backend
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: shogun-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-shogun}
+      POSTGRES_USER: ${POSTGRES_USER:-shogun}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - shogun_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - shogun_backend
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    container_name: shogun-qdrant
+    restart: unless-stopped
+    volumes:
+      - shogun_qdrant:/qdrant/storage
+    networks:
+      - shogun_backend
+
+networks:
+  shogun_backend:
+    driver: bridge
+
+volumes:
+  shogun_data:
+  shogun_vault:
+  shogun_logs:
+  shogun_configs:
+  shogun_postgres:
+  shogun_qdrant:

@@ -35,6 +35,7 @@ desktop.ini
 
 # ── Environment / Secrets ────────────────────────────────────
 .env
+.env.server
 vault/
 *.pem
 *.key

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -85,10 +86,33 @@ async def _upgrade_database_schema() -> None:
     config = Config(str(PROJECT_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(PROJECT_ROOT / "migrations"))
     config.set_main_option("sqlalchemy.url", settings.database_url)
+
+    # The historical migration chain starts by altering tables created by the
+    # ORM in early desktop releases. A genuinely empty server database has no
+    # such tables, so build the current schema from metadata and establish the
+    # Alembic baseline atomically instead of replaying legacy ALTER statements.
+    from sqlalchemy import inspect as sa_inspect
+
+    from shogun.db.base import Base
+    from shogun.db.engine import engine
+
+    import shogun.db.models  # noqa: F401
+
+    async with engine.begin() as connection:
+        table_names = await connection.run_sync(lambda conn: sa_inspect(conn).get_table_names())
+        fresh_database = not (set(table_names) - {"alembic_version"})
+        if fresh_database:
+            await connection.run_sync(Base.metadata.create_all)
+
+    if fresh_database:
+        logging.getLogger(__name__).info(
+            "Fresh database detected; created current schema and established Alembic baseline"
+        )
+        await asyncio.to_thread(command.stamp, config, "head")
+        return
+
     baseline = await asyncio.to_thread(_legacy_sqlite_baseline, settings.database_url)
     if baseline:
-        import logging
-
         logging.getLogger(__name__).warning(
             "Legacy unversioned database detected; establishing Alembic baseline %s",
             baseline,
@@ -678,6 +702,7 @@ def create_app() -> FastAPI:
             "version": version_info.get("version", "unknown"),
             "name": version_info.get("name", "Shogun OS"),
             "build": version_info.get("build"),
+            "deployment_mode": settings.deployment_mode,
             "instance_name": settings.instance_name if hasattr(settings, "instance_name") else None,
             "shogun_id": str(shogun_id) if shogun_id else None,
         }

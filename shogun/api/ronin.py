@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from shogun.config import settings
 from shogun.schemas.common import ApiResponse
 from shogun.schemas.ronin import (
     AppTrustEntryResponse,
@@ -295,6 +296,12 @@ async def get_desktop_status():
 @router.post("/desktop/enable")
 async def enable_desktop_control(body: dict[str, Any]):
     """Explicitly enable full desktop control after a warning confirmation."""
+    if settings.deployment_mode == "server":
+        raise HTTPException(
+            status_code=409,
+            detail="Ronin host desktop control is unavailable in Shogun Server mode.",
+        )
+
     from shogun.api.security import _get_agent_posture, _save_agent_posture
     from shogun.ronin.core.audit_logger import RoninAuditLogger
     from shogun.ronin.core.komainu import start_komainu

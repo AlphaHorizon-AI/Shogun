@@ -1,8 +1,8 @@
 {
-  "version": "1.37.1",
+  "version": "1.38.0",
   "name": "Shogun OS",
-  "build": 119,
+  "build": 120,
   "channel": "stable",
-  "released": "2026-07-22T10:29:27Z",
-  "changelog": "Localize the complete Setup Wizard in all 14 supported languages, apply language changes instantly without reloads, and add automated translation completeness and placeholder validation."
+  "released": "2026-07-22T10:53:30Z",
+  "changelog": "Add production Shogun Server mode with containerized Tenshu, PostgreSQL and Qdrant services, persistent volumes, hardened Docker defaults, one-click server installers, localized onboarding, and explicit Ronin isolation."
 }
