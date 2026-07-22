@@ -6,9 +6,10 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from shogun.config import PROJECT_ROOT, settings
 from shogun.db.engine import async_session_factory
@@ -176,6 +177,8 @@ async def get_setup_status():
             "setup_complete": setup.get("setup_complete", False),
             "language": setup.get("language", "en"),
             "operator_name": setup.get("operator_name", "Daimyo"),
+            "installation_mode": setup.get("installation_mode", "single"),
+            "team_members": setup.get("team_members", []),
             "data_path": setup.get("data_path", str(PROJECT_ROOT / "data")),
             "config_path": str(settings.config_path),
         }
@@ -200,9 +203,21 @@ class ProviderSetup(BaseModel):
     models: list[str] = Field(default_factory=list)
 
 
+class TeamMemberSetup(BaseModel):
+    display_name: str = Field(min_length=1, max_length=255)
+    email: str | None = None
+    is_primary: bool = False
+    channel: Literal["web", "telegram", "microsoft_teams"] = "telegram"
+    telegram_user_id: str | None = None
+    teams_aad_object_id: str | None = None
+    teams_user_principal_name: str | None = None
+
+
 class SetupCompletePayload(BaseModel):
     language: str = "en"
     operator_name: str = "Daimyo"
+    installation_mode: Literal["single", "team"] = "single"
+    team_members: list[TeamMemberSetup] = Field(default_factory=list)
     data_path: str = ""
     agent_name: str = "Shogun Prime"
     description: str = "Master orchestrator of the Samurai Network."
@@ -224,6 +239,46 @@ class SetupCompletePayload(BaseModel):
     routing_profile: str = "custom"
     ronin_enabled: bool = False
 
+    @model_validator(mode="after")
+    def validate_team_setup(self):
+        if self.installation_mode == "single":
+            return self
+        if len(self.team_members) < 2:
+            raise ValueError("Team mode requires a Primary Admin and at least one Team Member.")
+        primary = [member for member in self.team_members if member.is_primary]
+        if len(primary) != 1:
+            raise ValueError("Team mode requires exactly one Primary Admin.")
+        if primary[0].channel != "web":
+            raise ValueError("The Primary Admin must use the web platform.")
+        for member in self.team_members:
+            if member.is_primary:
+                continue
+            if member.channel == "web":
+                raise ValueError("Only the Primary Admin may use the web platform.")
+            if member.channel == "telegram" and not str(member.telegram_user_id or "").strip():
+                raise ValueError(f"Telegram user ID is required for {member.display_name}.")
+            if member.channel == "microsoft_teams" and not (
+                str(member.teams_aad_object_id or "").strip()
+                or str(member.teams_user_principal_name or "").strip()
+            ):
+                raise ValueError(f"Teams Entra Object ID or sign-in email is required for {member.display_name}.")
+        identities = [
+            (
+                member.channel,
+                str(
+                    member.telegram_user_id
+                    or member.teams_aad_object_id
+                    or member.teams_user_principal_name
+                    or ""
+                ).strip().casefold(),
+            )
+            for member in self.team_members
+            if not member.is_primary
+        ]
+        if len(identities) != len(set(identities)):
+            raise ValueError("Each Team Member must have a unique Telegram or Teams identity.")
+        return self
+
 
 @router.post("/complete", response_model=ApiResponse)
 async def complete_setup(payload: SetupCompletePayload):
@@ -242,7 +297,7 @@ async def complete_setup(payload: SetupCompletePayload):
         from shogun.db.models.operator import Operator
 
         # ── 0. Create/update Operator ────────────────────────────────
-        op_result = await session.execute(select(Operator).limit(1))
+        op_result = await session.execute(select(Operator).where(Operator.username == "admin"))
         op = op_result.scalar_one_or_none()
         if op:
             op.display_name = payload.operator_name
@@ -402,6 +457,22 @@ async def complete_setup(payload: SetupCompletePayload):
                 shogun.persona_id = uuid.UUID(payload.persona_id)
             session.add(shogun)
 
+        await session.flush()
+        from shogun.services.team_identity import configure_team_members
+
+        persisted_members = await configure_team_members(
+            session,
+            installation_mode=payload.installation_mode,
+            admin_name=payload.operator_name,
+            members=[member.model_dump() for member in payload.team_members],
+            agent_id=shogun.id,
+        )
+        shogun.bushido_settings = {
+            **dict(shogun.bushido_settings or {}),
+            "installation_mode": payload.installation_mode,
+            "team_members": persisted_members,
+        }
+
         await session.commit()
 
     # ── 3. Write constitution ────────────────────────────────────
@@ -424,6 +495,8 @@ async def complete_setup(payload: SetupCompletePayload):
         "setup_complete": True,
         "language": payload.language,
         "operator_name": payload.operator_name,
+        "installation_mode": payload.installation_mode,
+        "team_members": persisted_members,
         "data_path": payload.data_path or str(PROJECT_ROOT / "data"),
         "completed_at": datetime.now(timezone.utc).isoformat(),
         "agent_name": payload.agent_name,

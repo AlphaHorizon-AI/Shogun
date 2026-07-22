@@ -3,7 +3,7 @@ import {
   Globe, FolderOpen, User, Shield, Cpu, FileText, Zap, ChevronRight,
   ChevronLeft, Check, CheckCircle2, AlertCircle, Database, HardDrive,
   Settings, ScrollText, X, GripVertical, Loader2, Sparkles, Crosshair,
-  Monitor, Mouse, Keyboard, Camera, AlertTriangle
+  Monitor, Mouse, Keyboard, Camera, AlertTriangle, Users, UserPlus
 } from 'lucide-react';
 import axios from 'axios';
 import { AVAILABLE_LANGUAGES, useTranslation } from '../i18n';
@@ -21,6 +21,16 @@ interface ProviderConfig {
   discoveredModels: string[];  // All models found via API
   status: 'pending' | 'testing' | 'connected' | 'failed';
   auth_type: string;
+}
+
+interface TeamMemberConfig {
+  id: string;
+  display_name: string;
+  email: string;
+  channel: 'telegram' | 'microsoft_teams';
+  telegram_user_id: string;
+  teams_aad_object_id: string;
+  teams_user_principal_name: string;
 }
 
 interface SetupWizardProps {
@@ -135,6 +145,33 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
   // Step 1: Language & Identity
   const [language, setLanguage] = useState('en');
   const [operatorName, setOperatorName] = useState('Daimyo');
+  const [installationMode, setInstallationMode] = useState<'single' | 'team'>('single');
+  const [teamMembers, setTeamMembers] = useState<TeamMemberConfig[]>([]);
+
+  const addTeamMember = () => setTeamMembers(prev => [...prev, {
+    id: crypto.randomUUID(),
+    display_name: '',
+    email: '',
+    channel: 'telegram',
+    telegram_user_id: '',
+    teams_aad_object_id: '',
+    teams_user_principal_name: '',
+  }]);
+
+  const updateTeamMember = (id: string, updates: Partial<TeamMemberConfig>) => {
+    setTeamMembers(prev => prev.map(member => member.id === id ? { ...member, ...updates } : member));
+  };
+
+  const teamSetupValid = installationMode === 'single' || (
+    operatorName.trim().length > 0 &&
+    teamMembers.length > 0 &&
+    teamMembers.every(member =>
+      member.display_name.trim().length > 0 &&
+      (member.channel === 'telegram'
+        ? member.telegram_user_id.trim().length > 0
+        : member.teams_aad_object_id.trim().length > 0 || member.teams_user_principal_name.trim().length > 0)
+    )
+  );
 
   // Sync wizard language choice → global i18n context
   const handleLanguageSelect = (code: string) => {
@@ -358,6 +395,23 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
       await axios.post('/api/v1/setup/complete', {
         language,
         operator_name: operatorName,
+        installation_mode: installationMode,
+        team_members: installationMode === 'team' ? [
+          {
+            display_name: operatorName,
+            is_primary: true,
+            channel: 'web',
+          },
+          ...teamMembers.map(member => ({
+            display_name: member.display_name,
+            email: member.email || null,
+            is_primary: false,
+            channel: member.channel,
+            telegram_user_id: member.channel === 'telegram' ? member.telegram_user_id : null,
+            teams_aad_object_id: member.channel === 'microsoft_teams' ? member.teams_aad_object_id || null : null,
+            teams_user_principal_name: member.channel === 'microsoft_teams' ? member.teams_user_principal_name || null : null,
+          })),
+        ] : [],
         data_path: dataPath,
         agent_name: agentName,
         description,
@@ -486,16 +540,89 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               ))}
             </div>
 
-            <div className="max-w-md mx-auto pt-4 border-t border-[#1a1f2e]">
-              <label className="text-[10px] text-[#888] uppercase tracking-widest font-bold block mb-1.5 text-center">Your Calling Name</label>
-              <input
-                type="text"
-                value={operatorName}
-                onChange={e => setOperatorName(e.target.value)}
-                placeholder="Daimyo"
-                className="w-full bg-[#050508] border border-[#2a2f3e] text-center rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#d4a017] outline-none transition-colors"
-              />
-              <p className="text-[10px] text-[#666] text-center mt-2">Shogun will address you by this title.</p>
+            <div className="max-w-3xl mx-auto pt-4 border-t border-[#1a1f2e] space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setInstallationMode('single')}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${installationMode === 'single' ? 'border-[#d4a017] bg-[#d4a017]/10' : 'border-[#2a2f3e] bg-[#0d1117]'}`}
+                >
+                  <User className="w-5 h-5 text-[#d4a017] mb-2" />
+                  <p className="font-bold text-white">Single-user mode</p>
+                  <p className="text-xs text-[#777] mt-1">One Primary Admin uses Shogun personally.</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInstallationMode('team');
+                    if (teamMembers.length === 0) addTeamMember();
+                  }}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${installationMode === 'team' ? 'border-[#3b82f6] bg-[#3b82f6]/10' : 'border-[#2a2f3e] bg-[#0d1117]'}`}
+                >
+                  <Users className="w-5 h-5 text-[#3b82f6] mb-2" />
+                  <p className="font-bold text-white">Team mode</p>
+                  <p className="text-xs text-[#777] mt-1">Admin uses the platform; members talk through Telegram or Teams.</p>
+                </button>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-[#888] uppercase tracking-widest font-bold block mb-1.5">
+                  {installationMode === 'team' ? 'Primary Admin name' : 'Your Calling Name'}
+                </label>
+                <input
+                  type="text"
+                  value={operatorName}
+                  onChange={e => setOperatorName(e.target.value)}
+                  placeholder="Daimyo"
+                  className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#d4a017] outline-none transition-colors"
+                />
+                <p className="text-[10px] text-[#666] mt-2">
+                  {installationMode === 'team'
+                    ? 'This is the only person with platform and Primary Admin authority.'
+                    : 'Shogun will address you by this title.'}
+                </p>
+              </div>
+
+              {installationMode === 'team' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-white">Team members</p>
+                      <p className="text-[10px] text-[#666]">Each identity is remembered separately and remains non-admin.</p>
+                    </div>
+                    <button type="button" onClick={addTeamMember} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#3b82f6]/15 text-[#60a5fa] text-xs font-bold hover:bg-[#3b82f6]/25">
+                      <UserPlus className="w-4 h-4" /> Add member
+                    </button>
+                  </div>
+                  {teamMembers.map((member, index) => (
+                    <div key={member.id} className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-[#3b82f6] uppercase tracking-widest">Member {index + 1}</p>
+                        <button type="button" onClick={() => setTeamMembers(prev => prev.filter(item => item.id !== member.id))} className="text-[#666] hover:text-red-400">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <input value={member.display_name} onChange={e => updateTeamMember(member.id, { display_name: e.target.value })} placeholder="Full name" className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#3b82f6] outline-none" />
+                        <input value={member.email} onChange={e => updateTeamMember(member.id, { email: e.target.value })} placeholder="Email (optional)" className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#3b82f6] outline-none" />
+                        <select value={member.channel} onChange={e => updateTeamMember(member.id, { channel: e.target.value as TeamMemberConfig['channel'] })} className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#3b82f6] outline-none">
+                          <option value="telegram">Telegram</option>
+                          <option value="microsoft_teams">Microsoft Teams</option>
+                        </select>
+                        {member.channel === 'telegram' ? (
+                          <input value={member.telegram_user_id} onChange={e => updateTeamMember(member.id, { telegram_user_id: e.target.value })} placeholder="Telegram numeric user ID" className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none" />
+                        ) : (
+                          <input value={member.teams_user_principal_name} onChange={e => updateTeamMember(member.id, { teams_user_principal_name: e.target.value })} placeholder="Teams sign-in email / UPN" className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none" />
+                        )}
+                      </div>
+                      {member.channel === 'microsoft_teams' && (
+                        <input value={member.teams_aad_object_id} onChange={e => updateTeamMember(member.id, { teams_aad_object_id: e.target.value })} placeholder="Entra Object ID (optional if sign-in email is entered)" className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none" />
+                      )}
+                    </div>
+                  ))}
+                  {!teamSetupValid && <p className="text-xs text-amber-400">Add at least one named member and their Telegram ID or Teams identity.</p>}
+                </div>
+              )}
             </div>
           </div>
         );
@@ -1516,7 +1643,8 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
             ) : null}
             <button
               onClick={goNext}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[#3b82f6] hover:bg-[#3b82f6]/80 text-sm font-bold text-white shadow-lg shadow-[#3b82f6]/20 transition-all"
+              disabled={step === 1 && (!operatorName.trim() || !teamSetupValid)}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[#3b82f6] hover:bg-[#3b82f6]/80 text-sm font-bold text-white shadow-lg shadow-[#3b82f6]/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
             >
               Next <ChevronRight className="w-4 h-4" />
             </button>

@@ -5,9 +5,11 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from shogun.db.base import Base
+from shogun.db.models.operator import Operator
 from shogun.db.models.teams import TeamsConfig, TeamsUserMap
 from shogun.schemas.teams import ChannelUser, CommandEnvelope
 from shogun.services.command_channel import SlidingWindowRateLimiter, authorize, parse_command, strip_teams_mention
@@ -184,4 +186,58 @@ async def test_exact_harakiri_control_executes_immediately_for_admin(monkeypatch
             ("activate", "microsoft_teams", "aad-1"),
             ("reset", "microsoft_teams", "aad-1"),
         ]
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_registered_team_member_can_ask_via_safe_governed_chat(monkeypatch):
+    captured: dict = {}
+
+    async def fake_governed_chat(*, user_msg, history, svc, classification):
+        captured.update(user_msg=user_msg, history=history, classification=classification)
+
+        async def stream():
+            yield 'data: {"type":"token","content":"Hello Alice"}\n\n'
+            yield "data: [DONE]\n\n"
+
+        return stream()
+
+    monkeypatch.setattr("shogun.api.governed_chat._shogun_governed_chat", fake_governed_chat)
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as db:
+        db.add(
+            TeamsConfig(
+                enabled=True,
+                allowed_tenant_ids=["tenant-1"],
+                allowed_commands=DEFAULT_COMMANDS,
+            )
+        )
+        db.add(
+            Operator(
+                username="team-2-alice",
+                display_name="Alice",
+                role="member",
+                preferences={
+                    "active": True,
+                    "teams_user_principal_name": "alice@example.com",
+                },
+            )
+        )
+        await db.flush()
+        request = envelope("tenant-1", "ask shogun hello", user_id="teams-alice")
+        request.user.user_principal_name = "alice@example.com"
+
+        response = await TeamsService(db).dispatch(request)
+
+        user_map = await db.scalar(select(TeamsUserMap))
+        assert response.text == "Hello Alice"
+        assert user_map.display_name == "Alice"
+        assert user_map.shogun_role == "viewer"
+        assert user_map.shogun_user_id is not None
+        assert captured["classification"]["_speaker_role"] == "Team Member"
+        assert "Verified speaker identity" in captured["user_msg"]
     await engine.dispose()

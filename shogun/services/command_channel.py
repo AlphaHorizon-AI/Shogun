@@ -24,7 +24,8 @@ COMMAND_POLICY = {
     "logs": ("L0", "viewer"),
     "summarize": ("L0", "viewer"),
     "approvals": ("L0", "viewer"),
-    "ask": ("L1", "operator"),
+    # Team members may converse through the no-tools Governed Chat lane.
+    "ask": ("L1", "viewer"),
     "run": ("L2", "operator"),
     "pause": ("L4", "operator"),
     "resume": ("L4", "operator"),

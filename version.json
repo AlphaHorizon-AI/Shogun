@@ -1,8 +1,8 @@
 {
-  "version": "1.36.1",
+  "version": "1.37.0",
   "name": "Shogun OS",
-  "build": 117,
+  "build": 118,
   "channel": "stable",
-  "released": "2026-07-22T07:51:25Z",
-  "changelog": "Make remote HARAKIRI fail closed by cancelling active Telegram, Agent Flow, Agent Stack, and approval work; block late outbound Telegram and Teams messages; and add emergency-stop regression coverage."
+  "released": "2026-07-22T08:09:22Z",
+  "changelog": "Add Single-user and Team installation modes, Primary Admin-only platform access, Telegram and Teams member identity mapping, member-specific pinned memories, safe no-tools member chat, and Team Member HARAKIRI protection."
 }

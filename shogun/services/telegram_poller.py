@@ -196,13 +196,26 @@ async def _get_cached_telegram_config() -> tuple[dict, dict]:
     now = time.monotonic()
     if now - _tg_config_cache["ts"] < _TG_CONFIG_TTL and _tg_config_cache["data"] is not None:
         bushido = _tg_config_cache["data"]
-        return bushido, bushido.get(_TELEGRAM_KEY, {})
+        return bushido, _effective_telegram_config(bushido)
 
     bushido = await _get_agent_bushido()
     _tg_config_cache["data"] = bushido or {}
     _tg_config_cache["ts"] = now
-    cfg = (bushido or {}).get(_TELEGRAM_KEY, {})
+    cfg = _effective_telegram_config(bushido or {})
     return bushido or {}, cfg
+
+
+def _effective_telegram_config(bushido: dict) -> dict:
+    """Merge Team-mode member IDs into Telegram's inbound allowlist."""
+    from shogun.services.team_identity import configured_telegram_member_ids
+
+    cfg = dict(bushido.get(_TELEGRAM_KEY, {}) or {})
+    member_ids = configured_telegram_member_ids(bushido)
+    if member_ids:
+        cfg["allowed_chat_ids"] = list(
+            dict.fromkeys([*(cfg.get("allowed_chat_ids") or []), *member_ids])
+        )
+    return cfg
 
 
 def invalidate_telegram_config_cache():
@@ -452,6 +465,7 @@ def _telegram_context_from_message(msg: dict) -> dict:
     registry = _load_topic_registry()
     chat_entry = registry.get(chat_id, {})
     topic_entry = (chat_entry.get("topics") or {}).get(str(thread_id), {}) if thread_id is not None else {}
+    sender = msg.get("from") or {}
 
     known_topics = [
         {
@@ -481,6 +495,11 @@ def _telegram_context_from_message(msg: dict) -> dict:
         "topic_name": topic_entry.get("name") or "",
         "topic_name_source": topic_entry.get("name_source") or "",
         "known_topics": known_topics,
+        "sender_id": str(sender.get("id") or ""),
+        "sender_username": sender.get("username") or "",
+        "sender_display_name": " ".join(
+            part for part in [sender.get("first_name"), sender.get("last_name")] if part
+        ),
     }
 
 
@@ -872,6 +891,26 @@ async def _process_telegram_message(
 
     harakiri_action = parse_harakiri_control(user_msg)
     if harakiri_action:
+        from shogun.services.team_identity import resolve_channel_member
+
+        async with async_session_factory() as identity_session:
+            control_member = await resolve_channel_member(
+                identity_session,
+                channel="telegram",
+                external_user_id=(telegram_context or {}).get("sender_id"),
+            )
+        if control_member and control_member.role != "owner":
+            logger.warning(
+                "[Telegram] Blocked HARAKIRI control from non-admin team member %s",
+                control_member.id,
+            )
+            await send_telegram_message(
+                bot_token,
+                chat_id,
+                "⚠️ HARAKIRI is restricted to the Primary Admin.",
+                message_thread_id=message_thread_id,
+            )
+            return
         await execute_harakiri_control(
             harakiri_action,
             source="telegram",
@@ -923,7 +962,14 @@ async def _process_telegram_message(
                 append_chat_message,
                 get_chat_context,
             )
+            from shogun.services.team_identity import member_context_text, resolve_channel_member
 
+            member = await resolve_channel_member(
+                session,
+                channel="telegram",
+                external_user_id=(telegram_context or {}).get("sender_id"),
+            )
+            prompt_msg = member_context_text(prompt_msg, member, channel="Telegram")
             prompt_msg, chat_attachments = await _prepare_telegram_visual_context(session, prompt_msg, attachments)
             history = await get_chat_context(session, limit=20)
             await append_chat_message(
@@ -948,6 +994,7 @@ async def _process_telegram_message(
                         else {}
                     ),
                     **({"telegram_context": telegram_context} if telegram_context else {}),
+                    **({"team_member_id": str(member.id)} if member else {}),
                 },
             )
             await session.commit()
@@ -956,6 +1003,18 @@ async def _process_telegram_message(
             # Telegram has no graphical mode selector, so default to the
             # tool-capable Mission lane. Torii still gates every tool call.
             prompt_msg, mode, classification = _select_telegram_chat_mode(prompt_msg, history)
+            if member:
+                classification["_speaker_name"] = member.display_name
+                classification["_speaker_member_id"] = str(member.id)
+                classification["_speaker_role"] = (
+                    "Primary Admin" if member.role == "owner" else "Team Member"
+                )
+                if member.role != "owner":
+                    # Non-admin team members can converse and use scoped memory,
+                    # but cannot enter the tool-capable Mission lane.
+                    mode = "governed"
+                    classification["mode"] = "governed"
+                    classification["reason"] = "team_member_channel_safety"
             try:
                 from shogun.schemas.skills import SkillActivationRequest
                 from shogun.services.active_skill_service import SkillActivationService

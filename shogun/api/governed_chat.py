@@ -169,11 +169,15 @@ async def _shogun_governed_chat(
     # ── 3. Load cached operator name ──
     operator_name = "Daimyo"
     async for db in get_db():
-        op_res = await db.execute(select(Operator).limit(1))
+        op_res = await db.execute(select(Operator).where(Operator.username == "admin"))
         op = op_res.scalar_one_or_none()
         if op and op.display_name:
             operator_name = op.display_name
         break
+    speaker_role = "Primary Admin"
+    if classification.get("_speaker_name"):
+        operator_name = str(classification["_speaker_name"])
+        speaker_role = str(classification.get("_speaker_role") or "Team Member")
 
     # ── 4. Get posture tier ──
     try:
@@ -251,7 +255,7 @@ async def _shogun_governed_chat(
     # ── 7. Build system prompt with memory and governance ──
     persona_name = agent.name or "Shogun"
     system_prompt = f"""You are {persona_name}, the primary AI of the Shogun platform.
-Your operator is '{operator_name}'.
+The verified current speaker is '{operator_name}' ({speaker_role}).
 Current mode: Governed Chat (context-aware).
 Current posture: {_active_tier}.
 Current model: {model_name}.
@@ -349,11 +353,22 @@ Explicit operator corrections are durable learning signals. Acknowledge them and
                         await mem_svc.reinforce(memory_id, "retrieved_and_used")
                     await mem_svc.create_memory(
                         agent_id=agent.id,
-                        title=f"Governed chat: {user_msg[:120]}",
-                        content=f"[Governed Chat Exchange]\nOperator: {user_msg}\nShogun: {full_response[:1000]}",
+                        title=f"Governed chat with {operator_name}: {user_msg[:90]}",
+                        content=(
+                            f"[Governed Chat Exchange]\nSpeaker: {operator_name} ({speaker_role})\n"
+                            f"{user_msg}\nShogun: {full_response[:1000]}"
+                        ),
                         memory_type="episodic",
                         source_type="governed_chat",
                         decay_class="medium",
+                        tags=[
+                            "governed-chat",
+                            *(
+                                [f"member:{classification['_speaker_member_id']}"]
+                                if classification.get("_speaker_member_id")
+                                else []
+                            ),
+                        ],
                     )
                     await mem_db.commit()
             except Exception as exc:

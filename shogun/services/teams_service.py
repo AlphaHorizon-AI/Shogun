@@ -170,6 +170,19 @@ class TeamsService:
         user.display_name = envelope.user.display_name
         user.aad_object_id = envelope.user.aad_object_id
         user.user_principal_name = envelope.user.user_principal_name
+        from shogun.services.team_identity import resolve_channel_member
+
+        member = await resolve_channel_member(
+            self.db,
+            channel="microsoft_teams",
+            external_user_id=envelope.user.teams_user_id,
+            aad_object_id=envelope.user.aad_object_id,
+            user_principal_name=envelope.user.user_principal_name,
+        )
+        if member:
+            user.shogun_user_id = str(member.id)
+            user.display_name = member.display_name
+            user.shogun_role = "admin" if member.role == "owner" else "viewer"
         await self.db.flush()
         return user
 
@@ -381,6 +394,58 @@ class TeamsService:
             rows = (await self.db.execute(query)).all()
             text = "\n".join(f"• {name} ({slug}) — {status}" for name, slug, status in rows) or "No agents found."
             return self._response(envelope, text, title="Agents")
+        if command == "ask":
+            from shogun.api.governed_chat import _shogun_governed_chat
+            from shogun.services.agent_service import AgentService
+            from shogun.services.team_identity import member_context_text, resolve_channel_member
+
+            member = await resolve_channel_member(
+                self.db,
+                channel="microsoft_teams",
+                external_user_id=envelope.user.teams_user_id,
+                aad_object_id=envelope.user.aad_object_id,
+                user_principal_name=envelope.user.user_principal_name,
+            )
+            message = member_context_text(envelope.arguments["message"], member, channel="Microsoft Teams")
+            classification = {
+                "mode": "governed",
+                "reason": "teams_member_chat",
+                "matched": [],
+                **(
+                    {
+                        "_speaker_name": member.display_name,
+                        "_speaker_member_id": str(member.id),
+                        "_speaker_role": "Primary Admin" if member.role == "owner" else "Team Member",
+                    }
+                    if member
+                    else {}
+                ),
+            }
+            response_stream = await _shogun_governed_chat(
+                user_msg=message,
+                history=[],
+                svc=AgentService(self.db),
+                classification=classification,
+            )
+            reply = ""
+            buffer = ""
+            generator = getattr(response_stream, "body_iterator", response_stream)
+            async for chunk in generator:
+                buffer += chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
+                while "\n\n" in buffer:
+                    event, buffer = buffer.split("\n\n", 1)
+                    for line in event.splitlines():
+                        if not line.startswith("data: ") or line[6:].strip() == "[DONE]":
+                            continue
+                        try:
+                            data = json.loads(line[6:])
+                        except json.JSONDecodeError:
+                            continue
+                        if data.get("type") == "token":
+                            reply += str(data.get("content") or "")
+                        elif data.get("type") == "error" and not reply:
+                            reply = str(data.get("content") or "Unable to answer right now.")
+            return self._response(envelope, reply.strip() or "I could not generate a response.")
         if command == "approvals":
             rows = (
                 await self.db.execute(
