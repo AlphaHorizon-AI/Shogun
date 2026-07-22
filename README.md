@@ -25,6 +25,7 @@ If you later need to manage several Shogun installations, add **Gensui**, the op
 |---|---|
 | Run my own governed AI command center | [Shogun and The Tenshu](#install-shogun-and-the-tenshu) |
 | Let one administrator serve several people through Telegram or Teams | [Shogun in Team mode](#single-user-and-team-mode) |
+| Run Shogun continuously in containers on a server or NAS | [Shogun Server mode](#server-mode-docker) |
 | Centrally manage multiple Shogun installations | [Gensui](#gensui--agent-fleet-management) after installing Shogun |
 
 ## Shogun and The Tenshu
@@ -84,6 +85,8 @@ In Team mode:
 
 Server mode runs Shogun and The Tenshu continuously in containers with dedicated PostgreSQL and Qdrant services. It is the recommended deployment for an always-on Team-mode installation.
 
+**Prerequisite:** Install Docker Desktop on Windows/macOS, or Docker Engine with the Docker Compose plugin on Linux. The server installer downloads the Shogun source and builds the application image locally.
+
 | Platform | Server installer | Run it |
 |---|---|---|
 | **Linux/macOS server** | [⬇️ Shogun-Server-Install.sh](https://github.com/AlphaHorizon-AI/Shogun/releases/latest/download/Shogun-Server-Install.sh) | Run `bash Shogun-Server-Install.sh` |
@@ -103,7 +106,9 @@ After installation, the Primary Admin opens [http://127.0.0.1:8000/setup](http:/
 
 > **Secure by default:** Do not change `SHOGUN_BIND_ADDRESS` to a public interface without placing The Tenshu behind an authenticated HTTPS reverse proxy. For remote administration, prefer a VPN or SSH tunnel.
 
-Ronin host desktop control is disabled in Server mode because a container cannot safely control the host desktop. Mado browser automation, Agent Flows, Flow Stacking, Telegram, Teams, Nexus, memory, ToolGate, and HARAKIRI remain available.
+> **Important — Ronin does not work in Server mode:** A container cannot safely access the server's physical desktop. Ronin screenshots, mouse and keyboard control, native application control, and host-desktop sessions are therefore disabled and rejected by the server. Selecting the Torii posture named RONIN does not override this container boundary. Use a normal desktop installation when Ronin Desktop Control is required.
+
+Mado browser automation still works because its managed Chromium browser runs inside the container. Agent Flows, Flow Stacking, Telegram, Teams, Nexus, memory, ToolGate, HARAKIRI, and externally hosted local-model services such as Ollama remain available.
 
 <details>
 <summary><strong>Start Server mode from a source checkout</strong></summary>

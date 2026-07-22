@@ -120,6 +120,7 @@ export function Guide() {
 
   const REFERENCE_SECTIONS = [
     { id: 'ref-tenshu', label: 'Tenshu', icon: Layout, color: 'text-shogun-blue' },
+    { id: 'ref-server', label: 'Server Mode', icon: Package, color: 'text-emerald-400' },
     { id: 'ref-comms', label: 'Comms', icon: MessageSquare, color: 'text-shogun-blue' },
     { id: 'ref-profile', label: 'Shogun Profile', icon: Cpu, color: 'text-shogun-gold' },
     { id: 'ref-flowstack', label: 'Flow Stacking', icon: Layers, color: 'text-violet-400' },
@@ -701,6 +702,88 @@ export function Guide() {
              </section>
 
              {/* ═══════════════════════════════════════════════════════════════ */}
+             {/* SHOGUN SERVER MODE (DOCKER) */}
+             <section id="ref-server" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-emerald-400/40 pb-3">
+                   <Package className="w-6 h-6 text-emerald-400" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Shogun Server Mode — Container Installation</h4>
+                      <p className="text-xs text-shogun-subdued">Run Shogun and The Tenshu continuously with Docker, PostgreSQL, and Qdrant.</p>
+                   </div>
+                </div>
+
+                <div className="shogun-card border-l-4 border-l-red-500 space-y-3">
+                   <div className="font-bold text-red-400 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Ronin Does Not Work in Server Mode</div>
+                   <p className="text-xs text-shogun-subdued leading-relaxed">
+                      A container cannot safely access the server's physical desktop. Ronin screenshots, mouse and keyboard control,
+                      native application control, and host-desktop sessions are disabled and rejected by the server. Selecting the Torii
+                      posture named <strong>RONIN</strong> does not override this container boundary. Install Shogun directly on a desktop
+                      computer when Ronin Desktop Control is required.
+                   </p>
+                   <p className="text-xs text-shogun-subdued leading-relaxed">
+                      <strong className="text-emerald-400">Still available:</strong> Mado browser automation runs Chromium inside the
+                      container. Agent Flows, Flow Stacking, Telegram, Microsoft Teams, Nexus, memory, ToolGate, HARAKIRI, and external
+                      local-model servers such as Ollama continue to work.
+                   </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-3">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-emerald-400" /> Before You Install</div>
+                      <ul className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-disc leading-relaxed">
+                         <li><strong>Windows or macOS:</strong> Install Docker Desktop and start it.</li>
+                         <li><strong>Linux:</strong> Install Docker Engine and the Docker Compose plugin.</li>
+                         <li>Allow outbound internet access while the image and service images are downloaded.</li>
+                         <li>Plan remote administration through a VPN, SSH tunnel, or authenticated HTTPS reverse proxy.</li>
+                      </ul>
+                   </div>
+                   <div className="shogun-card space-y-3">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Play className="w-4 h-4 text-emerald-400" /> One-Click Installation</div>
+                      <ol className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-decimal leading-relaxed">
+                         <li>Open the latest Shogun GitHub Release.</li>
+                         <li>Download <code>Shogun-Server-Install.bat</code> on Windows, or <code>Shogun-Server-Install.sh</code> on Linux/macOS.</li>
+                         <li>Run the installer. It generates secrets, builds the image, and starts all services.</li>
+                         <li>Open <code>http://127.0.0.1:8000/setup</code> and complete the Setup Wizard as the Primary Admin.</li>
+                      </ol>
+                      <a href="https://github.com/AlphaHorizon-AI/Shogun/releases/latest" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 hover:underline">
+                         <ExternalLink className="w-3 h-3" /> Open the latest Shogun Release
+                      </a>
+                   </div>
+                   <div className="shogun-card space-y-3">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Network className="w-4 h-4 text-emerald-400" /> What the Stack Runs</div>
+                      <ul className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-disc leading-relaxed">
+                         <li><strong>Shogun + The Tenshu:</strong> A non-root application container exposed on port 8000.</li>
+                         <li><strong>PostgreSQL:</strong> Structured application, configuration, team, and audit data.</li>
+                         <li><strong>Qdrant:</strong> Vector memory and semantic retrieval.</li>
+                         <li><strong>Internal network:</strong> PostgreSQL and Qdrant are not published to the host.</li>
+                         <li><strong>Health and restart controls:</strong> Failed services are detected and restarted automatically.</li>
+                      </ul>
+                   </div>
+                   <div className="shogun-card space-y-3">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-emerald-400" /> Persistence and Upgrades</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Named Docker volumes preserve application data, memories, vault content, configuration, logs, PostgreSQL, and Qdrant. The installer also preserves <code>.env.server</code> when updating the source.</p>
+                      <p className="text-xs text-red-400 leading-relaxed"><strong>Never use</strong> <code>docker compose down -v</code> unless you intentionally want to delete all Server-mode data.</p>
+                   </div>
+                   <div className="shogun-card space-y-3">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Users className="w-4 h-4 text-emerald-400" /> Team Access Model</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The Primary Admin operates The Tenshu and owns platform administration. Team members communicate with Shogun through their configured Telegram or Microsoft Teams identities and receive separate identity and pinned-memory contexts. Team members do not receive access to The Tenshu.</p>
+                   </div>
+                   <div className="shogun-card space-y-3">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-emerald-400" /> Network Security</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The Tenshu binds to <code>127.0.0.1</code> by default and is therefore reachable only from the server itself. Do not expose it on a public or shared network without an authenticated HTTPS reverse proxy. A VPN or SSH tunnel is the preferred way to administer it remotely.</p>
+                   </div>
+                </div>
+
+                <div className="shogun-card space-y-3">
+                   <div className="font-bold text-shogun-text flex items-center gap-2"><Terminal className="w-4 h-4 text-emerald-400" /> Essential Server Commands</div>
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="bg-shogun-bg rounded-lg border border-shogun-border p-3"><p className="text-[10px] font-bold uppercase tracking-widest text-shogun-subdued mb-2">Status</p><code className="text-[10px] text-emerald-400 break-all">docker compose --env-file .env.server -f docker-compose.server.yml ps</code></div>
+                      <div className="bg-shogun-bg rounded-lg border border-shogun-border p-3"><p className="text-[10px] font-bold uppercase tracking-widest text-shogun-subdued mb-2">Live Logs</p><code className="text-[10px] text-emerald-400 break-all">docker compose --env-file .env.server -f docker-compose.server.yml logs -f shogun</code></div>
+                      <div className="bg-shogun-bg rounded-lg border border-shogun-border p-3"><p className="text-[10px] font-bold uppercase tracking-widest text-shogun-subdued mb-2">Safe Stop</p><code className="text-[10px] text-emerald-400 break-all">docker compose --env-file .env.server -f docker-compose.server.yml down</code></div>
+                   </div>
+                </div>
+             </section>
+
              {/* 2. COMMS (CHAT) */}
              {/* ═══════════════════════════════════════════════════════════════ */}
              <section id="ref-comms" className="space-y-6 scroll-mt-6">
@@ -2530,7 +2613,7 @@ npm start`}</pre>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layout className="w-4 h-4 text-shogun-blue" /> Three-Tier Design</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Shogun is built in three tiers: <strong>Presentation</strong> (the React-based UI you're looking at), <strong>Application</strong> (a FastAPI backend handling all business logic, routing, and orchestration), and <strong>Persistence</strong> (SQLite for structured data, Qdrant for vector memory). Each tier is independent and communicates via REST APIs.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Shogun is built in three tiers: <strong>Presentation</strong> (the React-based UI you're looking at), <strong>Application</strong> (a FastAPI backend handling all business logic, routing, and orchestration), and <strong>Persistence</strong> (SQLite in desktop mode or PostgreSQL in Server mode, plus Qdrant for vector memory). Each tier is independent and communicates through governed APIs.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Network className="w-4 h-4 text-shogun-blue" /> Lattice Architecture</div>
@@ -2541,8 +2624,8 @@ npm start`}</pre>
                       <p className="text-xs text-shogun-subdued leading-relaxed">The system connects outward to cloud AI providers (OpenAI, Anthropic, Gemini, Perplexity, OpenRouter) and local model servers (Ollama). It integrates with Telegram for mobile messaging, supports the A2A (Agent-to-Agent) protocol for cross-network collaboration via Nexus, automates web browsing via Mado (Playwright), connects to email servers (IMAP/SMTP), and syncs with calendar servers (CalDAV).</p>
                    </div>
                    <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Cpu className="w-4 h-4 text-shogun-blue" /> Single-Server Deployment</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The entire Shogun stack runs on a single machine. The backend serves on port 8000, the frontend is a Vite-powered React SPA proxied or served separately, and SQLite/Qdrant run locally. No cloud infrastructure is required — everything stays on your hardware.</p>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Cpu className="w-4 h-4 text-shogun-blue" /> Desktop and Server Deployment</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Desktop mode runs Shogun, The Tenshu, SQLite, and local Qdrant directly on one computer. Server mode runs the application, PostgreSQL, and Qdrant as isolated Docker services with persistent volumes and automatic restarts. Both stay on hardware you control; Server mode is intended for continuous operation and Team-mode access through Telegram or Microsoft Teams.</p>
                    </div>
                 </div>
              </section>
@@ -2595,8 +2678,8 @@ npm start`}</pre>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Memories are converted into numerical vectors (embeddings) and stored in a Qdrant vector database. This enables <strong>semantic search</strong> — you can search by meaning, not just keywords. When the AI responds to a query, it automatically retrieves the most relevant memories from this layer and includes them in context.</p>
                    </div>
                    <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-shogun-gold" /> Structured Storage (SQLite)</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">All configuration data — agents, providers, routing profiles, governance documents, chat history, certifications, security policies — is stored in a local SQLite database (<code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">shogun.db</code>). This is the "source of truth" for everything except vector embeddings.</p>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-shogun-gold" /> Structured Storage</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Agents, providers, routing profiles, governance documents, chat history, certifications, team identities, and security policies use SQLite (<code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">shogun.db</code>) in desktop mode and PostgreSQL in Server mode. This database is the source of truth for everything except vector embeddings.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-shogun-gold" /> Memory Types</div>

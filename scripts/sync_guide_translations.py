@@ -163,6 +163,11 @@ def main() -> None:
         action="store_true",
         help="Retry catalog entries that still equal their English source text.",
     )
+    parser.add_argument(
+        "--missing-only",
+        action="store_true",
+        help="Translate only newly extracted fragments and preserve existing translations.",
+    )
     parser.add_argument("--languages", nargs="*", default=list(LANGUAGES))
     args = parser.parse_args()
 
@@ -180,7 +185,13 @@ def main() -> None:
         if language not in LANGUAGES:
             raise SystemExit(f"Unsupported language: {language}")
         catalog_path = OUTPUT / f"{language}.json"
-        if args.repair_existing and catalog_path.exists():
+        if args.missing_only and catalog_path.exists():
+            existing = json.loads(catalog_path.read_text(encoding="utf-8"))
+            pending = [fragment for fragment in fragments if fragment not in existing]
+            print(f"{language}: translating {len(pending)} new fragments", flush=True)
+            existing.update(translate_catalog(pending, language))
+            catalog = {fragment: existing.get(fragment, fragment) for fragment in fragments}
+        elif args.repair_existing and catalog_path.exists():
             existing = json.loads(catalog_path.read_text(encoding="utf-8"))
             pending = [fragment for fragment in fragments if existing.get(fragment, fragment) == fragment]
             print(f"{language}: retrying {len(pending)} unchanged fragments", flush=True)
