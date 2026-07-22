@@ -132,5 +132,80 @@ async def test_enabled_delete_tool_soft_deletes_the_requested_workflow(
     await engine.dispose()
 
 
+@pytest.mark.asyncio
+async def test_explicit_operator_authorization_bypasses_disabled_create_permission(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(posture_guard, "get_posture_permissions", lambda: _allowed_posture())
+
+    async with sessions() as session:
+        shogun = Agent(
+            agent_type="shogun",
+            name="Shogun",
+            slug="shogun-one-turn-create",
+            status="active",
+            is_primary=True,
+            bushido_settings={"custom_permissions": {"agentflow": {"allow_create": False}}},
+        )
+        session.add(shogun)
+        await session.commit()
+
+        denied = json.loads(await execute_native_tool(
+            "create_agent_flow",
+            {"name": "Denied without authorization", "nodes": [], "edges": []},
+            session,
+        ))
+        assert denied["status"] == "permission_required"
+        assert denied["permission"] == "agentflow.allow_create"
+
+        approved = json.loads(await execute_native_tool(
+            "create_agent_flow",
+            {"name": "Operator-authorized draft", "nodes": [], "edges": []},
+            session,
+            operator_confirmed_permissions={("agentflow", "allow_create")},
+        ))
+        assert approved["status"] == "success", approved
+        assert approved["flow_status"] == "draft"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_explicit_operator_authorization_bypasses_disabled_full_edit_permission(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(posture_guard, "get_posture_permissions", lambda: _allowed_posture())
+
+    async with sessions() as session:
+        shogun = Agent(
+            agent_type="shogun",
+            name="Shogun",
+            slug="shogun-one-turn-edit",
+            status="active",
+            is_primary=True,
+            bushido_settings={"custom_permissions": {"agentflow": {"allow_edit": False}}},
+        )
+        flow = AgentFlow(name="Before edit", flow_type="standard")
+        session.add_all([shogun, flow])
+        await session.commit()
+
+        approved = json.loads(await execute_native_tool(
+            "edit_agent_flow",
+            {"flow_id": str(flow.id), "name": "After edit"},
+            session,
+            operator_confirmed_permissions={("agentflow", "allow_edit")},
+        ))
+        assert approved["status"] == "success", approved
+        assert approved["flow_status"] == "draft"
+        await session.refresh(flow)
+        assert flow.name == "After edit"
+
+    await engine.dispose()
+
+
 async def _allowed_posture():
     return {"agentflow_create": True, "flowstack_create": True}

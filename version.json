@@ -1,8 +1,8 @@
 {
-  "version": "1.39.1",
+  "version": "1.39.2",
   "name": "Shogun OS",
-  "build": 122,
+  "build": 123,
   "channel": "stable",
-  "released": "2026-07-22T14:30:00Z",
-  "changelog": "Prevent Telegram and other launch contexts from silently opening a different relative SQLite database; add explicit AgentFlow empty-result diagnostics, database fingerprints, and safe recovery guidance."
+  "released": "2026-07-22T13:57:00Z",
+  "changelog": "Honor explicit operator and approved ToolGate authorization throughout AgentFlow and Flow Stack create, edit, and delete execution while keeping activation separately protected."
 }

@@ -3276,8 +3276,19 @@ async def execute_native_tool(
                     })
             except Exception:
                 return json.dumps({"status": "error", "message": "Could not verify the AgentFlow posture permission."})
-            if not await _shogun_workflow_permission(db_session, "agentflow", "allow_create"):
-                return json.dumps({"status": "error", "message": "Shogun's AgentFlow creation permission is disabled."})
+            create_permission = ("agentflow", "allow_create")
+            if (
+                create_permission not in confirmed_permissions
+                and not await _shogun_workflow_permission(db_session, *create_permission)
+            ):
+                return json.dumps({
+                    "status": "permission_required",
+                    "permission": "agentflow.allow_create",
+                    "message": (
+                        "AgentFlow creation requires an explicit operator instruction, a one-time "
+                        "ToolGate approval, or the persistent AgentFlow Allow Create permission."
+                    ),
+                })
             activate = bool(args.get("activate", False))
             if activate and not await _shogun_workflow_permission(db_session, "agentflow", "allow_activate"):
                 return json.dumps({"status": "error", "message": "Shogun may create this AgentFlow as a draft, but AgentFlow activation permission is disabled."})
@@ -3402,8 +3413,19 @@ async def execute_native_tool(
                     return json.dumps({"status": "error", "message": "AgentFlow editing is only available in Tactical, Campaign, or Ronin posture."})
             except Exception:
                 return json.dumps({"status": "error", "message": "Could not verify the AgentFlow posture permission."})
-            if not await _shogun_workflow_permission(db_session, "agentflow", "allow_edit"):
-                return json.dumps({"status": "error", "message": "Shogun's AgentFlow editing permission is disabled."})
+            edit_permission = ("agentflow", "allow_edit")
+            if (
+                edit_permission not in confirmed_permissions
+                and not await _shogun_workflow_permission(db_session, *edit_permission)
+            ):
+                return json.dumps({
+                    "status": "permission_required",
+                    "permission": "agentflow.allow_edit",
+                    "message": (
+                        "AgentFlow editing requires an explicit operator instruction, a one-time "
+                        "ToolGate approval, or the persistent AgentFlow Allow Edit permission."
+                    ),
+                })
             activate = bool(args.get("activate", False))
             if activate and not await _shogun_workflow_permission(db_session, "agentflow", "allow_activate"):
                 return json.dumps({"status": "error", "message": "AgentFlow activation permission is disabled."})
@@ -3445,8 +3467,16 @@ async def execute_native_tool(
                     })
             except Exception:
                 return json.dumps({"status": "error", "message": "Could not verify the AgentFlow posture permission."})
-            if not await _shogun_workflow_permission(db_session, "agentflow", "allow_delete"):
-                return json.dumps({"status": "error", "message": "Shogun's AgentFlow deletion permission is disabled."})
+            delete_permission = ("agentflow", "allow_delete")
+            if (
+                delete_permission not in confirmed_permissions
+                and not await _shogun_workflow_permission(db_session, *delete_permission)
+            ):
+                return json.dumps({
+                    "status": "permission_required",
+                    "permission": "agentflow.allow_delete",
+                    "message": "AgentFlow deletion requires one-time ToolGate approval or Allow Delete permission.",
+                })
 
             import uuid as _uuid
             from shogun.services.agent_flow_service import AgentFlowService
@@ -3477,8 +3507,19 @@ async def execute_native_tool(
                     return json.dumps({"status": "error", "message": "Flow Stack editing is only available in Tactical, Campaign, or Ronin posture."})
             except Exception:
                 return json.dumps({"status": "error", "message": "Could not verify the Flow Stack posture permission."})
-            if not await _shogun_workflow_permission(db_session, "flow_stack", "allow_edit"):
-                return json.dumps({"status": "error", "message": "Shogun's Flow Stack editing permission is disabled."})
+            edit_permission = ("flow_stack", "allow_edit")
+            if (
+                edit_permission not in confirmed_permissions
+                and not await _shogun_workflow_permission(db_session, *edit_permission)
+            ):
+                return json.dumps({
+                    "status": "permission_required",
+                    "permission": "flow_stack.allow_edit",
+                    "message": (
+                        "Flow Stack editing requires an explicit operator instruction, a one-time "
+                        "ToolGate approval, or the persistent Flow Stack Allow Edit permission."
+                    ),
+                })
             activate = bool(args.get("activate", False))
             if activate and not await _shogun_workflow_permission(db_session, "flow_stack", "allow_activate"):
                 return json.dumps({"status": "error", "message": "Flow Stack activation permission is disabled."})
@@ -3551,8 +3592,16 @@ async def execute_native_tool(
                     })
             except Exception:
                 return json.dumps({"status": "error", "message": "Could not verify the Flow Stack posture permission."})
-            if not await _shogun_workflow_permission(db_session, "flow_stack", "allow_delete"):
-                return json.dumps({"status": "error", "message": "Shogun's Flow Stack deletion permission is disabled."})
+            delete_permission = ("flow_stack", "allow_delete")
+            if (
+                delete_permission not in confirmed_permissions
+                and not await _shogun_workflow_permission(db_session, *delete_permission)
+            ):
+                return json.dumps({
+                    "status": "permission_required",
+                    "permission": "flow_stack.allow_delete",
+                    "message": "Flow Stack deletion requires one-time ToolGate approval or Allow Delete permission.",
+                })
 
             import uuid as _uuid
             from shogun.services.agent_flow_service import AgentFlowService
@@ -3583,8 +3632,19 @@ async def execute_native_tool(
                     return json.dumps({"status": "error", "message": "Flow Stack creation is only available in Tactical, Campaign, or Ronin posture."})
             except Exception:
                 return json.dumps({"status": "error", "message": "Could not verify the Flow Stack posture permission."})
-            if not await _shogun_workflow_permission(db_session, "flow_stack", "allow_create"):
-                return json.dumps({"status": "error", "message": "Shogun's Flow Stack creation permission is disabled."})
+            create_permission = ("flow_stack", "allow_create")
+            if (
+                create_permission not in confirmed_permissions
+                and not await _shogun_workflow_permission(db_session, *create_permission)
+            ):
+                return json.dumps({
+                    "status": "permission_required",
+                    "permission": "flow_stack.allow_create",
+                    "message": (
+                        "Flow Stack creation requires an explicit operator instruction, a one-time "
+                        "ToolGate approval, or the persistent Flow Stack Allow Create permission."
+                    ),
+                })
             activate = bool(args.get("activate", False))
             if activate and not await _shogun_workflow_permission(db_session, "flow_stack", "allow_activate"):
                 return json.dumps({"status": "error", "message": "Shogun may create this Flow Stack as a draft, but Flow Stack activation permission is disabled."})
