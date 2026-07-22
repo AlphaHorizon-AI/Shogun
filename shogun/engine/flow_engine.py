@@ -181,6 +181,28 @@ async def cancel_flow_run(run_id: uuid.UUID) -> bool:
     return False
 
 
+def request_cancel_all_flow_runs(*, exclude_current: bool = True) -> list[asyncio.Task]:
+    """Synchronously signal cancellation to every in-process flow task."""
+    current = asyncio.current_task() if exclude_current else None
+    tasks = [
+        task
+        for task in tuple(_active_runs.values())
+        if task is not current and not task.done()
+    ]
+    for task in tasks:
+        task.cancel()
+    return tasks
+
+
+async def cancel_all_flow_runs(reason: str = "HARAKIRI activated") -> int:
+    """Cancel every in-process flow, including child flows, and await exit."""
+    tasks = request_cancel_all_flow_runs()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    log.critical("Cancelled %d active flow task(s): %s", len(tasks), reason)
+    return len(tasks)
+
+
 # ═══════════════════════════════════════════════════════════════
 # CORE EXECUTION LOOP
 # ═══════════════════════════════════════════════════════════════

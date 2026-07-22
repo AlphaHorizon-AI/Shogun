@@ -25,6 +25,44 @@ logger = logging.getLogger("shogun.telegram_poller")
 # ── Persistent httpx client (connection pooling, avoids TLS handshake per call) ──
 _tg_client: httpx.AsyncClient | None = None
 
+# Every inbound response task must be reachable by the emergency-stop path.
+# Keeping these tasks only in the event loop (via bare ``create_task``) made an
+# already-running Telegram stream impossible to stop with Harakiri.
+_active_message_tasks: set[asyncio.Task] = set()
+
+
+def create_telegram_message_task(coro) -> asyncio.Task:
+    """Launch and track one inbound Telegram response task."""
+    task = asyncio.create_task(coro)
+    _active_message_tasks.add(task)
+    task.add_done_callback(_active_message_tasks.discard)
+    return task
+
+
+def request_cancel_active_telegram_messages(*, exclude_current: bool = True) -> list[asyncio.Task]:
+    """Synchronously signal cancellation to every tracked Telegram task."""
+    current = asyncio.current_task() if exclude_current else None
+    tasks = [
+        task
+        for task in tuple(_active_message_tasks)
+        if task is not current and not task.done()
+    ]
+    for task in tasks:
+        task.cancel()
+    return tasks
+
+
+async def cancel_active_telegram_messages(*, exclude_current: bool = True) -> int:
+    """Cancel all tracked Telegram work and wait until it has stopped.
+
+    The Harakiri command itself is normally one of these tasks, so the current
+    task is excluded long enough to send the operator's acknowledgement.
+    """
+    tasks = request_cancel_active_telegram_messages(exclude_current=exclude_current)
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    return len(tasks)
+
 
 def _get_tg_client() -> httpx.AsyncClient:
     """Return (and lazily create) a long-lived httpx client for Telegram API calls."""
@@ -699,7 +737,11 @@ async def send_chat_action(
     *,
     message_thread_id: int | None = None,
 ):
-    """Send a chat action indicator (e.g. 'typing...') — instant user feedback."""
+    """Send a chat action indicator unless emergency shutdown is active."""
+    from shogun.services.harakiri_runtime import harakiri_latch_active
+
+    if harakiri_latch_active():
+        return
     url = f"https://api.telegram.org/bot{bot_token}/sendChatAction"
     try:
         client = _get_tg_client()
@@ -718,8 +760,14 @@ async def send_telegram_message(
     *,
     message_thread_id: int | None = None,
     use_markdown: bool = True,
+    allow_during_harakiri: bool = False,
 ) -> int | None:
     """Push a textual response back to the Telegram client. Returns message_id if successful."""
+    from shogun.services.harakiri_runtime import harakiri_latch_active
+
+    if harakiri_latch_active() and not allow_during_harakiri:
+        logger.warning("[Telegram] Outbound message blocked by active HARAKIRI latch")
+        return None
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
     if use_markdown:
@@ -751,6 +799,11 @@ async def edit_telegram_message(
     markdown may be incomplete (unclosed ``*``, ``_``, etc.), which would
     cause Telegram to reject the edit.
     """
+    from shogun.services.harakiri_runtime import harakiri_latch_active
+
+    if harakiri_latch_active():
+        logger.warning("[Telegram] Message edit blocked by active HARAKIRI latch")
+        return False
     url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
     payload: dict = {
         "chat_id": chat_id,
@@ -830,6 +883,7 @@ async def _process_telegram_message(
                 chat_id,
                 "⛩️ *HARAKIRI ACTIVATED*\n\nAll agent activity is suspended. Posture is now SHRINE.",
                 message_thread_id=message_thread_id,
+                allow_during_harakiri=True,
             )
         else:
             await send_telegram_message(
@@ -855,6 +909,7 @@ async def _process_telegram_message(
                 "All AI operations are suspended. Deactivate the kill switch "
                 "in the Torii to resume.",
                 message_thread_id=message_thread_id,
+                allow_during_harakiri=True,
             )
             return
     except Exception as e:
@@ -1255,7 +1310,7 @@ async def telegram_poller_task():
                 attachments = await _extract_telegram_attachments(bot_token, chat_id_str, msg)
 
                 if text or attachments:
-                    asyncio.create_task(
+                    create_telegram_message_task(
                         process_telegram_message(
                             bot_token,
                             chat_id_str,

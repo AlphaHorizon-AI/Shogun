@@ -38,6 +38,44 @@ _active_stack_runs: dict[str, asyncio.Task] = {}
 _TERMINAL = {"completed", "completed_with_errors", "failed", "cancelled"}
 
 
+def request_cancel_all_stack_runs(*, exclude_current: bool = True) -> list[asyncio.Task]:
+    """Synchronously signal cancellation to every live stack worker."""
+    current = asyncio.current_task() if exclude_current else None
+    tasks = [
+        task
+        for task in tuple(_active_stack_runs.values())
+        if task is not current and not task.done()
+    ]
+    for task in tasks:
+        task.cancel()
+    return tasks
+
+
+async def cancel_all_stack_runs(reason: str = "HARAKIRI activated") -> int:
+    """Cancel all live stack workers and persist terminal cancellation state."""
+    tasks = request_cancel_all_stack_runs()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(StackRun).where(StackRun.status.in_(["running", "paused"]))
+        )
+        stacks = list(result.scalars().all())
+        now = datetime.now(timezone.utc)
+        for stack in stacks:
+            stack.status = "cancelled"
+            stack.completed_at = now
+            steps = await StackStateService.steps(session, stack.id)
+            for step in steps:
+                if step.status in {"pending", "running", "retrying", "paused"}:
+                    step.status = "cancelled"
+                    step.completed_at = now
+        await session.commit()
+    log.critical("Cancelled %d active stack task(s): %s", len(tasks), reason)
+    return len(tasks)
+
+
 async def _audit(event_type: str, action: str, stack_run_id: uuid.UUID, **kwargs: Any) -> None:
     await EventLogger.emit(
         category="governance",

@@ -464,7 +464,12 @@ async def simulate_permissions(body: PermissionSimulateRequest):
 
 @router.post("/kill-switch", response_model=ApiResponse)
 async def activate_kill_switch():
-    """Activate global kill switch — sets posture to shrine and disables shell. Persisted."""
+    """Activate the global kill switch and cancel all registered live work."""
+    from shogun.services.harakiri_runtime import cancel_active_runtime, engage_harakiri_latch
+
+    # Fail closed before the first database or network await.
+    engage_harakiri_latch()
+    cancelled = await cancel_active_runtime()
     posture = await _get_agent_posture()
     posture["active_tier"] = "shrine"
     posture.update(TIER_CONSTRAINTS["shrine"])
@@ -499,7 +504,13 @@ async def activate_kill_switch():
         )
     except Exception:
         pass
-    return ApiResponse(data={**posture, "message": "All agent activity suspended. Posture set to SHRINE."})
+    return ApiResponse(
+        data={
+            **posture,
+            "cancelled": cancelled,
+            "message": "All agent activity suspended. Posture set to SHRINE.",
+        }
+    )
 
 
 @router.delete("/kill-switch", response_model=ApiResponse)
@@ -510,6 +521,9 @@ async def reset_kill_switch():
     posture.update(TIER_CONSTRAINTS["tactical"])
     posture["kill_switch_active"] = False
     await _save_agent_posture(posture)
+    from shogun.services.harakiri_runtime import reset_harakiri_latch
+
+    reset_harakiri_latch()
     try:
         from shogun.services.event_logger import EventLogger
 

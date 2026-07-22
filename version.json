@@ -1,8 +1,8 @@
 {
-  "version": "1.36.0",
+  "version": "1.36.1",
   "name": "Shogun OS",
-  "build": 116,
+  "build": 117,
   "channel": "stable",
-  "released": "2026-07-21T19:25:28Z",
-  "changelog": "Merge Network and Mado permissions, honor direct AgentFlow edit instructions without phantom ToolGate prompts, expand Flow Stacking documentation, and restore fully translated Guide content in all supported languages."
+  "released": "2026-07-22T07:51:25Z",
+  "changelog": "Make remote HARAKIRI fail closed by cancelling active Telegram, Agent Flow, Agent Stack, and approval work; block late outbound Telegram and Teams messages; and add emergency-stop regression coverage."
 }

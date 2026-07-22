@@ -61,6 +61,15 @@ async def send_channel_message(
     event_type: str = "agentflow.message",
 ) -> dict[str, Any]:
     """Send a plain-text message to configured operator channels."""
+    from shogun.services.harakiri_runtime import harakiri_latch_active
+
+    if harakiri_latch_active():
+        blocked = {"ok": False, "error": "HARAKIRI is active", "sent": 0, "blocked": True}
+        return {
+            name: dict(blocked)
+            for name in ("telegram", "teams")
+            if channel in {name, "both"}
+        }
     results: dict[str, Any] = {}
     if channel in {"telegram", "both"}:
         results["telegram"] = await _send_telegram(
@@ -90,6 +99,10 @@ async def _send_telegram(
     message_thread_id: int | None = None,
 ) -> dict[str, Any]:
     from shogun.services.channel_service import _get_agent_bushido
+    from shogun.services.harakiri_runtime import harakiri_latch_active
+
+    if harakiri_latch_active():
+        return {"ok": False, "error": "HARAKIRI is active", "sent": 0, "blocked": True}
 
     config = (await _get_agent_bushido()).get("telegram_config", {})
     token = config.get("bot_token")
@@ -103,6 +116,9 @@ async def _send_telegram(
     errors: list[str] = []
     async with httpx.AsyncClient(timeout=10.0) as client:
         for target in targets:
+            if harakiri_latch_active():
+                errors.append(f"{target}: blocked by HARAKIRI")
+                continue
             parts = target.split(":")
             chat_id = parts[0]
             target_thread_id = message_thread_id
@@ -136,6 +152,10 @@ async def _send_teams(
     conversation_ids: list[str] | None,
     event_type: str,
 ) -> dict[str, Any]:
+    from shogun.services.harakiri_runtime import harakiri_latch_active
+
+    if harakiri_latch_active():
+        return {"ok": False, "error": "HARAKIRI is active", "sent": 0, "blocked": True}
     from shogun.db.engine import async_session_factory
     from shogun.db.models.teams import TeamsConfig, TeamsConversation, TeamsNotificationRoute
 
@@ -174,6 +194,9 @@ async def _send_teams(
     headers = {"Authorization": f"Bearer {settings.shogun_internal_api_key}"}
     async with httpx.AsyncClient(timeout=10.0) as client:
         for conversation_id in targets:
+            if harakiri_latch_active():
+                errors.append(f"{conversation_id}: blocked by HARAKIRI")
+                continue
             try:
                 response = await client.post(
                     url,
