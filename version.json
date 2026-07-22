@@ -1,8 +1,8 @@
 {
-  "version": "1.39.0",
+  "version": "1.39.1",
   "name": "Shogun OS",
-  "build": 121,
+  "build": 122,
   "channel": "stable",
-  "released": "2026-07-22T13:18:12Z",
-  "changelog": "Enforce verified AgentFlow and Flow Stack operations with a mandatory system-managed operator guide, deterministic discovery, reliable workflow tool authorization, destructive-action confirmation, and localized Grand Reference printing."
+  "released": "2026-07-22T14:30:00Z",
+  "changelog": "Prevent Telegram and other launch contexts from silently opening a different relative SQLite database; add explicit AgentFlow empty-result diagnostics, database fingerprints, and safe recovery guidance."
 }

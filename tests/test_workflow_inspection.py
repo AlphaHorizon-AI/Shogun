@@ -81,6 +81,28 @@ def test_workflow_operator_guide_is_fixed_and_requires_verified_execution() -> N
     assert "list_agent_flows first" in WORKFLOW_OPERATOR_GUIDE
     assert "After every successful create, edit, patch, or delete" in WORKFLOW_OPERATOR_GUIDE
     assert "Never claim" in WORKFLOW_OPERATOR_GUIDE
+    assert "A UUID does not bypass that mismatch" in WORKFLOW_OPERATOR_GUIDE
+
+
+@pytest.mark.asyncio
+async def test_empty_flow_list_reports_database_mismatch_diagnostic() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with sessions() as session:
+        result = json.loads(await execute_native_tool("list_agent_flows", {}, session))
+
+    assert result["status"] == "success"
+    assert result["total"] == 0
+    assert result["diagnostic"]["result_kind"] == "successful_empty_query"
+    assert result["diagnostic"]["toolgate_blocked"] is False
+    assert result["diagnostic"]["visible_unfiltered_total"] == 0
+    assert len(result["diagnostic"]["database_fingerprint"]) == 12
+    assert "UUID will not bypass" in result["diagnostic"]["explanation"]
+
+    await engine.dispose()
 
 
 def test_explicit_workflow_writes_authorize_medium_risk_tools_only() -> None:

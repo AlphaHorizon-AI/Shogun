@@ -9,9 +9,33 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def normalize_database_url(value: str) -> str:
+    """Anchor relative SQLite databases to the Shogun installation.
+
+    SQLite otherwise resolves ``./data/shogun.db`` against the process working
+    directory.  Launching the same installation from a service, Telegram
+    adapter, or terminal with a different cwd can then create and query a
+    second, empty database.
+    """
+    url = make_url(str(value))
+    if not url.get_backend_name().startswith("sqlite"):
+        return str(value)
+
+    database = url.database
+    if not database or database == ":memory:" or database.startswith("file:"):
+        return str(value)
+
+    database_path = Path(database)
+    if not database_path.is_absolute():
+        database_path = (PROJECT_ROOT / database_path).resolve()
+    return url.set(database=database_path.as_posix()).render_as_string(hide_password=False)
 
 
 class Settings(BaseSettings):
@@ -34,6 +58,11 @@ class Settings(BaseSettings):
 
     # ── Database (SQLite by default) ────────────
     database_url: str = f"sqlite+aiosqlite:///{PROJECT_ROOT}/data/shogun.db"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, value: str) -> str:
+        return normalize_database_url(value)
 
     # ── Qdrant (Embedded by default) ──────
     qdrant_url: str | None = None

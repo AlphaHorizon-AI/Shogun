@@ -109,6 +109,10 @@ TRUTH CONTRACT
 
 REQUIRED OPERATING SEQUENCE
 1. DISCOVER: Call list_agent_flows first. Use its real names and IDs; never invent an ID.
+   An empty response with status=success is not a ToolGate block. Read its diagnostic.
+   If visible_unfiltered_total is zero while the UI shows flows, stop: the chat channel
+   and UI are using different databases/instances. A UUID does not bypass that mismatch,
+   and creating a replacement would write to the wrong database.
 2. INSPECT: Before changing or deleting an existing object, call get_agent_flow or
    get_flow_stack and inspect the complete graph, phases, mappings, trigger, and status.
 3. VALIDATE: Preserve all untouched nodes and edges. Check node IDs, edge endpoints,

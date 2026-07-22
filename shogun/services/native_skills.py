@@ -3164,12 +3164,81 @@ async def execute_native_tool(
                     "is_stack_member": is_stack_member,
                 })
 
-            return json.dumps({
+            response = {
+                "status": "success",
                 "flows": flows_out,
                 "total": total,
                 "page": page,
                 "per_page": per_page,
-            })
+            }
+
+            if total == 0:
+                # A successful empty query must never be misreported as a
+                # ToolGate denial. Include enough non-secret identity data to
+                # detect a UI/Telegram split across databases or instances.
+                import hashlib
+
+                from sqlalchemy import func, select
+                from shogun.db.models.agent_flow import AgentFlow
+
+                visible_total = await db_session.scalar(
+                    select(func.count(AgentFlow.id)).where(
+                        AgentFlow.is_deleted == False,
+                        AgentFlow.is_template == False,
+                    )
+                )
+                template_total = await db_session.scalar(
+                    select(func.count(AgentFlow.id)).where(
+                        AgentFlow.is_deleted == False,
+                        AgentFlow.is_template == True,
+                    )
+                )
+                deleted_total = await db_session.scalar(
+                    select(func.count(AgentFlow.id)).where(AgentFlow.is_deleted == True)
+                )
+                bind_url = db_session.get_bind().url
+                identity_source = "|".join((
+                    bind_url.get_backend_name(),
+                    bind_url.host or "local",
+                    str(bind_url.port or ""),
+                    bind_url.database or "memory",
+                ))
+                database_fingerprint = hashlib.sha256(
+                    identity_source.encode("utf-8")
+                ).hexdigest()[:12]
+                has_filters = status_filter is not None or search_filter is not None
+                if visible_total and has_filters:
+                    explanation = (
+                        "The query succeeded, but its status/search filters matched no flows. "
+                        "Retry without filters before concluding that the flow is absent."
+                    )
+                elif visible_total:
+                    explanation = (
+                        "The query page is empty even though this database contains visible flows. "
+                        "Return to page 1."
+                    )
+                else:
+                    explanation = (
+                        "The query succeeded, but this Shogun database contains no visible AgentFlows. "
+                        "If the UI shows flows, Telegram and the UI are connected to different "
+                        "Shogun instances or databases. A UUID will not bypass that mismatch."
+                    )
+                response["diagnostic"] = {
+                    "result_kind": "successful_empty_query",
+                    "toolgate_blocked": False,
+                    "database_backend": bind_url.get_backend_name(),
+                    "database_fingerprint": database_fingerprint,
+                    "visible_unfiltered_total": int(visible_total or 0),
+                    "excluded_template_total": int(template_total or 0),
+                    "excluded_deleted_total": int(deleted_total or 0),
+                    "explanation": explanation,
+                    "required_action": (
+                        "Do not create a replacement flow and do not speculate that ToolGate blocked "
+                        "the query. Report this diagnostic and resolve the database/instance mismatch."
+                    ),
+                }
+
+            return json.dumps(response)
 
         elif name in {"get_agent_flow", "get_flow_stack"}:
             import uuid as _uuid
