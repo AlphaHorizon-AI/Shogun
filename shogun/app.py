@@ -596,6 +596,7 @@ def create_app() -> FastAPI:
 
     # Register routers
     from shogun.api.system import router as system_router
+    from shogun.api.team import router as team_router
     from shogun.api.personas import router as personas_router
     from shogun.api.agents import router as agents_router
     from shogun.api.model_providers import router as models_router
@@ -633,6 +634,7 @@ def create_app() -> FastAPI:
 
     prefix = "/api/v1"
     app.include_router(system_router, prefix=prefix)
+    app.include_router(team_router, prefix=prefix)
     app.include_router(personas_router, prefix=prefix)
     app.include_router(agents_router, prefix=prefix)
     app.include_router(models_router, prefix=prefix)

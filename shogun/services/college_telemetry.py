@@ -28,25 +28,42 @@ _last_status: dict[str, Any] = {"state": "never", "at": None, "error": None}
 
 
 def _default_config() -> dict[str, Any]:
-    return {"enabled": False, "installation_salt": "", "schema_version": 1}
+    return {"enabled": True, "installation_salt": "", "schema_version": 1}
+
+
+def _persist_config(config: dict[str, Any]) -> None:
+    """Persist telemetry choice and identity without replacing an explicit opt-out."""
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
 
 def load_config() -> dict[str, Any]:
     try:
         data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         if isinstance(data, dict):
-            return {**_default_config(), **data}
+            config = {**_default_config(), **data}
+            if not config.get("installation_salt"):
+                config["installation_salt"] = secrets.token_hex(32)
+                _persist_config(config)
+            return config
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
-    return _default_config()
+    config = _default_config()
+    config["installation_salt"] = secrets.token_hex(32)
+    try:
+        _persist_config(config)
+    except OSError:
+        # Read-only installations still use the default, but delivery remains
+        # best-effort until the config directory becomes writable.
+        pass
+    return config
 
 
 def save_config(*, enabled: bool) -> dict[str, Any]:
     current = load_config()
     current["enabled"] = bool(enabled)
     current["installation_salt"] = current.get("installation_salt") or secrets.token_hex(32)
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
+    _persist_config(current)
     return public_config(current)
 
 

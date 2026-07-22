@@ -288,7 +288,7 @@ export const Updates = () => {
             <div>
               <h3 className="text-sm font-semibold text-white">OpenClaw College ecosystem intelligence</h3>
               <p className="mt-1 max-w-xl text-xs leading-relaxed text-shogun-subdued">
-                Optionally contribute anonymous, coarse model-performance signals to ecosystem benchmarks. Sharing is off by default and can be disabled at any time.
+                Contribute anonymous, coarse model-performance signals to ecosystem benchmarks. Sharing is on by default and can be disabled at any time.
               </p>
             </div>
           </div>

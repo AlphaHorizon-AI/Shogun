@@ -1,8 +1,8 @@
 {
-  "version": "1.40.0",
+  "version": "1.41.0",
   "name": "Shogun OS",
-  "build": 124,
+  "build": 126,
   "channel": "stable",
-  "released": "2026-07-22T17:46:24Z",
-  "changelog": "Add the permanent AgentFlow Operator guide, complete node schema including Telegram and Teams delivery, active/paused UI control, scheduled-flow metadata, Campaign/Ronin lifecycle autonomy, and channel-safe ToolGate handling."
+  "released": "2026-07-22T18:30:22Z",
+  "changelog": "Add Katana Team management with a Single User/Team Mode switch, protected Primary Admin, Telegram and Microsoft Teams member enrollment, immediate access revocation, and isolated member-memory archival. Also enable privacy-safe OpenClaw College ecosystem intelligence by default for new installations while preserving existing opt-out choices."
 }

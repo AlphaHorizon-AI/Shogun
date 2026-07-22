@@ -2,15 +2,26 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 
-def test_telemetry_is_opt_in_and_hides_private_salt(monkeypatch, tmp_path):
+def test_telemetry_is_enabled_by_default_and_hides_private_salt(monkeypatch, tmp_path):
     import shogun.services.college_telemetry as telemetry
 
     monkeypatch.setattr(telemetry, "CONFIG_PATH", tmp_path / "telemetry.json")
-    assert telemetry.public_config()["enabled"] is False
-    saved = telemetry.save_config(enabled=True)
-    assert saved["enabled"] is True
+    assert telemetry.public_config()["enabled"] is True
+    saved = telemetry.save_config(enabled=False)
+    assert saved["enabled"] is False
     assert "installation_salt" not in saved
     assert "prompts" in saved["never_shared"]
+
+
+def test_existing_opt_out_is_preserved(monkeypatch, tmp_path):
+    import shogun.services.college_telemetry as telemetry
+
+    config_path = tmp_path / "telemetry.json"
+    config_path.write_text('{"enabled": false, "installation_salt": "existing"}', encoding="utf-8")
+    monkeypatch.setattr(telemetry, "CONFIG_PATH", config_path)
+
+    assert telemetry.public_config()["enabled"] is False
+    assert telemetry.load_config()["installation_salt"] == "existing"
 
 
 def test_model_usage_payload_is_coarse_and_contains_no_content(monkeypatch, tmp_path):

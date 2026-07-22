@@ -46,6 +46,7 @@ import {
   FileText,
   AppWindow,
   Crosshair,
+  Users,
 } from "lucide-react";
 import axios from 'axios';
 import { cn } from '../lib/utils';
@@ -58,8 +59,9 @@ import ModelRoutingPanel from './katana/ModelRoutingPanel';
 import ActiveSkillsPanel from './katana/ActiveSkillsPanel';
 import { SkillOptTab } from './katana/SkillOptTab';
 import { FileFormatsPanel } from './katana/FileFormatsPanel';
+import { TeamMembersPanel } from './katana/TeamMembersPanel';
 
-type TabType = 'providers' | 'tools' | 'files' | 'routing' | 'skills' | 'telegram' | 'teams' | 'mail_calendar' | 'office' | 'ide' | 'mado' | 'ronin' | 'skillopt';
+type TabType = 'providers' | 'tools' | 'files' | 'routing' | 'skills' | 'team' | 'telegram' | 'teams' | 'mail_calendar' | 'office' | 'ide' | 'mado' | 'ronin' | 'skillopt';
 type RegisterMode = 'quick' | 'manual';
 
 // ── Documentation links for cloud providers ─────────────────────
@@ -293,7 +295,7 @@ export function Katana() {
   useEffect(() => {
     const syncTabFromHash = () => {
       const requested = window.location.hash.replace('#', '') as TabType;
-      if (['providers', 'tools', 'files', 'routing', 'skills', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'].includes(requested)) {
+      if (['providers', 'tools', 'files', 'routing', 'skills', 'team', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'].includes(requested)) {
         setActiveTab(requested);
       }
     };
@@ -1388,7 +1390,7 @@ export function Katana() {
 
       {/* ── Tab bar ────────────────────────────────────────────── */}
       <div className="flex border-b border-shogun-border overflow-x-auto">
-        {(['providers', 'tools', 'files', 'routing', 'skills', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'] as TabType[]).filter(tab => tab !== 'ide' || ['campaign', 'ronin'].includes(officePosture)).map((tab) => (
+        {(['providers', 'tools', 'files', 'routing', 'skills', 'team', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'] as TabType[]).filter(tab => tab !== 'ide' || ['campaign', 'ronin'].includes(officePosture)).map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -1406,6 +1408,7 @@ export function Katana() {
             {tab === 'tools'     && t('katana.tab_tools', 'Toolbox & APIs')}
             {tab === 'files'     && <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />File Formats</span>}
             {tab === 'routing'   && t('katana.tab_routing', 'Logic Routing')}
+            {tab === 'team'      && <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />{t('katana.team.tab', 'Team')}</span>}
             {tab === 'skills'    && <span className="flex items-center gap-1.5"><Puzzle className="w-3.5 h-3.5" />Skills · Active Usage</span>}
             {tab === 'telegram'  && (
               <span className="flex items-center gap-1.5">
@@ -1474,6 +1477,7 @@ export function Katana() {
         ════════════════════════════════════════════════════════ */}
         {activeTab === 'skills' && <ActiveSkillsPanel />}
         {activeTab === 'files' && <FileFormatsPanel />}
+        {activeTab === 'team' && <TeamMembersPanel />}
 
         {activeTab === 'providers' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

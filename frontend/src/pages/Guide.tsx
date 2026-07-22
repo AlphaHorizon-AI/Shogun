@@ -1090,6 +1090,11 @@ export function Guide() {
                       <p className="text-xs text-shogun-subdued leading-relaxed">Shows which Dojo skills are actually retrieved and injected during agent runs, along with usage outcomes, trajectory evidence, and improvement candidates. See <strong>Active Skills &amp; Trajectory Capture</strong> below for the complete runtime lifecycle.</p>
                    </div>
                    <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Users className="w-4 h-4 text-shogun-blue" /> Team Tab</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The Primary Admin can switch this installation between <strong>Single User</strong> and <strong>Team Mode</strong>. Single-user mode immediately disables every Team Member's Telegram or Microsoft Teams access while retaining the saved roster. Switching back to Team Mode restores access for those saved members.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">In Team Mode, add members by name and their verified Telegram user ID or Microsoft Teams identity. Each member receives an isolated identity memory so Shogun can remember that person without exposing another member's private context. Deleting a member revokes access, removes them from the roster, and archives their identity memory. The Primary Admin is protected and cannot be deleted.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 text-shogun-blue" /> Office App Mode Tab</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Controls the <strong>Office App Mode</strong> — Shogun's ability to read, create, and modify Microsoft Office documents (<code>.xlsx</code>, <code>.docx</code>, <code>.pptx</code>). The tab has a master <strong>enable/disable</strong> toggle at the top. Below it are four sections:</p>
                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
@@ -2559,7 +2564,7 @@ npm start`}</pre>
                     </div>
                     <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-cyan-400" /> OpenClaw College Ecosystem Intelligence</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">In <strong>Updates</strong>, the operator can explicitly opt into anonymous ecosystem benchmarks. Sharing is disabled by default. When enabled, Shogun sends only model/provider, coarse task type, success, bucketed tokens/latency/cost, local-versus-cloud, country code, Shogun version, and a weekly rotating anonymous installation hash.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">In <strong>Updates</strong>, anonymous ecosystem benchmark sharing is enabled by default. The operator can opt out at any time. When enabled, Shogun sends only model/provider, coarse task type, success, bucketed tokens/latency/cost, local-versus-cloud, country code, Shogun version, and a weekly rotating anonymous installation hash.</p>
                        <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Never transmitted:</strong> prompts, outputs, files, error contents, agent names, credentials, or exact IP addresses. College publishes rankings only after at least 20 events from five anonymous installations and retains raw telemetry for 31 days.</p>
                     </div>
                  </div>
