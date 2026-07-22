@@ -57,6 +57,7 @@ import {
   BrainCircuit,
   Eye,
   GitMerge,
+  Printer,
 
 } from "lucide-react";
 import { cn } from '../lib/utils';
@@ -157,6 +158,65 @@ export function Guide() {
       setActiveSection(sectionId);
     }
   }, []);
+
+  const printGrandReference = useCallback(() => {
+    const content = refContentRef.current;
+    if (!content) return;
+
+    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+    if (!printWindow) {
+      window.alert('Please allow pop-ups to print the Grand Reference.');
+      return;
+    }
+    printWindow.opener = null;
+
+    const inheritedStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((node) => {
+        if (node instanceof HTMLLinkElement) {
+          return `<link rel="stylesheet" href="${node.href}">`;
+        }
+        return node.outerHTML;
+      })
+      .join('\n');
+    const title = content.querySelector('h3')?.textContent?.trim() || 'The Grand Reference';
+
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html>
+      <html lang="${language}">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>${title}</title>
+          ${inheritedStyles}
+          <style>
+            @page { size: A4; margin: 14mm; }
+            html, body { background: white !important; color: #111827 !important; }
+            body { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+            .grand-reference-print { max-width: none !important; }
+            .grand-reference-print * { color: #111827 !important; border-color: #d1d5db !important; }
+            .grand-reference-print section { break-inside: auto; }
+            .grand-reference-print .shogun-card { break-inside: avoid; background: white !important; box-shadow: none !important; }
+            .grand-reference-print h3, .grand-reference-print h4 { break-after: avoid; }
+            .grand-reference-print pre, .grand-reference-print code { white-space: pre-wrap; overflow-wrap: anywhere; }
+            .print-hide { display: none !important; }
+          </style>
+        </head>
+        <body>
+          <main class="grand-reference-print">${content.innerHTML}</main>
+        </body>
+      </html>`);
+    printWindow.document.close();
+
+    const printWhenReady = () => {
+      printWindow.focus();
+      printWindow.print();
+    };
+    if (printWindow.document.readyState === 'complete') {
+      window.setTimeout(printWhenReady, 250);
+    } else {
+      printWindow.addEventListener('load', () => window.setTimeout(printWhenReady, 250), { once: true });
+    }
+  }, [language]);
 
   useEffect(() => {
     if (activeTab !== 'reference') return;
@@ -634,11 +694,21 @@ export function Guide() {
             <div className="flex-1 min-w-0 space-y-16" ref={refContentRef}>
              {/* Introduction */}
              <div className="text-center max-w-3xl mx-auto space-y-4">
-                <h3 className="text-3xl font-bold shogun-title">The Grand Reference</h3>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <h3 className="text-3xl font-bold shogun-title">The Grand Reference</h3>
+                  <button
+                    type="button"
+                    onClick={printGrandReference}
+                    className="print-hide inline-flex items-center gap-2 rounded-lg border border-shogun-blue/30 bg-shogun-blue/10 px-3 py-2 text-xs font-bold text-shogun-blue transition-colors hover:bg-shogun-blue/20"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Print Guide
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => scrollToSection('ref-flowstack')}
-                  className="mx-auto flex items-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-xs font-bold text-violet-300 transition-colors hover:bg-violet-500/20"
+                  className="print-hide mx-auto flex items-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-xs font-bold text-violet-300 transition-colors hover:bg-violet-500/20"
                 >
                   <Layers className="h-4 w-4" />
                   Flow Stacking &amp; Stack Orchestrator — full reference

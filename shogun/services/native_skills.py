@@ -2461,10 +2461,11 @@ WORKFLOW_TOOL_PERMISSIONS = {
     "delete_flow_stack": ("flow_stack", "allow_delete"),
 }
 
-# Targeted edits are recoverable and preserve untouched graph elements. Keep the
-# persistent permission as the fast path, but allow an operator to grant a
-# single interactive approval when that permission is disabled.
-WORKFLOW_ONE_TIME_CONFIRM_TOOLS = {"patch_agent_flow"}
+# Keep workflow mutation tools callable when their persistent permission is
+# disabled. Medium-risk operations can be authorized by the operator's explicit
+# instruction in the current turn; destructive deletes still pass through the
+# interactive ToolGate confirmation.
+WORKFLOW_ONE_TIME_CONFIRM_TOOLS = set(WORKFLOW_TOOL_PERMISSIONS)
 
 
 async def _shogun_workflow_permission(db_session, category: str, permission: str) -> bool:

@@ -9,7 +9,11 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import shogun.db.models  # noqa: F401
-from shogun.api.agents import _operator_authorizes_agentflow_patch
+from shogun.api.agents import (
+    _classify_chat_mode,
+    _filter_tools_by_intent,
+    _operator_authorizes_agentflow_patch,
+)
 from shogun.db.base import Base
 from shogun.db.models.agent import Agent
 from shogun.db.models.agent_flow import AgentFlow, AgentFlowEdge, AgentFlowNode
@@ -21,6 +25,13 @@ from shogun.services.native_skills import (
     execute_native_tool,
 )
 from shogun.services.posture_guard import filter_tools_by_posture
+from shogun.services.workflow_operator import (
+    WORKFLOW_MUTATION_TOOLS,
+    WORKFLOW_OPERATOR_GUIDE,
+    is_workflow_request,
+    operator_authorized_workflow_tools,
+    requires_workflow_tools,
+)
 
 
 def test_workflow_inspection_and_patch_tools_are_exposed() -> None:
@@ -32,7 +43,7 @@ def test_workflow_inspection_and_patch_tools_are_exposed() -> None:
     assert "get_agent_flow" not in WORKFLOW_TOOL_PERMISSIONS
     assert "get_flow_stack" not in WORKFLOW_TOOL_PERMISSIONS
     assert WORKFLOW_TOOL_PERMISSIONS["patch_agent_flow"] == ("agentflow", "allow_edit")
-    assert WORKFLOW_ONE_TIME_CONFIRM_TOOLS == {"patch_agent_flow"}
+    assert WORKFLOW_ONE_TIME_CONFIRM_TOOLS == set(WORKFLOW_TOOL_PERMISSIONS)
 
 
 def test_direct_agentflow_edit_instruction_is_one_turn_authorization() -> None:
@@ -42,6 +53,50 @@ def test_direct_agentflow_edit_instruction_is_one_turn_authorization() -> None:
     assert _operator_authorizes_agentflow_patch("Update my workflow nodes and replace the BBC source.")
     assert not _operator_authorizes_agentflow_patch("Show me the current AgentFlow structure.")
     assert not _operator_authorizes_agentflow_patch("Do not edit the AgentFlow; only inspect it.")
+
+
+def test_workflow_requests_always_select_mission_and_retain_workflow_tools() -> None:
+    for request in (
+        "Create a new AgentFlow for the daily brief.",
+        "Delete my AI News Brief flow.",
+        "Build a Flow Stack from the research and writing flows.",
+        "Show me the stack orchestrator pipeline.",
+    ):
+        assert is_workflow_request(request)
+        assert requires_workflow_tools(request)
+        classification = _classify_chat_mode(request, [])
+        assert classification["mode"] == "mission"
+
+    assert is_workflow_request("What is an AgentFlow?")
+    assert not requires_workflow_tools("What is an AgentFlow?")
+
+    selected = _filter_tools_by_intent(NATIVE_TOOLS, ["news", "workflow"], True)
+    selected_names = {tool["function"]["name"] for tool in selected}
+    assert "list_agent_flows" in selected_names
+    assert "get_agent_flow" in selected_names
+    assert "create_agent_flow" in selected_names
+
+
+def test_workflow_operator_guide_is_fixed_and_requires_verified_execution() -> None:
+    assert "list_agent_flows first" in WORKFLOW_OPERATOR_GUIDE
+    assert "After every successful create, edit, patch, or delete" in WORKFLOW_OPERATOR_GUIDE
+    assert "Never claim" in WORKFLOW_OPERATOR_GUIDE
+
+
+def test_explicit_workflow_writes_authorize_medium_risk_tools_only() -> None:
+    assert operator_authorized_workflow_tools("Create an AgentFlow for daily news.") == {
+        "create_agent_flow"
+    }
+    assert operator_authorized_workflow_tools("Edit the Daily Brief flow and replace its source.") == {
+        "patch_agent_flow",
+        "edit_agent_flow",
+    }
+    assert operator_authorized_workflow_tools("Build a Flow Stack from these flows.") == {
+        "create_flow_stack"
+    }
+    assert operator_authorized_workflow_tools("Delete the Daily Brief AgentFlow.") == set()
+    assert operator_authorized_workflow_tools("Do not edit the AgentFlow; inspect it.") == set()
+    assert WORKFLOW_MUTATION_TOOLS == set(WORKFLOW_TOOL_PERMISSIONS)
 
 
 def test_read_tools_remain_available_when_write_posture_is_disabled() -> None:

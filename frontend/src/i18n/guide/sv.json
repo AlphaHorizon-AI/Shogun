@@ -1890,6 +1890,7 @@
   "The global kill switch on the Torii page. Stops everything system-wide.": "Den globala kill-omkopplaren på Torii-sidan. Stoppar allt i hela systemet.",
   "The governed runtime layer above Agent Flow — long-horizon execution with checkpoints, verification gates, retries, and artifact capture.": "Det styrda körtidsskiktet ovanför Agent Flow — exekvering med lång horisont med kontrollpunkter, verifieringsgrindar, omförsök och artefaktfångning.",
   "The Grand Reference": "Den stora referensen",
+  "Print Guide": "Skriv ut guide",
   "The included bridge uses in-memory storage for development. Production needs Azure Blob or Cosmos-backed Agents SDK storage, and the user must contact the bot once first.": "Den medföljande bron använder minneslagring för utveckling. Produktionen behöver Azure Blob eller Cosmos-backed Agents SDK-lagring, och användaren måste kontakta boten en gång först.",
   "The journey of a message from input to output.": "Ett meddelandes resa från input till output.",
   "The Katana → Microsoft Teams → Setup Wizard": "Katana → Microsoft Teams → Installationsguiden",

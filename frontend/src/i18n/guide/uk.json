@@ -1890,6 +1890,7 @@
   "The global kill switch on the Torii page. Stops everything system-wide.": "Глобальний перемикач знищення на сторінці Торії. Зупиняє все в системі.",
   "The governed runtime layer above Agent Flow — long-horizon execution with checkpoints, verification gates, retries, and artifact capture.": "Керований рівень виконання над Agent Flow — довгострокове виконання з контрольними точками, воротами перевірки, повторними спробами та захопленням артефактів.",
   "The Grand Reference": "Велика довідка",
+  "Print Guide": "Друкувати посібник",
   "The included bridge uses in-memory storage for development. Production needs Azure Blob or Cosmos-backed Agents SDK storage, and the user must contact the bot once first.": "Включений міст використовує для розробки сховище в пам’яті. Для виробництва потрібне сховище Azure Blob або агентів SDK із підтримкою Cosmos, і користувач повинен спочатку зв’язатися з ботом.",
   "The journey of a message from input to output.": "Шлях повідомлення від входу до виходу.",
   "The Katana → Microsoft Teams → Setup Wizard": "Катана → Microsoft Teams → Майстер налаштування",

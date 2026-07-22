@@ -1890,6 +1890,7 @@
   "The global kill switch on the Torii page. Stops everything system-wide.": "Der globale Kill-Schalter auf der Torii-Seite. Stoppt systemweit alles.",
   "The governed runtime layer above Agent Flow — long-horizon execution with checkpoints, verification gates, retries, and artifact capture.": "Die geregelte Laufzeitebene über Agent Flow – Ausführung über einen langen Zeitraum mit Prüfpunkten, Verifizierungs-Gates, Wiederholungsversuchen und Artefakterfassung.",
   "The Grand Reference": "Die große Referenz",
+  "Print Guide": "Leitfaden drucken",
   "The included bridge uses in-memory storage for development. Production needs Azure Blob or Cosmos-backed Agents SDK storage, and the user must contact the bot once first.": "Die mitgelieferte Bridge nutzt In-Memory-Speicher für die Entwicklung. Für die Produktion ist Azure Blob- oder Cosmos-gestützter Agents SDK-Speicher erforderlich, und der Benutzer muss den Bot zunächst einmal kontaktieren.",
   "The journey of a message from input to output.": "Der Weg einer Nachricht von der Eingabe zur Ausgabe.",
   "The Katana → Microsoft Teams → Setup Wizard": "Das Katana → Microsoft Teams → Setup-Assistent",

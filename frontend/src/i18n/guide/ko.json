@@ -1890,6 +1890,7 @@
   "The global kill switch on the Torii page. Stops everything system-wide.": "Torii 페이지의 전역 킬 스위치입니다. 시스템 전체의 모든 것을 중지합니다.",
   "The governed runtime layer above Agent Flow — long-horizon execution with checkpoints, verification gates, retries, and artifact capture.": "에이전트 흐름 위의 관리되는 런타임 계층 — 체크포인트, 확인 게이트, 재시도 및 아티팩트 캡처를 통한 장거리 실행입니다.",
   "The Grand Reference": "그랜드 레퍼런스",
+  "Print Guide": "가이드 인쇄",
   "The included bridge uses in-memory storage for development. Production needs Azure Blob or Cosmos-backed Agents SDK storage, and the user must contact the bot once first.": "포함된 브리지는 개발을 위해 메모리 내 스토리지를 사용합니다. 프로덕션에는 Azure Blob 또는 Cosmos 지원 에이전트 SDK 스토리지가 필요하며 사용자는 먼저 봇에 한 번 연결해야 합니다.",
   "The journey of a message from input to output.": "입력에서 출력까지 메시지의 여정.",
   "The Katana → Microsoft Teams → Setup Wizard": "Katana → Microsoft Teams → 설정 마법사",

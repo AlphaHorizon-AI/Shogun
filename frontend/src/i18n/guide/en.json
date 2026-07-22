@@ -1890,6 +1890,7 @@
   "The global kill switch on the Torii page. Stops everything system-wide.": "The global kill switch on the Torii page. Stops everything system-wide.",
   "The governed runtime layer above Agent Flow — long-horizon execution with checkpoints, verification gates, retries, and artifact capture.": "The governed runtime layer above Agent Flow — long-horizon execution with checkpoints, verification gates, retries, and artifact capture.",
   "The Grand Reference": "The Grand Reference",
+  "Print Guide": "Print Guide",
   "The included bridge uses in-memory storage for development. Production needs Azure Blob or Cosmos-backed Agents SDK storage, and the user must contact the bot once first.": "The included bridge uses in-memory storage for development. Production needs Azure Blob or Cosmos-backed Agents SDK storage, and the user must contact the bot once first.",
   "The journey of a message from input to output.": "The journey of a message from input to output.",
   "The Katana → Microsoft Teams → Setup Wizard": "The Katana → Microsoft Teams → Setup Wizard",

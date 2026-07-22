@@ -1890,6 +1890,7 @@
   "The global kill switch on the Torii page. Stops everything system-wide.": "鸟居页面上的全局终止开关。停止系统范围内的一切。",
   "The governed runtime layer above Agent Flow — long-horizon execution with checkpoints, verification gates, retries, and artifact capture.": "代理流之上的受控运行时层 — 具有检查点、验证门、重试和工件捕获的长视野执行。",
   "The Grand Reference": "大参考",
+  "Print Guide": "打印指南",
   "The included bridge uses in-memory storage for development. Production needs Azure Blob or Cosmos-backed Agents SDK storage, and the user must contact the bot once first.": "包含的桥使用内存存储进行开发。生产需要 Azure Blob 或 Cosmos 支持的 Agents SDK 存储，并且用户必须先联系机器人一次。",
   "The journey of a message from input to output.": "消息从输入到输出的过程。",
   "The Katana → Microsoft Teams → Setup Wizard": "Katana → Microsoft Teams → 设置向导",

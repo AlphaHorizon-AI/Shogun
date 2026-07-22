@@ -1,8 +1,8 @@
 {
-  "version": "1.38.0",
+  "version": "1.39.0",
   "name": "Shogun OS",
-  "build": 120,
+  "build": 121,
   "channel": "stable",
-  "released": "2026-07-22T10:53:30Z",
-  "changelog": "Add production Shogun Server mode with containerized Tenshu, PostgreSQL and Qdrant services, persistent volumes, hardened Docker defaults, one-click server installers, localized onboarding, and explicit Ronin isolation."
+  "released": "2026-07-22T13:18:12Z",
+  "changelog": "Enforce verified AgentFlow and Flow Stack operations with a mandatory system-managed operator guide, deterministic discovery, reliable workflow tool authorization, destructive-action confirmation, and localized Grand Reference printing."
 }
