@@ -560,12 +560,12 @@ export function Guide() {
                      { term: 'Samurai', def: 'Specialized sub-agents that handle specific tasks. Think of them as employees — each one has a role, a name, and a current assignment.', icon: Users, color: 'text-shogun-gold' },
                      { term: 'Lattice', def: 'The network of all connected agents (Shogun + Samurai). The lattice distributes work intelligently and ensures no single agent is overwhelmed.', icon: Network, color: 'text-shogun-blue' },
                      { term: 'Constitution', def: 'A set of inviolable rules written in YAML that govern what all agents are allowed to do. Managed in the Kaizen page.', icon: FileText, color: 'text-shogun-gold' },
-                     { term: 'Security Posture', def: 'A tiered system (SHRINE → RONIN) controlling how much autonomy and access agents have. Managed in Torii.', icon: Lock, color: 'text-red-400' },
+                     { term: 'Security Posture', def: 'The built-in tier or custom policy selected in Torii. ToolGate turns that selection into capability boundaries and runtime ALLOW, CONFIRM, or BLOCK decisions.', icon: Lock, color: 'text-red-400' },
                      { term: 'Harakiri', def: 'The emergency kill switch. Instantly freezes all agent activity and locks the system to maximum security (SHRINE).', icon: ShieldCheck, color: 'text-red-400' },
                      { term: 'Routing Profile', def: 'A set of rules that decides which AI model handles which type of task. For example: code → GPT-4, research → Perplexity.', icon: GitBranch, color: 'text-shogun-blue' },
                      { term: 'Salience', def: 'A memory importance score (0.0–1.0). High-salience memories are retrieved first. The system auto-adjusts salience over time.', icon: Star, color: 'text-shogun-gold' },
                      { term: 'Reflection Cycle', def: 'An automated self-improvement loop where the AI analyzes its own performance and generates optimization insights. Run from Bushido.', icon: RefreshCw, color: 'text-shogun-blue' },
-                     { term: 'Ronin (Desktop)', def: 'The desktop control capability. Allows agents to interact with OS desktops — mouse, keyboard, screenshots, native apps. Governed by Posture Guard, App Trust, and Komainu. Requires explicit enabling in Torii.', icon: Crosshair, color: 'text-orange-400' },
+                     { term: 'Ronin (Desktop)', def: 'The desktop control capability. Allows agents to interact with OS desktops — mouse, keyboard, screenshots, and native apps. Torii selects its policy; ToolGate governs its capability boundary and runtime decisions alongside Posture Guard, App Trust, and Komainu.', icon: Crosshair, color: 'text-orange-400' },
                      { term: 'Komainu (Guardian)', def: 'The physical override system for Ronin. A three-tier safety mechanism: Level 1 (Pause), Level 2 (Terminate), Level 3 (Harakiri). Detects human mouse/keyboard input and stops the AI. Named after Japanese shrine guardians.', icon: ShieldAlert, color: 'text-red-400' },
                    ].map((item) => (
                      <div key={item.term} className="shogun-card space-y-2">
@@ -607,7 +607,7 @@ export function Guide() {
                      { name: 'Mail (Email Client)', purpose: 'Full IMAP/SMTP email integration. Browse your inbox, read and compose emails, reply with CC/BCC, navigate folders. Your Shogun can also read, send, and manage emails via native skills.', icon: Mail, color: 'text-sky-400' },
                      { name: 'Calendar', purpose: 'CalDAV calendar integration. View upcoming events, create new ones (with time, location, and description), and manage your schedule. Your Shogun can query and create events via native skills.', icon: CalendarDays, color: 'text-emerald-400' },
                      { name: 'Nexus (Collaboration)', purpose: 'Create Joint Workspaces. Invite other Shogun instances over the network. Exchange typed messages and co-edit a shared whiteboard.', icon: Globe, color: 'text-indigo-400' },
-                     { name: 'Gensui (Fleet Command)', purpose: 'Connect this Shogun to a Gensui Central Command server for fleet-wide security posture management, remote policy enforcement, telemetry monitoring, and emergency Harakiri. Manage enrollment, view active posture, and monitor the fleet link.', icon: ShieldAlert, color: 'text-indigo-400' },
+                     { name: 'Gensui (Fleet Command)', purpose: 'Connect this Shogun to Central Command for fleet governance, telemetry, commands, and emergency Harakiri. While managed, Gensui owns ToolGate; the local control surface is read-only and enforces the cached central policy during outages.', icon: ShieldAlert, color: 'text-indigo-400' },
                      { name: 'Backups & Data', purpose: 'Scheduled and manual backups with configurable retention. Export/import your entire database. Manage backup settings and restore from any point.', icon: HardDrive, color: 'text-shogun-gold' },
                      { name: 'Updates', purpose: 'Auto-checks for new Shogun versions every 6 hours. One-click install to download and apply updates. Preserves your data, configs, and environment.', icon: Download, color: 'text-emerald-400' },
                      { name: 'Logs (Compliance Dashboard)', purpose: 'NIS2, SOC2, and EU AI Act-compliant event stream. Filter by 11 categories (Decision, Oversight, Risk, Model, Policy, Memory, Tools, Auth, Incident, System). Click trace IDs for full workflow reconstruction. Audit chain verifies tamper-proof integrity.', icon: Terminal, color: 'text-shogun-subdued' },
@@ -1068,7 +1068,7 @@ export function Guide() {
                    <Cpu className="w-6 h-6 text-shogun-blue" />
                    <div>
                       <h4 className="text-xl font-bold uppercase tracking-widest">Katana — The System Forge</h4>
-                      <p className="text-xs text-shogun-subdued">Where you connect models, tools, formats, channels, desktop capabilities, and routing rules. Shows 12 tabs normally and 13 when IDE Mode is available in Campaign or Ronin posture.</p>
+                      <p className="text-xs text-shogun-subdued">Where you install and connect models, tools, formats, channels, account integrations, and operational capability providers. Shows 13 tabs normally and 14 when IDE Mode is available in Campaign or Ronin posture. Katana exposes capabilities; it does not decide whether a capability may run.</p>
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1086,7 +1086,7 @@ export function Guide() {
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Network className="w-4 h-4 text-shogun-blue" /> Toolbox Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Lists all the external tools the Shogun can use — web search, file access, database connections, code execution, etc. Each tool shows its <strong>name</strong>, <strong>type</strong>, and <strong>status</strong> (enabled/disabled). You can <strong>register new tools</strong> and toggle existing ones on or off.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Lists the external tools installed or connected to Shogun — web search, file access, database connections, code execution, and more. Each tool shows its <strong>name</strong>, <strong>type</strong>, and availability status. You can <strong>register new tools</strong> and connect or disconnect existing ones. These controls determine whether a capability exists; <strong>ToolGate</strong> determines whether, when, and with what confirmation it may execute.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-shogun-blue" /> Skills · Active Usage Tab</div>
@@ -1576,7 +1576,7 @@ npm start`}</pre>
                          <li>Click it. The system will download and install Playwright + Chromium (1–2 minutes depending on connection).</li>
                          <li>Once complete, the badge changes to a green <strong>"Chromium Ready"</strong> indicator with the version number.</li>
                       </ol>
-                      <p className="text-xs text-shogun-subdued leading-relaxed mt-1"><strong>Security Note:</strong> Mado must be enabled in your Torii security posture. At <strong>SHRINE</strong> tier, Mado is completely disabled. <strong>GUARDED</strong> allows 1 session with no downloads/uploads. You need at least <strong>TACTICAL</strong> (headless only) for full Mado features.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed mt-1"><strong>Security Note:</strong> Mado must be enabled in the active policy's browser capability boundary in <strong>ToolGate</strong>. The built-in <strong>SHRINE</strong> policy disables Mado. <strong>GUARDED</strong> allows one session with no downloads or uploads. <strong>TACTICAL</strong> and higher tiers can expose broader features, subject to the active policy's ToolGate rules.</p>
                    </div>
 
                    {/* Step 2: Automatic Session */}
@@ -1716,11 +1716,11 @@ npm start`}</pre>
                    <div className="shogun-card space-y-3 border-l-2 border-red-400/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><span className="text-red-400 font-mono text-sm">⚠</span> Troubleshooting</div>
                       <ul className="text-xs text-shogun-subdued space-y-2 ml-4 list-disc">
-                         <li><strong>"Browser automation is disabled"</strong> — Your Torii security tier doesn't allow Mado. Go to <strong>Torii → Security Posture</strong> and switch to GUARDED or higher (GUARDED allows 1 session; TACTICAL+ enables full features).</li>
+                         <li><strong>"Browser automation is disabled"</strong> — The active policy's ToolGate boundary does not allow Mado. Use <strong>Torii</strong> to select an appropriate tier or custom policy, then inspect <strong>ToolGate → Capability Boundaries</strong>. The built-in GUARDED tier allows one restricted session; TACTICAL and higher can expose broader features.</li>
                          <li><strong>"No active browser session"</strong> — For chat skills (<code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">take_screenshot</code>), you must first use <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">browse_web</code> to navigate to a page.</li>
                          <li><strong>Chromium not installed</strong> — Click "Install Chromium" on the Mado page. Requires internet access for the initial download (~200 MB).</li>
                          <li><strong>Session shows "idle" forever</strong> — The browser launches lazily. It only starts when you perform an action (navigate, screenshot, etc.). This is normal.</li>
-                         <li><strong>Visible mode blocked</strong> — The active Torii posture may enforce headless-only browsing. CAMPAIGN or RONIN can permit visible sessions.</li>
+                         <li><strong>Visible mode blocked</strong> — The active policy's Mado boundary may enforce headless-only browsing. Campaign- or Ronin-based policies can permit visible sessions when ToolGate enables them.</li>
                       </ul>
                    </div>
                 </div>
@@ -1777,7 +1777,7 @@ npm start`}</pre>
                     </div>
                     <div className="shogun-card space-y-2">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Crosshair className="w-4 h-4 text-orange-400" /> Where to Configure</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Ronin posture is controlled by the Security Tier selected in Torii. You cannot enable Ronin independently. It follows the global posture.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Torii selects the governing tier or custom policy. Its inherited desktop ceiling and explicit Ronin boundaries are shown and governed in ToolGate; Ronin cannot widen them from its operational console.</p>
                        <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
                           <li><strong>SHRINE / GUARDED:</strong> Ronin is disabled. No desktop control at all.</li>
                           <li><strong>TACTICAL:</strong> Ronin is desktop_limited. Mouse + keyboard + screenshots. 1 session max. Dangerous actions blocked.</li>
@@ -1980,7 +1980,7 @@ npm start`}</pre>
 
                  <div className="shogun-card space-y-3">
                     <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-400" /> Overview</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">{"The Workspace is a single, dedicated directory where the Shogun and all Samurai agents can read, write, and manage files. It serves as the agent\u2019s persistent \u201Cdesk\u201D \u2014 a safe, always-available location to store outputs, share data between agents, and create working documents. The Workspace is disabled only at SHRINE security posture."}</p>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">{"The Workspace is a single, dedicated directory where the Shogun and all Samurai agents can read, write, and manage files. It serves as the agent\u2019s persistent \u201Cdesk\u201D \u2014 a safe location to store outputs, share data between agents, and create working documents. Availability and access mode follow the active policy's filesystem and workspace boundaries in ToolGate; the built-in Shrine policy disables it."}</p>
                     <p className="text-xs text-shogun-subdued leading-relaxed">{"Default location: data/workspace/ inside the Shogun project directory. The path is configurable via environment variable WORKSPACE_PATH."}</p>
                  </div>
 
@@ -2137,11 +2137,11 @@ npm start`}</pre>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2 md:col-span-2 border-l-2 border-orange-400/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-orange-400" /> Ownership Model</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Torii</strong> selects or creates the tier and custom policy. <strong>ToolGate</strong> configures capability ceilings and per-call runtime authorization. <strong>Katana</strong> manages installed or connected capabilities and account-specific scopes. <strong>Shogun Profile</strong> owns identity, behavior, models, and operations—not security configuration. When centrally managed, <strong>Gensui owns ToolGate</strong> and the local view becomes read-only.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Torii</strong> selects or creates the tier and custom policy. <strong>ToolGate</strong> configures capability ceilings and per-call runtime authorization. <strong>Katana</strong> manages installed or connected capabilities, model providers and routing, and account-specific scopes. <strong>Shogun Profile</strong> owns identity, behavior, and operations—not security configuration. When centrally managed, <strong>Gensui owns ToolGate</strong> and the local view becomes read-only.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-orange-400" /> Policy-Scoped Rules</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">ToolGate always follows the currently active policy. A built-in tier uses its own scope. A custom policy uses a stable policy-specific scope and inherits its base tier's default risk mode. Switching tiers or custom policies loads that scope's own capability boundaries and tool overrides.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">ToolGate always follows the currently active policy. A built-in tier uses its own scope. A custom policy uses a stable policy-specific scope and inherits its base tier's default risk mode. Switching tiers or custom policies loads that scope's own capability boundaries, tool overrides, and advanced content rules.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-orange-400" /> Capability Boundaries &amp; Risk</div>
@@ -2302,7 +2302,7 @@ npm start`}</pre>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2 md:col-span-2 border-l-2 border-indigo-400/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Network className="w-4 h-4 text-indigo-400" /> What is Gensui?</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Gensui is a <strong>Central Command server</strong> that manages a fleet of Shogun instances. When your Shogun is connected to a Gensui server, it receives security posture policies, reports telemetry, responds to commands (including remote Harakiri), and participates in coordinated fleet operations. Think of Gensui as the "general" commanding multiple Shogun "officers."</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Gensui is a <strong>Central Command server</strong> that manages a fleet of Shogun instances. When connected, Gensui owns ToolGate for that instance: it pushes the active policy, capability boundaries, tool verdicts, and advanced content rules; receives telemetry; issues commands including remote Harakiri; and coordinates fleet operations. The Tenshu ToolGate remains visible for explanation but becomes read-only.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Link2 className="w-4 h-4 text-indigo-400" /> Connection Form (Not Connected)</div>
@@ -2326,7 +2326,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-indigo-400" /> Active Posture Card</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Displays the security posture pushed from Gensui. Capability boundaries and tool overrides are configured together in the central <strong>Gensui ToolGate</strong>. They are enforced locally and override standalone ToolGate settings while the fleet relationship is active, including from the last valid cached policy when Gensui is temporarily unreachable.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Displays the security policy pushed from Gensui. Capability boundaries, per-tool verdicts, and advanced word or phrase rules are configured together in the central <strong>Gensui ToolGate</strong>. They are enforced locally and override standalone ToolGate settings while the fleet relationship is active, including from the last valid cached policy when Gensui is temporarily unreachable.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-indigo-400" /> Background Services</div>
@@ -2369,7 +2369,7 @@ npm start`}</pre>
                          <li><strong>Oversight:</strong> Human review — AI responses delivered for implicit oversight, emergency shutdowns. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">oversight.response_delivered</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">oversight.emergency_shutdown</code>.</li>
                          <li><strong>Risk:</strong> Security tier warnings, denied tools, high-autonomy alerts. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">risk.tools_denied</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">risk.high_autonomy_mode</code>.</li>
                          <li><strong>Model:</strong> Model selection, LLM responses, API errors, fallback activations. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">model.selected</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">model.response</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">model.error</code>.</li>
-                         <li><strong>Policy:</strong> Torii policy evaluations — tools granted or denied with reasons. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">policy.evaluated</code>.</li>
+                         <li><strong>Policy:</strong> ToolGate evaluations under the Torii-selected policy — effective allow, confirm, or block decisions, their policy source, and any matching advanced content rule. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">policy.evaluated</code>.</li>
                          <li><strong>Memory:</strong> Memory recall, search queries, write operations with retrieval provenance. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">memory.search</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">memory.write</code>.</li>
                          <li><strong>Tools:</strong> Tool/skill executions, arguments, and results. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">tool.executed</code>.</li>
                          <li><strong>Auth:</strong> Session tracking, security posture changes, API credential lifecycle, kill switch activations. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">auth.session</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">auth.posture_changed</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">auth.credential_added</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">auth.kill_switch_activated</code>.</li>
@@ -2476,7 +2476,7 @@ npm start`}</pre>
 
                  <div className="shogun-card space-y-2">
                     <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-violet-400" /> Governed Permissions</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">Flow Stacking is gated by 6 posture-level permissions: <code className="text-violet-400">agentflow_create</code>, <code className="text-violet-400">agentflow_execute</code>, <code className="text-violet-400">agentflow_autonomous</code>, <code className="text-violet-400">flowstack_create</code>, <code className="text-violet-400">flowstack_execute</code>, <code className="text-violet-400">flowstack_autonomous</code>. All require <strong>Tactical</strong> tier or above. Configure approval policies: approve the entire plan, approve individual steps, or run fully autonomous.</p>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">Flow Stacking is gated by six ToolGate capability boundaries: <code className="text-violet-400">agentflow_create</code>, <code className="text-violet-400">agentflow_execute</code>, <code className="text-violet-400">agentflow_autonomous</code>, <code className="text-violet-400">flowstack_create</code>, <code className="text-violet-400">flowstack_execute</code>, and <code className="text-violet-400">flowstack_autonomous</code>. The built-in policies require <strong>Tactical</strong> tier or above; a custom policy inherits a base tier and may narrow those permissions. Select the policy in <strong>Torii</strong>, then use <strong>ToolGate</strong> to understand its boundaries and whether execution is allowed, confirmed, or blocked.</p>
                  </div>
 
                  <div className="shogun-card space-y-2">
@@ -2507,7 +2507,7 @@ npm start`}</pre>
                     </div>
                     <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-cyan-400" /> 7 Permission Flags</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed"><code className="text-cyan-400">allow_image_intake</code> (on), <code className="text-cyan-400">allow_local_vision</code> (on), <code className="text-cyan-400">allow_cloud_vision</code> (off — privacy-sensitive), <code className="text-cyan-400">allow_ocr</code> (on), <code className="text-cyan-400">allow_attach_to_stack</code> (on), <code className="text-cyan-400">allow_auto_memory</code> (off — privacy-sensitive), <code className="text-cyan-400">allow_delete</code> (on). Configure in <strong>Katana → Visual Intake</strong>.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><code className="text-cyan-400">allow_image_intake</code> (on), <code className="text-cyan-400">allow_local_vision</code> (on), <code className="text-cyan-400">allow_cloud_vision</code> (off — privacy-sensitive), <code className="text-cyan-400">allow_ocr</code> (on), <code className="text-cyan-400">allow_attach_to_stack</code> (on), <code className="text-cyan-400">allow_auto_memory</code> (off — privacy-sensitive), and <code className="text-cyan-400">allow_delete</code> (on). These are policy-scoped capability boundaries in <strong>ToolGate</strong>; there is no separate Visual Intake permission tab in Katana.</p>
                     </div>
                     <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Link2 className="w-4 h-4 text-cyan-400" /> Stack Integration</div>
@@ -2531,7 +2531,7 @@ npm start`}</pre>
                        <ShieldAlert className="w-5 h-5" />
                        Requires Campaign or Ronin Posture
                     </h5>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">IDE Mode is gated behind Campaign or Ronin security tier plus the explicit <code className="text-amber-400">ide_enabled</code> posture flag. The WebSocket bridge only accepts connections from localhost (<code className="text-amber-400">127.0.0.1</code> / <code className="text-amber-400">::1</code>) — remote connections are rejected.</p>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">IDE Mode is exposed by Katana only when the active policy is based on Campaign or Ronin and its ToolGate capability boundary enables <code className="text-amber-400">ide_enabled</code>. The WebSocket bridge only accepts connections from localhost (<code className="text-amber-400">127.0.0.1</code> / <code className="text-amber-400">::1</code>) — remote connections are rejected.</p>
                  </div>
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2624,7 +2624,7 @@ npm start`}</pre>
 
                  <div className="shogun-card space-y-3">
                     <div className="font-bold text-shogun-text flex items-center gap-2"><Flame className="w-4 h-4 text-amber-400" /> How Active Skills Work</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">When a Shogun agent processes a request, the Active Skill system automatically <strong>retrieves</strong> relevant skills from the Dojo, <strong>gates</strong> them against the current security posture and exam requirements, <strong>injects</strong> skill content into the LLM context (advisory or context_block mode), and <strong>tracks</strong> the outcome (success, partial, failed, not_used, blocked). Skills are live during execution — not just catalog entries.</p>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">When a Shogun agent processes a request, the Active Skill system automatically <strong>retrieves</strong> relevant skills from the Dojo, <strong>gates</strong> them against the active ToolGate capability boundaries and exam requirements, <strong>injects</strong> skill content into the LLM context (advisory or context_block mode), and <strong>tracks</strong> the outcome (success, partial, failed, not_used, blocked). Torii selects the governing tier or custom policy; ToolGate applies its runtime rules. Skills are live during execution — not just catalog entries.</p>
                  </div>
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2774,7 +2774,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-3 border-t-2 border-indigo-400 md:col-span-3">
                       <div className="font-bold text-indigo-400 text-lg flex items-center gap-2"><ShieldAlert className="w-5 h-5" /> Gensui (Fleet Command)</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">An optional Central Command server that sits above multiple Shogun instances. When connected, Gensui pushes security postures, monitors telemetry, issues commands (including remote Harakiri), and coordinates fleet-wide policy. Think of Gensui as the "general" commanding an army of Shogun "officers." Each Shogun enrolls with Gensui and maintains a persistent background connection with heartbeats, policy sync, and command polling.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">An optional Central Command server that sits above multiple Shogun instances. When connected, Gensui owns ToolGate for the managed fleet: it pushes policy scopes, capability boundaries, per-tool verdicts, and advanced content rules; monitors telemetry; issues commands including remote Harakiri; and coordinates fleet-wide policy. Each Shogun maintains heartbeats, policy sync, command polling, and a last-known-good policy cache for fail-closed continuity.</p>
                       <div className="text-[9px] text-shogun-subdued uppercase font-bold tracking-widest bg-shogun-bg p-2 rounded border border-shogun-border">Connected via: Alliance → Gensui</div>
                    </div>
                 </div>
@@ -2881,7 +2881,7 @@ npm start`}</pre>
                      { step: 1, title: 'User Input', desc: 'You type a message in the Comms chat interface. The message is sent to the backend via HTTP POST.', color: 'text-shogun-blue', icon: MessageSquare },
                      { step: 2, title: 'Routing Decision', desc: 'The routing engine checks the active routing profile for matching task rules. If a rule matches (e.g., "research" → Perplexity), that model is used. Otherwise, the primary model is selected.', color: 'text-shogun-blue', icon: GitBranch },
                      { step: 3, title: 'Context Assembly', desc: 'The system assembles the full prompt: system instructions + Mandate (from Kaizen) + relevant memories (from Archives, via semantic search) + current conversation history + constitutional rules.', color: 'text-shogun-gold', icon: Layers },
-                     { step: 4, title: 'Security Validation', desc: 'The assembled request is checked against the active security posture and constitutional rules. If any violations are found, the request is blocked or modified.', color: 'text-red-400', icon: ShieldCheck },
+                     { step: 4, title: 'Security Validation', desc: 'The assembled request is checked against the active ToolGate policy and constitutional rules. Capability boundaries, tool verdicts, parameters, and advanced content rules can require confirmation or block execution.', color: 'text-red-400', icon: ShieldCheck },
                      { step: 5, title: 'LLM Invocation', desc: 'The validated prompt is sent to the selected AI model\'s API. The response streams back token-by-token via SSE.', color: 'text-shogun-blue', icon: Cpu },
                      { step: 6, title: 'Memory Inscription', desc: 'After the response completes, key information from the exchange may be automatically stored as new memories in the Archives, increasing the AI\'s knowledge for future queries.', color: 'text-shogun-gold', icon: Database },
                    ].map((item) => (
@@ -2961,7 +2961,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2 border-t-2 border-orange-400">
                       <div className="font-bold text-shogun-text text-lg">Least Privilege</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Agents are given only the minimum permissions they need to complete their tasks. By default, agents cannot access the filesystem, execute shell commands, or spawn sub-agents unless explicitly granted by the active security posture and individual permission overrides.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Agents receive only the minimum permissions needed for their tasks. Filesystem access, shell execution, delegation, and other capabilities must fit inside the active ToolGate boundary; per-tool and advanced content rules may further tighten execution but cannot widen that ceiling.</p>
                    </div>
                    <div className="shogun-card space-y-2 border-t-2 border-shogun-gold">
                       <div className="font-bold text-shogun-text text-lg">Fail Closed</div>
@@ -3048,14 +3048,14 @@ npm start`}</pre>
                    <Shield className="w-6 h-6 text-orange-400" />
                    <div>
                       <h4 className="text-xl font-bold uppercase tracking-widest">ToolGate — Runtime Tool Enforcement</h4>
-                      <p className="text-xs text-shogun-subdued">A real-time enforcement engine that inspects every tool call before execution and blocks dangerous operations based on risk analysis and the active security tier.</p>
+                      <p className="text-xs text-shogun-subdued">The policy-aware control surface and enforcement engine for capability ceilings, risk, confirmations, overrides, and parameter-sensitive runtime decisions.</p>
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-orange-400" /> How It Works</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Every time the AI attempts to execute a native tool (send email, create calendar event, browse the web, click the desktop, etc.), the ToolGate engine intercepts the call <strong>before it runs</strong>. It evaluates the tool's risk level against the current security tier's thresholds and either <strong>allows</strong>, <strong>requires confirmation</strong>, or <strong>blocks</strong> the call.</p>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">This is separate from PostureGuard (which controls tool <em>visibility</em>). ToolGate adds a second enforcement layer that checks even visible tools for dangerous parameters — for example, allowing the <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">send_email</code> tool to be available but blocking it if the recipient is an external domain.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Torii</strong> selects the built-in tier or custom policy. <strong>ToolGate</strong> loads that policy's stable scope, displays its capability ceiling, and intercepts every native tool call before execution. It combines the inherited risk mode, capability boundary, parameter analysis, per-tool override, and advanced content rules into one effective <strong>ALLOW</strong>, <strong>CONFIRM</strong>, or <strong>BLOCK</strong> verdict.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Katana controls whether a tool is installed or connected, while PostureGuard controls which tools are visible to the agent. ToolGate remains the final runtime authorization layer even for visible, connected tools. A connected email tool can therefore be available in Katana but still require confirmation or be blocked by ToolGate.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><AlertCircle className="w-4 h-4 text-red-400" /> Risk Classification</div>
@@ -3069,12 +3069,12 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-shogun-gold" /> Tier-Based Thresholds</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Each security tier defines two thresholds that control ToolGate's behavior:</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Each built-in tier defines the baseline thresholds for its ToolGate scope. A custom policy inherits the default risk mode of its base tier while keeping its own capability boundaries, tool overrides, and advanced rules:</p>
                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
                          <li><strong>Confirm threshold:</strong> Tools with risk scores above this require human confirmation before executing.</li>
                          <li><strong>Block threshold:</strong> Tools with risk scores above this are blocked entirely — no amount of confirmation can override.</li>
                       </ul>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Example: At TACTICAL tier, the confirm threshold is 0.5 and block threshold is 0.8. A tool with risk 0.6 (like send_email) will prompt for confirmation. A tool with risk 0.9 would be blocked outright.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">A policy override or parameter/content rule may tighten that baseline, but it cannot widen a blocked capability boundary or a centrally managed Gensui rule.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Zap className="w-4 h-4 text-shogun-gold" /> Parameter-Aware Analysis</div>
@@ -3097,7 +3097,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2 md:col-span-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-blue" /> Audit Trail</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Every ToolGate decision is logged to the compliance dashboard with full provenance: tool name, parameters, computed risk score, the active tier, the decision (allow/confirm/block), and the threshold that triggered the decision. Blocked and confirmed events appear in the <strong>Risk</strong> tab of the Logs page. These entries are dual-written to both Layer 1 (operational, 90-day retention) and Layer 2 (immutable HMAC chain, 7-year retention).</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Every ToolGate decision is logged with its provenance: tool name, parameters, computed risk, active policy scope and base tier, decision, source, reason, and any matching advanced content rule. Blocked and confirmed events appear in the <strong>Risk</strong> and <strong>Policy</strong> views of Logs. These entries are dual-written to both Layer 1 (operational, 90-day retention) and Layer 2 (immutable HMAC chain, 7-year retention).</p>
                    </div>
                 </div>
              </section>
@@ -3183,11 +3183,11 @@ npm start`}</pre>
                    <ShieldAlert className="w-6 h-6 text-amber-400" />
                    <div>
                       <h4 className="text-xl font-bold uppercase tracking-widest">ToolGate — Runtime Tool Enforcement</h4>
-                      <p className="text-xs text-shogun-subdued">Per-invocation safety gating with risk scoring and human-in-the-loop confirmation.</p>
+                      <p className="text-xs text-shogun-subdued">The runtime behavior of the ToolGate policy selected in Torii, including local and centrally managed operation.</p>
                    </div>
                 </div>
                 <div className="shogun-card space-y-4">
-                   <p className="text-xs text-shogun-subdued leading-relaxed">ToolGate sits between PostureGuard (which determines <em>which tools are available</em>) and the tool executor (which <em>runs them</em>). It provides fine-grained, per-call enforcement based on tool risk levels and parameter analysis.</p>
+                   <p className="text-xs text-shogun-subdued leading-relaxed">ToolGate sits between PostureGuard (which determines <em>which tools are visible</em>) and the executor that runs them. It provides policy-scoped, per-call enforcement based on capability boundaries, risk mode, tool overrides, parameter analysis, and advanced word or phrase rules. In standalone Tenshu it is editable locally; while connected to Gensui, the local ToolGate is read-only and the last valid centrally managed policy remains enforced during temporary outages.</p>
                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3 space-y-1">
                          <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider">ALLOW</div>
@@ -3208,7 +3208,7 @@ npm start`}</pre>
                    </div>
                    <div className="space-y-3">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-amber-400" /> Parameter-Aware Checks</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Beyond the static risk level, ToolGate inspects <em>how</em> a tool is called. It detects: destructive shell patterns (rm -rf, DROP TABLE, format C:), sensitive system paths (System32, /etc/), recursive delete flags, mass operations (10+ items), credential-like content in typed text, and force flags. These checks can escalate the action from ALLOW → CONFIRM or CONFIRM → BLOCK regardless of the tool's static risk.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Beyond the static risk level, ToolGate recursively inspects nested arguments. Built-in analysis detects destructive commands, sensitive paths, recursive deletion, mass operations, credential-like input, and force flags. <strong>Advanced mode</strong> adds operator-defined words or phrases with whole-word or substring matching, optional case sensitivity, global or tool-specific scope, and a CONFIRM or BLOCK outcome. These checks can only tighten the final decision.</p>
                    </div>
                    <div className="space-y-3">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Clock className="w-4 h-4 text-amber-400" /> Confirmation Timeout</div>
