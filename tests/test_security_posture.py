@@ -6,7 +6,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from shogun.api.security import _active_toolgate_context, _get_agent_posture
+from shogun.api.security import (
+    _active_toolgate_context,
+    _get_agent_posture,
+    select_active_security_posture,
+)
+from shogun.schemas.security import SecurityPostureSelectRequest
 
 
 class _Result:
@@ -35,6 +40,9 @@ class _Session:
         assert policy_id == self._policy.id
         return self._policy
 
+    async def commit(self):
+        return None
+
 
 @pytest.mark.asyncio
 async def test_posture_includes_assigned_custom_policy(monkeypatch):
@@ -48,6 +56,11 @@ async def test_posture_includes_assigned_custom_policy(monkeypatch):
         name="Michael Custom Policy",
         is_builtin=False,
         tier="campaign",
+        permissions={
+            "filesystem": {"mode": "full"},
+            "shell": {"enabled": True},
+            "subagents": {"max_active": 9},
+        },
     )
 
     engine_module = import_module("shogun.db.engine")
@@ -55,11 +68,14 @@ async def test_posture_includes_assigned_custom_policy(monkeypatch):
 
     posture = await _get_agent_posture()
 
-    assert posture["active_tier"] == "guarded"
+    assert posture["active_tier"] == "campaign"
     assert posture["active_policy_id"] == policy_id
     assert posture["active_policy_name"] == "Michael Custom Policy"
     assert posture["active_policy_is_builtin"] is False
     assert posture["active_policy_tier"] == "campaign"
+    assert posture["filesystem_mode"] == "full"
+    assert posture["shell_enabled"] is True
+    assert posture["max_active_subagents"] == 9
 
 
 @pytest.mark.asyncio
@@ -86,6 +102,75 @@ async def test_toolgate_uses_custom_policy_identity_and_base_tier(monkeypatch):
     assert mode == "campaign"
     assert scope["key"] == "policy:custom-id"
     assert scope["label"] == "Laptop Custom"
+
+
+@pytest.mark.asyncio
+async def test_select_custom_posture_assigns_policy_and_base_tier(monkeypatch):
+    policy_id = uuid.uuid4()
+    agent = SimpleNamespace(
+        bushido_settings={"security_posture": {"active_tier": "guarded"}},
+        security_policy_id=None,
+    )
+    policy = SimpleNamespace(
+        id=policy_id,
+        name="Laptop Custom",
+        is_builtin=False,
+        is_deleted=False,
+        tier="campaign",
+        permissions={"network": {"mode": "full"}},
+    )
+
+    engine_module = import_module("shogun.db.engine")
+    monkeypatch.setattr(engine_module, "async_session_factory", lambda: _Session(agent, policy))
+
+    response = await select_active_security_posture(
+        SecurityPostureSelectRequest(policy_id=policy_id)
+    )
+
+    assert agent.security_policy_id == policy_id
+    assert agent.bushido_settings["security_posture"]["active_tier"] == "campaign"
+    assert response.data["active_policy_id"] == policy_id
+    assert response.data["active_policy_name"] == "Laptop Custom"
+    assert response.data["network_mode"] == "full"
+
+
+@pytest.mark.asyncio
+async def test_select_builtin_posture_clears_custom_assignment(monkeypatch):
+    policy_id = uuid.uuid4()
+    agent = SimpleNamespace(
+        bushido_settings={
+            "custom_permissions": {"network": {"mode": "full"}},
+            "security_posture": {
+                "active_tier": "campaign",
+                "active_policy_id": str(policy_id),
+                "active_policy_name": "Stale Custom",
+            },
+        },
+        security_policy_id=policy_id,
+    )
+    policy = SimpleNamespace(
+        id=policy_id,
+        name="Stale Custom",
+        is_builtin=False,
+        is_deleted=False,
+        tier="campaign",
+        permissions={},
+    )
+
+    engine_module = import_module("shogun.db.engine")
+    monkeypatch.setattr(engine_module, "async_session_factory", lambda: _Session(agent, policy))
+
+    response = await select_active_security_posture(
+        SecurityPostureSelectRequest(tier="guarded")
+    )
+
+    stored = agent.bushido_settings["security_posture"]
+    assert agent.security_policy_id is None
+    assert "custom_permissions" not in agent.bushido_settings
+    assert "active_policy_id" not in stored
+    assert stored["active_tier"] == "guarded"
+    assert response.data["active_policy_id"] is None
+    assert response.data["active_tier"] == "guarded"
 
 
 async def _async_value(value):

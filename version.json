@@ -1,8 +1,8 @@
 {
-  "version": "1.43.1",
+  "version": "1.44.0",
   "name": "Shogun OS",
-  "build": 129,
+  "build": 130,
   "channel": "stable",
-  "released": "2026-07-23T12:38:01Z",
-  "changelog": "Align the Grand Reference with the current Torii, ToolGate, Katana, Shogun Profile, and Gensui ownership model, including custom-policy scopes, advanced content controls, managed read-only behavior, cached enforcement, and updated feature-specific security guidance."
+  "released": "2026-07-23T14:26:50Z",
+  "changelog": "Move custom posture creation, editing, and deletion into ToolGate; give Torii one authoritative built-in and custom posture selector; synchronize effective constraints and safe fallback behavior; and update the Grand Reference ownership model."
 }

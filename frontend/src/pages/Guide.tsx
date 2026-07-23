@@ -599,8 +599,8 @@ export function Guide() {
                      { name: 'Dojo (Training Hall)', purpose: 'Browse 4,000+ skills from the OpenClaw College. Study training material, take certification exams, and track achievements.', icon: Flame, color: 'text-shogun-gold' },
                      { name: 'Kaizen (Governance)', purpose: 'Write the Constitution (YAML rules) and the Mandate (Markdown mission statement). Manage revision history and audit trails.', icon: ShieldCheck, color: 'text-shogun-gold' },
                      { name: 'Bushido (Reflection)', purpose: 'Calibrate self-improvement behavior. Tune reflection intensity, consolidation rate, and exploration variance. View AI-generated insights.', icon: RefreshCw, color: 'text-shogun-blue' },
-                     { name: 'Torii (Security)', purpose: 'Set the system\'s security posture (5 tiers from SHRINE to RONIN). Create and manage security policies. Access the Harakiri kill switch.', icon: Lock, color: 'text-red-400' },
-                     { name: 'ToolGate (Runtime Permissions)', purpose: 'Inspect and configure the capability boundaries, effective tool verdicts, risk indications, confirmations, and per-tool overrides for the active tier or custom policy.', icon: Shield, color: 'text-orange-400' },
+                     { name: 'Torii (Security)', purpose: 'Select the active built-in tier or custom posture and access the Harakiri kill switch. Custom posture lifecycle is owned by ToolGate.', icon: Lock, color: 'text-red-400' },
+                     { name: 'ToolGate (Runtime Permissions)', purpose: 'Create, edit, and delete custom postures; configure capability boundaries; and inspect effective tool verdicts, risk indications, confirmations, and per-tool overrides.', icon: Shield, color: 'text-orange-400' },
                      { name: 'Mado (Browser)', purpose: 'Browser automation layer powered by Playwright. Your AI can navigate to URLs, extract page content, take screenshots, and interact with web pages—within the capability boundaries and runtime verdicts shown in ToolGate.', icon: AppWindow, color: 'text-cyan-400' },
                      { name: 'Ronin (Desktop Control)', purpose: 'Desktop automation layer. Allows governed mouse, keyboard, screenshot, and native app control. Protected by Posture Guard, App Trust (4 levels), Komainu physical override, and environment detection. Only available at TACTICAL tier or higher.', icon: Crosshair, color: 'text-orange-400' },
                      { name: 'Agent Flow (Workflows)', purpose: 'Visual drag-and-drop workflow builder. Design multi-step AI pipelines by chaining Input, Samurai, Shogun Approval, Logic Gate, Browser, and Output nodes. Execute complex orchestration flows.', icon: Workflow, color: 'text-violet-400' },
@@ -2087,7 +2087,7 @@ npm start`}</pre>
                    <Lock className="w-6 h-6 text-red-400" />
                    <div>
                       <h4 className="text-xl font-bold uppercase tracking-widest">Torii — Security Portal</h4>
-                      <p className="text-xs text-shogun-subdued">Select a built-in security tier or create and assign a custom security policy. ToolGate presents and enforces the resulting runtime permissions.</p>
+                      <p className="text-xs text-shogun-subdued">Select the active built-in tier or custom posture. Custom postures are created, edited, and deleted in ToolGate, then become available here immediately.</p>
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2101,20 +2101,15 @@ npm start`}</pre>
                          <li><strong>CAMPAIGN:</strong> High autonomy. Broad internet access. Agents can auto-spawn without asking.</li>
                          <li><strong>RONIN (UNSAFE):</strong> Unrestricted. Only use in completely isolated test environments.</li>
                       </ul>
-                      <p className="text-xs text-shogun-subdued leading-relaxed mt-2">Click a tier to switch. Built-in tiers are protected presets. To customize capability boundaries, create and assign a custom policy, then open ToolGate.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed mt-2">Click a built-in tier or custom posture to activate it. Built-in tiers are protected presets. Use <strong>Manage custom postures in ToolGate</strong> to create or maintain reusable postures, then return here to choose which one is active.</p>
                    </div>
                    <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-red-400" /> Policy Registry (Right Column)</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">A list of all security policies defined in the system. Each policy card shows the name, tier badge, permission block count, and whether the kill-switch is enabled. Hover over a policy to reveal buttons:</p>
-                      <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
-                         <li><strong>Eye icon:</strong> Opens a full-screen modal showing every detail of the policy — all permission blocks as JSON.</li>
-                         <li><strong>Copy icon:</strong> Exports the policy as JSON to your clipboard.</li>
-                         <li><strong>Trash icon:</strong> Deletes the policy (only for user-created policies; built-in ones cannot be deleted).</li>
-                      </ul>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-red-400" /> Unified Posture Selector</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Built-in tiers and every custom posture from ToolGate appear in the same selection grid. The active marker reflects the policy actually enforced at runtime. Selecting a built-in tier clears any previous custom assignment; selecting a custom posture activates that policy together with its inherited base tier.</p>
                    </div>
                    <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-red-400" /> Create Tactical Policy</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Click "Create Tactical Policy" at the bottom of the registry. A form appears where you enter a <strong>name</strong>, choose a <strong>security tier</strong>, write a <strong>description</strong>, and toggle whether the <strong>kill-switch</strong> and <strong>dry-run</strong> are supported. Click "Save Policy" to create it.</p>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-red-400" /> Current Constraints</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The constraints panel summarizes the effective filesystem, network, shell, skills, delegation, communications, browser, and desktop limits. For a custom posture these values come from its base tier and ToolGate capability boundaries—not from whichever posture happened to be selected previously.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-red-500" /> Harakiri Button</div>
@@ -2131,13 +2126,17 @@ npm start`}</pre>
                    <Shield className="w-6 h-6 text-orange-400" />
                    <div>
                       <h4 className="text-xl font-bold uppercase tracking-widest">ToolGate — Runtime Permissions</h4>
-                      <p className="text-xs text-shogun-subdued">The single place to configure and understand what the active security policy permits at runtime.</p>
+                      <p className="text-xs text-shogun-subdued">The single place to create custom postures and configure or understand what security policies permit at runtime.</p>
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2 md:col-span-2 border-l-2 border-orange-400/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-orange-400" /> Ownership Model</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Torii</strong> selects or creates the tier and custom policy. <strong>ToolGate</strong> configures capability ceilings and per-call runtime authorization. <strong>Katana</strong> manages installed or connected capabilities, model providers and routing, and account-specific scopes. <strong>Shogun Profile</strong> owns identity, behavior, and operations—not security configuration. When centrally managed, <strong>Gensui owns ToolGate</strong> and the local view becomes read-only.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Torii</strong> selects the active built-in tier or custom posture. <strong>ToolGate</strong> owns custom posture creation, editing, deletion, capability ceilings, and per-call runtime authorization. <strong>Katana</strong> manages installed or connected capabilities, model providers and routing, and account-specific scopes. <strong>Shogun Profile</strong> owns identity, behavior, and operations—not security configuration. When centrally managed, <strong>Gensui owns ToolGate</strong> and the local view becomes read-only.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-orange-400" /> Custom Posture Library</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Create, edit, and delete reusable custom postures in ToolGate. Each posture has a name, description, inherited base tier, kill-switch and dry-run flags, and detailed capability boundaries. New postures appear immediately in Torii, where activation is always an explicit separate choice. Deleting an active custom posture safely returns Torii to its base tier.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-orange-400" /> Policy-Scoped Rules</div>

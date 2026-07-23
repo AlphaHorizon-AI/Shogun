@@ -216,7 +216,8 @@ Flow Stacking is available from **Flow Stack** in The Tenshu. A single Agent Flo
 | **Katana** | Models, providers, tools, routing, and integrations |
 | **Kaizen** | Constitution and governance rules |
 | **Bushido** | Reflection, insights, and self-improvement |
-| **Torii** | Security posture, permissions, ToolGate, and emergency controls |
+| **Torii** | Select the active built-in or custom security posture and access emergency controls |
+| **ToolGate** | Create and maintain custom postures; configure and enforce runtime capability boundaries |
 | **Dojo** | Skills, certification, OpenClaw College, and SkillOpt |
 | **Agent Flow** | Visual workflow construction and execution |
 | **Flow Stack** | Composition of several Agent Flows |

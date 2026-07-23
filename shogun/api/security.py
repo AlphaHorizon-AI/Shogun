@@ -16,6 +16,7 @@ from shogun.schemas.security import (
     SecurityPolicyResponse,
     SecurityPolicyUpdate,
     SecurityPostureResponse,
+    SecurityPostureSelectRequest,
 )
 from shogun.services.security_service import SecurityService
 
@@ -298,13 +299,42 @@ async def _get_agent_posture() -> dict:
 
             policy = await db.get(SecurityPolicy, agent.security_policy_id)
             if policy:
+                permissions = getattr(policy, "permissions", None) or {}
+                posture["active_tier"] = policy.tier
+                posture.update(TIER_CONSTRAINTS.get(policy.tier, {}))
+                filesystem = permissions.get("filesystem", {})
+                network = permissions.get("network", {})
+                shell = permissions.get("shell", {})
+                skills = permissions.get("skills", {})
+                subagents = permissions.get("subagents", {})
+                comms = permissions.get("comms", {})
+                if "mode" in filesystem:
+                    posture["filesystem_mode"] = filesystem["mode"]
+                if "mode" in network:
+                    posture["network_mode"] = network["mode"]
+                if "enabled" in shell:
+                    posture["shell_enabled"] = shell["enabled"]
+                if "allow_auto_install" in skills:
+                    posture["skill_auto_install"] = skills["allow_auto_install"]
+                if "max_active" in subagents:
+                    posture["max_active_subagents"] = subagents["max_active"]
+                for permission_key, posture_key in (
+                    ("allow_read_email", "comms_read_email"),
+                    ("allow_send_email", "comms_send_email"),
+                    ("allow_read_calendar", "comms_read_calendar"),
+                    ("allow_create_events", "comms_create_events"),
+                    ("allow_list_cron", "comms_list_cron"),
+                    ("allow_manage_cron", "comms_manage_cron"),
+                ):
+                    if permission_key in comms:
+                        posture[posture_key] = comms[permission_key]
                 posture.update(
                     {
                         "active_policy_id": policy.id,
                         "active_policy_name": policy.name,
                         "active_policy_is_builtin": policy.is_builtin,
                         "active_policy_tier": policy.tier,
-                        "active_policy_permissions": getattr(policy, "permissions", None) or {},
+                        "active_policy_permissions": permissions,
                         "active_custom_permissions": bushido.get("custom_permissions"),
                     }
                 )
@@ -333,7 +363,17 @@ async def _save_agent_posture(posture: dict) -> None:
         if not agent:
             return
         bushido = dict(agent.bushido_settings or {})
-        bushido[_POSTURE_KEY] = posture
+        stored_posture = dict(posture)
+        for runtime_key in (
+            "active_policy_id",
+            "active_policy_name",
+            "active_policy_is_builtin",
+            "active_policy_tier",
+            "active_policy_permissions",
+            "active_custom_permissions",
+        ):
+            stored_posture.pop(runtime_key, None)
+        bushido[_POSTURE_KEY] = stored_posture
         agent.bushido_settings = bushido
         await db.commit()
 
@@ -375,6 +415,97 @@ async def update_security_posture(body: dict):
     return ApiResponse(data=SecurityPostureResponse(**current).model_dump())
 
 
+@router.put("/posture/active", response_model=ApiResponse)
+async def select_active_security_posture(body: SecurityPostureSelectRequest):
+    """Atomically select a built-in tier or assign a custom policy."""
+    if (body.tier is None) == (body.policy_id is None):
+        raise HTTPException(
+            status_code=422,
+            detail="Select exactly one built-in tier or custom policy",
+        )
+
+    from sqlalchemy import select
+
+    from shogun.db.engine import async_session_factory
+    from shogun.db.models.agent import Agent
+    from shogun.db.models.security_policy import SecurityPolicy
+
+    async with async_session_factory() as db:
+        result = await db.execute(
+            select(Agent)
+            .where(
+                Agent.agent_type == "shogun",
+                Agent.is_primary.is_(True),
+                Agent.is_deleted.is_(False),
+            )
+            .limit(1)
+        )
+        agent = result.scalar_one_or_none()
+        if not agent:
+            raise HTTPException(status_code=404, detail="Primary Shogun agent not found")
+
+        bushido = dict(agent.bushido_settings or {})
+        current = {**_DEFAULT_POSTURE, **bushido.get(_POSTURE_KEY, {})}
+        old_label = str(
+            current.get("active_policy_name")
+            or current.get("active_tier", "tactical")
+        )
+
+        if body.policy_id is not None:
+            policy = await db.get(SecurityPolicy, body.policy_id)
+            if not policy or getattr(policy, "is_deleted", False):
+                raise HTTPException(status_code=404, detail="Custom posture not found")
+            if policy.is_builtin:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Built-in postures must be selected by tier",
+                )
+            agent.security_policy_id = policy.id
+            current["active_tier"] = policy.tier
+            current.update(TIER_CONSTRAINTS.get(policy.tier, {}))
+            new_label = policy.name
+        else:
+            tier = body.tier.value
+            agent.security_policy_id = None
+            current["active_tier"] = tier
+            current.update(TIER_CONSTRAINTS[tier])
+            new_label = tier
+
+        bushido.pop("custom_permissions", None)
+        for runtime_key in (
+            "active_policy_id",
+            "active_policy_name",
+            "active_policy_is_builtin",
+            "active_policy_tier",
+            "active_policy_permissions",
+            "active_custom_permissions",
+        ):
+            current.pop(runtime_key, None)
+        bushido[_POSTURE_KEY] = current
+        agent.bushido_settings = bushido
+        await db.commit()
+
+    selected = await _get_agent_posture()
+    try:
+        from shogun.services.event_logger import EventLogger
+
+        await EventLogger.emit_auth_event(
+            "auth.posture_changed",
+            f"Security posture changed: {old_label} → {new_label}",
+            severity="warn"
+            if selected.get("active_tier") in ("campaign", "ronin")
+            else "info",
+            detail={
+                "old_posture": old_label,
+                "new_posture": new_label,
+                "policy_id": str(body.policy_id) if body.policy_id else None,
+            },
+        )
+    except Exception:
+        pass
+    return ApiResponse(data=SecurityPostureResponse(**selected).model_dump())
+
+
 # ── Policy endpoints ─────────────────────────────────────────────────
 
 
@@ -414,6 +545,11 @@ async def update_policy(
     body: SecurityPolicyUpdate,
     svc: SecurityService = Depends(get_security_service),
 ):
+    existing = await svc.get_by_id(policy_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    if existing.is_builtin:
+        raise HTTPException(status_code=403, detail="Cannot edit built-in policies")
     update_data = body.model_dump(exclude_unset=True)
     if "permissions" in update_data and update_data["permissions"] is not None:
         update_data["permissions"] = (
@@ -443,7 +579,7 @@ async def delete_policy(
 
     from shogun.db.models.agent import Agent
 
-    result = await svc.session.execute(select(Agent).where(Agent.security_policy_id == str(policy_id)))
+    result = await svc.session.execute(select(Agent).where(Agent.security_policy_id == policy_id))
     agents = result.scalars().all()
     for agent in agents:
         agent.security_policy_id = None
@@ -451,6 +587,22 @@ async def delete_policy(
         if agent.bushido_settings and isinstance(agent.bushido_settings, dict):
             bs = dict(agent.bushido_settings)
             bs.pop("custom_permissions", None)
+            stored_posture = {
+                **_DEFAULT_POSTURE,
+                **bs.get(_POSTURE_KEY, {}),
+                "active_tier": record.tier,
+            }
+            stored_posture.update(TIER_CONSTRAINTS.get(record.tier, {}))
+            for runtime_key in (
+                "active_policy_id",
+                "active_policy_name",
+                "active_policy_is_builtin",
+                "active_policy_tier",
+                "active_policy_permissions",
+                "active_custom_permissions",
+            ):
+                stored_posture.pop(runtime_key, None)
+            bs[_POSTURE_KEY] = stored_posture
             agent.bushido_settings = bs
 
     await svc.delete(policy_id)

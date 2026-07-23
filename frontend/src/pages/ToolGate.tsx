@@ -8,6 +8,7 @@ import {
   FlaskConical,
   Loader2,
   LockKeyhole,
+  Pencil,
   Plus,
   RefreshCw,
   Save,
@@ -16,6 +17,7 @@ import {
   SlidersHorizontal,
   Trash2,
   WifiOff,
+  X,
 } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -24,6 +26,18 @@ import { cn } from '../lib/utils';
 type GateAction = 'allow' | 'confirm' | 'block';
 type AdvancedAction = 'confirm' | 'block';
 type AdvancedMatchType = 'contains' | 'word';
+type TierType = 'shrine' | 'guarded' | 'tactical' | 'campaign' | 'ronin';
+
+interface SecurityPolicy {
+  id: string;
+  name: string;
+  tier: TierType;
+  description: string | null;
+  permissions: Record<string, Record<string, unknown>>;
+  kill_switch_enabled: boolean;
+  dry_run_supported: boolean;
+  is_builtin: boolean;
+}
 
 interface AdvancedRule {
   id: string;
@@ -103,6 +117,38 @@ const RISK_STYLES: Record<string, string> = {
   critical: 'text-red-400',
 };
 
+const DEFAULT_POLICY_PERMISSIONS: Record<string, Record<string, unknown>> = {
+  filesystem: { mode: 'scoped', allowed_paths: [], allow_home_access: false, allow_arbitrary_paths: false },
+  network: { mode: 'allowlist', allowed_domains: [], allow_arbitrary_requests: false },
+  shell: { enabled: false, allowed_binaries: [] },
+  skills: { allow_auto_install: false, require_approval: true, allow_untrusted: false },
+  subagents: { allow_spawn: true, max_active: 5, allow_auto_spawn: false },
+  memory: { allow_write: true, allow_bulk_delete: false },
+  comms: {
+    allow_read_email: true,
+    allow_send_email: true,
+    allow_read_calendar: true,
+    allow_create_events: true,
+    allow_list_cron: true,
+    allow_manage_cron: false,
+  },
+  mado_browser: {},
+  agentflow: {},
+  flow_stack: {},
+  visual_intake: {},
+  ide_mode: {},
+};
+
+const emptyPolicyDraft = (permissions = structuredClone(DEFAULT_POLICY_PERMISSIONS)) => ({
+  id: null as string | null,
+  name: '',
+  tier: 'tactical' as TierType,
+  description: '',
+  permissions,
+  kill_switch_enabled: true,
+  dry_run_supported: true,
+});
+
 function ActionBadge({ action }: { action: GateAction }) {
   return (
     <span className={cn('inline-flex min-w-20 justify-center rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-widest', ACTION_STYLES[action])}>
@@ -117,9 +163,18 @@ function formatSync(value: string | null) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function errorMessage(error: unknown, fallback: string) {
+  if (axios.isAxiosError(error)) {
+    return error.response?.data?.detail || error.message || fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
 export function ToolGate() {
   const navigate = useNavigate();
   const [data, setData] = useState<ToolGateData | null>(null);
+  const [policies, setPolicies] = useState<SecurityPolicy[]>([]);
+  const [builtInPolicies, setBuiltInPolicies] = useState<SecurityPolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingTool, setSavingTool] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -142,11 +197,17 @@ export function ToolGate() {
     rules: [],
   });
   const [savingAdvanced, setSavingAdvanced] = useState(false);
+  const [showPolicyEditor, setShowPolicyEditor] = useState(false);
+  const [policyDraft, setPolicyDraft] = useState(emptyPolicyDraft);
+  const [savingPolicy, setSavingPolicy] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('/api/v1/security/toolgate');
+      const [response, policiesResponse] = await Promise.all([
+        axios.get('/api/v1/security/toolgate'),
+        axios.get('/api/v1/security/policies'),
+      ]);
       const payload = response.data.data as ToolGateData;
       const normalized: ToolGateData = {
         ...payload,
@@ -171,6 +232,9 @@ export function ToolGate() {
         },
       };
       setData(normalized);
+      const policyRecords = (policiesResponse.data.data || []) as SecurityPolicy[];
+      setPolicies(policyRecords.filter(policy => !policy.is_builtin));
+      setBuiltInPolicies(policyRecords.filter(policy => policy.is_builtin));
       setCapabilityDraft(normalized.capabilities.permissions || {});
       setAdvancedDraft({
         enabled: normalized.advanced_controls.enabled,
@@ -217,8 +281,8 @@ export function ToolGate() {
       await axios.put('/api/v1/security/toolgate/overrides', { overrides: next });
       setMessage({ type: 'success', text: `ToolGate rule updated for ${toolName}.` });
       await fetchData();
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.response?.data?.detail || 'ToolGate rule could not be saved.' });
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: errorMessage(error, 'ToolGate rule could not be saved.') });
     } finally {
       setSavingTool(null);
     }
@@ -236,10 +300,10 @@ export function ToolGate() {
         args,
       });
       setSimulation(response.data.data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.detail || error.message || 'Simulation failed.',
+        text: errorMessage(error, 'Simulation failed.'),
       });
     } finally {
       setSimulating(false);
@@ -266,10 +330,10 @@ export function ToolGate() {
       });
       setMessage({ type: 'success', text: `Capability boundaries saved for ${data.scope.label}.` });
       await fetchData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.detail || 'Capability boundaries could not be saved.',
+        text: errorMessage(error, 'Capability boundaries could not be saved.'),
       });
     } finally {
       setSavingCapabilities(false);
@@ -311,13 +375,109 @@ export function ToolGate() {
       await axios.put('/api/v1/security/toolgate/advanced', advancedDraft);
       setMessage({ type: 'success', text: `Advanced controls saved for ${data.scope.label}.` });
       await fetchData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.detail || 'Advanced ToolGate controls could not be saved.',
+        text: errorMessage(error, 'Advanced ToolGate controls could not be saved.'),
       });
     } finally {
       setSavingAdvanced(false);
+    }
+  };
+
+  const openCreatePolicy = () => {
+    setPolicyDraft(emptyPolicyDraft(policyDefaultsForTier('tactical')));
+    setShowPolicyEditor(true);
+  };
+
+  const policyDefaultsForTier = (tier: TierType) => {
+    const permissions = structuredClone(DEFAULT_POLICY_PERMISSIONS);
+    const preset = builtInPolicies.find(policy => policy.tier === tier);
+    Object.entries(preset?.permissions || {}).forEach(([categoryName, values]) => {
+      permissions[categoryName] = {
+        ...(permissions[categoryName] || {}),
+        ...(values || {}),
+      };
+    });
+    return permissions;
+  };
+
+  const openEditPolicy = (policy: SecurityPolicy) => {
+    const permissions = policyDefaultsForTier(policy.tier);
+    Object.entries(policy.permissions || {}).forEach(([categoryName, values]) => {
+      permissions[categoryName] = {
+        ...(permissions[categoryName] || {}),
+        ...(values || {}),
+      };
+    });
+    setPolicyDraft({
+      id: policy.id,
+      name: policy.name,
+      tier: policy.tier,
+      description: policy.description || '',
+      permissions,
+      kill_switch_enabled: policy.kill_switch_enabled,
+      dry_run_supported: policy.dry_run_supported,
+    });
+    setShowPolicyEditor(true);
+  };
+
+  const updatePolicyPermission = (categoryName: string, key: string, value: unknown) => {
+    setPolicyDraft(current => ({
+      ...current,
+      permissions: {
+        ...current.permissions,
+        [categoryName]: {
+          ...(current.permissions[categoryName] || {}),
+          [key]: value,
+        },
+      },
+    }));
+  };
+
+  const savePolicy = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!data || !data.authority.editable || !policyDraft.name.trim()) return;
+    setSavingPolicy(true);
+    setMessage(null);
+    const body = {
+      name: policyDraft.name.trim(),
+      tier: policyDraft.tier,
+      description: policyDraft.description.trim(),
+      permissions: policyDraft.permissions,
+      kill_switch_enabled: policyDraft.kill_switch_enabled,
+      dry_run_supported: policyDraft.dry_run_supported,
+    };
+    try {
+      if (policyDraft.id) {
+        await axios.patch(`/api/v1/security/policies/${policyDraft.id}`, body);
+        setMessage({ type: 'success', text: `${body.name} was updated.` });
+      } else {
+        await axios.post('/api/v1/security/policies', body);
+        setMessage({ type: 'success', text: `${body.name} was created and is now available in Torii.` });
+      }
+      setShowPolicyEditor(false);
+      await fetchData();
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: errorMessage(error, 'Custom posture could not be saved.') });
+    } finally {
+      setSavingPolicy(false);
+    }
+  };
+
+  const deletePolicy = async (policy: SecurityPolicy) => {
+    if (!data || !data.authority.editable || !confirm(`Delete custom posture "${policy.name}"?`)) return;
+    const wasActive = data.scope.policy_id === policy.id;
+    setMessage(null);
+    try {
+      await axios.delete(`/api/v1/security/policies/${policy.id}`);
+      setMessage({
+        type: 'success',
+        text: `${policy.name} was deleted.${wasActive ? ` Torii returned to its ${policy.tier.toUpperCase()} base tier.` : ''}`,
+      });
+      await fetchData();
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: errorMessage(error, 'Custom posture could not be deleted.') });
     }
   };
 
@@ -389,6 +549,99 @@ export function ToolGate() {
         </div>
       )}
 
+      <div className="shogun-card space-y-4">
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+          <div>
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-violet-300" />
+              <h2 className="text-sm font-bold uppercase tracking-widest text-shogun-text">Custom posture library</h2>
+            </div>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-shogun-subdued">
+              Create and maintain reusable security postures here. Torii remains the single place where a built-in or custom posture is activated.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={!data.authority.editable}
+            onClick={openCreatePolicy}
+            className="flex items-center gap-2 self-start rounded-lg border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-xs font-bold text-violet-200 hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" /> Create custom posture
+          </button>
+        </div>
+
+        {managed && (
+          <div className="flex gap-2 rounded-lg border border-indigo-400/20 bg-indigo-500/[0.05] p-3">
+            <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-indigo-300" />
+            <p className="text-xs leading-relaxed text-indigo-100/75">
+              Custom posture lifecycle is centrally owned by Gensui while this Tenshu is enrolled.
+            </p>
+          </div>
+        )}
+
+        {policies.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-shogun-border p-6 text-center">
+            <p className="text-xs font-bold text-shogun-text">No custom postures yet</p>
+            <p className="mt-1 text-[10px] text-shogun-subdued">Create one here; it will immediately appear in Torii's posture selector.</p>
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {policies.map(policy => {
+              const active = data.scope.policy_id === policy.id;
+              return (
+                <div
+                  key={policy.id}
+                  className={cn(
+                    'rounded-lg border p-4',
+                    active ? 'border-violet-400/45 bg-violet-500/[0.07]' : 'border-shogun-border/70 bg-shogun-bg/45',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-bold text-shogun-text">{policy.name}</p>
+                        {active && <span className="rounded border border-emerald-400/25 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase text-emerald-300">Active</span>}
+                      </div>
+                      <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-violet-300">
+                        Base {policy.tier}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <button
+                        type="button"
+                        disabled={!data.authority.editable}
+                        onClick={() => openEditPolicy(policy)}
+                        className="rounded border border-shogun-border p-2 text-shogun-subdued hover:border-violet-400/30 hover:text-violet-200 disabled:opacity-40"
+                        title="Edit custom posture"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!data.authority.editable}
+                        onClick={() => deletePolicy(policy)}
+                        className="rounded border border-red-500/15 p-2 text-red-300/70 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-40"
+                        title="Delete custom posture"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="mt-3 line-clamp-2 min-h-8 text-[10px] leading-relaxed text-shogun-subdued">
+                    {policy.description || 'No description'}
+                  </p>
+                  <div className="mt-3 flex gap-2 text-[9px] uppercase tracking-wider text-shogun-subdued">
+                    <span>{Object.keys(policy.permissions || {}).length} capability groups</span>
+                    <span>·</span>
+                    <span>{policy.kill_switch_enabled ? 'Kill switch' : 'No kill switch'}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {[
           { label: data.scope.kind === 'custom_policy' ? 'Custom tier' : 'Active tier', value: data.scope.label, color: 'text-shogun-gold' },
@@ -445,12 +698,12 @@ export function ToolGate() {
               <p className="text-xs leading-relaxed text-amber-100/75">
                 {managed
                   ? 'Capability boundaries are centrally owned by Gensui.'
-                  : 'Built-in tiers are protected presets. Assign a custom policy to edit its capability boundaries.'}
+                  : 'Built-in tiers are protected presets. Create or edit custom postures in the library above; activate one in Torii to inspect it here.'}
               </p>
             </div>
             {!managed && (
               <button onClick={() => navigate('/torii')} className="shrink-0 text-xs font-bold text-shogun-gold hover:text-white">
-                Open Torii
+                Select in Torii
               </button>
             )}
           </div>
@@ -849,6 +1102,169 @@ export function ToolGate() {
           </div>
         </div>
       </div>
+
+      {showPolicyEditor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => !savingPolicy && setShowPolicyEditor(false)} />
+          <form
+            onSubmit={savePolicy}
+            className="relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-shogun-border bg-shogun-bg shadow-2xl"
+          >
+            <div className="flex items-start justify-between border-b border-shogun-border p-5">
+              <div>
+                <h3 className="text-lg font-bold text-shogun-text">
+                  {policyDraft.id ? 'Edit custom posture' : 'Create custom posture'}
+                </h3>
+                <p className="mt-1 text-xs text-shogun-subdued">
+                  Define the reusable policy here. Activation remains an explicit choice in Torii.
+                </p>
+              </div>
+              <button type="button" onClick={() => setShowPolicyEditor(false)} className="rounded-lg p-2 text-shogun-subdued hover:bg-shogun-card hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-5 overflow-y-auto p-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-shogun-subdued">Posture name</span>
+                  <input
+                    required
+                    maxLength={255}
+                    value={policyDraft.name}
+                    onChange={event => setPolicyDraft(current => ({ ...current, name: event.target.value }))}
+                    placeholder="e.g. Research Samurai"
+                    className="w-full rounded-lg border border-shogun-border bg-[#050508] px-3 py-2.5 text-sm text-shogun-text outline-none focus:border-violet-400"
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-shogun-subdued">Base tier</span>
+                  <select
+                    value={policyDraft.tier}
+                    onChange={event => setPolicyDraft(current => ({ ...current, tier: event.target.value as TierType }))}
+                    className="w-full rounded-lg border border-shogun-border bg-[#050508] px-3 py-2.5 text-sm uppercase text-shogun-text outline-none focus:border-violet-400"
+                  >
+                    {(['shrine', 'guarded', 'tactical', 'campaign', 'ronin'] as TierType[]).map(tier => (
+                      <option key={tier} value={tier}>{tier}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label className="block space-y-1.5">
+                <span className="text-[9px] font-bold uppercase tracking-widest text-shogun-subdued">Description</span>
+                <textarea
+                  rows={3}
+                  maxLength={1000}
+                  value={policyDraft.description}
+                  onChange={event => setPolicyDraft(current => ({ ...current, description: event.target.value }))}
+                  placeholder="Explain when this posture should be selected."
+                  className="w-full rounded-lg border border-shogun-border bg-[#050508] px-3 py-2.5 text-sm text-shogun-text outline-none focus:border-violet-400"
+                />
+              </label>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="flex items-center justify-between rounded-lg border border-shogun-border bg-shogun-card/40 p-3 text-xs text-shogun-subdued">
+                  Global kill switch available
+                  <input
+                    type="checkbox"
+                    checked={policyDraft.kill_switch_enabled}
+                    onChange={event => setPolicyDraft(current => ({ ...current, kill_switch_enabled: event.target.checked }))}
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-lg border border-shogun-border bg-shogun-card/40 p-3 text-xs text-shogun-subdued">
+                  Dry-run simulation supported
+                  <input
+                    type="checkbox"
+                    checked={policyDraft.dry_run_supported}
+                    onChange={event => setPolicyDraft(current => ({ ...current, dry_run_supported: event.target.checked }))}
+                  />
+                </label>
+              </div>
+
+              <div>
+                <h4 className="text-[10px] font-bold uppercase tracking-[0.18em] text-shogun-text">Capability boundaries</h4>
+                <p className="mt-1 text-[10px] text-shogun-subdued">
+                  These are the maximum runtime capabilities of this posture. Tool verdicts and advanced content rules may narrow them further.
+                </p>
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {Object.entries(policyDraft.permissions).map(([categoryName, permissions]) => (
+                    <div key={categoryName} className="rounded-lg border border-shogun-border/70 bg-[#050508] p-3">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-violet-300">
+                        {categoryName.replace(/_/g, ' ')}
+                      </p>
+                      {Object.keys(permissions || {}).length === 0 ? (
+                        <p className="text-[10px] italic text-shogun-subdued">Uses base-tier defaults</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {Object.entries(permissions || {}).map(([key, value]) => (
+                            <label key={key} className="flex min-h-8 items-center justify-between gap-3 text-[10px] text-shogun-subdued">
+                              <span className="capitalize">{key.replace(/_/g, ' ')}</span>
+                              {typeof value === 'boolean' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => updatePolicyPermission(categoryName, key, !value)}
+                                  className={cn(
+                                    'relative h-5 w-10 rounded-full border transition-colors',
+                                    value ? 'border-emerald-500/40 bg-emerald-500/20' : 'border-red-500/30 bg-red-500/10',
+                                  )}
+                                >
+                                  <span className={cn('absolute top-0.5 h-4 w-4 rounded-full transition-all', value ? 'left-5 bg-emerald-400' : 'left-0.5 bg-red-400')} />
+                                </button>
+                              ) : typeof value === 'number' ? (
+                                <input
+                                  type="number"
+                                  value={value}
+                                  onChange={event => updatePolicyPermission(categoryName, key, Number(event.target.value))}
+                                  className="w-20 rounded border border-shogun-border bg-shogun-bg px-2 py-1 text-right text-[10px] text-shogun-text"
+                                />
+                              ) : Array.isArray(value) ? (
+                                <input
+                                  value={value.join(', ')}
+                                  onChange={event => updatePolicyPermission(categoryName, key, event.target.value.split(',').map(item => item.trim()).filter(Boolean))}
+                                  placeholder="Comma-separated"
+                                  className="w-44 rounded border border-shogun-border bg-shogun-bg px-2 py-1 text-right text-[10px] text-shogun-text"
+                                />
+                              ) : key === 'mode' ? (
+                                <select
+                                  value={String(value)}
+                                  onChange={event => updatePolicyPermission(categoryName, key, event.target.value)}
+                                  className="rounded border border-shogun-border bg-shogun-bg px-2 py-1 text-[10px] uppercase text-shogun-text"
+                                >
+                                  {['full', 'scoped', 'allowlist', 'disabled'].map(option => <option key={option} value={option}>{option}</option>)}
+                                </select>
+                              ) : (
+                                <input
+                                  value={String(value ?? '')}
+                                  onChange={event => updatePolicyPermission(categoryName, key, event.target.value)}
+                                  className="w-36 rounded border border-shogun-border bg-shogun-bg px-2 py-1 text-right text-[10px] text-shogun-text"
+                                />
+                              )}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-shogun-border p-4">
+              <button type="button" onClick={() => setShowPolicyEditor(false)} className="px-4 py-2.5 text-xs font-bold text-shogun-subdued hover:text-white">
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingPolicy || !policyDraft.name.trim()}
+                className="flex items-center gap-2 rounded-lg bg-violet-400 px-4 py-2.5 text-xs font-bold text-black disabled:opacity-50"
+              >
+                {savingPolicy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {policyDraft.id ? 'Save custom posture' : 'Create custom posture'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

@@ -190,3 +190,10 @@ class SecurityPostureResponse(ShogunBase):
     ronin_install_software: str = "blocked"
     ronin_komainu_level: int = 1
     ronin_environment_policy: str = "any"
+
+
+class SecurityPostureSelectRequest(ShogunBase):
+    """Select either a built-in tier or a custom security policy."""
+
+    tier: SecurityTier | None = None
+    policy_id: uuid.UUID | None = None
