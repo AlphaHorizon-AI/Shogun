@@ -474,7 +474,7 @@ export default function Guide() {
                 <ShieldAlert size={18} className="text-amber-400" />
                 <h3 className="text-lg font-bold text-gensui-100">{t('guide.card_toolgate_governance', 'ToolGate — Centralized Tool Enforcement')}</h3>
               </div>
-              <P>{t('guide.card_toolgate_governance_desc', 'ToolGate is the runtime safety gate that sits between the AI model and tool execution on every Shogun instance. From Gensui, you can centrally manage tool-level overrides that are pushed to all member instances via the policy sync mechanism.')}</P>
+              <P>{t('guide.card_toolgate_governance_desc', 'ToolGate is the runtime safety gate that sits between the AI model and tool execution on every Shogun instance. From Gensui, capability boundaries, tool-level verdicts, and advanced content rules are stored on each posture and pushed to assigned instances through policy sync.')}</P>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3 space-y-1">
                   <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider">ALLOW</div>
@@ -489,8 +489,12 @@ export default function Guide() {
                   <p className="text-[11px] text-gensui-400">{t('guide.toolgate_block', 'Tool is blocked outright. The AI receives a "blocked" response and must find an alternative.')}</p>
                 </div>
               </div>
+              <div className="bg-orange-500/5 border border-orange-500/20 rounded-lg p-3 space-y-1">
+                <div className="text-xs font-bold text-orange-300 uppercase tracking-wider">{t('guide.toolgate_advanced', 'Advanced Content Controls')}</div>
+                <p className="text-[11px] text-gensui-400">{t('guide.toolgate_advanced_desc', 'Advanced mode flags configured words or phrases inside nested tool arguments. Rules support contains or whole-word matching, optional case sensitivity, global or tool-specific targeting, and confirm or block verdicts. They can only tighten policy and remain active from the cached posture during an outage.')}</p>
+              </div>
               <div className="bg-gensui-800 border border-gensui-700 p-3 rounded-lg">
-                <p className="text-xs text-gensui-400 leading-relaxed"><strong className="text-gensui-200">{t('guide.toolgate_priority', 'Governance Override Priority:')}</strong> {t('guide.toolgate_priority_desc', 'Campaign Preset → Gensui Governance Override → Parameter-Aware Checks → Mode×Risk Threshold. Gensui overrides take priority over local ToolGate defaults but are superseded by active Campaign Presets.')}</p>
+                <p className="text-xs text-gensui-400 leading-relaxed"><strong className="text-gensui-200">{t('guide.toolgate_priority', 'Monotonic Policy Resolution:')}</strong> {t('guide.toolgate_priority_desc', 'Capability boundaries, parameter safety, advanced content rules, Campaign rules, local rules, and Gensui rules are resolved to the most restrictive verdict. No lower layer can relax a block or confirmation requirement imposed above it.')}</p>
               </div>
             </div>
 
@@ -504,6 +508,7 @@ export default function Guide() {
               <ul className="text-xs text-gensui-400 space-y-2 ml-4 list-disc leading-relaxed">
                 <li><strong className="text-gensui-200">{t('guide.posture_rules', 'Posture Rules:')}</strong> {t('guide.posture_rules_desc', 'allow/deny flags for external models, tool execution, Mado browser, memory access, Nexus, sub-agents, scheduled triggers, autonomous loops, file writes, and external APIs.')}</li>
                 <li><strong className="text-gensui-200">{t('guide.tool_overrides_sync', 'Tool Overrides:')}</strong> {t('guide.tool_overrides_sync_desc', 'Per-tool allow/confirm/block overrides configured in the posture\'s tool_overrides field.')}</li>
+                <li><strong className="text-gensui-200">{t('guide.advanced_controls_sync', 'Advanced Controls:')}</strong> {t('guide.advanced_controls_sync_desc', 'Content-aware word and phrase rules, matching behavior, target tools, and confirm/block verdicts configured in Gensui ToolGate.')}</li>
                 <li><strong className="text-gensui-200">{t('guide.global_posture_sync', 'Global Posture:')}</strong> {t('guide.global_posture_sync_desc', 'If a global posture override is active, it takes precedence over individual or group assignments.')}</li>
                 <li><strong className="text-gensui-200">{t('guide.harakiri_state_sync', 'Harakiri State:')}</strong> {t('guide.harakiri_state_sync_desc', 'If Harakiri is triggered from Gensui, the posture is forced to the most restrictive level.')}</li>
               </ul>
@@ -668,7 +673,8 @@ export default function Guide() {
                   <ol className="text-[11px] text-gensui-400 leading-relaxed list-decimal pl-4 space-y-1">
                     <li><strong>{t('guide.eval_step1', 'Tool Override Check')}</strong> — {t('guide.eval_step1_desc', 'If the posture has a specific tool override, that verdict is returned immediately.')}</li>
                     <li><strong>{t('guide.eval_step2', 'Permission Flag Check')}</strong> — {t('guide.eval_step2_desc', 'The tool is mapped to a permission category. If that flag is false, the call is blocked.')}</li>
-                    <li><strong>{t('guide.eval_step3', 'Default Allow')}</strong> — {t('guide.eval_step3_desc', 'If no override or flag matches, the tool call is allowed.')}</li>
+                    <li><strong>{t('guide.eval_step3', 'Parameter & Advanced Rule Check')}</strong> — {t('guide.eval_step3_desc', 'Built-in destructive checks and administrator-defined word or phrase rules can escalate the call to confirm or block.')}</li>
+                    <li><strong>{t('guide.eval_step4', 'Mode and Risk Default')}</strong> — {t('guide.eval_step4_desc', 'If no stricter rule matches, the active mode and tool risk classification determine the default verdict.')}</li>
                   </ol>
                 </div>
                 <div className="bg-gensui-800 border border-gensui-700 rounded-lg p-3">

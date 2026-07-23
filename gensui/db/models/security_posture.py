@@ -48,3 +48,6 @@ class SecurityPosture(Base, UUIDMixin, AuditMixin):
 
     # Per-tool overrides — Campaign Preset style ({"send_email": "block", "desktop_click": "confirm"})
     tool_overrides_json: Mapped[dict | None] = mapped_column(JSONType(), nullable=True, default=dict)
+
+    # Advanced parameter/content matching rules distributed with ToolGate policy
+    advanced_toolgate_json: Mapped[dict | None] = mapped_column(JSONType(), nullable=True, default=dict)

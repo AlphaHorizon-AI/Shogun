@@ -2359,15 +2359,18 @@ BEHAVIOUR:
                             GateDecision,
                             RiskLevel,
                             check_tool_access,
+                            get_toolgate_scope,
                         )
-                        _tg_tier = _posture_filter.get("active_tier", "tactical")
+                        _tg_scope_context = get_toolgate_scope(_posture_filter)
+                        _tg_tier = _tg_scope_context["base_tier"]
                         _tg_mode = (
                             "ronin_desktop"
-                            if _posture_filter.get("ronin_enabled")
+                            if _tg_tier == "ronin"
                             else "campaign" if _tg_tier == "campaign"
                             else "standard"
                         )
                         _tg_campaign = None
+                        _tg_scope = _tg_scope_context["key"]
                         _tg_preset_key = _posture_filter.get("active_campaign_preset")
                         if _tg_preset_key:
                             from shogun.services.campaign_presets import get_preset as _get_preset
@@ -2399,6 +2402,7 @@ BEHAVIOUR:
                                 tool_name=func_name,
                                 args=args,
                                 campaign_preset=_tg_campaign,
+                                local_scope=_tg_scope,
                             )
 
                         if (
@@ -2757,15 +2761,18 @@ BEHAVIOUR:
                                 GateDecision,
                                 RiskLevel,
                                 check_tool_access,
+                                get_toolgate_scope,
                             )
-                            _tg_tier = _posture_filter.get("active_tier", "tactical")
+                            _tg_scope_context = get_toolgate_scope(_posture_filter)
+                            _tg_tier = _tg_scope_context["base_tier"]
                             _tg_mode = (
                                 "ronin_desktop"
-                                if _posture_filter.get("ronin_enabled")
+                                if _tg_tier == "ronin"
                                 else "campaign" if _tg_tier == "campaign"
                                 else "standard"
                             )
                             _tg_campaign = None
+                            _tg_scope = _tg_scope_context["key"]
                             _tg_preset_key = _posture_filter.get("active_campaign_preset")
                             if _tg_preset_key:
                                 from shogun.services.campaign_presets import get_preset as _get_preset
@@ -2795,6 +2802,7 @@ BEHAVIOUR:
                                     tool_name=func_name,
                                     args=args,
                                     campaign_preset=_tg_campaign,
+                                    local_scope=_tg_scope,
                                 )
 
                             if (

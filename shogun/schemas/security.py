@@ -65,6 +65,7 @@ class PolicyPermissions(ShogunBase):
     subagents: SubagentPermissions = Field(default_factory=SubagentPermissions)
     memory: MemoryPermissions = Field(default_factory=MemoryPermissions)
     comms: CommsPermissions = Field(default_factory=CommsPermissions)
+    mado_browser: dict[str, Any] = Field(default_factory=dict)
     agentflow: dict[str, Any] = Field(default_factory=dict)
     flow_stack: dict[str, Any] = Field(default_factory=dict)
     visual_intake: dict[str, Any] = Field(default_factory=dict)
@@ -137,6 +138,7 @@ class SecurityPostureResponse(ShogunBase):
     active_policy_id: uuid.UUID | None = None
     active_policy_name: str | None = None
     active_policy_is_builtin: bool | None = None
+    active_policy_tier: SecurityTier | None = None
     filesystem_mode: str
     network_mode: str
     shell_enabled: bool

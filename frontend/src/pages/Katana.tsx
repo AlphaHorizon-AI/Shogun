@@ -49,6 +49,7 @@ import {
   Users,
 } from "lucide-react";
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
 import { MicrosoftTeamsAdapterTab } from './katana/MicrosoftTeamsAdapterTab';
@@ -290,6 +291,7 @@ const riskColor = (r: RiskLevelVal) => {
 };
 
 export function Katana() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('providers');
 
   useEffect(() => {
@@ -1373,6 +1375,14 @@ export function Katana() {
           </h2>
           <p className="text-shogun-subdued text-sm mt-1">{t('katana.subtitle', 'Manage the cutting-edge models and tools that empower your agents.')}</p>
         </div>
+        <button
+          type="button"
+          onClick={() => navigate('/toolgate')}
+          className="flex items-center gap-2 self-start rounded-lg border border-orange-400/25 bg-orange-500/[0.07] px-3 py-2.5 text-xs font-bold text-orange-300 transition-colors hover:bg-orange-500/15"
+        >
+          <Shield className="h-4 w-4" />
+          Configure runtime rules in ToolGate
+        </button>
       </div>
 
       {/* ── Status toast ───────────────────────────────────────── */}
@@ -3793,10 +3803,10 @@ export function Katana() {
                   <div className="shogun-card space-y-4">
                     <h4 className="text-sm font-bold text-shogun-text flex items-center gap-2">
                       <ShieldCheck className="w-4 h-4 text-shogun-gold" />
-                      {t('katana.permissions_toggles', 'Access Permissions')}
+                      {t('katana.permissions_toggles', 'Account Scopes')}
                     </h4>
                     <p className="text-[10px] text-shogun-subdued leading-relaxed">
-                      {t('katana.permissions_help', 'Control what permissions your Shogun assistant has. Enforced both client-side and server-side.')}
+                      {t('katana.permissions_help', 'Choose which operations this connected account exposes. ToolGate remains the runtime authority and may further restrict or require confirmation for every action.')}
                     </p>
 
                     <div className="space-y-3 pt-2">
@@ -3828,6 +3838,12 @@ export function Katana() {
                     >
                       {mailSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                       {t('katana.save_permissions', 'Save Permissions')}
+                    </button>
+                    <button
+                      onClick={() => navigate('/toolgate')}
+                      className="w-full rounded-lg border border-shogun-border py-2.5 text-xs font-bold text-shogun-blue transition-colors hover:border-shogun-blue/40 hover:bg-shogun-blue/10"
+                    >
+                      View effective rules in ToolGate
                     </button>
                   </div>
                 )}

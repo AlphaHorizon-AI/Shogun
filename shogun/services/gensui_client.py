@@ -65,16 +65,19 @@ class GensuiClient:
             log.warning("[GensuiClient] Failed to load cache: %s", e)
 
     def _apply_toolgate_overrides(self) -> None:
-        """Apply overrides from the effective posture, including cached offline policy."""
+        """Apply ToolGate policy from the effective posture, including cached policy."""
         overrides = (self._effective_posture or {}).get("tool_overrides")
-        if not isinstance(overrides, dict):
-            return
+        advanced = (self._effective_posture or {}).get("advanced_controls")
         try:
-            from shogun.services.tool_gate import apply_gensui_overrides
+            from shogun.services.tool_gate import (
+                apply_gensui_advanced_controls,
+                apply_gensui_overrides,
+            )
 
-            apply_gensui_overrides(overrides)
+            apply_gensui_overrides(overrides if isinstance(overrides, dict) else {})
+            apply_gensui_advanced_controls(advanced if isinstance(advanced, dict) else {})
         except Exception as e:
-            log.warning("[GensuiClient] Failed to apply tool overrides: %s", e)
+            log.warning("[GensuiClient] Failed to apply ToolGate policy: %s", e)
 
     def _save_cache(self):
         """Save membership state to disk."""

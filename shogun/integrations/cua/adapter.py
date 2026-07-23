@@ -56,7 +56,12 @@ class CUAMCPAdapter:
         safe_args = normalize_arguments(shogun_tool, arguments or {})
         self._validate_boundary(safe_args)
         mode = "ronin_desktop" if self.posture == "ronin" else "standard"
-        decision = await check_tool_access(mode, "mcp_call_tool", {"tool_name": remote_tool, **safe_args})
+        decision = await check_tool_access(
+            mode,
+            "mcp_call_tool",
+            {"tool_name": remote_tool, **safe_args},
+            local_scope=f"tier:{self.posture}",
+        )
         if decision.action == GateAction.BLOCK:
             raise PermissionError(decision.reason)
         started = time.monotonic()

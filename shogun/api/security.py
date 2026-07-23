@@ -303,6 +303,9 @@ async def _get_agent_posture() -> dict:
                         "active_policy_id": policy.id,
                         "active_policy_name": policy.name,
                         "active_policy_is_builtin": policy.is_builtin,
+                        "active_policy_tier": policy.tier,
+                        "active_policy_permissions": getattr(policy, "permissions", None) or {},
+                        "active_custom_permissions": bushido.get("custom_permissions"),
                     }
                 )
         return posture
@@ -634,6 +637,15 @@ class ToolGateOverridesRequest(BaseModel):
     overrides: dict[str, str]
 
 
+class ToolGateCapabilitiesRequest(BaseModel):
+    permissions: dict
+
+
+class ToolGateAdvancedRequest(BaseModel):
+    enabled: bool = False
+    rules: list[dict] = []
+
+
 class ToolGateSimulateRequest(BaseModel):
     tool_name: str
     args: dict = {}
@@ -669,17 +681,20 @@ def _toolgate_authority() -> dict:
         }
 
 
-async def _active_toolgate_context() -> tuple[dict, dict | None, str]:
+async def _active_toolgate_context() -> tuple[dict, dict | None, str, dict]:
+    from shogun.services.tool_gate import get_toolgate_scope
+
     posture = await _get_agent_posture()
+    scope = get_toolgate_scope(posture)
     preset = None
     preset_key = posture.get("active_campaign_preset")
     if preset_key:
         from shogun.services.campaign_presets import get_preset
 
         preset = get_preset(preset_key)
-    tier = posture.get("active_tier", "tactical")
+    tier = scope["base_tier"]
     mode = "campaign" if tier == "campaign" else "ronin_desktop" if tier == "ronin" else "standard"
-    return posture, preset, mode
+    return posture, preset, mode, scope
 
 
 @router.get("/toolgate", response_model=ApiResponse)
@@ -688,23 +703,43 @@ async def get_toolgate_control():
     from shogun.services.tool_gate import (
         MODE_THRESHOLDS,
         TOOL_RISK_REGISTRY,
+        calculate_capability_risk,
         check_tool_access,
+        get_gensui_advanced_controls,
         get_gensui_overrides,
+        get_local_advanced_controls,
         get_local_overrides,
         resolve_explicit_overrides,
     )
     from shogun.services.toolgate_confirm import list_pending_confirmations
 
-    posture, preset, mode = await _active_toolgate_context()
-    local_overrides = get_local_overrides()
+    posture, preset, mode, scope = await _active_toolgate_context()
+    local_overrides = get_local_overrides(scope["key"])
     gensui_overrides = get_gensui_overrides()
+    authority = _toolgate_authority()
+    advanced_controls = (
+        get_gensui_advanced_controls()
+        if authority["mode"] == "gensui"
+        else get_local_advanced_controls(scope["key"])
+    )
+    effective_permissions = (
+        posture.get("active_custom_permissions")
+        or posture.get("active_policy_permissions")
+        or {}
+    )
     tools = []
     for tool_name, metadata in sorted(
         TOOL_RISK_REGISTRY.items(),
         key=lambda item: (item[1]["category"], item[0]),
     ):
-        decision = await check_tool_access(mode, tool_name, {}, campaign_preset=preset)
-        _, _, layers = resolve_explicit_overrides(tool_name, preset)
+        decision = await check_tool_access(
+            mode,
+            tool_name,
+            {},
+            campaign_preset=preset,
+            local_scope=scope["key"],
+        )
+        _, _, layers = resolve_explicit_overrides(tool_name, preset, scope["key"])
         tools.append(
             {
                 "name": tool_name,
@@ -721,11 +756,32 @@ async def get_toolgate_control():
 
     return ApiResponse(
         data={
-            "authority": _toolgate_authority(),
-            "active_tier": posture.get("active_tier", "tactical"),
+            "authority": authority,
+            "active_tier": scope["base_tier"],
+            "scope": scope,
+            "capabilities": {
+                "permissions": effective_permissions,
+                "risk_score": calculate_capability_risk(effective_permissions),
+                "editable": bool(
+                    _toolgate_authority()["editable"]
+                    and scope["kind"] == "custom_policy"
+                ),
+                "source": (
+                    "agent_override"
+                    if posture.get("active_custom_permissions")
+                    else "custom_policy"
+                    if scope["kind"] == "custom_policy"
+                    else "builtin_tier"
+                ),
+            },
             "active_campaign_preset": posture.get("active_campaign_preset"),
             "mode": mode,
             "local_overrides": local_overrides,
+            "advanced_controls": {
+                **advanced_controls,
+                "editable": bool(authority["editable"]),
+                "source": "gensui" if authority["mode"] == "gensui" else "local",
+            },
             "tools": tools,
             "pending_confirmations": list_pending_confirmations(),
         }
@@ -744,8 +800,10 @@ async def update_toolgate_overrides(body: ToolGateOverridesRequest):
 
     from shogun.services.tool_gate import get_local_overrides, set_local_overrides
 
+    _, _, _, scope = await _active_toolgate_context()
+
     try:
-        set_local_overrides(body.overrides)
+        set_local_overrides(body.overrides, scope["key"])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -757,11 +815,119 @@ async def update_toolgate_overrides(body: ToolGateOverridesRequest):
             f"Standalone ToolGate overrides updated ({len(body.overrides)} rules)",
             policy_ref="toolgate:local",
             policy_decision="updated",
-            detail={"overrides": body.overrides},
+            detail={"scope": scope, "overrides": body.overrides},
         )
     except Exception:
         pass
-    return ApiResponse(data={"overrides": get_local_overrides()})
+    return ApiResponse(data={"scope": scope, "overrides": get_local_overrides(scope["key"])})
+
+
+@router.put("/toolgate/advanced", response_model=ApiResponse)
+async def update_toolgate_advanced_controls(body: ToolGateAdvancedRequest):
+    """Replace advanced content rules for the active standalone policy scope."""
+    authority = _toolgate_authority()
+    if not authority["editable"]:
+        raise HTTPException(
+            status_code=423,
+            detail="ToolGate is managed by Gensui. Edit advanced controls in Gensui.",
+        )
+
+    from shogun.services.tool_gate import (
+        get_local_advanced_controls,
+        set_local_advanced_controls,
+    )
+
+    _, _, _, scope = await _active_toolgate_context()
+    config = {"enabled": body.enabled, "rules": body.rules}
+    try:
+        set_local_advanced_controls(config, scope["key"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    saved = get_local_advanced_controls(scope["key"])
+    try:
+        from shogun.services.event_logger import EventLogger
+
+        await EventLogger.emit_policy_event(
+            "policy.toolgate_advanced_updated",
+            f"Advanced ToolGate controls updated ({len(saved['rules'])} rules)",
+            policy_ref=scope["key"],
+            policy_decision="updated",
+            detail={"scope": scope, "enabled": saved["enabled"], "rule_count": len(saved["rules"])},
+        )
+    except Exception:
+        pass
+    return ApiResponse(data={"scope": scope, "advanced_controls": saved})
+
+
+@router.put("/toolgate/capabilities", response_model=ApiResponse)
+async def update_toolgate_capabilities(body: ToolGateCapabilitiesRequest):
+    """Update capability boundaries on the assigned custom policy."""
+    authority = _toolgate_authority()
+    if not authority["editable"]:
+        raise HTTPException(
+            status_code=423,
+            detail="ToolGate is managed by Gensui. Edit capabilities in Gensui.",
+        )
+
+    posture, _, _, scope = await _active_toolgate_context()
+    if scope["kind"] != "custom_policy" or not posture.get("active_policy_id"):
+        raise HTTPException(
+            status_code=403,
+            detail="Built-in tiers are protected presets. Create or assign a custom policy in Torii first.",
+        )
+
+    from sqlalchemy import select
+
+    from shogun.db.engine import async_session_factory
+    from shogun.db.models.agent import Agent
+    from shogun.db.models.security_policy import SecurityPolicy
+    from shogun.schemas.security import PolicyPermissions
+    from shogun.services.tool_gate import calculate_capability_risk
+
+    permissions = PolicyPermissions.model_validate(body.permissions).model_dump()
+    async with async_session_factory() as db:
+        policy = await db.get(SecurityPolicy, posture["active_policy_id"])
+        if not policy or policy.is_builtin:
+            raise HTTPException(status_code=403, detail="Only custom policies can be edited in ToolGate.")
+        policy.permissions = permissions
+
+        result = await db.execute(
+            select(Agent)
+            .where(
+                Agent.agent_type == "shogun",
+                Agent.is_primary.is_(True),
+                Agent.is_deleted.is_(False),
+            )
+            .limit(1)
+        )
+        agent = result.scalar_one_or_none()
+        if agent and agent.bushido_settings:
+            bushido = dict(agent.bushido_settings)
+            bushido.pop("custom_permissions", None)
+            agent.bushido_settings = bushido
+        await db.commit()
+
+    try:
+        from shogun.services.event_logger import EventLogger
+
+        await EventLogger.emit_policy_event(
+            "policy.capabilities_updated",
+            f"ToolGate capability boundaries updated for {scope['label']}",
+            policy_ref=scope["key"],
+            policy_decision="updated",
+            detail={"risk_score": calculate_capability_risk(permissions)},
+        )
+    except Exception:
+        pass
+
+    return ApiResponse(
+        data={
+            "scope": scope,
+            "permissions": permissions,
+            "risk_score": calculate_capability_risk(permissions),
+        }
+    )
 
 
 @router.post("/toolgate/simulate", response_model=ApiResponse)
@@ -771,9 +937,15 @@ async def simulate_toolgate_call(body: ToolGateSimulateRequest):
 
     if body.tool_name not in TOOL_RISK_REGISTRY:
         raise HTTPException(status_code=404, detail=f"Unknown ToolGate tool '{body.tool_name}'")
-    _, preset, default_mode = await _active_toolgate_context()
+    _, preset, default_mode, scope = await _active_toolgate_context()
     mode = body.mode or default_mode
-    decision = await check_tool_access(mode, body.tool_name, body.args, campaign_preset=preset)
+    decision = await check_tool_access(
+        mode,
+        body.tool_name,
+        body.args,
+        campaign_preset=preset,
+        local_scope=scope["key"],
+    )
     return ApiResponse(
         data={
             "tool_name": decision.tool_name,

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,6 +37,13 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE security_postures ADD COLUMN tool_overrides_json TEXT"
             ))
             log.info("Migration: added tool_overrides_json column to security_postures")
+        except Exception:
+            pass  # Column already exists
+        try:
+            await conn.execute(sa_text(
+                "ALTER TABLE security_postures ADD COLUMN advanced_toolgate_json TEXT"
+            ))
+            log.info("Migration: added advanced_toolgate_json column to security_postures")
         except Exception:
             pass  # Column already exists
 

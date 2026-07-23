@@ -20,6 +20,7 @@ import {
   GripVertical,
   Crosshair,
   AppWindow,
+  ShieldCheck,
 } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -366,8 +367,10 @@ export const ShogunProfile = () => {
     const params = new URLSearchParams(location.search);
     if (params.get('tab') === 'operations') {
       setActiveTab('operations');
+    } else if (params.get('tab') === 'permissions') {
+      navigate('/toolgate', { replace: true });
     }
-  }, [location.search]);
+  }, [location.search, navigate]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -683,7 +686,7 @@ export const ShogunProfile = () => {
 
       {/* Tabs */}
       <div className="flex border-b border-shogun-border">
-        {(['general', 'behavior', 'permissions', 'operations'] as TabType[]).map((tab) => (
+        {(['general', 'behavior', 'operations'] as TabType[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -876,6 +879,29 @@ export const ShogunProfile = () => {
                     </select>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="shogun-card md:col-span-2">
+              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 text-shogun-gold" />
+                  <div>
+                    <h3 className="text-sm font-bold text-shogun-text">Security is owned by ToolGate</h3>
+                    <p className="mt-1 text-xs text-shogun-subdued">
+                      {selectedPolicy?.name || 'No policy assigned'} · {selectedPolicyTier ? selectedPolicyTier.toUpperCase() : 'UNKNOWN'} base tier · Capability risk {riskScore}/100
+                    </p>
+                    <p className="mt-1 text-[10px] leading-relaxed text-shogun-subdued">
+                      Torii selects the policy. ToolGate configures capability boundaries, runtime Allow/Confirm/Block rules, approvals, and risk.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate('/toolgate')}
+                  className="rounded-lg border border-shogun-gold/30 bg-shogun-gold/10 px-4 py-2.5 text-xs font-bold text-shogun-gold hover:bg-shogun-gold/20"
+                >
+                  Open ToolGate
+                </button>
               </div>
             </div>
           </div>

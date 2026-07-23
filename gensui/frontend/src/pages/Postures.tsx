@@ -171,7 +171,6 @@ export default function Postures() {
   const countAllowed = (p: Posture) => PERM_KEYS.filter(pk => p[pk.key]).length;
   const countBlocked = (p: Posture) => PERM_KEYS.filter(pk => !p[pk.key]).length;
 
-  // Tool names not already in overrides
   const availableTools = TOOL_NAMES.filter(t => !form.tool_overrides_json[t]);
 
   return (
@@ -308,8 +307,15 @@ export default function Postures() {
                 />
               </div>
 
+              <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.05] p-4">
+                <p className="text-xs font-bold text-cyan-200">Runtime permissions belong to ToolGate</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-gensui-500">
+                  Save the posture identity here, then configure capability boundaries and per-tool verdicts from the central ToolGate page.
+                </p>
+              </div>
+
               {/* Permission Toggles */}
-              <div>
+              <div className="hidden">
                 <label className="text-xs text-gensui-400 block mb-3 uppercase tracking-widest font-bold">Permission Flags</label>
                 <div className="grid grid-cols-2 gap-2">
                   {PERM_KEYS.map(pk => (
@@ -333,7 +339,7 @@ export default function Postures() {
               </div>
 
               {/* Tool Overrides */}
-              <div>
+              <div className="hidden">
                 <button
                   onClick={() => setShowOverrides(!showOverrides)}
                   className="flex items-center gap-2 text-xs text-gensui-400 hover:text-gensui-200 transition-colors uppercase tracking-widest font-bold"

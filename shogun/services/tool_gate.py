@@ -29,31 +29,136 @@ log = logging.getLogger("shogun.tool_gate")
 # Populated by GensuiClient._sync_policy() when connected to a Gensui server.
 # Format: {"tool_name": "allow" | "confirm" | "block"}
 _gensui_overrides: dict[str, str] = {}
+_gensui_advanced_controls: dict[str, Any] = {"enabled": False, "rules": []}
 _LOCAL_OVERRIDES_PATH = Path("data/toolgate_overrides.json")
+_DEFAULT_LOCAL_SCOPE = "global"
+_ADVANCED_ACTIONS = {"confirm", "block"}
+_ADVANCED_MATCH_TYPES = {"contains", "word"}
 
 
-def _load_local_overrides() -> dict[str, str]:
+def normalize_advanced_controls(config: dict[str, Any] | None) -> dict[str, Any]:
+    """Validate and normalize a monotonic advanced content-rule configuration."""
+    if not config:
+        return {"enabled": False, "rules": []}
+    if not isinstance(config, dict):
+        raise ValueError("Advanced ToolGate controls must be an object.")
+
+    rules = config.get("rules", [])
+    if not isinstance(rules, list):
+        raise ValueError("Advanced ToolGate rules must be a list.")
+    if len(rules) > 100:
+        raise ValueError("Advanced ToolGate supports at most 100 rules per policy.")
+
+    normalized_rules: list[dict[str, Any]] = []
+    for index, rule in enumerate(rules):
+        if not isinstance(rule, dict):
+            raise ValueError(f"Advanced ToolGate rule {index + 1} must be an object.")
+        pattern = str(rule.get("pattern", "")).strip()
+        if not pattern or len(pattern) > 200:
+            raise ValueError(f"Advanced ToolGate rule {index + 1} needs a 1-200 character pattern.")
+        action = str(rule.get("action", "confirm")).lower()
+        if action not in _ADVANCED_ACTIONS:
+            raise ValueError("Advanced ToolGate rules may only confirm or block.")
+        match_type = str(rule.get("match_type", "contains")).lower()
+        if match_type not in _ADVANCED_MATCH_TYPES:
+            raise ValueError("Advanced ToolGate match type must be 'contains' or 'word'.")
+        tools = rule.get("tools", [])
+        if not isinstance(tools, list) or len(tools) > 50:
+            raise ValueError("Advanced ToolGate rule tools must be a list of at most 50 names.")
+        tool_names = sorted({str(tool).strip() for tool in tools if str(tool).strip()})
+        normalized_rules.append(
+            {
+                "id": str(rule.get("id") or f"rule-{index + 1}")[:80],
+                "label": str(rule.get("label") or pattern)[:120],
+                "pattern": pattern,
+                "match_type": match_type,
+                "action": action,
+                "tools": tool_names,
+                "case_sensitive": bool(rule.get("case_sensitive", False)),
+                "enabled": bool(rule.get("enabled", True)),
+            }
+        )
+    return {"enabled": bool(config.get("enabled", False)), "rules": normalized_rules}
+
+
+def _load_local_overrides() -> dict[str, dict[str, str]]:
     try:
         if not _LOCAL_OVERRIDES_PATH.exists():
             return {}
         payload = json.loads(_LOCAL_OVERRIDES_PATH.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             return {}
+        scopes = payload.get("scopes")
+        if isinstance(scopes, dict):
+            return {
+                str(scope): {
+                    str(tool): str(action)
+                    for tool, action in overrides.items()
+                    if action in {"allow", "confirm", "block"}
+                }
+                for scope, overrides in scopes.items()
+                if isinstance(overrides, dict)
+            }
+
+        # v1 stored one global map. Keep it available to legacy callers, but
+        # new UI/runtime paths always use an explicit tier or policy scope.
         return {
-            str(tool): str(action)
-            for tool, action in payload.items()
-            if action in {"allow", "confirm", "block"}
+            _DEFAULT_LOCAL_SCOPE: {
+                str(tool): str(action)
+                for tool, action in payload.items()
+                if action in {"allow", "confirm", "block"}
+            }
         }
     except Exception as exc:
         log.warning("[ToolGate] Failed to load local overrides: %s", exc)
         return {}
 
 
-_local_overrides: dict[str, str] = _load_local_overrides()
+_local_override_scopes: dict[str, dict[str, str]] = _load_local_overrides()
 
 
-def set_local_overrides(overrides: dict[str, str]) -> None:
-    """Persist standalone ToolGate overrides configured in Tenshu."""
+def _load_local_advanced_controls() -> dict[str, dict[str, Any]]:
+    try:
+        if not _LOCAL_OVERRIDES_PATH.exists():
+            return {}
+        payload = json.loads(_LOCAL_OVERRIDES_PATH.read_text(encoding="utf-8"))
+        scopes = payload.get("advanced_scopes", {}) if isinstance(payload, dict) else {}
+        if not isinstance(scopes, dict):
+            return {}
+        result = {}
+        for scope, config in scopes.items():
+            try:
+                result[str(scope)] = normalize_advanced_controls(config)
+            except ValueError as exc:
+                log.warning("[ToolGate] Ignoring invalid advanced controls for %s: %s", scope, exc)
+        return result
+    except Exception as exc:
+        log.warning("[ToolGate] Failed to load advanced controls: %s", exc)
+        return {}
+
+
+_local_advanced_scopes: dict[str, dict[str, Any]] = _load_local_advanced_controls()
+
+
+def _persist_local_policy() -> None:
+    _LOCAL_OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = _LOCAL_OVERRIDES_PATH.with_suffix(".tmp")
+    temp_path.write_text(
+        json.dumps(
+            {
+                "version": 3,
+                "scopes": _local_override_scopes,
+                "advanced_scopes": _local_advanced_scopes,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    temp_path.replace(_LOCAL_OVERRIDES_PATH)
+
+
+def set_local_overrides(overrides: dict[str, str], scope: str = _DEFAULT_LOCAL_SCOPE) -> None:
+    """Persist standalone ToolGate overrides for one effective tier/policy."""
     invalid = {
         tool: action
         for tool, action in overrides.items()
@@ -62,17 +167,102 @@ def set_local_overrides(overrides: dict[str, str]) -> None:
     if invalid:
         raise ValueError(f"Invalid ToolGate overrides: {invalid}")
 
-    global _local_overrides
-    _local_overrides = dict(sorted(overrides.items()))
-    _LOCAL_OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = _LOCAL_OVERRIDES_PATH.with_suffix(".tmp")
-    temp_path.write_text(json.dumps(_local_overrides, indent=2), encoding="utf-8")
-    temp_path.replace(_LOCAL_OVERRIDES_PATH)
+    global _local_override_scopes
+    next_scopes = {key: dict(value) for key, value in _local_override_scopes.items()}
+    if overrides:
+        next_scopes[scope] = dict(sorted(overrides.items()))
+    else:
+        next_scopes.pop(scope, None)
+    _local_override_scopes = next_scopes
+    _persist_local_policy()
 
 
-def get_local_overrides() -> dict[str, str]:
-    """Return locally configured standalone overrides."""
-    return dict(_local_overrides)
+def get_local_overrides(scope: str = _DEFAULT_LOCAL_SCOPE) -> dict[str, str]:
+    """Return locally configured overrides for one effective tier/policy."""
+    return dict(_local_override_scopes.get(scope, {}))
+
+
+def set_local_advanced_controls(
+    config: dict[str, Any],
+    scope: str = _DEFAULT_LOCAL_SCOPE,
+) -> None:
+    """Persist advanced content rules for one effective tier/policy."""
+    normalized = normalize_advanced_controls(config)
+    global _local_advanced_scopes
+    next_scopes = {key: dict(value) for key, value in _local_advanced_scopes.items()}
+    if normalized["enabled"] or normalized["rules"]:
+        next_scopes[scope] = normalized
+    else:
+        next_scopes.pop(scope, None)
+    _local_advanced_scopes = next_scopes
+    _persist_local_policy()
+
+
+def get_local_advanced_controls(scope: str = _DEFAULT_LOCAL_SCOPE) -> dict[str, Any]:
+    """Return advanced content rules for one effective tier/policy."""
+    config = _local_advanced_scopes.get(scope)
+    return normalize_advanced_controls(config)
+
+
+def get_toolgate_scope(posture: dict[str, Any]) -> dict[str, str | None]:
+    """Return the stable ToolGate scope for the effective Torii policy."""
+    policy_id = posture.get("active_policy_id")
+    is_builtin = posture.get("active_policy_is_builtin")
+    base_tier = str(posture.get("active_policy_tier") or posture.get("active_tier") or "tactical")
+    policy_name = posture.get("active_policy_name")
+
+    if policy_id and is_builtin is False:
+        return {
+            "key": f"policy:{policy_id}",
+            "kind": "custom_policy",
+            "label": str(policy_name or "Custom policy"),
+            "base_tier": base_tier,
+            "policy_id": str(policy_id),
+        }
+    return {
+        "key": f"tier:{base_tier}",
+        "kind": "tier",
+        "label": base_tier.upper(),
+        "base_tier": base_tier,
+        "policy_id": str(policy_id) if policy_id else None,
+    }
+
+
+def calculate_capability_risk(permissions: dict[str, Any] | None) -> int:
+    """Calculate a stable 0-100 exposure score for capability boundaries."""
+    if not permissions:
+        return 0
+
+    score = 0
+
+    def add(category: str, key: str, risky_values: set[Any], weight: int) -> None:
+        nonlocal score
+        value = permissions.get(category, {}).get(key)
+        if value in risky_values:
+            score += weight
+
+    add("filesystem", "mode", {"full"}, 15)
+    add("filesystem", "allow_home_access", {True}, 10)
+    add("filesystem", "allow_arbitrary_paths", {True}, 15)
+    add("network", "mode", {"full"}, 15)
+    add("network", "allow_arbitrary_requests", {True}, 10)
+    add("shell", "enabled", {True}, 15)
+    add("skills", "allow_auto_install", {True}, 5)
+    add("skills", "allow_untrusted", {True}, 10)
+    add("subagents", "allow_spawn", {True}, 5)
+    add("subagents", "allow_auto_spawn", {True}, 10)
+    add("memory", "allow_bulk_delete", {True}, 10)
+    for category in ("agentflow", "flow_stack"):
+        add(category, "allow_create", {True}, 5)
+        add(category, "allow_activate", {True}, 5)
+        add(category, "allow_execute", {True}, 10 if category == "flow_stack" else 5)
+        add(category, "allow_delete", {True}, 5)
+
+    add("filesystem", "mode", {"scoped", "disabled"}, -5)
+    add("network", "mode", {"disabled"}, -10)
+    add("shell", "enabled", {False}, -5)
+    add("skills", "require_approval", {True}, -5)
+    return max(0, min(100, score))
 
 
 def apply_gensui_overrides(overrides: dict[str, str]) -> None:
@@ -90,6 +280,22 @@ def apply_gensui_overrides(overrides: dict[str, str]) -> None:
 def get_gensui_overrides() -> dict[str, str]:
     """Return current Gensui overrides (for diagnostics/API)."""
     return dict(_gensui_overrides)
+
+
+def apply_gensui_advanced_controls(config: dict[str, Any] | None) -> None:
+    """Apply centrally managed advanced content rules, including cached policy."""
+    global _gensui_advanced_controls
+    _gensui_advanced_controls = normalize_advanced_controls(config)
+    if _gensui_advanced_controls["enabled"]:
+        log.info(
+            "[ToolGate] Applied %d Gensui advanced content rules",
+            len(_gensui_advanced_controls["rules"]),
+        )
+
+
+def get_gensui_advanced_controls() -> dict[str, Any]:
+    """Return centrally managed advanced controls for diagnostics/API."""
+    return normalize_advanced_controls(_gensui_advanced_controls)
 
 
 # ── Risk Levels ──────────────────────────────────────────────────────
@@ -365,6 +571,75 @@ def check_dangerous_parameters(tool_name: str, args: dict[str, Any]) -> list[str
     return flags
 
 
+def _iter_argument_strings(value: Any, path: str = "$"):
+    """Yield string arguments and their JSON-like paths without exposing values."""
+    if isinstance(value, str):
+        yield path, value
+    elif isinstance(value, dict):
+        for key, nested in value.items():
+            yield from _iter_argument_strings(nested, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, nested in enumerate(value):
+            yield from _iter_argument_strings(nested, f"{path}[{index}]")
+
+
+def _advanced_rule_matches(rule: dict[str, Any], text: str) -> bool:
+    pattern = rule["pattern"]
+    candidate = text
+    flags = 0 if rule.get("case_sensitive") else re.IGNORECASE
+    if rule["match_type"] == "word":
+        return re.search(rf"(?<!\w){re.escape(pattern)}(?!\w)", candidate, flags) is not None
+    if flags:
+        return pattern.casefold() in candidate.casefold()
+    return pattern in candidate
+
+
+def evaluate_advanced_controls(
+    tool_name: str,
+    args: dict[str, Any],
+    local_scope: str = _DEFAULT_LOCAL_SCOPE,
+) -> tuple[GateAction | None, str | None, list[str]]:
+    """Evaluate local and Gensui content rules and return the strictest match."""
+    candidates: list[tuple[str, dict[str, Any], str]] = []
+    configurations = (
+        ("local", get_local_advanced_controls(local_scope)),
+        ("gensui", get_gensui_advanced_controls()),
+    )
+    argument_strings = list(_iter_argument_strings(args))
+    for source, config in configurations:
+        if not config["enabled"]:
+            continue
+        for rule in config["rules"]:
+            if not rule["enabled"]:
+                continue
+            tools = rule.get("tools", [])
+            if tools and tool_name not in tools:
+                continue
+            for path, text in argument_strings:
+                if _advanced_rule_matches(rule, text):
+                    candidates.append((source, rule, path))
+                    break
+
+    if not candidates:
+        return None, None, []
+
+    action = max(
+        (GateAction(rule["action"]) for _, rule, _ in candidates),
+        key=_ACTION_RESTRICTIVENESS.get,
+    )
+    matched = [
+        (source, rule, path)
+        for source, rule, path in candidates
+        if GateAction(rule["action"]) == action
+    ]
+    labels = ", ".join(f"{source}:{rule['label']}" for source, rule, _ in matched)
+    flags = [
+        f"advanced_rule:{source}:{rule['id']}:{path}"
+        for source, rule, path in candidates
+    ]
+    return action, f"Advanced content rule matched ({labels}): {action.value}", flags
+
+
 # ── Campaign Preset Override Resolution ──────────────────────────────
 
 def _resolve_campaign_override(
@@ -397,11 +672,12 @@ _ACTION_RESTRICTIVENESS = {
 def resolve_explicit_overrides(
     tool_name: str,
     campaign_preset: dict | None = None,
+    local_scope: str = _DEFAULT_LOCAL_SCOPE,
 ) -> tuple[GateAction | None, str | None, dict[str, str | None]]:
     """Merge explicit policy layers without allowing a weaker layer to relax a stricter one."""
     candidates: list[tuple[str, GateAction]] = []
     campaign_action = _resolve_campaign_override(tool_name, campaign_preset)
-    local_action_str = _local_overrides.get(tool_name)
+    local_action_str = get_local_overrides(local_scope).get(tool_name)
     gensui_action_str = _gensui_overrides.get(tool_name)
 
     if campaign_action is not None:
@@ -438,14 +714,15 @@ async def check_tool_access(
     tool_name: str,
     args: dict[str, Any],
     campaign_preset: dict | None = None,
+    local_scope: str = _DEFAULT_LOCAL_SCOPE,
 ) -> GateDecision:
     """Unified ToolGate check — decides allow/confirm/block for a tool call.
 
     Evaluation order:
     1. Campaign preset override (if active) — highest priority
     2. Parameter-aware destructive checks — can escalate to block/confirm
-    3. Static override rules (future: credential entry, payments)
-    4. Mode × risk threshold matrix — default fallthrough
+    3. Advanced policy-scoped content rules
+    4. Explicit tool override or mode × risk threshold
 
     Args:
         mode: Operating mode ("standard", "ronin_browser", "ronin_desktop")
@@ -459,7 +736,11 @@ async def check_tool_access(
     risk = get_tool_risk(tool_name)
 
     # ── 1. Campaign preset override ──
-    explicit_action, explicit_reason, _ = resolve_explicit_overrides(tool_name, campaign_preset)
+    explicit_action, explicit_reason, _ = resolve_explicit_overrides(
+        tool_name,
+        campaign_preset,
+        local_scope,
+    )
     if explicit_action == GateAction.BLOCK:
         return GateDecision(
             action=GateAction.BLOCK,
@@ -518,7 +799,30 @@ async def check_tool_access(
                 parameter_flags=param_flags,
             )
 
-    # ── 3. Static override rules (extensible) ──
+    # ── 3. Policy-scoped advanced content rules ──
+    advanced_action, advanced_reason, advanced_flags = evaluate_advanced_controls(
+        tool_name,
+        args,
+        local_scope,
+    )
+    if advanced_action is not None:
+        param_flags.extend(advanced_flags)
+        if (
+            explicit_action is not None
+            and _ACTION_RESTRICTIVENESS[explicit_action]
+            > _ACTION_RESTRICTIVENESS[advanced_action]
+        ):
+            advanced_action = explicit_action
+            advanced_reason = explicit_reason
+        return GateDecision(
+            action=advanced_action,
+            reason=advanced_reason or f"Advanced content rule: {advanced_action.value}",
+            risk_level=RiskLevel.CRITICAL if advanced_action == GateAction.BLOCK else RiskLevel.HIGH,
+            tool_name=tool_name,
+            parameter_flags=param_flags,
+        )
+
+    # ── 4. Explicit tool override ──
     if explicit_action is not None:
         return GateDecision(
             action=explicit_action,
@@ -528,9 +832,7 @@ async def check_tool_access(
             parameter_flags=param_flags,
         )
 
-    # Reserved for future: payment tools, credential brokering, etc.
-
-    # ── 4. Mode × risk threshold matrix ──
+    # ── 5. Mode × risk threshold matrix ──
     thresholds = MODE_THRESHOLDS.get(mode, MODE_THRESHOLDS["standard"])
     action = thresholds.get(risk.value, GateAction.CONFIRM)
 

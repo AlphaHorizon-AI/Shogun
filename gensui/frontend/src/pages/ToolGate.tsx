@@ -5,14 +5,36 @@ import {
   Filter,
   Loader2,
   LockKeyhole,
+  Plus,
   RefreshCw,
+  Save,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
+  Trash2,
 } from 'lucide-react';
 import api from '../lib/api';
 import { TOOL_NAMES } from '../lib/toolRegistry';
 
 type GateAction = 'allow' | 'confirm' | 'block';
+type AdvancedAction = 'confirm' | 'block';
+type AdvancedMatchType = 'contains' | 'word';
+
+interface AdvancedRule {
+  id: string;
+  label: string;
+  pattern: string;
+  match_type: AdvancedMatchType;
+  action: AdvancedAction;
+  tools: string[];
+  case_sensitive: boolean;
+  enabled: boolean;
+}
+
+interface AdvancedControls {
+  enabled: boolean;
+  rules: AdvancedRule[];
+}
 
 interface Posture {
   id: string;
@@ -21,6 +43,8 @@ interface Posture {
   level: number;
   is_builtin: boolean;
   tool_overrides_json: Record<string, GateAction> | null;
+  advanced_toolgate_json: AdvancedControls | null;
+  [key: string]: any;
 }
 
 const ACTION_STYLES: Record<GateAction, string> = {
@@ -29,6 +53,23 @@ const ACTION_STYLES: Record<GateAction, string> = {
   block: 'border-red-500/30 bg-red-500/10 text-red-300',
 };
 
+const CAPABILITY_KEYS = [
+  { key: 'allow_external_models', label: 'External Models' },
+  { key: 'allow_local_models', label: 'Local Models' },
+  { key: 'allow_tool_execution', label: 'Tool Execution' },
+  { key: 'allow_mado', label: 'Mado Browser' },
+  { key: 'allow_memory_write', label: 'Memory Write' },
+  { key: 'allow_memory_read', label: 'Memory Read' },
+  { key: 'allow_agent_flow', label: 'Agent Flow' },
+  { key: 'allow_nexus', label: 'Nexus' },
+  { key: 'allow_samurai_delegation', label: 'Samurai Delegation' },
+  { key: 'allow_scheduled_triggers', label: 'Scheduled Triggers' },
+  { key: 'allow_autonomous_loops', label: 'Autonomous Loops' },
+  { key: 'allow_external_web', label: 'External Web' },
+  { key: 'allow_file_write', label: 'File Write' },
+  { key: 'allow_external_api', label: 'External API' },
+];
+
 export default function ToolGate() {
   const [postures, setPostures] = useState<Posture[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -36,6 +77,9 @@ export default function ToolGate() {
   const [verdict, setVerdict] = useState('all');
   const [loading, setLoading] = useState(true);
   const [savingTool, setSavingTool] = useState<string | null>(null);
+  const [savingCapability, setSavingCapability] = useState<string | null>(null);
+  const [savingAdvanced, setSavingAdvanced] = useState(false);
+  const [advancedDraft, setAdvancedDraft] = useState<AdvancedControls>({ enabled: false, rules: [] });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const fetchPostures = async (preferredId?: string) => {
@@ -73,6 +117,14 @@ export default function ToolGate() {
     confirm: Object.values(overrides).filter(value => value === 'confirm').length,
     block: Object.values(overrides).filter(value => value === 'block').length,
   }), [overrides]);
+  const enabledCapabilities = selected
+    ? CAPABILITY_KEYS.filter(item => selected[item.key] !== false).length
+    : 0;
+  const capabilityRisk = Math.round((enabledCapabilities / CAPABILITY_KEYS.length) * 100);
+
+  useEffect(() => {
+    setAdvancedDraft(selected?.advanced_toolgate_json || { enabled: false, rules: [] });
+  }, [selectedId, selected?.advanced_toolgate_json]);
 
   const updateOverride = async (tool: string, action: string) => {
     if (!selected) return;
@@ -89,6 +141,63 @@ export default function ToolGate() {
       setMessage({ type: 'error', text: error.response?.data?.detail || 'ToolGate policy could not be saved.' });
     } finally {
       setSavingTool(null);
+    }
+  };
+
+  const updateCapability = async (key: string, enabled: boolean) => {
+    if (!selected) return;
+    setSavingCapability(key);
+    setMessage(null);
+    try {
+      await api.patch(`/postures/${selected.id}`, { [key]: enabled });
+      setMessage({ type: 'success', text: `${selected.name}: capability boundary updated.` });
+      await fetchPostures(selected.id);
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.response?.data?.detail || 'Capability boundary could not be saved.' });
+    } finally {
+      setSavingCapability(null);
+    }
+  };
+
+  const updateAdvancedRule = (id: string, patch: Partial<AdvancedRule>) => {
+    setAdvancedDraft(current => ({
+      ...current,
+      rules: current.rules.map(rule => rule.id === id ? { ...rule, ...patch } : rule),
+    }));
+  };
+
+  const addAdvancedRule = () => {
+    setAdvancedDraft(current => ({
+      ...current,
+      enabled: true,
+      rules: [
+        ...current.rules,
+        {
+          id: `rule-${Date.now()}`,
+          label: '',
+          pattern: '',
+          match_type: 'contains',
+          action: 'confirm',
+          tools: [],
+          case_sensitive: false,
+          enabled: true,
+        },
+      ],
+    }));
+  };
+
+  const saveAdvancedControls = async () => {
+    if (!selected) return;
+    setSavingAdvanced(true);
+    setMessage(null);
+    try {
+      await api.patch(`/postures/${selected.id}`, { advanced_toolgate_json: advancedDraft });
+      setMessage({ type: 'success', text: `${selected.name}: advanced controls updated.` });
+      await fetchPostures(selected.id);
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.response?.data?.detail || 'Advanced controls could not be saved.' });
+    } finally {
+      setSavingAdvanced(false);
     }
   };
 
@@ -166,6 +275,206 @@ export default function ToolGate() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      <div className="glass-card p-5">
+        <div className="mb-5 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+          <div>
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4 text-orange-400" />
+              <h2 className="text-sm font-bold uppercase tracking-widest text-gensui-100">Advanced controls</h2>
+              <span className="rounded border border-orange-500/25 bg-orange-500/10 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-orange-300">
+                Fleet content rules
+              </span>
+            </div>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-gensui-500">
+              Flag words or phrases in tool arguments across every Shogun assigned this posture. Matching calls can require confirmation or be blocked outright.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={!selected}
+            onClick={() => setAdvancedDraft(current => ({ ...current, enabled: !current.enabled }))}
+            className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-50 ${
+              advancedDraft.enabled
+                ? 'border-orange-500/35 bg-orange-500/10 text-orange-200'
+                : 'border-gensui-700/50 bg-gensui-900/50 text-gensui-400'
+            }`}
+          >
+            <span className={`relative h-5 w-10 rounded-full border ${
+              advancedDraft.enabled ? 'border-orange-400/40 bg-orange-500/20' : 'border-gensui-700 bg-gensui-950'
+            }`}>
+              <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${
+                advancedDraft.enabled ? 'left-5 bg-orange-300' : 'left-0.5 bg-gensui-500'
+              }`} />
+            </span>
+            Advanced mode {advancedDraft.enabled ? 'on' : 'off'}
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {advancedDraft.rules.map((rule, index) => (
+            <div key={rule.id} className="rounded-xl border border-gensui-700/40 bg-gensui-900/30 p-4">
+              <div className="grid gap-3 xl:grid-cols-[minmax(150px,0.8fr)_minmax(220px,1.4fr)_130px_130px_minmax(180px,1fr)_auto] xl:items-end">
+                <label className="space-y-1">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gensui-500">Rule label</span>
+                  <input
+                    value={rule.label}
+                    onChange={event => updateAdvancedRule(rule.id, { label: event.target.value })}
+                    placeholder={`Rule ${index + 1}`}
+                    maxLength={120}
+                    className="gensui-input w-full text-xs"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gensui-500">Word or phrase</span>
+                  <input
+                    value={rule.pattern}
+                    onChange={event => updateAdvancedRule(rule.id, { pattern: event.target.value })}
+                    placeholder="e.g. confidential"
+                    maxLength={200}
+                    className="gensui-input w-full font-mono text-xs"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gensui-500">Match</span>
+                  <select
+                    value={rule.match_type}
+                    onChange={event => updateAdvancedRule(rule.id, { match_type: event.target.value as AdvancedMatchType })}
+                    className="gensui-input w-full text-xs"
+                  >
+                    <option value="contains">Contains</option>
+                    <option value="word">Whole word</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gensui-500">Verdict</span>
+                  <select
+                    value={rule.action}
+                    onChange={event => updateAdvancedRule(rule.id, { action: event.target.value as AdvancedAction })}
+                    className={`w-full rounded-lg border px-2 py-2 text-xs font-bold uppercase ${ACTION_STYLES[rule.action]}`}
+                  >
+                    <option value="confirm">Confirm</option>
+                    <option value="block">Block</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gensui-500">Applies to</span>
+                  <select
+                    value={rule.tools[0] || '*'}
+                    onChange={event => updateAdvancedRule(rule.id, { tools: event.target.value === '*' ? [] : [event.target.value] })}
+                    className="gensui-input w-full font-mono text-xs"
+                  >
+                    <option value="*">All tools</option>
+                    {allTools.map(tool => <option key={tool} value={tool}>{tool}</option>)}
+                  </select>
+                </label>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateAdvancedRule(rule.id, { enabled: !rule.enabled })}
+                    className={`rounded border px-2.5 py-2 text-[9px] font-bold uppercase ${
+                      rule.enabled ? 'border-emerald-500/25 text-emerald-300' : 'border-gensui-700 text-gensui-500'
+                    }`}
+                  >
+                    {rule.enabled ? 'Active' : 'Paused'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdvancedDraft(current => ({
+                      ...current,
+                      rules: current.rules.filter(item => item.id !== rule.id),
+                    }))}
+                    className="rounded border border-red-500/20 p-2 text-red-300 hover:bg-red-500/10"
+                    title="Remove rule"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              <label className="mt-3 flex items-center gap-2 text-[10px] text-gensui-500">
+                <input
+                  type="checkbox"
+                  checked={rule.case_sensitive}
+                  onChange={event => updateAdvancedRule(rule.id, { case_sensitive: event.target.checked })}
+                />
+                Case-sensitive match
+              </label>
+            </div>
+          ))}
+          {advancedDraft.rules.length === 0 && (
+            <div className="rounded-xl border border-dashed border-gensui-700/50 p-6 text-center text-xs text-gensui-500">
+              No advanced content rules are defined for this posture.
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-wrap justify-between gap-3">
+          <button
+            type="button"
+            disabled={!selected}
+            onClick={addAdvancedRule}
+            className="flex items-center gap-2 rounded-lg border border-orange-500/25 px-3 py-2 text-xs font-bold text-orange-300 hover:bg-orange-500/10 disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" /> Add content rule
+          </button>
+          <button
+            type="button"
+            disabled={!selected || savingAdvanced || advancedDraft.rules.some(rule => !rule.pattern.trim())}
+            onClick={saveAdvancedControls}
+            className="flex items-center gap-2 rounded-lg bg-orange-400 px-4 py-2.5 text-xs font-bold text-gensui-950 disabled:opacity-50"
+          >
+            {savingAdvanced ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save advanced controls
+          </button>
+        </div>
+      </div>
+
+      <div className="glass-card p-5">
+        <div className="mb-4 flex flex-col justify-between gap-4 md:flex-row md:items-start">
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-widest text-gensui-100">Capability boundaries</h2>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-gensui-500">
+              The centrally distributed capability ceiling for the selected posture. Per-tool verdicts below can only narrow this surface.
+            </p>
+          </div>
+          <div className="min-w-52 rounded-lg border border-gensui-700/40 bg-gensui-900/40 p-3">
+            <div className="flex justify-between text-[9px] font-bold uppercase tracking-widest text-gensui-500">
+              <span>Exposure index</span>
+              <span className={capabilityRisk <= 35 ? 'text-emerald-400' : capabilityRisk <= 70 ? 'text-amber-400' : 'text-red-400'}>
+                {capabilityRisk}/100
+              </span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gensui-950">
+              <div
+                className={`h-full rounded-full ${capabilityRisk <= 35 ? 'bg-emerald-400' : capabilityRisk <= 70 ? 'bg-amber-400' : 'bg-red-400'}`}
+                style={{ width: `${capabilityRisk}%` }}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {CAPABILITY_KEYS.map(item => {
+            const enabled = selected?.[item.key] !== false;
+            return (
+              <button
+                key={item.key}
+                disabled={!selected || savingCapability === item.key}
+                onClick={() => updateCapability(item.key, !enabled)}
+                className={`flex items-center justify-between rounded-lg border p-3 text-left text-xs transition-colors disabled:opacity-50 ${
+                  enabled
+                    ? 'border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-300'
+                    : 'border-red-500/25 bg-red-500/[0.06] text-red-300'
+                }`}
+              >
+                <span className="font-semibold">{item.label}</span>
+                {savingCapability === item.key
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <span className="text-[9px] font-bold uppercase">{enabled ? 'Allowed' : 'Blocked'}</span>}
+              </button>
+            );
+          })}
         </div>
       </div>
 

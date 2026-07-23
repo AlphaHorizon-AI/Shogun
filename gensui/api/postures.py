@@ -3,15 +3,32 @@
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gensui.api.deps import get_db, get_current_admin, require_role
 from gensui.services.posture_service import PostureService
 
 router = APIRouter(prefix="/postures", tags=["postures"])
+
+
+class AdvancedToolGateRule(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    label: str = Field(default="", max_length=120)
+    pattern: str = Field(min_length=1, max_length=200)
+    match_type: Literal["contains", "word"] = "contains"
+    action: Literal["confirm", "block"] = "confirm"
+    tools: list[str] = Field(default_factory=list, max_length=50)
+    case_sensitive: bool = False
+    enabled: bool = True
+
+
+class AdvancedToolGateControls(BaseModel):
+    enabled: bool = False
+    rules: list[AdvancedToolGateRule] = Field(default_factory=list, max_length=100)
 
 
 class CreatePostureRequest(BaseModel):
@@ -33,6 +50,7 @@ class CreatePostureRequest(BaseModel):
     allow_file_write: bool = True
     allow_external_api: bool = True
     rules_json: dict | None = None
+    advanced_toolgate_json: AdvancedToolGateControls | None = None
 
 
 @router.get("")
@@ -65,6 +83,7 @@ async def list_postures(
             "allow_file_write": p.allow_file_write,
             "allow_external_api": p.allow_external_api,
             "tool_overrides_json": p.tool_overrides_json,
+            "advanced_toolgate_json": p.advanced_toolgate_json or {"enabled": False, "rules": []},
         }
         for p in postures
     ]
@@ -99,6 +118,11 @@ async def create_posture(
         allow_file_write=req.allow_file_write,
         allow_external_api=req.allow_external_api,
         rules_json=req.rules_json,
+        advanced_toolgate_json=(
+            req.advanced_toolgate_json.model_dump()
+            if req.advanced_toolgate_json
+            else {"enabled": False, "rules": []}
+        ),
     )
     return {"id": str(posture.id), "name": posture.name}
 
@@ -122,6 +146,7 @@ class UpdatePostureRequest(BaseModel):
     allow_file_write: bool | None = None
     allow_external_api: bool | None = None
     tool_overrides_json: dict | None = None
+    advanced_toolgate_json: AdvancedToolGateControls | None = None
     rules_json: dict | None = None
 
 
@@ -169,6 +194,9 @@ async def update_posture(
         "allow_file_write": updated.allow_file_write,
         "allow_external_api": updated.allow_external_api,
         "tool_overrides_json": updated.tool_overrides_json,
+        "advanced_toolgate_json": (
+            updated.advanced_toolgate_json or {"enabled": False, "rules": []}
+        ),
     }
 
 

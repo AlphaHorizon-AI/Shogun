@@ -1,8 +1,8 @@
 {
-  "version": "1.42.0",
+  "version": "1.43.0",
   "name": "Shogun OS",
-  "build": 127,
+  "build": 128,
   "channel": "stable",
-  "released": "2026-07-23T11:06:49Z",
-  "changelog": "Add first-class ToolGate control surfaces to Tenshu and Gensui with standalone runtime permissions, effective-policy inspection, simulation, centralized read-only ownership, monotonic policy precedence, and offline enforcement of cached Gensui overrides."
+  "released": "2026-07-23T12:01:38Z",
+  "changelog": "Consolidate runtime security configuration in ToolGate with policy-scoped built-in and custom-tier rules, editable capability boundaries, visual risk indication, advanced word and phrase controls, streamlined Shogun and Katana ownership, centrally distributed Gensui enforcement, offline policy caching, and updated Tenshu and Gensui Guides."
 }

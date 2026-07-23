@@ -122,9 +122,13 @@ async def disconnect_from_gensui():
         gensui_client._connected = False
         gensui_client._shogun_id = None
         gensui_client._effective_posture = None
-        from shogun.services.tool_gate import apply_gensui_overrides
+        from shogun.services.tool_gate import (
+            apply_gensui_advanced_controls,
+            apply_gensui_overrides,
+        )
 
         apply_gensui_overrides({})
+        apply_gensui_advanced_controls({})
     except Exception as e:
         log.warning("Error stopping Gensui client: %s", e)
 

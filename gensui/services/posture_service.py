@@ -272,5 +272,9 @@ class PostureService:
                 "allow_external_api": posture.allow_external_api,
             },
             "tool_overrides": posture.tool_overrides_json or {},
+            "advanced_controls": posture.advanced_toolgate_json or {
+                "enabled": False,
+                "rules": [],
+            },
             "global_posture_active": bool(global_state and global_state.is_active),
         }

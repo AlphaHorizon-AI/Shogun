@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from shogun.api.security import _get_agent_posture
+from shogun.api.security import _active_toolgate_context, _get_agent_posture
 
 
 class _Result:
@@ -47,6 +47,7 @@ async def test_posture_includes_assigned_custom_policy(monkeypatch):
         id=policy_id,
         name="Michael Custom Policy",
         is_builtin=False,
+        tier="campaign",
     )
 
     engine_module = import_module("shogun.db.engine")
@@ -58,3 +59,34 @@ async def test_posture_includes_assigned_custom_policy(monkeypatch):
     assert posture["active_policy_id"] == policy_id
     assert posture["active_policy_name"] == "Michael Custom Policy"
     assert posture["active_policy_is_builtin"] is False
+    assert posture["active_policy_tier"] == "campaign"
+
+
+@pytest.mark.asyncio
+async def test_toolgate_uses_custom_policy_identity_and_base_tier(monkeypatch):
+    from shogun.api import security
+
+    monkeypatch.setattr(
+        security,
+        "_get_agent_posture",
+        lambda: _async_value(
+            {
+                "active_tier": "guarded",
+                "active_policy_id": "custom-id",
+                "active_policy_name": "Laptop Custom",
+                "active_policy_is_builtin": False,
+                "active_policy_tier": "campaign",
+                "active_campaign_preset": None,
+            }
+        ),
+    )
+
+    _, _, mode, scope = await _active_toolgate_context()
+
+    assert mode == "campaign"
+    assert scope["key"] == "policy:custom-id"
+    assert scope["label"] == "Laptop Custom"
+
+
+async def _async_value(value):
+    return value
