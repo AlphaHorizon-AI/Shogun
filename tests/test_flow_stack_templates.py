@@ -163,3 +163,28 @@ async def test_original_stack_template_instantiates_branching_long_running_progr
     assert len(saved.edges) == 12  # 10 program edges + orchestrator input + final output
     assert saved.schedule_config["stack_orchestrator"]["max_runtime_minutes"] >= 720
     assert saved.schedule_config["stack_orchestrator"]["verification_required"] is True
+
+
+@pytest.mark.parametrize("template_id", [
+    "coding-complex-game-build",
+    "coding-website-build",
+    "coding-business-app-build",
+])
+@pytest.mark.asyncio
+async def test_specialized_build_stacks_instantiate_with_visible_canvas_graph(
+    template_sessions,
+    template_id,
+):
+    async with template_sessions() as session:
+        service = AgentFlowService(session)
+        response = await create_stack_from_template(
+            FlowStackTemplateInstantiate(template_id=template_id),
+            service,
+        )
+        saved = await service.get_flow_full(response.data.id)
+
+    subflows = [node for node in saved.nodes if node.node_type == "subflow"]
+    assert len(subflows) == 8
+    assert len(saved.edges) == 12
+    assert all(node.position_x >= 0 and node.position_y >= 0 for node in subflows)
+    assert all(node.config.get("child_flow_id") for node in subflows)

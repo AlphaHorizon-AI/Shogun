@@ -210,7 +210,6 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
   const [agents, setAgents] = useState<any[]>([]);
   const [routingProfiles, setRoutingProfiles] = useState<any[]>([]);
   const [availableFlows, setAvailableFlows] = useState<FlowListItem[]>([]);
-  const [appliedSeedId, setAppliedSeedId] = useState<string | null>(null);
   const reactFlow = useReactFlow();
 
   useEffect(() => {
@@ -269,7 +268,7 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
   }, [setNodes]);
 
   useEffect(() => {
-    if (!seed || seed.id === appliedSeedId || !templates.length) return;
+    if (!seed || !templates.length) return;
     const seededNodes = seed.builder_nodes?.length
       ? seed.builder_nodes.map((item) => ({
           id: item.id, position: { x: item.position_x, y: item.position_y }, type: 'stackFlow',
@@ -294,7 +293,7 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
     setSavedStackId('');
     setStackStatus('draft');
     if (seed.orchestrator_config) {
-      setObjective(seed.orchestrator_config.objective || objective);
+      setObjective((current) => seed.orchestrator_config?.objective || current);
       setModelProfile(seed.orchestrator_config.model_routing_profile || 'balanced');
       setFailurePolicy(seed.orchestrator_config.failure_policy || 'retry');
       setMaxRuntime(seed.orchestrator_config.max_runtime_minutes || 1440);
@@ -305,9 +304,8 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
       setArtifactPolicy(seed.orchestrator_config.artifact_policy || 'retain_all');
     }
     setNotice(`Opened “${seed.name}” in the Stack Builder. Click any AgentFlow block to inspect its internal nodes.`);
-    setAppliedSeedId(seed.id);
     window.setTimeout(() => reactFlow.fitView({ padding: 0.15 }), 0);
-  }, [seed, appliedSeedId, templates, reactFlow, setEdges, setNodes, objective]);
+  }, [seed, templates, reactFlow, setEdges, setNodes]);
 
   const categories = useMemo(() => ['All', ...Array.from(new Set(templates.map((item) => item.category))).sort()], [templates]);
   const visible = useMemo(() => templates.filter((item) =>
@@ -700,9 +698,16 @@ function OrchestratorRuntime() {
 export const FlowStack = () => {
   const { ui: templateUi } = useTemplateCatalog();
   const [tab, setTab] = useState<'builder' | 'templates' | 'runtime'>('builder');
-  const [builderSeed, setBuilderSeed] = useState<CatalogTemplate | null>(null);
+  const [builderSeed, setBuilderSeed] = useState<{ template: CatalogTemplate; revision: number } | null>(null);
   const openStackTemplate = (template: CatalogTemplate) => {
-    setBuilderSeed(template);
+    setBuilderSeed((current) => ({
+      template: {
+        ...template,
+        builder_nodes: template.builder_nodes?.map((node) => ({ ...node })),
+        builder_edges: template.builder_edges?.map((edge) => ({ ...edge })),
+      },
+      revision: (current?.revision || 0) + 1,
+    }));
     setTab('builder');
   };
   return <div className="space-y-5 animate-in fade-in duration-500">
@@ -710,7 +715,7 @@ export const FlowStack = () => {
     <div className="flex gap-2 border border-shogun-border bg-shogun-card p-1 rounded-lg w-fit">{[
       ['builder', Route, templateUi('stack_builder', 'Stack Builder').toUpperCase()], ['templates', Sparkles, templateUi('stack_templates', 'Stack Templates').toUpperCase()], ['runtime', ShieldCheck, templateUi('orchestrator', 'Orchestrator').toUpperCase()],
     ].map(([id, Icon, label]: any) => <button key={id} onClick={() => setTab(id)} className={cn('flex items-center gap-2 px-4 py-2 rounded text-xs font-bold', tab === id ? 'bg-purple-500/20 border border-purple-400/40 text-purple-200' : 'text-shogun-subdued border border-transparent')}><Icon className="w-4 h-4" />{label}</button>)}</div>
-    {tab === 'builder' && <ReactFlowProvider><FlowStackBuilder seed={builderSeed} /></ReactFlowProvider>}
+    {tab === 'builder' && <ReactFlowProvider key={`stack-builder-${builderSeed?.revision || 0}`}><FlowStackBuilder seed={builderSeed?.template || null} /></ReactFlowProvider>}
     {tab === 'templates' && <StackTemplateGallery onOpen={openStackTemplate} />}
     {tab === 'runtime' && <OrchestratorRuntime />}
   </div>;

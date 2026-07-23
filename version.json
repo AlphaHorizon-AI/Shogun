@@ -1,8 +1,8 @@
 {
-  "version": "1.44.3",
+  "version": "1.44.4",
   "name": "Shogun OS",
-  "build": 133,
+  "build": 134,
   "channel": "stable",
-  "released": "2026-07-23T20:07:18Z",
-  "changelog": "Add a governed, programming-memory-aware Coding node, 33 distinct Coding AgentFlow templates, and 33 Coding Flow Stack templates including complex game, production website, and business application build programs."
+  "released": "2026-07-23T20:28:00Z",
+  "changelog": "Fix Flow Stack template loading so the complex game, production website, and business application stacks reliably repopulate all eight canvas phases and ten connections whenever opened."
 }
