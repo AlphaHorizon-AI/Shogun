@@ -75,6 +75,7 @@ import {
 import axios from 'axios';
 import { cn } from '../lib/utils';
 import { logSamuraiDiagnostic } from '../lib/samuraiDiagnostics';
+import { useTemplateCatalog } from '../i18n/templateCatalog';
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -4134,6 +4135,7 @@ interface TemplateItem {
   difficulty: string;
   trigger_type: string;
   node_count: number;
+  source?: string;
 }
 
 interface TemplateCategoryInfo {
@@ -4169,6 +4171,12 @@ function CreateFlowModal({
   onCreate: (name: string, description: string, triggerType: string) => void;
   onCreateFromTemplate: (templateId: string) => void;
 }) {
+  const {
+    ui: templateUi,
+    category: translateCategory,
+    difficulty: translateDifficulty,
+    agentFlow: translateTemplate,
+  } = useTemplateCatalog();
   const [activeTab, setActiveTab] = useState<'templates' | 'blank'>('templates');
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [categories, setCategories] = useState<TemplateCategoryInfo[]>([]);
@@ -4208,17 +4216,18 @@ function CreateFlowModal({
     if (selectedCategory) {
       list = list.filter((t) => t.category === selectedCategory);
     }
+    const localized = list.map((template) => translateTemplate(template));
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      list = list.filter(
+      return localized.filter(
         (t) =>
           t.name.toLowerCase().includes(q) ||
           t.description.toLowerCase().includes(q) ||
           t.category.toLowerCase().includes(q)
       );
     }
-    return list;
-  }, [templates, selectedCategory, searchQuery]);
+    return localized;
+  }, [templates, selectedCategory, searchQuery, translateTemplate]);
 
   const handleUseTemplate = async (templateId: string) => {
     setCreating(templateId);
@@ -4240,10 +4249,10 @@ function CreateFlowModal({
           <div>
             <h3 className="text-lg font-bold text-[#d4a017] flex items-center gap-2">
               <Sparkles className="w-5 h-5" />
-              Create Agent Flow
+              {templateUi('create_agent_flow', 'Create Agent Flow')}
             </h3>
             <p className="text-[10px] text-[#7a8899] uppercase tracking-widest font-bold mt-1">
-              Choose a template or start from scratch
+              {templateUi('choose_template', 'Choose a template or start from scratch')}
             </p>
           </div>
           <button
@@ -4266,7 +4275,7 @@ function CreateFlowModal({
             )}
           >
             <LayoutGrid className="w-4 h-4" />
-            Templates
+            {templateUi('templates', 'Templates')}
             <span className="text-[9px] bg-[#d4a017]/20 text-[#d4a017] px-1.5 py-0.5 rounded-full font-bold">
               {templates.length}
             </span>
@@ -4281,7 +4290,7 @@ function CreateFlowModal({
             )}
           >
             <Plus className="w-4 h-4" />
-            Blank Flow
+            {templateUi('blank_flow', 'Blank Flow')}
           </button>
         </div>
 
@@ -4299,7 +4308,7 @@ function CreateFlowModal({
                     : 'text-[#7a8899] hover:text-[#c8d0d8] hover:bg-[#1a2040]/50'
                 )}
               >
-                All Templates
+                {templateUi('all_templates', 'All Templates')}
                 <span className="float-right text-[9px] opacity-60">{templates.length}</span>
               </button>
               {categories.map((cat) => (
@@ -4317,7 +4326,7 @@ function CreateFlowModal({
                     className="w-2 h-2 rounded-full shrink-0"
                     style={{ background: CATEGORY_COLORS[cat.name] || '#7a8899' }}
                   />
-                  <span className="flex-1 truncate">{cat.name}</span>
+                  <span className="flex-1 truncate">{translateCategory(cat.name)}</span>
                   <span className="text-[9px] opacity-60">{cat.count}</span>
                 </button>
               ))}
@@ -4334,7 +4343,7 @@ function CreateFlowModal({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full bg-[#050508] border border-[#1a2040] rounded-lg pl-9 pr-3 py-2 text-xs text-[#c8d0d8] focus:border-[#d4a017] transition-colors outline-none"
-                    placeholder="Search templates..."
+                    placeholder={templateUi('search_templates', 'Search templates...')}
                   />
                 </div>
               </div>
@@ -4348,18 +4357,19 @@ function CreateFlowModal({
                 ) : loadError ? (
                   <div className="text-center py-16 px-8">
                     <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-3" />
-                    <p className="text-sm text-amber-300 font-semibold">Templates unavailable</p>
+                    <p className="text-sm text-amber-300 font-semibold">{templateUi('templates_unavailable', 'Templates unavailable')}</p>
                     <p className="text-xs text-[#7a8899] mt-2">{loadError}</p>
                   </div>
                 ) : filteredTemplates.length === 0 ? (
                   <div className="text-center py-16">
                     <Search className="w-8 h-8 text-[#7a8899]/40 mx-auto mb-3" />
-                    <p className="text-sm text-[#7a8899]">No templates match your search</p>
+                    <p className="text-sm text-[#7a8899]">{templateUi('no_templates', 'No templates match your search')}</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-2.5">
                     {filteredTemplates.map((t) => {
-                      const catColor = CATEGORY_COLORS[t.category] || '#7a8899';
+                      const sourceCategory = templates.find((item) => item.id === t.id)?.category || t.category;
+                      const catColor = CATEGORY_COLORS[sourceCategory] || '#7a8899';
                       const diff = DIFFICULTY_BADGES[t.difficulty] || DIFFICULTY_BADGES.beginner;
                       return (
                         <button
@@ -4396,10 +4406,10 @@ function CreateFlowModal({
                                   className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
                                   style={{ color: diff.color, background: `${diff.color}15` }}
                                 >
-                                  {diff.label}
+                                  {translateDifficulty(t.difficulty || 'beginner') || diff.label}
                                 </span>
                                 <span className="text-[8px] text-[#7a8899]/60 ml-auto">
-                                  {t.node_count} nodes
+                                  {t.node_count} {templateUi('nodes', 'nodes')}
                                 </span>
                               </div>
                             </div>

@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test:i18n": "node scripts/check-setup-i18n.mjs",
+    "test:template-i18n": "node scripts/check-template-i18n.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

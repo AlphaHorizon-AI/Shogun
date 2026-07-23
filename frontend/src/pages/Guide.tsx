@@ -52,7 +52,6 @@ import {
   List,
   Clock,
   Route as RouteIcon,
-  Scale,
 
   BrainCircuit,
   Eye,
@@ -149,7 +148,6 @@ export function Guide() {
     { id: 'ref-ide-mode', label: 'IDE Mode', icon: MonitorIcon, color: 'text-emerald-400' },
     { id: 'ref-model-router', label: 'Model Router', icon: RouteIcon, color: 'text-blue-400' },
     { id: 'ref-active-skills', label: 'Active Skills', icon: Sparkles, color: 'text-amber-400' },
-    { id: 'ref-benchmark', label: 'ALE Benchmark', icon: Scale, color: 'text-lime-400' },
     { id: 'ref-skillopt', label: 'SkillOpt', icon: BrainCircuit, color: 'text-fuchsia-400' },
   ];
 
@@ -2456,8 +2454,8 @@ npm start`}</pre>
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Play className="w-4 h-4 text-violet-400" /> Four Operating Modes</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Goal-Driven:</strong> Describe what you want — the planner selects and sequences flows automatically. <strong>Selected Stack:</strong> Pick a specific Flow Stack to execute. <strong>Template:</strong> Instantiate from a reusable template. <strong>Benchmark:</strong> Headless execution for ALE harness integration.</p>
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Play className="w-4 h-4 text-violet-400" /> Three Operating Modes</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Goal-Driven:</strong> Describe what you want — the planner selects and sequences flows automatically. <strong>Selected Stack:</strong> Pick a specific Flow Stack to execute. <strong>Template:</strong> Instantiate from a reusable template.</p>
                     </div>
                     <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-violet-400" /> Verification Gates</div>
@@ -2640,36 +2638,6 @@ npm start`}</pre>
                     <div className="shogun-card space-y-2 border-l-2 border-amber-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-amber-400" /> Trajectory Capture</div>
                        <p className="text-xs text-shogun-subdued leading-relaxed">Every skill invocation generates a structured evidence trail: <strong>Candidate Retrievals</strong> (which skills were considered), <strong>Episodes</strong> (full lifecycle), <strong>Trajectories</strong> (outcome scoring), <strong>Tool Links</strong> (tools called during usage), <strong>Verification Links</strong> (how outcomes were verified), <strong>Outcome Scores</strong> (deterministic scoring), and <strong>Improvement Candidates</strong> (suggested fixes). All data is secret-redacted automatically.</p>
-                    </div>
-                 </div>
-              </section>
-
-              {/* ─── ALE BENCHMARK ─── */}
-              <section id="ref-benchmark" className="space-y-6 scroll-mt-6">
-                 <div className="flex items-center gap-3 border-b-2 border-lime-400/40 pb-3">
-                    <Scale className="w-6 h-6 text-lime-400" />
-                    <div>
-                       <h4 className="text-xl font-bold uppercase tracking-widest">ALE Benchmark — Agent-Level Evaluation</h4>
-                       <p className="text-xs text-shogun-subdued">Headless benchmarking harness for evaluating Shogun in governed conditions with trajectory and artifact export.</p>
-                    </div>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2 border-l-2 border-lime-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Play className="w-4 h-4 text-lime-400" /> Running Benchmarks</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Enable benchmark mode in the Katana configuration. Validate your task definition and sandbox config, then start a run. Benchmark runs execute as subprocesses and integrate with the Stack Orchestrator for persistence. Monitor progress, view results, and cancel active runs from the <strong>Benchmark</strong> dashboard.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-lime-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-lime-400" /> Configuration</div>
-                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5 text-xs text-shogun-subdued">
-                          <p><code className="text-lime-400">enabled</code>: false — must be explicitly enabled</p>
-                          <p><code className="text-lime-400">default_posture</code>: tactical — security posture for runs</p>
-                          <p><code className="text-lime-400">default_model_profile</code>: balanced — routing profile</p>
-                          <p><code className="text-lime-400">max_runtime_minutes</code>: 30 — timeout per run</p>
-                          <p><code className="text-lime-400">trajectory_export</code>: true — export execution trajectories</p>
-                          <p><code className="text-lime-400">artifact_export</code>: true — export captured artifacts</p>
-                          <p><code className="text-lime-400">redact_secrets</code>: true — scrub secrets from exports</p>
-                       </div>
                     </div>
                  </div>
               </section>

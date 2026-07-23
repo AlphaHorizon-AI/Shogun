@@ -1,8 +1,8 @@
 {
-  "version": "1.44.0",
+  "version": "1.44.1",
   "name": "Shogun OS",
-  "build": 130,
+  "build": 131,
   "channel": "stable",
-  "released": "2026-07-23T14:26:50Z",
-  "changelog": "Move custom posture creation, editing, and deletion into ToolGate; give Torii one authoritative built-in and custom posture selector; synchronize effective constraints and safe fallback behavior; and update the Grand Reference ownership model."
+  "released": "2026-07-23T14:53:08Z",
+  "changelog": "Localize all 140 AgentFlow and 180 Flow Stack templates across 14 supported languages, add reproducible LibreTranslate-compatible and local Argos catalog generation with integrity verification, and remove the ALE Benchmark from the Guide Grand Reference."
 }

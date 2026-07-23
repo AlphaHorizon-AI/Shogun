@@ -1,0 +1,3322 @@
+{
+  "ui": {
+    "create_agent_flow": "Skapa agentflöde",
+    "choose_template": "Välj en mall eller börja från början",
+    "templates": "Mallar",
+    "blank_flow": "Tomt flöde",
+    "all_templates": "Alla mallar",
+    "search_templates": "Sök mallar...",
+    "templates_unavailable": "Mallar otillgängliga",
+    "no_templates": "Inga mallar matchar din sökning",
+    "nodes": "noder",
+    "flow_stacking": "Flödesstapling",
+    "flow_stacking_subtitle": "Komponera AgentFlows i anslutna, orkestrerade system.",
+    "built_in_stacks": "Inbyggda staplar",
+    "stack_builder": "Stack byggare",
+    "stack_templates": "Stack mallar",
+    "orchestrator": "Orkestrator",
+    "search_stack_templates": "Sök Flow Stack mallar",
+    "all_stack_categories": "Alla Flow Stack Kategorier",
+    "reusable_templates": "Återanvändbara mallar",
+    "shown": "visas",
+    "phases": "faser",
+    "resumable": "Återupptagbar",
+    "open_program": "Öppet långvarigt program",
+    "building_stack": "Bygga ditt flöde Stack...",
+    "could_not_create_stack": "Kan inte skapa denna stack."
+  },
+  "categories": {
+    "Document Processing": "Dokumenthantering",
+    "Data Analysis": "Dataanalys",
+    "Content Creation": "innehållsskapande",
+    "Email Automation": "E-postautomatisering",
+    "Research & Intelligence": "Forskning & Intelligence",
+    "Business Operations": "Affärsverksamhet",
+    "Marketing": "Marketing",
+    "Human Resources": "Mänskliga resurser",
+    "Legal & Compliance": "Juridik och regelefterlevnad",
+    "Education & Training": "Utbildning och utbildning",
+    "Continuous Intelligence": "Kontinuerlig intelligens",
+    "Strategy & Transformation": "Strategi och transformation",
+    "Product & Innovation": "Produkt & Innovation",
+    "Growth & Brand": "Tillväxt och varumärke",
+    "Customer Operations": "Kundverksamhet",
+    "Data & Executive Operations": "Data och Executive Operations",
+    "Risk & Compliance": "Risk och efterlevnad",
+    "People & Capability": "Människor och förmåga",
+    "Incident & Resilience": "Incidenter och motståndskraft",
+    "Knowledge & Publishing": "Kunskap och publicering",
+    "Coding Agent Stacks": "Stackar för kodningsagenter"
+  },
+  "difficulty": {
+    "beginner": "Nybörjare",
+    "intermediate": "Medelsvår",
+    "advanced": "Avancerad",
+    "custom": "Anpassad",
+    "long-running": "Långvarig"
+  },
+  "agentFlow": {
+    "translate-en-da": {
+      "name": "Översättning av dokument (EN→DA)",
+      "description": "Läs ett Word-dokument, översätta från engelska till danska, spara som nytt dokument."
+    },
+    "translate-en-de": {
+      "name": "Översättning av dokument (EN→DE)",
+      "description": "Läs ett Word-dokument, översätta från engelska till tyska, spara som nytt dokument."
+    },
+    "translate-en-fr": {
+      "name": "Översättning av dokument (EN→FR)",
+      "description": "Läs ett Word-dokument, översätta från engelska till franska, spara som nytt dokument."
+    },
+    "translate-en-es": {
+      "name": "Översättning av dokument (EN→ES)",
+      "description": "Läs ett Word-dokument, översätta från engelska till spanska, spara som nytt dokument."
+    },
+    "summarize-doc": {
+      "name": "Sammanfattar dokument",
+      "description": "Läs ett dokument, skapa en sammanfattning med nyckelpunkter, spara som Word."
+    },
+    "extract-keypoints": {
+      "name": "Extrahera nyckelpoäng",
+      "description": "Läs ett dokument, extrahera och strukturera de viktigaste takeaways."
+    },
+    "doc-faq": {
+      "name": "Dokument Q & A Generator",
+      "description": "Läs ett dokument, skapa en omfattande FAQ sektion."
+    },
+    "proofread": {
+      "name": "Korrekturläs och redigera",
+      "description": "Läs ett dokument, fixa grammatik / stil / bokföring, spara korrigerad version."
+    },
+    "merge-docs": {
+      "name": "Sammanslagna flera dokument",
+      "description": "Läs 3 dokument parallellt, sammanfogas till en enda sammanhållen produktion."
+    },
+    "doc-compare": {
+      "name": "Dokument jämförelse",
+      "description": "Läs två dokument, jämför innehåll, generera en diff-rapport."
+    },
+    "word-to-md": {
+      "name": "Formatomvandlare (word→markdown)",
+      "description": "Läs ett Word-dokument, konvertera till ren Markdown-format."
+    },
+    "multi-translate": {
+      "name": "Flerspråkig översättning",
+      "description": "Översätt ett dokument till flera språk samtidigt."
+    },
+    "excel-summary": {
+      "name": "Excel Data Sammanfattning",
+      "description": "Läs ett kalkylblad, skapa statistiska sammanfattningar och insikter."
+    },
+    "csv-report": {
+      "name": "CSV rapporterar",
+      "description": "Läs CSV-data, analysera trender, skapa en formaterad Word-rapport."
+    },
+    "sales-kpi": {
+      "name": "Försäljning Dashboard Data",
+      "description": "Läs försäljnings kalkylblad, generera KPI instrumentpanel sammanfattning."
+    },
+    "merge-excel": {
+      "name": "Merge Excel-filer",
+      "description": "Läs 3 Excel-filer parallellt, slå samman till ett konsoliderat kalkylblad."
+    },
+    "financial-consolidation": {
+      "name": "Finansiell konsolidering",
+      "description": "Läs P & L, Balance Sheet, Cash Flow; gå samman i konsoliderad finansiell rapport."
+    },
+    "inventory-check": {
+      "name": "Inventory check",
+      "description": "Läs lager kalkylblad, flagga låga lager objekt, generera reorder lista."
+    },
+    "dept-merge": {
+      "name": "Cross-department data slås samman",
+      "description": "Läs HR, Försäljning, Finans Excel-filer; sammanfogas till tvärfunktionell instrumentpanel."
+    },
+    "price-compare": {
+      "name": "Multi-Vendor prisjämförelse",
+      "description": "Läs 3 leverantörsprislistor, jämför produkter, markera bästa priser."
+    },
+    "survey-analysis": {
+      "name": "Undersökningsresultat analys",
+      "description": "Läs undersökningsdata, analysera svar, generera insiktsrapport."
+    },
+    "expense-report": {
+      "name": "Kostnadsrapportbyggare",
+      "description": "Läs kostnaderna Excel, kategorisera, skapa formaterad kostnadsrapport."
+    },
+    "sales-trend": {
+      "name": "Multi-månaders försäljningstrend",
+      "description": "Läs 4 månaders försäljning Excel-filer, analysera trender och prognoser."
+    },
+    "data-quality": {
+      "name": "Datakvalitetsrevision",
+      "description": "Läs kalkylblad, revision för kvalitetsfrågor, generera rengöringsrekommendationer."
+    },
+    "blog-writer": {
+      "name": "Blogg Post Författare",
+      "description": "Skapa ett blogginlägg från ett ämne och spara som Word-dokument."
+    },
+    "product-desc": {
+      "name": "Produktbeskrivning Writer",
+      "description": "Generera övertygande produktbeskrivningar från specifikationer."
+    },
+    "press-release": {
+      "name": "Pressmeddelandeförfattare",
+      "description": "Utarbeta ett professionellt pressmeddelande från viktiga fakta."
+    },
+    "landing-copy": {
+      "name": "Text för landningssida",
+      "description": "Generera landningssida kopiera med rubriker, funktioner och CTA."
+    },
+    "faq-gen": {
+      "name": "FAQ-generator",
+      "description": "Skapa en omfattande FAQ-sektion från produkt/tjänstinformation."
+    },
+    "script-writer": {
+      "name": "Skriftskrivare (Video/Podcast)",
+      "description": "Skapa en video eller podcast script från en skiss."
+    },
+    "whitepaper": {
+      "name": "Vit papper utkast",
+      "description": "Forskning och skriv ett strukturerat vitt papper på ett ämne."
+    },
+    "case-study": {
+      "name": "Fallstudiebyggare",
+      "description": "Skapa en strukturerad business case-studie från projektdata."
+    },
+    "newsletter": {
+      "name": "Nyhetsbrev kompilator",
+      "description": "Bläddra bland nyhetssajter, sammanställa ett polerat nyhetsbrev smälta."
+    },
+    "seo-article": {
+      "name": "SEO Artikel författare",
+      "description": "Forskning sökord, skriv SEO-optimerad long-form artikel."
+    },
+    "social-calendar": {
+      "name": "Social Media Kalender",
+      "description": "Skapa en vecka med sociala medier inlägg, spara som Excel kalender."
+    },
+    "email-templates": {
+      "name": "E-post mall Generator",
+      "description": "Skapa 10 professionella e-postmallar för gemensamma affärsscenarier."
+    },
+    "weekly-status": {
+      "name": "Veckovis statusrapport e-post",
+      "description": "Kompilera veckovis status och e-post till laget."
+    },
+    "customer-followup": {
+      "name": "Kunduppföljning Email",
+      "description": "Generera personlig uppföljning e-post efter möten."
+    },
+    "meeting-summary": {
+      "name": "Möte Sammanfattning Email",
+      "description": "Läs mötesanteckningar, sammanfatta, e-postdeltagare."
+    },
+    "welcome-onboarding": {
+      "name": "Välkommen Onboarding Email",
+      "description": "Skapa ny medarbetare välkommen e-post."
+    },
+    "invoice-reminder": {
+      "name": "Faktura påminnelse",
+      "description": "Läs försenade fakturor, utkast till påminnelsemail."
+    },
+    "feedback-request": {
+      "name": "Feedback begäran e-post",
+      "description": "Generera kundfeedback begäran e-post."
+    },
+    "event-invitation": {
+      "name": "Event Inbjudan Email",
+      "description": "Skapa professionell händelse inbjudan e-post."
+    },
+    "partnership-outreach": {
+      "name": "Partnerskap Outreach Email",
+      "description": "Generera partnerskap förslag e-post."
+    },
+    "internal-announcement": {
+      "name": "Interna uttalanden",
+      "description": "Draft företagsövergripande tillkännagivande e-post."
+    },
+    "apology-email": {
+      "name": "Apology/service recovery e-post",
+      "description": "Draft professionell ursäkt och återställning e-post."
+    },
+    "competitor-analysis": {
+      "name": "Konkurrentanalys",
+      "description": "Bläddra bland konkurrentwebbplatser, analysera positionering, generera rapport."
+    },
+    "market-research": {
+      "name": "Marknadsundersökning kort",
+      "description": "Forskning marknadstrender och sammanställa en översikt kort."
+    },
+    "tech-trends": {
+      "name": "Teknologi Trend Scanner",
+      "description": "Skanna tekniska nyhetskällor för nya tekniktrender."
+    },
+    "academic-summary": {
+      "name": "Akademisk papper Sammanfattning",
+      "description": "Läs ett akademiskt papper och skapa en strukturerad sammanfattning."
+    },
+    "industry-digest": {
+      "name": "Industrinyheter smälter",
+      "description": "Skanna branschnyheter och sammanställa en daglig smältning."
+    },
+    "brand-monitor": {
+      "name": "Brand nämner monitor",
+      "description": "Sök efter varumärke nämner över webben."
+    },
+    "supplier-research": {
+      "name": "Leverantörsforskning",
+      "description": "Forskning potentiella leverantörer och jämföra erbjudanden."
+    },
+    "regulatory-monitor": {
+      "name": "Regulatorisk uppdateringsskärm",
+      "description": "Skanna regulatoriska webbplatser för relevanta ändringar."
+    },
+    "price-monitor": {
+      "name": "Online pris jämförelse",
+      "description": "Bläddra bland flera webbplatser, jämföra produktpriser."
+    },
+    "patent-search": {
+      "name": "Patentsökningsrapport",
+      "description": "Forskningspatent inom ett teknikområde."
+    },
+    "meeting-minutes": {
+      "name": "Möta Minutes Generator",
+      "description": "Läs mötesanteckningar, formatera professionella minuter."
+    },
+    "project-status": {
+      "name": "Projektstatusrapport",
+      "description": "Läs projektdata, generera statusrapport."
+    },
+    "sow-generator": {
+      "name": "SOW-/offertgenerator",
+      "description": "Generera uttalande om arbete från krav."
+    },
+    "risk-assessment": {
+      "name": "Riskbedömningsrapport",
+      "description": "Analysera risker, poäng, generera bedömning."
+    },
+    "process-docs": {
+      "name": "Processdokumentation",
+      "description": "Dokumentera en affärsprocess steg för steg."
+    },
+    "kpi-report": {
+      "name": "Kpi dashboard rapport",
+      "description": "Läs KPI-data, generera visuell sammanfattningsrapport."
+    },
+    "vendor-eval": {
+      "name": "Leverantörsutvärdering",
+      "description": "Score leverantörer mot kriterier, generera rapport."
+    },
+    "budget-actuals": {
+      "name": "Budget vs faktiska rapport",
+      "description": "Jämför budgeten med aktualer, markera varianser."
+    },
+    "change-request": {
+      "name": "Ändra begäran Processor",
+      "description": "Läs förfrågan, bedöma effekter, utkast till svar."
+    },
+    "quality-audit": {
+      "name": "Kvalitetsrevision checklista",
+      "description": "Generera revision checklista från kvalitetsstandarder."
+    },
+    "incident-report": {
+      "name": "Generator för incidentrapporter",
+      "description": "Läs incidentdata, generera formaterad rapport."
+    },
+    "onboarding-plan": {
+      "name": "Ny hyra ombordstigningsplan",
+      "description": "Generera omfattande onboarding plan."
+    },
+    "campaign-brief": {
+      "name": "Kampanj kort skapare",
+      "description": "Skapa en marknadsföringskampanj kort."
+    },
+    "ab-test-report": {
+      "name": "A/B testrapport",
+      "description": "Analysera A/B-testresultat och bestämma vinnaren."
+    },
+    "customer-persona": {
+      "name": "Kund Persona Builder",
+      "description": "Generera detaljerade kundpersoner."
+    },
+    "swot-analysis": {
+      "name": "Konkurrenskraftig SWOT-analys",
+      "description": "Bygg en SWOT-matris för konkurrenskraftig positionering."
+    },
+    "content-calendar": {
+      "name": "Content Calendar (månadligen)",
+      "description": "Skapa månatlig innehållsplan i strukturerat format."
+    },
+    "ad-copy": {
+      "name": "Generator för annonstext",
+      "description": "Generera flera annonskopiera varianter för testning."
+    },
+    "brand-voice": {
+      "name": "Brand Voice riktlinjer",
+      "description": "Generera varumärke röst dokumentation."
+    },
+    "email-campaign": {
+      "name": "E-postkampanj Analyzer",
+      "description": "Läs kampanjmätningar, analysera prestanda."
+    },
+    "social-audit": {
+      "name": "Social media revision",
+      "description": "Granska sociala medier närvaro och prestanda."
+    },
+    "pr-media-list": {
+      "name": "Byggare för PR-medielistor",
+      "description": "Forskning och sammanställa en mediakontaktlista."
+    },
+    "job-description": {
+      "name": "Job beskrivning författare",
+      "description": "Skapa professionell jobbbeskrivning från krav."
+    },
+    "resume-screener": {
+      "name": "CV-granskare",
+      "description": "Läs CV, poäng mot jobbkriterier."
+    },
+    "interview-questions": {
+      "name": "Intervju Fråga Generator",
+      "description": "Skapa rollspecifika intervjufrågor."
+    },
+    "onboarding-checklist": {
+      "name": "Onboarding Checklista",
+      "description": "Skapa ny hyra ombord checklista."
+    },
+    "performance-review": {
+      "name": "Prestationsgranskning mall",
+      "description": "Generera strukturerad prestanda översyn form."
+    },
+    "handbook-section": {
+      "name": "Anställd handbok sektion",
+      "description": "Draft handbok sektion från policynoter."
+    },
+    "training-material": {
+      "name": "Träning Material Creator",
+      "description": "Skapa utbildningsdokument från ämnesöversikt."
+    },
+    "exit-interview": {
+      "name": "Exit Interview Sammanfattning",
+      "description": "Läs exit intervju svar, generera insikter."
+    },
+    "salary-benchmark": {
+      "name": "Löne Benchmarking Report",
+      "description": "Forskning och sammanställning av lönejämförelserapport."
+    },
+    "skills-matrix": {
+      "name": "Team kompetens Matrix",
+      "description": "Läs lagdata, generera färdigheter matrix."
+    },
+    "contract-review": {
+      "name": "Contract Review Sammanfattning",
+      "description": "Läs kontrakt, extrahera nyckelord, flaggrisker."
+    },
+    "nda-generator": {
+      "name": "NDA-generator",
+      "description": "Skapa ett icke-upplysningsavtal från partiell information."
+    },
+    "privacy-policy": {
+      "name": "Integritetspolicyutkastare",
+      "description": "Skapa en sekretesspolicy för en webbplats/tjänst."
+    },
+    "terms-of-service": {
+      "name": "Villkor för Service Writer",
+      "description": "Generera användarvillkor från servicebeskrivning."
+    },
+    "gdpr-checklist": {
+      "name": "Överensstämmelse checklista (GDPR)",
+      "description": "Generera GDPR compliance checklista."
+    },
+    "regulatory-filing": {
+      "name": "Regulatorisk arkivering prep",
+      "description": "Kompilera reglerande arkiveringsdokument från källdata."
+    },
+    "legal-summary": {
+      "name": "Juridisk kort sammanfattning",
+      "description": "Läs juridisk kort, generera vanlig text sammanfattning."
+    },
+    "ip-audit": {
+      "name": "Ip audit kalkylblad",
+      "description": "Generera immateriella rättigheter revision kalkylblad."
+    },
+    "quiz-generator": {
+      "name": "Quizgenerator",
+      "description": "Läs material, generera quiz med svar."
+    },
+    "course-outline": {
+      "name": "Kurs Outline Builder",
+      "description": "Skapa strukturerad kurs skiss från ämnet."
+    },
+    "study-guide": {
+      "name": "Studie guide skapare",
+      "description": "Läs innehåll, skapa organiserad studieguide."
+    },
+    "lesson-plan": {
+      "name": "Lektion plan författare",
+      "description": "Generera detaljerad lektionsplan för lärare."
+    },
+    "flashcards": {
+      "name": "Flashcard sätter generator",
+      "description": "Läs innehåll, generera flashcard Q & A-par."
+    },
+    "rubric-creator": {
+      "name": "Rubric Skapare",
+      "description": "Generera gradering rubrik från bedömningskriterier."
+    },
+    "adv-multi-format": {
+      "name": "Multiformat dokumentomvandlare",
+      "description": "Läs en Word doc, konvertera till Markdown, HTML sammanfattning och översatt version samtidigt."
+    },
+    "adv-contract-redline": {
+      "name": "Kontrakt Redlining Pipeline",
+      "description": "Läs två kontraktsversioner, jämför klausuler, generera redlined sammanfattning med godkännandeport."
+    },
+    "adv-doc-classifier": {
+      "name": "Batch dokument klassificerare",
+      "description": "Läs 5 dokument parallellt, klassificera efter typ och prioritet, generera routing sammanfattning."
+    },
+    "adv-compliance-check": {
+      "name": "Kontroll av regelefterlevnadsdokument",
+      "description": "Läs policydokument, bläddra i regleringskraven, jämföra och generera överensstämmelsesrapport."
+    },
+    "adv-quarterly-forecast": {
+      "name": "Multi-quarter finansiell prognos",
+      "description": "Läs 4 kvartalsvisa Excel-rapporter, analysera trender, generera prognos och redigerad presentation."
+    },
+    "adv-etl-report": {
+      "name": "Multi-source data lager rapport",
+      "description": "Läs 5 Excel-datakällor, slå samman, rengöra och generera en omfattande datalagerrapport."
+    },
+    "adv-anomaly-detect": {
+      "name": "Anomaly upptäckt pipeline",
+      "description": "Läs transaktionsdata, upptäcka avvikelser, korsreferens med historiska data, eskalera fynd."
+    },
+    "adv-pricing-intel": {
+      "name": "Konkurrenskraftig prissättningsintelligens",
+      "description": "Läs interna prissättning, skrapa 3 konkurrentwebbplatser, analysera positionering, rekommendera strategi."
+    },
+    "adv-content-suite": {
+      "name": "Fullt innehåll Suite Generator",
+      "description": "Generera blogginlägg, social media pack, e-postsekvens och infografisk kort från ett ämne."
+    },
+    "adv-thought-leadership": {
+      "name": "Forskningsstödd tanke ledarskap",
+      "description": "Bläddra i 3 forskningskällor, läs interna data, syntetisera i en tanke ledarskapsartikel."
+    },
+    "adv-localization": {
+      "name": "Multispråkig innehållslokalisering",
+      "description": "Läs källinnehåll, översätta till 4 språk samtidigt, spara alla versioner."
+    },
+    "adv-webinar-pipeline": {
+      "name": "Webinar innehåll pipeline",
+      "description": "Generera full webinar kit: script, glider skiss, uppföljning e-post, blogg recap, sociala klipp."
+    },
+    "adv-lead-nurture": {
+      "name": "Intelligent sekvens för leadbearbetning",
+      "description": "Läs CRM lead data, forskningsföretag, generera personlig 5-email nurture sekvens."
+    },
+    "adv-report-distribution": {
+      "name": "Multi-stakeholder rapportdistribution",
+      "description": "Läs rapportdata, generera skräddarsydda versioner för 3 publik, förbereda e-postutkast för varje."
+    },
+    "adv-meeting-actions": {
+      "name": "Automatiserad mötesåtgärdsuppföljning",
+      "description": "Läs mötesanteckningar, extrahera åtgärdsobjekt, tilldela ägare, generera individuell uppföljning e-post."
+    },
+    "adv-comp-intel": {
+      "name": "Fullständig konkurrensintelligens kort",
+      "description": "Skrapa 4 konkurrentwebbplatser, läs internt SWOT, generera omfattande intel rapport med strategi."
+    },
+    "adv-ma-diligence": {
+      "name": "Due diligence-analys för fusioner och förvärv",
+      "description": "Forskning förvärvsmål: ekonomi, nyheter, reglering, generera due diligence rapport."
+    },
+    "adv-tech-eval": {
+      "name": "Teknikutvärdering Matrix",
+      "description": "Forskning 4 teknikleverantörer, läsa krav doc, generera viktad utvärdering matris."
+    },
+    "adv-market-entry": {
+      "name": "Marknadsinträdesanalys",
+      "description": "Forskning en ny marknad: regler, konkurrenter, demografi. Generera go/no-go rekommendation."
+    },
+    "adv-strategic-plan": {
+      "name": "Strategiskt planeringsdokument",
+      "description": "Läs ekonomi, marknadsdata och teamingång för att skapa en omfattande strategisk plan."
+    },
+    "adv-ops-dashboard": {
+      "name": "Byggare för verksamhetsöversikter",
+      "description": "Läs 4 operativa datakällor, generera enhetlig instrumentpanel med KPI och varningar."
+    },
+    "adv-rca-report": {
+      "name": "Root Cause Analysis (5-Varför + Fishbone)",
+      "description": "Läs incidentdata, utför 5-Why och Fishbone-analys, genererar korrigerande handlingsplan."
+    },
+    "adv-business-case": {
+      "name": "Byggare för affärscase",
+      "description": "Läs marknadsdata, kostnader och prognoser för att bygga ett omfattande investeringsföretag."
+    },
+    "adv-gtm-plan": {
+      "name": "Go-to-market lanseringsplan",
+      "description": "Forskningsmarknad, läs produktspecifikationer, generera full GTM-plan med kanalstrategi och tidslinje."
+    },
+    "adv-attribution": {
+      "name": "Multi-channel attribution och roi analys",
+      "description": "Läs data från 4 marknadsföringskanaler, beräkna attribution, generera ROI-rapport med rekommendationer."
+    },
+    "adv-brand-health": {
+      "name": "Brand hälsa monitor",
+      "description": "Skrapa översyn webbplatser och sociala medier, läs NPS-data, generera omfattande varumärke hälsorapport."
+    },
+    "adv-workforce-plan": {
+      "name": "Workforce planeringsanalys",
+      "description": "Läs headcount, attrition och anställa data för att bygga en arbetskraftsplaneringsmodell."
+    },
+    "adv-comp-benchmark": {
+      "name": "Ersättning Benchmarking Suite",
+      "description": "Forskningslöndata, läs interna comp-data, generera benchmarking analys med rekommendationer."
+    },
+    "adv-dei-report": {
+      "name": "Dei analysrapport",
+      "description": "Läs arbetskraft demografi, undersökningsdata och anställa mätvärden för att generera en DEI analysrapport."
+    },
+    "adv-contract-lifecycle": {
+      "name": "Kontrakt Lifecycle Manager",
+      "description": "Läs kontrakt, kontrollera utgången, analysera skyldigheter, generera förnyelse rekommendation."
+    },
+    "adv-risk-register": {
+      "name": "Enterprise Risk Registerbyggare",
+      "description": "Läs data från flera avdelningar, bygg omfattande riskregister med begränsningsplaner."
+    },
+    "adv-audit-prep": {
+      "name": "Revisionsförberedelsepaket",
+      "description": "Läs policyer, förfaranden och bevis; bläddra igenom regleringskrav; generera revisionsklart paket."
+    },
+    "adv-curriculum-design": {
+      "name": "Full läroplan design",
+      "description": "Forskning bästa praxis, läs inlärningsmål, generera komplett läroplan med bedömningar."
+    },
+    "adv-elearning-course": {
+      "name": "E-Learning kursbyggare",
+      "description": "Generera fullständig e-learning kurs: script, quiz bank, bildinnehåll och instruktörsnoter."
+    },
+    "adv-training-eval": {
+      "name": "Utbildning effektivitet utvärdering",
+      "description": "Läs pre/posttestresultat och feedback, analysera träningseffektivitet, generera förbättringsplan."
+    },
+    "ops-brief-channel-broadcast": {
+      "name": "Dagliga affärsnyheter korta till telegram",
+      "description": "Varje morgon klockan 08:00, kontrollera flera betrodda företagsnyhetswebbplatser, syntetisera den viktiga utvecklingen och skicka en kort kortfattad kort genom Telegram."
+    },
+    "incident-triage-channel-alert": {
+      "name": "Styrd incident triage & alert",
+      "description": "Bedöm en incident, passera svaret genom en Shogun policy gate och skicka den godkända incidenten kort till Telegram och Teams."
+    },
+    "adv-intelligence-channel-command": {
+      "name": "Multi-agent intelligens kommando kort",
+      "description": "Kör parallella strategiska och riskanalys, syntetisera resultaten under en godkännandeport, sedan leverera kommandot kort via Telegram och Teams."
+    }
+  },
+  "flowStack": {
+    "stack-program-01-enterprise": {
+      "name": "Enterprise konkurrenskraftig signalvakttorn",
+      "description": "Ett långvarigt operativt program som upprätthåller en kontinuerligt uppdaterad bild av konkurrenter, marknadsskift och svarsalternativ. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-01-regional": {
+      "name": "Regional konkurrenssignal vakttorn",
+      "description": "Ett långvarigt operativt program som upprätthåller en kontinuerligt uppdaterad bild av konkurrenter, marknadsskift och svarsalternativ. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-01-product": {
+      "name": "Produkt Konkurrenskraftig Signal Watchtower",
+      "description": "Ett långvarigt operativt program som upprätthåller en kontinuerligt uppdaterad bild av konkurrenter, marknadsskift och svarsalternativ. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-01-customer": {
+      "name": "Kund konkurrenskraftig Signal Watchtower",
+      "description": "Ett långvarigt operativt program som upprätthåller en kontinuerligt uppdaterad bild av konkurrenter, marknadsskift och svarsalternativ. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-01-regulated": {
+      "name": "Reglerad konkurrenskraftig Signal Watchtower",
+      "description": "Ett långvarigt operativt program som upprätthåller en kontinuerligt uppdaterad bild av konkurrenter, marknadsskift och svarsalternativ. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-01-transformation": {
+      "name": "Transformation Konkurrenskraftig Signal Watchtower",
+      "description": "Ett långvarigt operativt program som upprätthåller en kontinuerligt uppdaterad bild av konkurrenter, marknadsskift och svarsalternativ. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-02-enterprise": {
+      "name": "Enterprise regulatorisk radar",
+      "description": "Ett långvarigt operativt program som upptäcker regeländring tidigt, bedömer exponering och håller en evidensbaserad svarsplan aktuell. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-02-regional": {
+      "name": "Regional regleringsradar",
+      "description": "Ett långvarigt operativt program som upptäcker regeländring tidigt, bedömer exponering och håller en evidensbaserad svarsplan aktuell. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-02-product": {
+      "name": "Produktregulatorisk radar",
+      "description": "Ett långvarigt operativt program som upptäcker regeländring tidigt, bedömer exponering och håller en evidensbaserad svarsplan aktuell. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-02-customer": {
+      "name": "Kundregulatorisk radar",
+      "description": "Ett långvarigt operativt program som upptäcker regeländring tidigt, bedömer exponering och håller en evidensbaserad svarsplan aktuell. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-02-regulated": {
+      "name": "Reglerad Regulatory Radar",
+      "description": "Ett långvarigt operativt program som upptäcker regeländring tidigt, bedömer exponering och håller en evidensbaserad svarsplan aktuell. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-02-transformation": {
+      "name": "Transformationsregulatorisk radar",
+      "description": "Ett långvarigt operativt program som upptäcker regeländring tidigt, bedömer exponering och håller en evidensbaserad svarsplan aktuell. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-03-enterprise": {
+      "name": "Företagsövergripande teknisk omvärldsanalys",
+      "description": "Ett långvarigt operativt program som spårar framväxande teknik, utvärderar relevans och omvandlar signaler till styrda experiment. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-03-regional": {
+      "name": "Regional teknik horisont skanning",
+      "description": "Ett långvarigt operativt program som spårar framväxande teknik, utvärderar relevans och omvandlar signaler till styrda experiment. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-03-product": {
+      "name": "Produktteknologi Horisont Scan",
+      "description": "Ett långvarigt operativt program som spårar framväxande teknik, utvärderar relevans och omvandlar signaler till styrda experiment. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-03-customer": {
+      "name": "Kundteknologi Horizon Scan",
+      "description": "Ett långvarigt operativt program som spårar framväxande teknik, utvärderar relevans och omvandlar signaler till styrda experiment. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-03-regulated": {
+      "name": "Reglerad teknik Horizon Scan",
+      "description": "Ett långvarigt operativt program som spårar framväxande teknik, utvärderar relevans och omvandlar signaler till styrda experiment. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-03-transformation": {
+      "name": "Transformationsteknik horisont skanning",
+      "description": "Ett långvarigt operativt program som spårar framväxande teknik, utvärderar relevans och omvandlar signaler till styrda experiment. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-04-enterprise": {
+      "name": "Företagsövergripande program för marknadsinträde",
+      "description": "Ett långvarigt operativt program som tar en marknadsmöjlighet från bevis som samlas genom ingångsplan, kontroller och verkställande beslut. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-04-regional": {
+      "name": "Regionalt marknadsinträdesprogram",
+      "description": "Ett långvarigt operativt program som tar en marknadsmöjlighet från bevis som samlas genom ingångsplan, kontroller och verkställande beslut. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-04-product": {
+      "name": "Produktmarknadsinträdesprogram",
+      "description": "Ett långvarigt operativt program som tar en marknadsmöjlighet från bevis som samlas genom ingångsplan, kontroller och verkställande beslut. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-04-customer": {
+      "name": "Kund Market Entry Program",
+      "description": "Ett långvarigt operativt program som tar en marknadsmöjlighet från bevis som samlas genom ingångsplan, kontroller och verkställande beslut. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-04-regulated": {
+      "name": "Reglerade Market Entry Program",
+      "description": "Ett långvarigt operativt program som tar en marknadsmöjlighet från bevis som samlas genom ingångsplan, kontroller och verkställande beslut. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-04-transformation": {
+      "name": "Transformationsprogram för marknadsinträde",
+      "description": "Ett långvarigt operativt program som tar en marknadsmöjlighet från bevis som samlas genom ingångsplan, kontroller och verkställande beslut. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-05-enterprise": {
+      "name": "Enterprise Operation Model Transformation",
+      "description": "Ett långvarigt operativt program som diagnostiserar operativ friktion, designar målmodellen och styr en fasad omvandling. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-05-regional": {
+      "name": "Regional rörelsemodellomvandling",
+      "description": "Ett långvarigt operativt program som diagnostiserar operativ friktion, designar målmodellen och styr en fasad omvandling. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-05-product": {
+      "name": "Produktdriven modellomvandling",
+      "description": "Ett långvarigt operativt program som diagnostiserar operativ friktion, designar målmodellen och styr en fasad omvandling. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-05-customer": {
+      "name": "Kundens operativa modelltransformation",
+      "description": "Ett långvarigt operativt program som diagnostiserar operativ friktion, designar målmodellen och styr en fasad omvandling. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-05-regulated": {
+      "name": "Reglerad operativ modelltransformation",
+      "description": "Ett långvarigt operativt program som diagnostiserar operativ friktion, designar målmodellen och styr en fasad omvandling. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-05-transformation": {
+      "name": "Transformation Operativ modell transformation",
+      "description": "Ett långvarigt operativt program som diagnostiserar operativ friktion, designar målmodellen och styr en fasad omvandling. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-06-enterprise": {
+      "name": "Enterprise Strategic Portfölj Review",
+      "description": "Ett långvarigt operativt program som kontinuerligt utvärderar initiativ, beroenden, risk, värde och finansieringsrekommendationer. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-06-regional": {
+      "name": "Regional strategisk portföljrecension",
+      "description": "Ett långvarigt operativt program som kontinuerligt utvärderar initiativ, beroenden, risk, värde och finansieringsrekommendationer. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-06-product": {
+      "name": "Produktstrategisk Portfolio Review",
+      "description": "Ett långvarigt operativt program som kontinuerligt utvärderar initiativ, beroenden, risk, värde och finansieringsrekommendationer. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-06-customer": {
+      "name": "Kund Strategic Portfolio Review",
+      "description": "Ett långvarigt operativt program som kontinuerligt utvärderar initiativ, beroenden, risk, värde och finansieringsrekommendationer. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-06-regulated": {
+      "name": "Reglerad strategisk portföljrecension",
+      "description": "Ett långvarigt operativt program som kontinuerligt utvärderar initiativ, beroenden, risk, värde och finansieringsrekommendationer. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-06-transformation": {
+      "name": "Transformation strategisk portföljgranskning",
+      "description": "Ett långvarigt operativt program som kontinuerligt utvärderar initiativ, beroenden, risk, värde och finansieringsrekommendationer. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-07-enterprise": {
+      "name": "Enterprise produkt upptäckt program",
+      "description": "Ett långvarigt operativt program som flyttar från kundbevis och marknadsunderrättelse till en verifierad produktmöjlighet kort. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-07-regional": {
+      "name": "Regional produkt upptäckt program",
+      "description": "Ett långvarigt operativt program som flyttar från kundbevis och marknadsunderrättelse till en verifierad produktmöjlighet kort. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-07-product": {
+      "name": "Produktupptäckt program",
+      "description": "Ett långvarigt operativt program som flyttar från kundbevis och marknadsunderrättelse till en verifierad produktmöjlighet kort. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-07-customer": {
+      "name": "Kund produkt upptäckt program",
+      "description": "Ett långvarigt operativt program som flyttar från kundbevis och marknadsunderrättelse till en verifierad produktmöjlighet kort. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-07-regulated": {
+      "name": "Reglerade produktupptäckningsprogram",
+      "description": "Ett långvarigt operativt program som flyttar från kundbevis och marknadsunderrättelse till en verifierad produktmöjlighet kort. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-07-transformation": {
+      "name": "Transformation produkt upptäckt program",
+      "description": "Ett långvarigt operativt program som flyttar från kundbevis och marknadsunderrättelse till en verifierad produktmöjlighet kort. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-08-enterprise": {
+      "name": "Enterprise lanserar beredskapskommando",
+      "description": "Ett långvarigt operativt program som samordnar startar arbetsströmmar, ytberedskapsgap, verifiera tillgångar och paketera go-live-beslutet. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-08-regional": {
+      "name": "Regional lansering beredskap kommandot",
+      "description": "Ett långvarigt operativt program som samordnar startar arbetsströmmar, ytberedskapsgap, verifiera tillgångar och paketera go-live-beslutet. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-08-product": {
+      "name": "Produktstart beredskap kommando",
+      "description": "Ett långvarigt operativt program som samordnar startar arbetsströmmar, ytberedskapsgap, verifiera tillgångar och paketera go-live-beslutet. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-08-customer": {
+      "name": "Kunden lanserar beredskapskommando",
+      "description": "Ett långvarigt operativt program som samordnar startar arbetsströmmar, ytberedskapsgap, verifiera tillgångar och paketera go-live-beslutet. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-08-regulated": {
+      "name": "Reglerad lansering beredskap kommando",
+      "description": "Ett långvarigt operativt program som samordnar startar arbetsströmmar, ytberedskapsgap, verifiera tillgångar och paketera go-live-beslutet. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-08-transformation": {
+      "name": "Transformation lanserar beredskapskommandot",
+      "description": "Ett långvarigt operativt program som samordnar startar arbetsströmmar, ytberedskapsgap, verifiera tillgångar och paketera go-live-beslutet. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-09-enterprise": {
+      "name": "Företagsövergripande innovationspipeline",
+      "description": "Ett långvarigt operativt program som samlar idéer, utvärderar strategisk passform, styr experiment och publicerar investeringsrekommendationer. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-09-regional": {
+      "name": "Regional innovation Pipeline",
+      "description": "Ett långvarigt operativt program som samlar idéer, utvärderar strategisk passform, styr experiment och publicerar investeringsrekommendationer. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-09-product": {
+      "name": "Produkt Innovation Pipeline",
+      "description": "Ett långvarigt operativt program som samlar idéer, utvärderar strategisk passform, styr experiment och publicerar investeringsrekommendationer. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-09-customer": {
+      "name": "Kund Innovation Pipeline",
+      "description": "Ett långvarigt operativt program som samlar idéer, utvärderar strategisk passform, styr experiment och publicerar investeringsrekommendationer. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-09-regulated": {
+      "name": "Reglerad innovationspipeline",
+      "description": "Ett långvarigt operativt program som samlar idéer, utvärderar strategisk passform, styr experiment och publicerar investeringsrekommendationer. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-09-transformation": {
+      "name": "Transformationspipeline för innovation",
+      "description": "Ett långvarigt operativt program som samlar idéer, utvärderar strategisk passform, styr experiment och publicerar investeringsrekommendationer. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-10-enterprise": {
+      "name": "Enterprise integrerade Go-to-market program",
+      "description": "Ett långvarigt operativt program som samordnar forskning, positionering, innehåll, kanaler, mätning och optimering som ett program. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-10-regional": {
+      "name": "Regionalt integrerat Go-to-Market-program",
+      "description": "Ett långvarigt operativt program som samordnar forskning, positionering, innehåll, kanaler, mätning och optimering som ett program. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-10-product": {
+      "name": "Produktintegrerat Go-to-Market-program",
+      "description": "Ett långvarigt operativt program som samordnar forskning, positionering, innehåll, kanaler, mätning och optimering som ett program. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-10-customer": {
+      "name": "Kundintegrerat Go-to-Market-program",
+      "description": "Ett långvarigt operativt program som samordnar forskning, positionering, innehåll, kanaler, mätning och optimering som ett program. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-10-regulated": {
+      "name": "Reglerat integrerat Go-to-Market-program",
+      "description": "Ett långvarigt operativt program som samordnar forskning, positionering, innehåll, kanaler, mätning och optimering som ett program. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-10-transformation": {
+      "name": "Transformation integrerad go-to-market program",
+      "description": "Ett långvarigt operativt program som samordnar forskning, positionering, innehåll, kanaler, mätning och optimering som ett program. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-11-enterprise": {
+      "name": "Företagsövergripande styrning av varumärkeshälsa",
+      "description": "Ett långvarigt operativt program som övervakar varumärkessignaler, undersöker förändringar, planinterventioner och verifierar konsistens på marknaden. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-11-regional": {
+      "name": "Regionalt varumärke hälsokommando",
+      "description": "Ett långvarigt operativt program som övervakar varumärkessignaler, undersöker förändringar, planinterventioner och verifierar konsistens på marknaden. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-11-product": {
+      "name": "Produkt Brand Health Command",
+      "description": "Ett långvarigt operativt program som övervakar varumärkessignaler, undersöker förändringar, planinterventioner och verifierar konsistens på marknaden. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-11-customer": {
+      "name": "Kund Brand Health Command",
+      "description": "Ett långvarigt operativt program som övervakar varumärkessignaler, undersöker förändringar, planinterventioner och verifierar konsistens på marknaden. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-11-regulated": {
+      "name": "Reglerad Brand Health Command",
+      "description": "Ett långvarigt operativt program som övervakar varumärkessignaler, undersöker förändringar, planinterventioner och verifierar konsistens på marknaden. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-11-transformation": {
+      "name": "Transformationsstyrning av varumärkeshälsa",
+      "description": "Ett långvarigt operativt program som övervakar varumärkessignaler, undersöker förändringar, planinterventioner och verifierar konsistens på marknaden. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-12-enterprise": {
+      "name": "Företagsinnehållstillväxtmotor",
+      "description": "Ett långvarigt operativt program som driver ett forskningsstyrt innehållssystem med parallell produktion, efterlevnad, lokalisering och distribution. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-12-regional": {
+      "name": "Regionalt innehållstillväxtmotor",
+      "description": "Ett långvarigt operativt program som driver ett forskningsstyrt innehållssystem med parallell produktion, efterlevnad, lokalisering och distribution. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-12-product": {
+      "name": "Produktinnehållstillväxtmotor",
+      "description": "Ett långvarigt operativt program som driver ett forskningsstyrt innehållssystem med parallell produktion, efterlevnad, lokalisering och distribution. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-12-customer": {
+      "name": "Kundinnehållstillväxtmotor",
+      "description": "Ett långvarigt operativt program som driver ett forskningsstyrt innehållssystem med parallell produktion, efterlevnad, lokalisering och distribution. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-12-regulated": {
+      "name": "Reglerad innehållstillväxtmotor",
+      "description": "Ett långvarigt operativt program som driver ett forskningsstyrt innehållssystem med parallell produktion, efterlevnad, lokalisering och distribution. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-12-transformation": {
+      "name": "Transformationsinnehållstillväxtmotor",
+      "description": "Ett långvarigt operativt program som driver ett forskningsstyrt innehållssystem med parallell produktion, efterlevnad, lokalisering och distribution. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-13-enterprise": {
+      "name": "Enterprise kund ombordstigning resa",
+      "description": "Ett långvarigt operativt program som samordnar ombord på kunskap, kommunikation, framgångssignaler, riskkontroller och genomgång. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-13-regional": {
+      "name": "Regional kund ombord på resa",
+      "description": "Ett långvarigt operativt program som samordnar ombord på kunskap, kommunikation, framgångssignaler, riskkontroller och genomgång. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-13-product": {
+      "name": "Produkt Kund Ombordstigning Resa",
+      "description": "Ett långvarigt operativt program som samordnar ombord på kunskap, kommunikation, framgångssignaler, riskkontroller och genomgång. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-13-customer": {
+      "name": "Kund Onboarding Journey",
+      "description": "Ett långvarigt operativt program som samordnar ombord på kunskap, kommunikation, framgångssignaler, riskkontroller och genomgång. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-13-regulated": {
+      "name": "Reglerad kund ombordstigning resa",
+      "description": "Ett långvarigt operativt program som samordnar ombord på kunskap, kommunikation, framgångssignaler, riskkontroller och genomgång. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-13-transformation": {
+      "name": "Transformation Kund ombord på resan",
+      "description": "Ett långvarigt operativt program som samordnar ombord på kunskap, kommunikation, framgångssignaler, riskkontroller och genomgång. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-14-enterprise": {
+      "name": "Företagsövergripande program för att återvinna kundlojalitet",
+      "description": "Ett långvarigt operativt program som identifierar churnsignaler, undersöker orsaker, designinterventioner och spårar verifierade återhämtningsåtgärder. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-14-regional": {
+      "name": "Regionalt program för att återvinna kundlojalitet",
+      "description": "Ett långvarigt operativt program som identifierar churnsignaler, undersöker orsaker, designinterventioner och spårar verifierade återhämtningsåtgärder. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-14-product": {
+      "name": "Produktretentionsåterställningsprogram",
+      "description": "Ett långvarigt operativt program som identifierar churnsignaler, undersöker orsaker, designinterventioner och spårar verifierade återhämtningsåtgärder. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-14-customer": {
+      "name": "Kundretentionsåterställningsprogram",
+      "description": "Ett långvarigt operativt program som identifierar churnsignaler, undersöker orsaker, designinterventioner och spårar verifierade återhämtningsåtgärder. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-14-regulated": {
+      "name": "Reglerat lagringsåterställningsprogram",
+      "description": "Ett långvarigt operativt program som identifierar churnsignaler, undersöker orsaker, designinterventioner och spårar verifierade återhämtningsåtgärder. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-14-transformation": {
+      "name": "Omvandling Retention Recovery Program",
+      "description": "Ett långvarigt operativt program som identifierar churnsignaler, undersöker orsaker, designinterventioner och spårar verifierade återhämtningsåtgärder. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-15-enterprise": {
+      "name": "Enterprise röst av kundråd",
+      "description": "Ett långvarigt operativt program som gör kundfeedback till återkommande analys, styrda prioriteringar, handlingsplaner och verkställande rapportering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-15-regional": {
+      "name": "Regional röst för kundrådet",
+      "description": "Ett långvarigt operativt program som gör kundfeedback till återkommande analys, styrda prioriteringar, handlingsplaner och verkställande rapportering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-15-product": {
+      "name": "Produktröst av kundråd",
+      "description": "Ett långvarigt operativt program som gör kundfeedback till återkommande analys, styrda prioriteringar, handlingsplaner och verkställande rapportering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-15-customer": {
+      "name": "Kundröst av kundråd",
+      "description": "Ett långvarigt operativt program som gör kundfeedback till återkommande analys, styrda prioriteringar, handlingsplaner och verkställande rapportering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-15-regulated": {
+      "name": "Reglerad kundråds röst",
+      "description": "Ett långvarigt operativt program som gör kundfeedback till återkommande analys, styrda prioriteringar, handlingsplaner och verkställande rapportering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-15-transformation": {
+      "name": "Transformation Voice från Customer Council",
+      "description": "Ett långvarigt operativt program som gör kundfeedback till återkommande analys, styrda prioriteringar, handlingsplaner och verkställande rapportering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-16-enterprise": {
+      "name": "Enterprise verkställande prestationscykel",
+      "description": "Ett långvarigt operativt program som driver en återkommande evidens-till-beslutscykel över KPI, avvikelser, risker och verkställande åtgärder. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-16-regional": {
+      "name": "Regional verkställande prestationscykel",
+      "description": "Ett långvarigt operativt program som driver en återkommande evidens-till-beslutscykel över KPI, avvikelser, risker och verkställande åtgärder. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-16-product": {
+      "name": "Produkt Executive Performance Cycle",
+      "description": "Ett långvarigt operativt program som driver en återkommande evidens-till-beslutscykel över KPI, avvikelser, risker och verkställande åtgärder. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-16-customer": {
+      "name": "Kund Executive Performance Cycle",
+      "description": "Ett långvarigt operativt program som driver en återkommande evidens-till-beslutscykel över KPI, avvikelser, risker och verkställande åtgärder. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-16-regulated": {
+      "name": "Reglerad Executive Performance Cycle",
+      "description": "Ett långvarigt operativt program som driver en återkommande evidens-till-beslutscykel över KPI, avvikelser, risker och verkställande åtgärder. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-16-transformation": {
+      "name": "Transformation verkställande prestationscykel",
+      "description": "Ett långvarigt operativt program som driver en återkommande evidens-till-beslutscykel över KPI, avvikelser, risker och verkställande åtgärder. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-17-enterprise": {
+      "name": "Enterprise Forecast och Scenario Program",
+      "description": "Ett långvarigt operativt program som upprätthåller prognoser, utmanar antaganden, modellscenarier och paketbeslutsfärdiga alternativ. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-17-regional": {
+      "name": "Regional prognos och Scenario Program",
+      "description": "Ett långvarigt operativt program som upprätthåller prognoser, utmanar antaganden, modellscenarier och paketbeslutsfärdiga alternativ. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-17-product": {
+      "name": "Produktprognos och Scenario Program",
+      "description": "Ett långvarigt operativt program som upprätthåller prognoser, utmanar antaganden, modellscenarier och paketbeslutsfärdiga alternativ. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-17-customer": {
+      "name": "Kundprognos och Scenario Program",
+      "description": "Ett långvarigt operativt program som upprätthåller prognoser, utmanar antaganden, modellscenarier och paketbeslutsfärdiga alternativ. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-17-regulated": {
+      "name": "Reglerad prognos och Scenario Program",
+      "description": "Ett långvarigt operativt program som upprätthåller prognoser, utmanar antaganden, modellscenarier och paketbeslutsfärdiga alternativ. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-17-transformation": {
+      "name": "Transformation Forecast och Scenario Program",
+      "description": "Ett långvarigt operativt program som upprätthåller prognoser, utmanar antaganden, modellscenarier och paketbeslutsfärdiga alternativ. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-18-enterprise": {
+      "name": "Enterprise datakvalitet remediation",
+      "description": "Ett långvarigt operativt program som upptäcker kvalitetsfel, bedömer påverkan, samordnar korrigering, verifierar korrigeringar och rapportkontroller. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-18-regional": {
+      "name": "Regional datakvalitetsremediation",
+      "description": "Ett långvarigt operativt program som upptäcker kvalitetsfel, bedömer påverkan, samordnar korrigering, verifierar korrigeringar och rapportkontroller. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-18-product": {
+      "name": "Produktdatakvalitetsremediation",
+      "description": "Ett långvarigt operativt program som upptäcker kvalitetsfel, bedömer påverkan, samordnar korrigering, verifierar korrigeringar och rapportkontroller. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-18-customer": {
+      "name": "Kunddatakvalitetsremediation",
+      "description": "Ett långvarigt operativt program som upptäcker kvalitetsfel, bedömer påverkan, samordnar korrigering, verifierar korrigeringar och rapportkontroller. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-18-regulated": {
+      "name": "Reglerad datakvalitetsremediation",
+      "description": "Ett långvarigt operativt program som upptäcker kvalitetsfel, bedömer påverkan, samordnar korrigering, verifierar korrigeringar och rapportkontroller. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-18-transformation": {
+      "name": "Förvandling av datakvalitetsremediation",
+      "description": "Ett långvarigt operativt program som upptäcker kvalitetsfel, bedömer påverkan, samordnar korrigering, verifierar korrigeringar och rapportkontroller. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-19-enterprise": {
+      "name": "Företagsövergripande risksäkring",
+      "description": "Ett långvarigt operativt program som upprätthåller en levande riskbild med bevis, begränsning ägande, verifiering och eskalering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-19-regional": {
+      "name": "Regional Enterprise Riskförsäkring",
+      "description": "Ett långvarigt operativt program som upprätthåller en levande riskbild med bevis, begränsning ägande, verifiering och eskalering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-19-product": {
+      "name": "Produktföretagsriskförsäkring",
+      "description": "Ett långvarigt operativt program som upprätthåller en levande riskbild med bevis, begränsning ägande, verifiering och eskalering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-19-customer": {
+      "name": "Kundföretag Risk Assurance",
+      "description": "Ett långvarigt operativt program som upprätthåller en levande riskbild med bevis, begränsning ägande, verifiering och eskalering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-19-regulated": {
+      "name": "Reglerad företagsriskförsäkring",
+      "description": "Ett långvarigt operativt program som upprätthåller en levande riskbild med bevis, begränsning ägande, verifiering och eskalering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-19-transformation": {
+      "name": "Transformation företagsriskförsäkring",
+      "description": "Ett långvarigt operativt program som upprätthåller en levande riskbild med bevis, begränsning ägande, verifiering och eskalering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-20-enterprise": {
+      "name": "Företagskontraktets livscykelkommando",
+      "description": "Ett långvarigt operativt program som samordnar utarbetande, granskning, förpliktelsespårning, efterlevnadsverifiering och intressentkommunikation. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-20-regional": {
+      "name": "Regionalt kontraktslivscykelkommando",
+      "description": "Ett långvarigt operativt program som samordnar utarbetande, granskning, förpliktelsespårning, efterlevnadsverifiering och intressentkommunikation. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-20-product": {
+      "name": "Produktkontrakt Lifecycle Command",
+      "description": "Ett långvarigt operativt program som samordnar utarbetande, granskning, förpliktelsespårning, efterlevnadsverifiering och intressentkommunikation. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-20-customer": {
+      "name": "Kundavtal Lifecycle Command",
+      "description": "Ett långvarigt operativt program som samordnar utarbetande, granskning, förpliktelsespårning, efterlevnadsverifiering och intressentkommunikation. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-20-regulated": {
+      "name": "Reglerad kontraktslivscykelkommando",
+      "description": "Ett långvarigt operativt program som samordnar utarbetande, granskning, förpliktelsespårning, efterlevnadsverifiering och intressentkommunikation. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-20-transformation": {
+      "name": "Transformation kontrakt livscykel kommando",
+      "description": "Ett långvarigt operativt program som samordnar utarbetande, granskning, förpliktelsespårning, efterlevnadsverifiering och intressentkommunikation. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-21-enterprise": {
+      "name": "Enterprise revision beredskapsprogram",
+      "description": "Ett långvarigt operativt program som kontinuerligt monterar bevis, testkontroller, nära luckor och upprätthåller ett revisionsklart paket. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-21-regional": {
+      "name": "Regional revision beredskapsprogram",
+      "description": "Ett långvarigt operativt program som kontinuerligt monterar bevis, testkontroller, nära luckor och upprätthåller ett revisionsklart paket. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-21-product": {
+      "name": "Produktrevisionsberedskapsprogram",
+      "description": "Ett långvarigt operativt program som kontinuerligt monterar bevis, testkontroller, nära luckor och upprätthåller ett revisionsklart paket. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-21-customer": {
+      "name": "Kundrevision Beredskap Program",
+      "description": "Ett långvarigt operativt program som kontinuerligt monterar bevis, testkontroller, nära luckor och upprätthåller ett revisionsklart paket. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-21-regulated": {
+      "name": "Reglerad Audit Readiness Program",
+      "description": "Ett långvarigt operativt program som kontinuerligt monterar bevis, testkontroller, nära luckor och upprätthåller ett revisionsklart paket. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-21-transformation": {
+      "name": "Transformation Audit Beredskapsprogram",
+      "description": "Ett långvarigt operativt program som kontinuerligt monterar bevis, testkontroller, nära luckor och upprätthåller ett revisionsklart paket. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-22-enterprise": {
+      "name": "Enterprise workforce planeringscykel",
+      "description": "Ett långvarigt operativt program som förbinder arbetskraftsbevis, kompetensluckor, operativa prioriteringar, risk och en godkänd kapacitetsplan. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-22-regional": {
+      "name": "Regional arbetskraftsplaneringscykel",
+      "description": "Ett långvarigt operativt program som förbinder arbetskraftsbevis, kompetensluckor, operativa prioriteringar, risk och en godkänd kapacitetsplan. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-22-product": {
+      "name": "Produkt Workforce Planning Cycle",
+      "description": "Ett långvarigt operativt program som förbinder arbetskraftsbevis, kompetensluckor, operativa prioriteringar, risk och en godkänd kapacitetsplan. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-22-customer": {
+      "name": "Kund Workforce Planning Cycle",
+      "description": "Ett långvarigt operativt program som förbinder arbetskraftsbevis, kompetensluckor, operativa prioriteringar, risk och en godkänd kapacitetsplan. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-22-regulated": {
+      "name": "Reglerad arbetskraftsplaneringscykel",
+      "description": "Ett långvarigt operativt program som förbinder arbetskraftsbevis, kompetensluckor, operativa prioriteringar, risk och en godkänd kapacitetsplan. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-22-transformation": {
+      "name": "Transformation arbetskraft planeringscykel",
+      "description": "Ett långvarigt operativt program som förbinder arbetskraftsbevis, kompetensluckor, operativa prioriteringar, risk och en godkänd kapacitetsplan. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-23-enterprise": {
+      "name": "Enterprise talent förvärv program",
+      "description": "Ett långvarigt operativt program som kör en styrd hyra pipeline från rolldesign genom screening, intervjuer och ombord på beredskap. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-23-regional": {
+      "name": "Regional talang förvärv program",
+      "description": "Ett långvarigt operativt program som kör en styrd hyra pipeline från rolldesign genom screening, intervjuer och ombord på beredskap. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-23-product": {
+      "name": "Produkt Talent Acquisition Program",
+      "description": "Ett långvarigt operativt program som kör en styrd hyra pipeline från rolldesign genom screening, intervjuer och ombord på beredskap. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-23-customer": {
+      "name": "Kund Talent Acquisition Program",
+      "description": "Ett långvarigt operativt program som kör en styrd hyra pipeline från rolldesign genom screening, intervjuer och ombord på beredskap. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-23-regulated": {
+      "name": "Reglerade Talent Acquisition Program",
+      "description": "Ett långvarigt operativt program som kör en styrd hyra pipeline från rolldesign genom screening, intervjuer och ombord på beredskap. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-23-transformation": {
+      "name": "Transformation talang förvärv program",
+      "description": "Ett långvarigt operativt program som kör en styrd hyra pipeline från rolldesign genom screening, intervjuer och ombord på beredskap. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-24-enterprise": {
+      "name": "Företagsövergripande drift av lärandeakademi",
+      "description": "Ett långvarigt operativt program som design, producerar, validerar, distribuerar och utvärderar ett utvecklande lärandeprogram. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-24-regional": {
+      "name": "Regional inlärningsakademiverksamhet",
+      "description": "Ett långvarigt operativt program som design, producerar, validerar, distribuerar och utvärderar ett utvecklande lärandeprogram. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-24-product": {
+      "name": "Produktinlärning Academy Operation",
+      "description": "Ett långvarigt operativt program som design, producerar, validerar, distribuerar och utvärderar ett utvecklande lärandeprogram. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-24-customer": {
+      "name": "Kundinlärning Academy Operation",
+      "description": "Ett långvarigt operativt program som design, producerar, validerar, distribuerar och utvärderar ett utvecklande lärandeprogram. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-24-regulated": {
+      "name": "Reglerad Learning Academy Operation",
+      "description": "Ett långvarigt operativt program som design, producerar, validerar, distribuerar och utvärderar ett utvecklande lärandeprogram. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-24-transformation": {
+      "name": "Transformation learning akademi drift",
+      "description": "Ett långvarigt operativt program som design, producerar, validerar, distribuerar och utvärderar ett utvecklande lärandeprogram. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-25-enterprise": {
+      "name": "Enterprise incident kommandosystem",
+      "description": "Ett långvarigt operativt program som samordnar triage, utredning, intressentuppdateringar, återhämtning, verifiering och slutrapportering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-25-regional": {
+      "name": "Regional incident kommandosystem",
+      "description": "Ett långvarigt operativt program som samordnar triage, utredning, intressentuppdateringar, återhämtning, verifiering och slutrapportering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-25-product": {
+      "name": "Produkt Incident Command System",
+      "description": "Ett långvarigt operativt program som samordnar triage, utredning, intressentuppdateringar, återhämtning, verifiering och slutrapportering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-25-customer": {
+      "name": "Kund Incident Command System",
+      "description": "Ett långvarigt operativt program som samordnar triage, utredning, intressentuppdateringar, återhämtning, verifiering och slutrapportering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-25-regulated": {
+      "name": "Reglerade Incident Command System",
+      "description": "Ett långvarigt operativt program som samordnar triage, utredning, intressentuppdateringar, återhämtning, verifiering och slutrapportering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-25-transformation": {
+      "name": "Transformation incident kommandosystem",
+      "description": "Ett långvarigt operativt program som samordnar triage, utredning, intressentuppdateringar, återhämtning, verifiering och slutrapportering. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-26-enterprise": {
+      "name": "Enterprise Root Orsak och förebyggande program",
+      "description": "Ett långvarigt operativt program som flyttar från bevissamling till grundorsak, korrigerande åtgärder, verifiering och organisatoriskt lärande. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-26-regional": {
+      "name": "Regional Root Orsak och förebyggande program",
+      "description": "Ett långvarigt operativt program som flyttar från bevissamling till grundorsak, korrigerande åtgärder, verifiering och organisatoriskt lärande. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-26-product": {
+      "name": "Produktrot Orsak och förebyggande program",
+      "description": "Ett långvarigt operativt program som flyttar från bevissamling till grundorsak, korrigerande åtgärder, verifiering och organisatoriskt lärande. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-26-customer": {
+      "name": "Kundrot Orsak och förebyggande program",
+      "description": "Ett långvarigt operativt program som flyttar från bevissamling till grundorsak, korrigerande åtgärder, verifiering och organisatoriskt lärande. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-26-regulated": {
+      "name": "Reglerad Root Cause och Prevention Program",
+      "description": "Ett långvarigt operativt program som flyttar från bevissamling till grundorsak, korrigerande åtgärder, verifiering och organisatoriskt lärande. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-26-transformation": {
+      "name": "Transformation Root Orsak och förebyggande program",
+      "description": "Ett långvarigt operativt program som flyttar från bevissamling till grundorsak, korrigerande åtgärder, verifiering och organisatoriskt lärande. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-27-enterprise": {
+      "name": "Enterprise leverantörskontinuitetsklocka",
+      "description": "Ett långvarigt operativt program som övervakar leverantörsrisk, testalternativ, bibehåller begränsningar och eskalerar kontinuitetsbeslut. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-27-regional": {
+      "name": "Regional leverantör Continuity Watch",
+      "description": "Ett långvarigt operativt program som övervakar leverantörsrisk, testalternativ, bibehåller begränsningar och eskalerar kontinuitetsbeslut. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-27-product": {
+      "name": "Produktleverantör Continuity Watch",
+      "description": "Ett långvarigt operativt program som övervakar leverantörsrisk, testalternativ, bibehåller begränsningar och eskalerar kontinuitetsbeslut. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-27-customer": {
+      "name": "Kundleverantör Continuity Watch",
+      "description": "Ett långvarigt operativt program som övervakar leverantörsrisk, testalternativ, bibehåller begränsningar och eskalerar kontinuitetsbeslut. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-27-regulated": {
+      "name": "Reglerad leverantör Continuity Watch",
+      "description": "Ett långvarigt operativt program som övervakar leverantörsrisk, testalternativ, bibehåller begränsningar och eskalerar kontinuitetsbeslut. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-27-transformation": {
+      "name": "Transformationsleverantör Continuity Watch",
+      "description": "Ett långvarigt operativt program som övervakar leverantörsrisk, testalternativ, bibehåller begränsningar och eskalerar kontinuitetsbeslut. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-28-enterprise": {
+      "name": "Enterprise Policy Publicering System",
+      "description": "Ett långvarigt operativt program som forskning, utkast, granskning, lokalisera, publicera och upprätthålla styrd organisationspolitik. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-28-regional": {
+      "name": "Regionalpolitisk publiceringssystem",
+      "description": "Ett långvarigt operativt program som forskning, utkast, granskning, lokalisera, publicera och upprätthålla styrd organisationspolitik. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-28-product": {
+      "name": "Produktpolicy Publiceringssystem",
+      "description": "Ett långvarigt operativt program som forskning, utkast, granskning, lokalisera, publicera och upprätthålla styrd organisationspolitik. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-28-customer": {
+      "name": "Kundpolicy Publiceringssystem",
+      "description": "Ett långvarigt operativt program som forskning, utkast, granskning, lokalisera, publicera och upprätthålla styrd organisationspolitik. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-28-regulated": {
+      "name": "Reglerat policyutgivningssystem",
+      "description": "Ett långvarigt operativt program som forskning, utkast, granskning, lokalisera, publicera och upprätthålla styrd organisationspolitik. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-28-transformation": {
+      "name": "Transformationspolitiskt publiceringssystem",
+      "description": "Ett långvarigt operativt program som forskning, utkast, granskning, lokalisera, publicera och upprätthålla styrd organisationspolitik. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-29-enterprise": {
+      "name": "Enterprise Research-to-whitepaper-programmet",
+      "description": "Ett långvarigt operativt program som förvandlar bred forskning till en verifierad, kompatibel, multiformatpublikations- och distributionsplan. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-29-regional": {
+      "name": "Regionalt forsknings-till-vitpappersprogram",
+      "description": "Ett långvarigt operativt program som förvandlar bred forskning till en verifierad, kompatibel, multiformatpublikations- och distributionsplan. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-29-product": {
+      "name": "Produkt Research-to-Whitepaper Program",
+      "description": "Ett långvarigt operativt program som förvandlar bred forskning till en verifierad, kompatibel, multiformatpublikations- och distributionsplan. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-29-customer": {
+      "name": "Kund forskning-till-whitepaper program",
+      "description": "Ett långvarigt operativt program som förvandlar bred forskning till en verifierad, kompatibel, multiformatpublikations- och distributionsplan. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-29-regulated": {
+      "name": "Reglerad Research-to-Whitepaper Program",
+      "description": "Ett långvarigt operativt program som förvandlar bred forskning till en verifierad, kompatibel, multiformatpublikations- och distributionsplan. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-29-transformation": {
+      "name": "Transformation forskning-till-whitepaper program",
+      "description": "Ett långvarigt operativt program som förvandlar bred forskning till en verifierad, kompatibel, multiformatpublikations- och distributionsplan. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "stack-program-30-enterprise": {
+      "name": "Företagsövergripande flerspråkig kunskapshubb",
+      "description": "Ett långvarigt operativt program som bibehåller källkunskap, översättningar, kvalitetskontroller, uppdateringar och publikdistribution. Tre parallella arbetsströmmar konvergerar till planering, produktion, oberoende verifiering och ett kontrollerat beslutspaket.",
+      "duration_label": "8-24 timmar, resumable",
+      "builder_labels": {
+        "phase-1": "Rammål och operativt sammanhang",
+        "phase-2": "Kör intelligens workstream",
+        "phase-3": "Kör bevis och analys workstream",
+        "phase-4": "Kör styrning och risk workstream",
+        "phase-5": "Syntetisera programplanen",
+        "phase-6": "Producera operativa artefakter",
+        "phase-7": "Verifiera resultat och kontroller",
+        "phase-8": "Publicera beslutspaket och nästa checkpoint"
+      }
+    },
+    "coding-feature-build": {
+      "name": "Bilder från Build Stack",
+      "description": "En styrd, återupptagbar kodning Agent Stack för att genomföra en komplett funktion över backend, frontend, tester, verifiering och granskning.",
+      "duration_label": "1–12 timmar, resumable",
+      "builder_labels": {
+        "ide-feature-build-1": "Frame krav och lager omfattning",
+        "ide-feature-build-2": "Inspektera arkitektur och beroende",
+        "ide-feature-build-3": "Analysera implementeringsrisker",
+        "ide-feature-build-4": "Bekräfta styrning och förändringsgränser",
+        "ide-feature-build-5": "Skapa genomförandeplan",
+        "ide-feature-build-6": "Applicera reversibla kod fläckar",
+        "ide-feature-build-7": "Kör tester, bygga och diagnostik",
+        "ide-feature-build-8": "Producera verifierat granskningspaket"
+      }
+    },
+    "coding-bug-fix": {
+      "name": "Bug fix stack",
+      "description": "En styrd, återupptagbar kodning Agent Stack för att reproducera en defekt, hitta sin grundorsak, patch det och köra riktad plus regressionsverifiering.",
+      "duration_label": "1–12 timmar, resumable",
+      "builder_labels": {
+        "ide-bug-fix-1": "Frame krav och lager omfattning",
+        "ide-bug-fix-2": "Inspektera arkitektur och beroende",
+        "ide-bug-fix-3": "Analysera implementeringsrisker",
+        "ide-bug-fix-4": "Bekräfta styrning och förändringsgränser",
+        "ide-bug-fix-5": "Skapa genomförandeplan",
+        "ide-bug-fix-6": "Applicera reversibla kod fläckar",
+        "ide-bug-fix-7": "Kör tester, bygga och diagnostik",
+        "ide-bug-fix-8": "Producera verifierat granskningspaket"
+      }
+    },
+    "coding-refactor": {
+      "name": "Refaktoriseringsstack",
+      "description": "En styrd, återupptagbar kodning Agent Stack för att kartlägga drabbade moduler, tillämpa små reversibla fläckar och verifiera beteende efter varje steg.",
+      "duration_label": "1–12 timmar, resumable",
+      "builder_labels": {
+        "ide-refactor-1": "Frame krav och lager omfattning",
+        "ide-refactor-2": "Inspektera arkitektur och beroende",
+        "ide-refactor-3": "Analysera implementeringsrisker",
+        "ide-refactor-4": "Bekräfta styrning och förändringsgränser",
+        "ide-refactor-5": "Skapa genomförandeplan",
+        "ide-refactor-6": "Applicera reversibla kod fläckar",
+        "ide-refactor-7": "Kör tester, bygga och diagnostik",
+        "ide-refactor-8": "Producera verifierat granskningspaket"
+      }
+    },
+    "coding-test-generation": {
+      "name": "Stack för testgenerering",
+      "description": "En styrd, återupptagbar kodning Agent Stack för att identifiera täckning luckor, generera meningsfulla tester, utföra dem och rapportera återstående risk.",
+      "duration_label": "1–12 timmar, resumable",
+      "builder_labels": {
+        "ide-test-generation-1": "Frame krav och lager omfattning",
+        "ide-test-generation-2": "Inspektera arkitektur och beroende",
+        "ide-test-generation-3": "Analysera implementeringsrisker",
+        "ide-test-generation-4": "Bekräfta styrning och förändringsgränser",
+        "ide-test-generation-5": "Skapa genomförandeplan",
+        "ide-test-generation-6": "Applicera reversibla kod fläckar",
+        "ide-test-generation-7": "Kör tester, bygga och diagnostik",
+        "ide-test-generation-8": "Producera verifierat granskningspaket"
+      }
+    },
+    "coding-documentation": {
+      "name": "Dokumentation Stack",
+      "description": "En styrd, återupptagbar kodning Agent Stack för att inspektera genomfört beteende, uppdatera dokumentation och changelog och verifiera konsistens.",
+      "duration_label": "1–12 timmar, resumable",
+      "builder_labels": {
+        "ide-documentation-1": "Frame krav och lager omfattning",
+        "ide-documentation-2": "Inspektera arkitektur och beroende",
+        "ide-documentation-3": "Analysera implementeringsrisker",
+        "ide-documentation-4": "Bekräfta styrning och förändringsgränser",
+        "ide-documentation-5": "Skapa genomförandeplan",
+        "ide-documentation-6": "Applicera reversibla kod fläckar",
+        "ide-documentation-7": "Kör tester, bygga och diagnostik",
+        "ide-documentation-8": "Producera verifierat granskningspaket"
+      }
+    }
+  }
+}
