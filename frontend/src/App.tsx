@@ -9,6 +9,7 @@ const Chat = lazy(() => import('./pages/Chat').then(module => ({ default: module
 const ShogunProfile = lazy(() => import('./pages/ShogunProfile').then(module => ({ default: module.ShogunProfile })))
 const SamuraiNetwork = lazy(() => import('./pages/SamuraiNetwork').then(module => ({ default: module.SamuraiNetwork })))
 const Katana = lazy(() => import('./pages/Katana').then(module => ({ default: module.Katana })))
+const ToolGate = lazy(() => import('./pages/ToolGate').then(module => ({ default: module.ToolGate })))
 const Torii = lazy(() => import('./pages/Torii').then(module => ({ default: module.Torii })))
 const Kaizen = lazy(() => import('./pages/Kaizen').then(module => ({ default: module.Kaizen })))
 const Bushido = lazy(() => import('./pages/Bushido').then(module => ({ default: module.Bushido })))
@@ -184,6 +185,7 @@ function AppContent() {
           <Route path="/shogun" element={<Shell><ShogunProfile /></Shell>} />
           <Route path="/samurai" element={<Shell><SamuraiNetwork /></Shell>} />
           <Route path="/katana" element={<Shell><Katana /></Shell>} />
+          <Route path="/toolgate" element={<Shell><ToolGate /></Shell>} />
           <Route path="/torii" element={<Shell><Torii /></Shell>} />
           <Route path="/kaizen" element={<Shell><Kaizen /></Shell>} />
           <Route path="/bushido" element={<Shell><Bushido /></Shell>} />

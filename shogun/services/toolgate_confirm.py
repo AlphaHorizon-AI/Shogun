@@ -138,6 +138,21 @@ def get_pending_count() -> int:
     return len(_pending)
 
 
+def list_pending_confirmations() -> list[dict[str, Any]]:
+    """Return serializable pending confirmations for the ToolGate control page."""
+    return [
+        {
+            "confirm_id": entry.confirm_id,
+            "tool_name": entry.tool_name,
+            "args": entry.args,
+            "risk_level": entry.risk_level,
+            "reason": entry.reason,
+            "created_at": entry.created_at,
+        }
+        for entry in sorted(_pending.values(), key=lambda item: item.created_at)
+    ]
+
+
 def cleanup_expired(max_age: float = CONFIRMATION_TIMEOUT_SECONDS * 2) -> int:
     """Remove stale entries that somehow weren't cleaned up. Returns count removed."""
     now = time.time()

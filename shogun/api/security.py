@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from shogun.api.deps import get_security_service
 from shogun.schemas.common import ApiResponse
@@ -281,8 +282,8 @@ async def _get_agent_posture() -> dict:
             select(Agent)
             .where(
                 Agent.agent_type == "shogun",
-                Agent.is_primary == True,
-                Agent.is_deleted == False,
+                Agent.is_primary.is_(True),
+                Agent.is_deleted.is_(False),
             )
             .limit(1)
         )
@@ -320,8 +321,8 @@ async def _save_agent_posture(posture: dict) -> None:
             select(Agent)
             .where(
                 Agent.agent_type == "shogun",
-                Agent.is_primary == True,
-                Agent.is_deleted == False,
+                Agent.is_primary.is_(True),
+                Agent.is_deleted.is_(False),
             )
             .limit(1)
         )
@@ -629,7 +630,159 @@ async def delete_campaign_preset(preset_key: str):
 
 # ── ToolGate Confirmation ────────────────────────────────────────────
 
-from pydantic import BaseModel
+class ToolGateOverridesRequest(BaseModel):
+    overrides: dict[str, str]
+
+
+class ToolGateSimulateRequest(BaseModel):
+    tool_name: str
+    args: dict = {}
+    mode: str | None = None
+
+
+def _toolgate_authority() -> dict:
+    """Resolve policy ownership independently from transient connectivity."""
+    try:
+        from shogun.api.gensui_config import _get_client_status, _load_config
+
+        config = _load_config()
+        status = _get_client_status()
+        managed = bool(config.get("enabled") and status.get("enrolled"))
+        return {
+            "mode": "gensui" if managed else "standalone",
+            "editable": not managed,
+            "enrolled": bool(status.get("enrolled")),
+            "connected": bool(status.get("connected")),
+            "server_url": config.get("server_url", ""),
+            "last_sync_at": status.get("last_sync_at"),
+            "effective_posture": status.get("effective_posture"),
+        }
+    except Exception:
+        return {
+            "mode": "standalone",
+            "editable": True,
+            "enrolled": False,
+            "connected": False,
+            "server_url": "",
+            "last_sync_at": None,
+            "effective_posture": None,
+        }
+
+
+async def _active_toolgate_context() -> tuple[dict, dict | None, str]:
+    posture = await _get_agent_posture()
+    preset = None
+    preset_key = posture.get("active_campaign_preset")
+    if preset_key:
+        from shogun.services.campaign_presets import get_preset
+
+        preset = get_preset(preset_key)
+    tier = posture.get("active_tier", "tactical")
+    mode = "campaign" if tier == "campaign" else "ronin_desktop" if tier == "ronin" else "standard"
+    return posture, preset, mode
+
+
+@router.get("/toolgate", response_model=ApiResponse)
+async def get_toolgate_control():
+    """Return ToolGate inventory, effective verdicts, ownership, and pending approvals."""
+    from shogun.services.tool_gate import (
+        MODE_THRESHOLDS,
+        TOOL_RISK_REGISTRY,
+        check_tool_access,
+        get_gensui_overrides,
+        get_local_overrides,
+        resolve_explicit_overrides,
+    )
+    from shogun.services.toolgate_confirm import list_pending_confirmations
+
+    posture, preset, mode = await _active_toolgate_context()
+    local_overrides = get_local_overrides()
+    gensui_overrides = get_gensui_overrides()
+    tools = []
+    for tool_name, metadata in sorted(
+        TOOL_RISK_REGISTRY.items(),
+        key=lambda item: (item[1]["category"], item[0]),
+    ):
+        decision = await check_tool_access(mode, tool_name, {}, campaign_preset=preset)
+        _, _, layers = resolve_explicit_overrides(tool_name, preset)
+        tools.append(
+            {
+                "name": tool_name,
+                "category": metadata["category"],
+                "risk": metadata["risk"],
+                "default_action": MODE_THRESHOLDS[mode][metadata["risk"]].value,
+                "local_override": local_overrides.get(tool_name),
+                "campaign_override": layers["campaign"],
+                "gensui_override": gensui_overrides.get(tool_name),
+                "effective_action": decision.action.value,
+                "reason": decision.reason,
+            }
+        )
+
+    return ApiResponse(
+        data={
+            "authority": _toolgate_authority(),
+            "active_tier": posture.get("active_tier", "tactical"),
+            "active_campaign_preset": posture.get("active_campaign_preset"),
+            "mode": mode,
+            "local_overrides": local_overrides,
+            "tools": tools,
+            "pending_confirmations": list_pending_confirmations(),
+        }
+    )
+
+
+@router.put("/toolgate/overrides", response_model=ApiResponse)
+async def update_toolgate_overrides(body: ToolGateOverridesRequest):
+    """Replace standalone overrides. Managed instances remain read-only even while offline."""
+    authority = _toolgate_authority()
+    if not authority["editable"]:
+        raise HTTPException(
+            status_code=423,
+            detail="ToolGate is managed by Gensui. Edit the assigned posture in Gensui.",
+        )
+
+    from shogun.services.tool_gate import get_local_overrides, set_local_overrides
+
+    try:
+        set_local_overrides(body.overrides)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        from shogun.services.event_logger import EventLogger
+
+        await EventLogger.emit_policy_event(
+            "policy.toolgate_overrides_updated",
+            f"Standalone ToolGate overrides updated ({len(body.overrides)} rules)",
+            policy_ref="toolgate:local",
+            policy_decision="updated",
+            detail={"overrides": body.overrides},
+        )
+    except Exception:
+        pass
+    return ApiResponse(data={"overrides": get_local_overrides()})
+
+
+@router.post("/toolgate/simulate", response_model=ApiResponse)
+async def simulate_toolgate_call(body: ToolGateSimulateRequest):
+    """Evaluate a proposed call without executing the tool."""
+    from shogun.services.tool_gate import TOOL_RISK_REGISTRY, check_tool_access
+
+    if body.tool_name not in TOOL_RISK_REGISTRY:
+        raise HTTPException(status_code=404, detail=f"Unknown ToolGate tool '{body.tool_name}'")
+    _, preset, default_mode = await _active_toolgate_context()
+    mode = body.mode or default_mode
+    decision = await check_tool_access(mode, body.tool_name, body.args, campaign_preset=preset)
+    return ApiResponse(
+        data={
+            "tool_name": decision.tool_name,
+            "action": decision.action.value,
+            "risk_level": decision.risk_level.value,
+            "reason": decision.reason,
+            "parameter_flags": decision.parameter_flags,
+        }
+    )
 
 
 class ToolGateConfirmRequest(BaseModel):

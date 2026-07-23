@@ -15,6 +15,7 @@ import {
   Download,
   HardDrive,
   ShieldCheck,
+  LockKeyhole,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '../../lib/utils';
@@ -139,6 +140,13 @@ export const Sidebar = () => {
             subLabel={t('nav.katana_sub', 'Models & Tools')} 
             active={location.pathname === '/katana'}
             onClick={() => navigate('/katana')}
+          />
+          <NavItem
+            icon={LockKeyhole}
+            label={t('nav.toolgate', 'ToolGate')}
+            subLabel={t('nav.toolgate_sub', 'Runtime Permissions')}
+            active={location.pathname === '/toolgate'}
+            onClick={() => navigate('/toolgate')}
           />
           <NavItem 
             icon={Shield} 

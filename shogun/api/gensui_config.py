@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -121,6 +120,11 @@ async def disconnect_from_gensui():
         await gensui_client.stop()
         gensui_client.enabled = False
         gensui_client._connected = False
+        gensui_client._shogun_id = None
+        gensui_client._effective_posture = None
+        from shogun.services.tool_gate import apply_gensui_overrides
+
+        apply_gensui_overrides({})
     except Exception as e:
         log.warning("Error stopping Gensui client: %s", e)
 

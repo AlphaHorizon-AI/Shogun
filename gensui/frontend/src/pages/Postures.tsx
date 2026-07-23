@@ -4,6 +4,7 @@ import {
   ChevronDown, ChevronUp, Loader2,
 } from 'lucide-react';
 import api from '../lib/api';
+import { TOOL_NAMES } from '../lib/toolRegistry';
 import { useTranslation } from '../i18n';
 
 const PERM_KEYS = [
@@ -21,14 +22,6 @@ const PERM_KEYS = [
   { key: 'allow_external_web',       label: 'External Web',        desc: 'Access external websites and APIs' },
   { key: 'allow_file_write',         label: 'File Write',          desc: 'Write files to the filesystem' },
   { key: 'allow_external_api',       label: 'External API',        desc: 'Make outbound HTTP API calls' },
-];
-
-const TOOL_NAMES = [
-  'echo_tool', 'tool_list_debug', 'spawn_samurai', 'list_available_models',
-  'update_model_settings', 'store_memory', 'fetch_inbox', 'read_email',
-  'send_email', 'list_calendar_events', 'create_calendar_event',
-  'list_cron_jobs', 'create_cron_job', 'delete_cron_job', 'create_agent_flow',
-  'browse_web', 'take_screenshot', 'desktop_screenshot', 'desktop_click', 'desktop_type',
 ];
 
 interface Posture {

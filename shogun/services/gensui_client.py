@@ -15,10 +15,8 @@ import asyncio
 import json
 import logging
 import platform
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import httpx
 
@@ -61,9 +59,22 @@ class GensuiClient:
                 data = json.loads(self._cache_path.read_text())
                 self._shogun_id = data.get("shogun_id")
                 self._effective_posture = data.get("effective_posture")
+                self._apply_toolgate_overrides()
                 log.info("[GensuiClient] Loaded cached membership: %s", self._shogun_id)
         except Exception as e:
             log.warning("[GensuiClient] Failed to load cache: %s", e)
+
+    def _apply_toolgate_overrides(self) -> None:
+        """Apply overrides from the effective posture, including cached offline policy."""
+        overrides = (self._effective_posture or {}).get("tool_overrides")
+        if not isinstance(overrides, dict):
+            return
+        try:
+            from shogun.services.tool_gate import apply_gensui_overrides
+
+            apply_gensui_overrides(overrides)
+        except Exception as e:
+            log.warning("[GensuiClient] Failed to apply tool overrides: %s", e)
 
     def _save_cache(self):
         """Save membership state to disk."""
@@ -163,15 +174,16 @@ class GensuiClient:
         workflow_count = 0
         mado_sessions = 0
         try:
+            from sqlalchemy import func, select
+
             from shogun.db.engine import async_session_factory
             from shogun.db.models.agent import Agent
-            from sqlalchemy import select, func
             async with async_session_factory() as db:
                 result = await db.execute(
                     select(func.count()).select_from(Agent).where(
                         Agent.agent_type == "samurai",
                         Agent.status.in_(["active", "idle", "running"]),
-                        Agent.is_deleted == False,
+                        Agent.is_deleted.is_(False),
                     )
                 )
                 samurai_count = result.scalar() or 0
@@ -181,14 +193,15 @@ class GensuiClient:
         # Gather external agents from Nexus Gateway
         external_agents = []
         try:
+            from sqlalchemy import select
+
             from shogun.db.engine import async_session_factory
             from shogun.db.models.nexus import ExternalAgentModel
-            from sqlalchemy import select
             async with async_session_factory() as db:
                 result = await db.execute(
                     select(ExternalAgentModel).where(
-                        ExternalAgentModel.is_active == True,
-                        ExternalAgentModel.is_deleted == False,
+                        ExternalAgentModel.is_active.is_(True),
+                        ExternalAgentModel.is_deleted.is_(False),
                     )
                 )
                 for agent in result.scalars().all():
@@ -222,6 +235,7 @@ class GensuiClient:
 
         if result and result.get("effective_posture"):
             self._effective_posture = result["effective_posture"]
+            self._apply_toolgate_overrides()
             self._save_cache()
 
     # ── Policy Sync ──────────────────────────────────────────
@@ -244,17 +258,10 @@ class GensuiClient:
         result = await self._request("GET", f"/api/gensui/policy/effective/{self._shogun_id}")
         if result:
             self._effective_posture = result
+            self._apply_toolgate_overrides()
             self._save_cache()
 
             # ── Apply Gensui tool overrides to local ToolGate ──
-            tool_overrides = result.get("tool_overrides")
-            if isinstance(tool_overrides, dict):
-                try:
-                    from shogun.services.tool_gate import apply_gensui_overrides
-                    apply_gensui_overrides(tool_overrides)
-                except Exception as e:
-                    log.warning("[GensuiClient] Failed to apply tool overrides: %s", e)
-
     # ── Command Polling ──────────────────────────────────────
 
     async def _command_poll_loop(self):
@@ -314,9 +321,10 @@ class GensuiClient:
 
         # Activate the local kill switch
         try:
+            from sqlalchemy import select
+
             from shogun.db.engine import async_session_factory
             from shogun.db.models.security_policy import SecurityPolicy
-            from sqlalchemy import select
 
             async with async_session_factory() as db:
                 result = await db.execute(select(SecurityPolicy))

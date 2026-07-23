@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Users, Layers, Activity,
   FileSearch, Bell, UserPlus, Skull, LogOut, ChevronLeft, ChevronRight,
-  Network, Settings, BookOpen, BarChart3, Key, Globe
+  Network, Settings, BookOpen, BarChart3, Key, Globe, LockKeyhole
 } from 'lucide-react';
 import { clearAuth, getAdmin } from '../../lib/auth';
 import { useTranslation } from '../../i18n';
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { path: '/network', i18nKey: 'nav.network', label: 'Network', icon: Network },
   { path: '/groups', i18nKey: 'nav.groups', label: 'Groups', icon: Layers },
   { path: '/postures', i18nKey: 'nav.postures', label: 'Postures', icon: Shield },
+  { path: '/toolgate', i18nKey: 'nav.toolgate', label: 'ToolGate', icon: LockKeyhole },
   { path: '/harakiri', i18nKey: 'nav.harakiri', label: 'Harakiri', icon: Skull },
   { path: '/activity', i18nKey: 'nav.activity', label: 'Activity', icon: Activity },
   { path: '/audit', i18nKey: 'nav.audit', label: 'Audit Log', icon: FileSearch },

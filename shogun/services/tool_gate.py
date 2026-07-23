@@ -15,11 +15,12 @@ parameter-aware, campaign-preset-aware).
 
 from __future__ import annotations
 
+import json
 import logging
-import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 log = logging.getLogger("shogun.tool_gate")
@@ -28,6 +29,50 @@ log = logging.getLogger("shogun.tool_gate")
 # Populated by GensuiClient._sync_policy() when connected to a Gensui server.
 # Format: {"tool_name": "allow" | "confirm" | "block"}
 _gensui_overrides: dict[str, str] = {}
+_LOCAL_OVERRIDES_PATH = Path("data/toolgate_overrides.json")
+
+
+def _load_local_overrides() -> dict[str, str]:
+    try:
+        if not _LOCAL_OVERRIDES_PATH.exists():
+            return {}
+        payload = json.loads(_LOCAL_OVERRIDES_PATH.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return {}
+        return {
+            str(tool): str(action)
+            for tool, action in payload.items()
+            if action in {"allow", "confirm", "block"}
+        }
+    except Exception as exc:
+        log.warning("[ToolGate] Failed to load local overrides: %s", exc)
+        return {}
+
+
+_local_overrides: dict[str, str] = _load_local_overrides()
+
+
+def set_local_overrides(overrides: dict[str, str]) -> None:
+    """Persist standalone ToolGate overrides configured in Tenshu."""
+    invalid = {
+        tool: action
+        for tool, action in overrides.items()
+        if tool not in TOOL_RISK_REGISTRY or action not in {"allow", "confirm", "block"}
+    }
+    if invalid:
+        raise ValueError(f"Invalid ToolGate overrides: {invalid}")
+
+    global _local_overrides
+    _local_overrides = dict(sorted(overrides.items()))
+    _LOCAL_OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = _LOCAL_OVERRIDES_PATH.with_suffix(".tmp")
+    temp_path.write_text(json.dumps(_local_overrides, indent=2), encoding="utf-8")
+    temp_path.replace(_LOCAL_OVERRIDES_PATH)
+
+
+def get_local_overrides() -> dict[str, str]:
+    """Return locally configured standalone overrides."""
+    return dict(_local_overrides)
 
 
 def apply_gensui_overrides(overrides: dict[str, str]) -> None:
@@ -342,6 +387,50 @@ def _resolve_campaign_override(
     return None
 
 
+_ACTION_RESTRICTIVENESS = {
+    GateAction.ALLOW: 0,
+    GateAction.CONFIRM: 1,
+    GateAction.BLOCK: 2,
+}
+
+
+def resolve_explicit_overrides(
+    tool_name: str,
+    campaign_preset: dict | None = None,
+) -> tuple[GateAction | None, str | None, dict[str, str | None]]:
+    """Merge explicit policy layers without allowing a weaker layer to relax a stricter one."""
+    candidates: list[tuple[str, GateAction]] = []
+    campaign_action = _resolve_campaign_override(tool_name, campaign_preset)
+    local_action_str = _local_overrides.get(tool_name)
+    gensui_action_str = _gensui_overrides.get(tool_name)
+
+    if campaign_action is not None:
+        candidates.append(("campaign", campaign_action))
+    if local_action_str:
+        try:
+            candidates.append(("local", GateAction(local_action_str)))
+        except ValueError:
+            log.warning("Invalid local override action '%s' for tool '%s'", local_action_str, tool_name)
+    if gensui_action_str:
+        try:
+            candidates.append(("gensui", GateAction(gensui_action_str)))
+        except ValueError:
+            log.warning("Invalid Gensui override action '%s' for tool '%s'", gensui_action_str, tool_name)
+
+    detail = {
+        "campaign": campaign_action.value if campaign_action else None,
+        "local": local_action_str,
+        "gensui": gensui_action_str,
+    }
+    if not candidates:
+        return None, None, detail
+
+    action = max((candidate[1] for candidate in candidates), key=_ACTION_RESTRICTIVENESS.get)
+    sources = [source for source, candidate in candidates if candidate == action]
+    reason = f"Most restrictive explicit override ({', '.join(sources)}): {action.value}"
+    return action, reason, detail
+
+
 # ── Main Gate Function ───────────────────────────────────────────────
 
 async def check_tool_access(
@@ -370,30 +459,16 @@ async def check_tool_access(
     risk = get_tool_risk(tool_name)
 
     # ── 1. Campaign preset override ──
-    preset_action = _resolve_campaign_override(tool_name, campaign_preset)
-    if preset_action is not None:
-        preset_name = campaign_preset.get("name", "unknown") if campaign_preset else "unknown"
+    explicit_action, explicit_reason, _ = resolve_explicit_overrides(tool_name, campaign_preset)
+    if explicit_action == GateAction.BLOCK:
         return GateDecision(
-            action=preset_action,
-            reason=f"Campaign preset '{preset_name}' override: {preset_action.value}",
+            action=GateAction.BLOCK,
+            reason=explicit_reason or "Explicit override: block",
             risk_level=risk,
             tool_name=tool_name,
         )
 
     # ── 1.5. Gensui central governance override ──
-    gensui_action_str = _gensui_overrides.get(tool_name)
-    if gensui_action_str:
-        try:
-            gensui_action = GateAction(gensui_action_str)
-            return GateDecision(
-                action=gensui_action,
-                reason=f"Gensui governance override: {gensui_action.value}",
-                risk_level=risk,
-                tool_name=tool_name,
-            )
-        except ValueError:
-            log.warning("Invalid Gensui override action '%s' for tool '%s'", gensui_action_str, tool_name)
-
     # ── 2. Parameter-aware destructive checks ──
     param_flags = check_dangerous_parameters(tool_name, args)
     if param_flags:
@@ -444,6 +519,15 @@ async def check_tool_access(
             )
 
     # ── 3. Static override rules (extensible) ──
+    if explicit_action is not None:
+        return GateDecision(
+            action=explicit_action,
+            reason=explicit_reason or f"Explicit override: {explicit_action.value}",
+            risk_level=risk,
+            tool_name=tool_name,
+            parameter_flags=param_flags,
+        )
+
     # Reserved for future: payment tools, credential brokering, etc.
 
     # ── 4. Mode × risk threshold matrix ──

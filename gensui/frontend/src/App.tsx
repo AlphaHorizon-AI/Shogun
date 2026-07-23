@@ -18,6 +18,7 @@ import Settings from './pages/Settings';
 import Guide from './pages/Guide';
 import FleetAudit from './pages/FleetAudit';
 import Identity from './pages/Identity';
+import ToolGate from './pages/ToolGate';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated() ? <>{children}</> : <Navigate to="/login" replace />;
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="network" element={<NetworkTopology />} />
           <Route path="groups" element={<Groups />} />
           <Route path="postures" element={<Postures />} />
+          <Route path="toolgate" element={<ToolGate />} />
           <Route path="harakiri" element={<HarakiriControl />} />
           <Route path="activity" element={<ActivityMonitor />} />
           <Route path="audit" element={<AuditLog />} />
