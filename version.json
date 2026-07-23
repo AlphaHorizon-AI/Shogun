@@ -1,8 +1,8 @@
 {
-  "version": "1.44.2",
+  "version": "1.44.3",
   "name": "Shogun OS",
-  "build": 132,
+  "build": 133,
   "channel": "stable",
-  "released": "2026-07-23T14:59:47Z",
-  "changelog": "Install OpenClaw Dojo MCP as an immutable standard Shogun connector, repair missing or altered connector state on every startup, protect it from disable and removal operations, and identify it as Standard in Katana."
+  "released": "2026-07-23T20:07:18Z",
+  "changelog": "Add a governed, programming-memory-aware Coding node, 33 distinct Coding AgentFlow templates, and 33 Coding Flow Stack templates including complex game, production website, and business application build programs."
 }

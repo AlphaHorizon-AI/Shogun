@@ -542,7 +542,7 @@ NATIVE_TOOLS = [
                                 "node_type": {
                                     "type": "string",
                                     "enum": [
-                                        "input", "samurai", "shogun_approval", "logic", "output",
+                                        "input", "samurai", "coding", "shogun_approval", "logic", "output",
                                         "mado_browser", "email_send", "channel_send", "workspace",
                                         "office", "subflow", "stack_orchestrator",
                                     ],

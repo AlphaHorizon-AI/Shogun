@@ -251,7 +251,7 @@ def _built_in_template(template_id: str) -> dict | None:
 
 
 def _flow_stack_templates() -> list[dict]:
-    """Build 180 original long-horizon operating programs from reusable AgentFlows."""
+    """Build 208 long-horizon programs, including 33 purpose-built coding stacks."""
     by_id = {item["id"]: item for item in _load_templates().get("templates", [])}
     role_pools = {
         "intake": ["project-status", "campaign-brief", "meeting-minutes", "risk-assessment", "process-docs", "customer-persona"],
@@ -347,23 +347,21 @@ def _flow_stack_templates() -> list[dict]:
                 break
         if len(recipes) == 175:
             break
-    # Purpose-built coding programs. These use existing reusable flows for
-    # planning/reporting while their runtime metadata binds the steps to IDE tools.
-    coding_programs = [
-        ("feature-build", "Feature Build Stack", "implement a complete feature across backend, frontend, tests, verification, and review"),
-        ("bug-fix", "Bug Fix Stack", "reproduce a defect, locate its root cause, patch it, and run targeted plus regression verification"),
-        ("refactor", "Refactor Stack", "map affected modules, apply small reversible patches, and verify behavior after each stage"),
-        ("test-generation", "Test Generation Stack", "identify coverage gaps, generate meaningful tests, execute them, and report remaining risk"),
-        ("documentation", "Documentation Stack", "inspect implemented behavior, update documentation and changelog, and verify consistency"),
-    ]
-    coding_members = [next(item for item in role_pools[role] if item in by_id) for role in role_names]
+    # One original coding stack per Coding AgentFlow. Each program composes eight
+    # distinct coding flows so the stack is executable from the same built-in catalog.
+    coding_programs = [item for item in by_id.values() if item.get("category") == "Coding"]
+    coding_ids = [item["id"] for item in coding_programs]
     coding_labels = ["Frame requirement and repository scope", "Inspect architecture and dependencies", "Analyze implementation risks",
                      "Confirm governance and change boundaries", "Create implementation plan", "Apply reversible code patches",
                      "Run tests, build, and diagnostics", "Produce verified review package"]
-    for index, (slug, name, objective) in enumerate(coding_programs):
+    for index, template in enumerate(coding_programs):
+        slug = template["id"].removeprefix("coding-")
+        name = f"{template['name']} Stack"
+        objective = template["description"].rstrip(".").lower()
+        coding_members = [coding_ids[(index + offset) % len(coding_ids)] for offset in range(8)]
         node_ids = [f"ide-{slug}-{i+1}" for i in range(len(coding_members))]
         recipes.append({
-            "id": f"coding-{slug}", "name": name,
+            "id": template["id"], "name": name,
             "description": f"A governed, resumable coding Agent Stack to {objective}.",
             "category": "Coding Agent Stacks", "icon": "code", "difficulty": "long-running",
             "duration_label": "1–12 hours, resumable", "flow_template_ids": coding_members,
@@ -374,7 +372,7 @@ def _flow_stack_templates() -> list[dict]:
             "builder_edges": [{"source": node_ids[source], "target": node_ids[target]} for source, target in topology],
             "orchestrator_config": {"mode": "template", "objective": objective,
                 "success_criteria": ["Required implementation exists", "Tests/build complete successfully", "Diagnostics are clear or explained", "Final diff and review package are produced"],
-                "required_tools": ["ide_list_workspaces", "ide_list_files", "ide_read_file", "ide_search", "ide_apply_patch", "ide_run_task"],
+                "required_tools": ["ide_list_workspaces", "ide_list_files", "ide_read_file", "ide_search", "ide_apply_patch", "ide_run_task", "ide_memory_search", "ide_memory_store", "ide_memory_reinforce"],
                 "model_routing_profile": "balanced", "max_runtime_minutes": 720, "max_iterations": 100,
                 "max_retry_attempts_per_step": 3, "timeout_seconds": 7200, "checkpoint_frequency": "after_each_subflow",
                 "context_compaction": "enabled", "verification_required": True, "approval_policy": "step_based",
@@ -410,6 +408,7 @@ async def _instantiate_flow_template(
     if not template:
         raise HTTPException(404, f"Template not found: {template_id}")
     trigger_type = template.get("trigger_type", "manual")
+    is_coding_template = template.get("category") == "Coding"
     flow = await svc.create(
         name=name or template["name"],
         description=template.get("description", ""),
@@ -417,6 +416,14 @@ async def _instantiate_flow_template(
         schedule_config=_normalized_schedule_config(template.get("schedule_config", {}))
             if trigger_type == "scheduled" else template.get("schedule_config", {}),
         status="active" if trigger_type == "scheduled" else "draft",
+        risk_tier="high" if is_coding_template else "low",
+        required_tools=(
+            [
+                "ide_list_workspaces", "ide_list_files", "ide_read_file", "ide_search",
+                "ide_apply_patch", "ide_run_task", "ide_memory_search", "ide_memory_store",
+            ]
+            if is_coding_template else []
+        ),
     )
     saved = await svc.save_flow_graph(
         flow.id, template.get("nodes", []), template.get("edges", []),
@@ -489,7 +496,7 @@ async def list_flow_stack_templates(svc: AgentFlowService = Depends(get_agent_fl
         })
     categories = sorted({item["category"] for item in [*built_in, *custom_items]})
     return ApiResponse(data={
-        "total": len(built_in) + len(custom_items), "built_in_total": 180,
+        "total": len(built_in) + len(custom_items), "built_in_total": 208,
         "categories": [{"name": name, "count": sum(i["category"] == name for i in [*built_in, *custom_items])} for name in categories],
         "templates": [*built_in, *custom_items],
     })

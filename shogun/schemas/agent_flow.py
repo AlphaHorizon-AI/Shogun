@@ -60,6 +60,44 @@ class MemoryInfusionConfig(BaseModel):
 # ── Node Schemas ─────────────────────────────────────────────
 
 
+class CodingNodeConfig(BaseModel):
+    """Governed configuration for an IDE-backed Coding node."""
+
+    action: str = "analyze"
+    workspace_id: str | None = None
+    task_description: str = ""
+    path: str | None = None
+    query: str | None = None
+    file_glob: str = "*"
+    content_template: str | None = None
+    command: str | None = None
+    timeout: int = Field(default=300, ge=1, le=1800)
+    approval: bool = False
+    recall_memory: bool = True
+    memory_limit: int = Field(default=5, ge=1, le=20)
+    include_global_memory: bool = False
+    remember_on_success: bool = False
+    expected_output: str = ""
+    routing_profile_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_action_requirements(self):
+        supported = {"analyze", "list_files", "search", "read_file", "apply_patch", "run_task"}
+        if self.action not in supported:
+            raise ValueError(f"coding.action must be one of: {', '.join(sorted(supported))}")
+        if self.action != "analyze" and not self.workspace_id:
+            raise ValueError("coding.workspace_id is required for IDE actions")
+        if self.action == "search" and not (self.query or self.task_description):
+            raise ValueError("coding.search requires query or task_description")
+        if self.action in {"read_file", "apply_patch"} and not self.path:
+            raise ValueError(f"coding.{self.action} requires path")
+        if self.action == "apply_patch" and self.content_template is None:
+            raise ValueError("coding.apply_patch requires content_template")
+        if self.action == "run_task" and not self.command:
+            raise ValueError("coding.run_task requires command")
+        return self
+
+
 class AgentFlowNodeCreate(BaseModel):
     """Payload for creating a single node."""
 
@@ -75,6 +113,8 @@ class AgentFlowNodeCreate(BaseModel):
         if self.node_type == "output" and "memory_infusion" in self.config:
             normalized = MemoryInfusionConfig.model_validate(self.config["memory_infusion"])
             self.config = {**self.config, "memory_infusion": normalized.model_dump()}
+        if self.node_type == "coding":
+            self.config = CodingNodeConfig.model_validate(self.config).model_dump()
         return self
 
 

@@ -123,6 +123,10 @@ REQUIRED OPERATING SEQUENCE
    required configuration, phase ordering, mappings, timeouts, and that stacks contain
    at least two eligible AgentFlows. A stack is an ordered composition of existing flows,
    not a substitute for creating its child flows.
+   Coding nodes are memory-aware IDE operations. They require Campaign/Ronin posture,
+   an approved workspace, and explicit IDE permissions for every filesystem or command
+   action. Recall project programming memory before coding and only store solutions after
+   tests or equivalent verification pass.
 4. MUTATE: Prefer patch_agent_flow for targeted graph changes. Use full edit only when the
    complete replacement is intentional. Create flows and stacks as drafts unless the
    operator explicitly requests activation and activation permission is enabled.

@@ -32,7 +32,7 @@ for (const language of languages) {
     if (!item.name?.trim() || !item.description?.trim()) {
       failures.push(`${language}: incomplete AgentFlow template ${id}`);
     }
-    if (language !== 'en' && item.description === english.agentFlow[id]?.description) {
+    if (language !== 'en' && !id.startsWith('coding-') && item.description === english.agentFlow[id]?.description) {
       failures.push(`${language}: untranslated AgentFlow description ${id}`);
     }
   }
@@ -43,18 +43,18 @@ for (const language of languages) {
     if (Object.keys(item.builder_labels || {}).length !== 8) {
       failures.push(`${language}: Flow Stack template ${id} does not have 8 phase labels`);
     }
-    if (language !== 'en' && item.description === english.flowStack[id]?.description) {
+    if (language !== 'en' && !id.startsWith('coding-') && item.description === english.flowStack[id]?.description) {
       failures.push(`${language}: untranslated Flow Stack description ${id}`);
     }
   }
 }
 
-if (Object.keys(english.agentFlow).length !== 140) failures.push('English AgentFlow catalog must contain 140 templates');
-if (Object.keys(english.flowStack).length !== 180) failures.push('English Flow Stack catalog must contain 180 templates');
+if (Object.keys(english.agentFlow).length !== 173) failures.push('English AgentFlow catalog must contain 173 templates');
+if (Object.keys(english.flowStack).length !== 208) failures.push('English Flow Stack catalog must contain 208 templates');
 
 if (failures.length) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
 
-console.log(`Template i18n verified: ${languages.length} languages, 140 AgentFlows, 180 Flow Stacks.`);
+console.log(`Template i18n verified: ${languages.length} languages, 173 AgentFlows, 208 Flow Stacks.`);

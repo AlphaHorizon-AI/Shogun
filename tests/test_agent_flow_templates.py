@@ -4,6 +4,10 @@ import json
 from pathlib import Path
 
 import tomllib
+from pydantic import ValidationError
+import pytest
+
+from shogun.schemas.agent_flow import AgentFlowNodeCreate
 
 TEMPLATE_IDS = {
     "ops-brief-channel-broadcast": "intermediate",
@@ -86,3 +90,37 @@ def test_daily_business_news_template_runs_at_eight_and_uses_three_sources():
 
     channel_node = next(node for node in nodes if node["node_type"] == "channel_send")
     assert channel_node["config"]["channel"] == "telegram"
+
+
+def test_catalog_has_33_distinct_memory_aware_coding_templates():
+    catalog = _catalog()
+    coding = [item for item in catalog["templates"] if item["category"] == "Coding"]
+
+    assert catalog["total_templates"] == 173
+    assert len(coding) == 33
+    assert len({item["id"] for item in coding}) == 33
+    assert len({item["description"] for item in coding}) == 33
+    assert {
+        "coding-complex-game-build",
+        "coding-website-build",
+        "coding-business-app-build",
+    } <= {item["id"] for item in coding}
+    assert all(any(node["node_type"] == "coding" for node in item["nodes"]) for item in coding)
+    assert all(
+        next(node for node in item["nodes"] if node["node_type"] == "coding")["config"]["recall_memory"]
+        for item in coding
+    )
+
+
+def test_coding_node_configuration_is_governed_and_action_specific():
+    planned = AgentFlowNodeCreate(
+        node_type="coding",
+        config={"action": "analyze", "task_description": "Plan a safe refactor"},
+    )
+    assert planned.config["recall_memory"] is True
+
+    with pytest.raises(ValidationError, match="workspace_id"):
+        AgentFlowNodeCreate(
+            node_type="coding",
+            config={"action": "run_task", "command": "pytest"},
+        )

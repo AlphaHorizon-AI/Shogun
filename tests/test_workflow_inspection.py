@@ -85,6 +85,8 @@ def test_workflow_operator_guide_is_fixed_and_requires_verified_execution() -> N
     assert "Do not tell a Telegram or Teams operator" in WORKFLOW_OPERATOR_GUIDE
     assert "Never claim" in WORKFLOW_OPERATOR_GUIDE
     assert "A UUID cannot bypass that mismatch" in WORKFLOW_OPERATOR_GUIDE
+    assert "### `coding`" in WORKFLOW_OPERATOR_GUIDE
+    assert "project-scoped programming memory" in WORKFLOW_OPERATOR_GUIDE
 
 
 @pytest.mark.asyncio

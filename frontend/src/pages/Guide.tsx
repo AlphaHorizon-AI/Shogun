@@ -1024,7 +1024,7 @@ export function Guide() {
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
                          <div className="font-bold text-shogun-text flex items-center gap-2"><Workflow className="w-4 h-4 text-violet-400" /> Agent Flow — Workflow Builder</div>
-                         <p className="text-xs text-shogun-subdued leading-relaxed">A visual drag-and-drop canvas for designing multi-step AI pipelines. Build workflows by chaining 12 node types:</p>
+                         <p className="text-xs text-shogun-subdued leading-relaxed">A visual drag-and-drop canvas for designing multi-step AI pipelines. Build workflows by chaining 13 node types, including the governed, memory-aware Coding node:</p>
                          <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
                             <li><strong>Input:</strong> The entry point — accepts user text, data, or triggers.</li>
                             <li><strong>Samurai:</strong> Delegates a task to a specific sub-agent.</li>
@@ -1046,7 +1046,7 @@ export function Guide() {
                       </div>
                       <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
                          <div className="font-bold text-shogun-text flex items-center gap-2"><Package className="w-4 h-4 text-violet-400" /> Template Gallery</div>
-                         <p className="text-xs text-shogun-subdued leading-relaxed">Click <strong>New Flow</strong> to browse 140 pre-built workflow templates across 10 different categories (e.g., Data Analysis, Content Creation, Document Processing). Templates range in difficulty from <strong>Beginner</strong> to <strong>Advanced</strong>.</p>
+                         <p className="text-xs text-shogun-subdued leading-relaxed">Click <strong>New Flow</strong> to browse 173 pre-built workflow templates across 11 different categories, including 33 distinct Coding templates. Templates range in difficulty from <strong>Beginner</strong> to <strong>Advanced</strong>.</p>
                          <p className="text-xs text-shogun-subdued leading-relaxed mt-2">When you select a template, the canvas is automatically populated. Samurai nodes inside templates use <strong>Ephemeral (Ad-Hoc)</strong> agents by default to keep your Fleet clean, but can be manually linked to a permanent Fleet Samurai via the node properties panel.</p>
                       </div>
                       <div className="shogun-card space-y-2 border-l-2 border-orange-400/40 md:col-span-2">

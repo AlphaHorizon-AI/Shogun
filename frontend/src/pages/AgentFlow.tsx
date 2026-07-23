@@ -71,6 +71,7 @@ import {
   Network,
   BookmarkPlus,
   Power,
+  Code2,
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from '../lib/utils';
@@ -217,6 +218,7 @@ function formatRunTimestamp(value?: string | null): string {
 
 const NODE_PALETTE = [
   { type: 'samurai',         label: 'Samurai',          icon: Users,     color: '#d4a017', desc: 'Task worker / sub-agent' },
+  { type: 'coding',          label: 'Coding',           icon: Code2,     color: '#14b8a6', desc: 'Governed IDE and programming memory' },
   { type: 'shogun_approval', label: 'Shogun Approval',  icon: Shield,    color: '#4a8cc7', desc: 'Approval gate' },
   { type: 'logic',           label: 'Logic / Decision', icon: GitBranch, color: '#a78bfa', desc: 'Branching logic' },
   { type: 'input',           label: 'Input',            icon: LogIn,     color: '#22c55e', desc: 'Workflow start point' },
@@ -237,6 +239,7 @@ const NODE_PALETTE = [
 
 const nodeColors: Record<string, string> = {
   samurai: '#d4a017',
+  coding: '#14b8a6',
   shogun_approval: '#4a8cc7',
   logic: '#a78bfa',
   input: '#22c55e',
@@ -252,6 +255,7 @@ const nodeColors: Record<string, string> = {
 
 const nodeIcons: Record<string, React.ElementType> = {
   samurai: Users,
+  coding: Code2,
   shogun_approval: Shield,
   logic: GitBranch,
   input: LogIn,
@@ -570,6 +574,22 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             )}
           </>
         )}
+        {type === 'coding' && (
+          <>
+            <div className="flex items-center gap-1">
+              <Code2 className="w-2.5 h-2.5 text-[#14b8a6]/70" />
+              <span className="text-[8px] font-bold text-[#14b8a6]/80 uppercase">
+                {config.action || 'analyze'}
+              </span>
+            </div>
+            <p className="text-[9px] text-[#7a8899] line-clamp-2">
+              {config.task_description || config.command || 'Configure coding task...'}
+            </p>
+            {config.recall_memory !== false && (
+              <span className="text-[8px] text-[#14b8a6]/60">Programming memory enabled</span>
+            )}
+          </>
+        )}
         {type === 'subflow' && (
           <>
             <div className="flex items-center gap-1">
@@ -668,6 +688,7 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
 // Register custom node types
 const nodeTypes: NodeTypes = {
   samurai: FlowNode,
+  coding: FlowNode,
   shogun_approval: FlowNode,
   logic: FlowNode,
   input: FlowNode,
@@ -1923,6 +1944,99 @@ Content-Type: application/json
                 </div>
               )}
             </div>
+          </>
+        )}
+
+        {/* Coding node fields */}
+        {nodeType === 'coding' && (
+          <>
+            <div className="rounded-lg border border-[#14b8a6]/20 bg-[#14b8a6]/5 p-2.5 text-[9px] leading-relaxed text-[#8adbd1]">
+              Coding nodes use governed IDE Mode. Workspace actions require Campaign or Ronin posture,
+              an approved workspace, and the matching IDE permissions.
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Action</label>
+              <select
+                value={config.action || 'analyze'}
+                onChange={(e) => updateConfig('action', e.target.value)}
+                className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#14b8a6] outline-none"
+              >
+                <option value="analyze">Analyze / Plan</option>
+                <option value="list_files">List Repository Files</option>
+                <option value="search">Search Code</option>
+                <option value="read_file">Read File</option>
+                <option value="apply_patch">Write / Replace File</option>
+                <option value="run_task">Run Test / Build Task</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Task Description</label>
+              <textarea
+                value={config.task_description || ''}
+                onChange={(e) => updateConfig('task_description', e.target.value)}
+                rows={3}
+                className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#14b8a6] outline-none resize-y"
+                placeholder="Describe the coding objective and acceptance criteria..."
+              />
+            </div>
+            {config.action !== 'analyze' && (
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Approved Workspace ID</label>
+                <input
+                  value={config.workspace_id || ''}
+                  onChange={(e) => updateConfig('workspace_id', e.target.value)}
+                  className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#14b8a6] outline-none"
+                  placeholder="VS Code workspace UUID"
+                />
+              </div>
+            )}
+            {(config.action === 'read_file' || config.action === 'apply_patch') && (
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Workspace-relative Path</label>
+                <input
+                  value={config.path || ''}
+                  onChange={(e) => updateConfig('path', e.target.value)}
+                  className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#14b8a6] outline-none font-mono"
+                  placeholder="src/module.py"
+                />
+              </div>
+            )}
+            {config.action === 'search' && (
+              <div className="grid grid-cols-2 gap-2">
+                <input value={config.query || ''} onChange={(e) => updateConfig('query', e.target.value)}
+                  className="bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none" placeholder="Search text" />
+                <input value={config.file_glob || '*'} onChange={(e) => updateConfig('file_glob', e.target.value)}
+                  className="bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none" placeholder="*.py" />
+              </div>
+            )}
+            {config.action === 'apply_patch' && (
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Complete File Content</label>
+                <textarea value={config.content_template || ''} onChange={(e) => updateConfig('content_template', e.target.value)}
+                  rows={7} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-[10px] text-[#c8d0d8] font-mono outline-none"
+                  placeholder="Use {{context}} to insert predecessor output." />
+              </div>
+            )}
+            {config.action === 'run_task' && (
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Allowlisted Command</label>
+                <input value={config.command || ''} onChange={(e) => updateConfig('command', e.target.value)}
+                  className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] font-mono outline-none"
+                  placeholder="pytest tests/test_feature.py" />
+              </div>
+            )}
+            <label className="flex items-center justify-between rounded-lg border border-[#1a2040] bg-[#0a0e1a] p-2.5 text-[10px] text-[#c8d0d8]">
+              Recall project programming memory
+              <input type="checkbox" checked={config.recall_memory !== false}
+                onChange={(e) => updateConfig('recall_memory', e.target.checked)} />
+            </label>
+            {config.action === 'run_task' && (
+              <label className="flex items-center justify-between rounded-lg border border-[#1a2040] bg-[#0a0e1a] p-2.5 text-[10px] text-[#c8d0d8]">
+                Remember successful verified result
+                <input type="checkbox" checked={Boolean(config.remember_on_success)}
+                  onChange={(e) => updateConfig('remember_on_success', e.target.checked)} />
+              </label>
+            )}
           </>
         )}
 

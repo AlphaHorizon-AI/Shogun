@@ -37,12 +37,19 @@ async def template_sessions():
     await engine.dispose()
 
 
-def test_stack_catalog_has_exactly_180_valid_categorized_recipes():
+def test_stack_catalog_has_208_valid_categorized_recipes_including_required_build_stacks():
     recipes = _flow_stack_templates()
     flow_template_ids = {item["id"] for item in _load_templates()["templates"]}
 
-    assert len(recipes) == 180
-    assert len({item["id"] for item in recipes}) == 180
+    assert len(recipes) == 208
+    assert len({item["id"] for item in recipes}) == 208
+    coding = [item for item in recipes if item["category"] == "Coding Agent Stacks"]
+    assert len(coding) == 33
+    assert {
+        "coding-complex-game-build",
+        "coding-website-build",
+        "coding-business-app-build",
+    } <= {item["id"] for item in coding}
     assert len({item["category"] for item in recipes}) >= 10
     assert all(item["flow_template_ids"] for item in recipes)
     assert all(set(item["flow_template_ids"]) <= flow_template_ids for item in recipes)
@@ -69,6 +76,21 @@ async def test_template_detail_exposes_internal_nodes_and_connections(template_s
     assert len(response.data["nodes"]) == 5
     assert len(response.data["edges"]) == 4
     assert {node["node_type"] for node in response.data["nodes"]} >= {"input", "samurai", "output"}
+
+
+@pytest.mark.asyncio
+async def test_coding_template_instantiation_declares_ide_governance(template_sessions):
+    async with template_sessions() as session:
+        flow = await _instantiate_flow_template(
+            "coding-feature-build",
+            AgentFlowService(session),
+            "Governed Feature Build",
+        )
+
+    assert flow.risk_tier == "high"
+    assert "ide_memory_search" in flow.required_tools
+    assert "ide_apply_patch" in flow.required_tools
+    assert any(node.node_type == "coding" for node in flow.nodes)
 
 
 @pytest.mark.asyncio

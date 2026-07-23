@@ -3,6 +3,7 @@
 Walks a flow's node graph in topological order, executing each node type:
 - Input: provides initial context
 - Samurai: delegates to LLM via agent's routing profile
+- Coding: performs governed, programming-memory-aware IDE operations
 - Shogun Approval: gate that checks approval policy
 - Logic/Decision: evaluates condition to select branches
 - Output: formats and stores final result
@@ -477,6 +478,8 @@ async def _execute_single_node(
             result = await _exec_input(config, context_str, run_input or {})
         elif node_type == "samurai":
             result = await _exec_samurai(config, context_str, governance_context or {})
+        elif node_type == "coding":
+            result = await _exec_coding(config, context_str, governance_context or {})
         elif node_type == "shogun_approval":
             result = await _exec_approval(config, predecessor_outputs)
         elif node_type == "logic":
@@ -1111,6 +1114,108 @@ async def _exec_samurai(
         context="AgentFlow Samurai node",
         routing_context=_routing,
     )
+
+
+async def _exec_coding(
+    config: dict[str, Any],
+    context_str: str,
+    governance_context: dict[str, Any] | None = None,
+) -> Any:
+    """Execute a governed, memory-aware coding operation through IDE Mode."""
+    from shogun.services.ide_service import ide_service
+
+    action = str(config.get("action") or "analyze")
+    workspace_id = str(config.get("workspace_id") or "").strip()
+    task = str(config.get("task_description") or "").strip()
+    memory: list[dict[str, Any]] = []
+
+    if workspace_id and config.get("recall_memory", True):
+        memory = await ide_service.search_programming_memory(
+            workspace_id,
+            str(config.get("query") or task or context_str or "coding task")[:500],
+            limit=int(config.get("memory_limit", 5)),
+            include_global=bool(config.get("include_global_memory", False)),
+        )
+
+    memory_context = ""
+    if memory:
+        memory_context = "\n\n--- VERIFIED PROGRAMMING MEMORY ---\n" + "\n\n".join(
+            f"{item['title']} [{item['validation_status']}]\n"
+            f"Problem: {item['problem']}\nSolution: {item['solution']}"
+            for item in memory
+        )
+
+    if action == "analyze":
+        coding_config = {
+            **config,
+            "task_description": task or "Analyze the supplied coding task and produce a safe implementation plan.",
+            "task_type": "coding_edit",
+            "expected_output": config.get("expected_output")
+            or "A repository-aware plan with affected files, risks, tests, and verification steps.",
+            "requires_tools": False,
+        }
+        return await _exec_samurai(
+            coding_config,
+            f"{context_str}{memory_context}",
+            governance_context,
+        )
+
+    if not workspace_id:
+        raise ValueError("Coding node requires an approved IDE workspace for this action.")
+
+    if action == "list_files":
+        result: Any = await ide_service.list_files(workspace_id, str(config.get("file_glob") or "*"))
+    elif action == "search":
+        result = await ide_service.search(
+            workspace_id,
+            str(config.get("query") or task),
+            str(config.get("file_glob") or "*"),
+        )
+    elif action == "read_file":
+        result = await ide_service.read_file(workspace_id, str(config.get("path") or ""))
+    elif action == "apply_patch":
+        content = str(config.get("content_template") or "").replace("{{context}}", context_str)
+        result = await ide_service.write(
+            workspace_id,
+            str(config.get("path") or ""),
+            content,
+            approval=bool(config.get("approval", False)),
+        )
+    elif action == "run_task":
+        result = await ide_service.run_command(
+            workspace_id,
+            str(config.get("command") or ""),
+            approval=bool(config.get("approval", False)),
+            timeout=int(config.get("timeout", 300)),
+        )
+        if result.get("exit_code") != 0:
+            raise ValueError(
+                f"Coding task failed with exit code {result.get('exit_code')}: "
+                f"{str(result.get('output') or '')[-2000:]}"
+            )
+        if config.get("remember_on_success"):
+            await ide_service.remember_programming_solution(
+                workspace_id,
+                {
+                    "title": task or f"Verified coding task: {config.get('command')}",
+                    "problem": task or "Verify the current implementation.",
+                    "solution": str(result.get("output") or "The configured verification command passed."),
+                    "evidence": f"{config.get('command')} exited with code 0",
+                    "validation_status": "tests_passed",
+                    "kind": "solution",
+                    "files": [config["path"]] if config.get("path") else [],
+                    "tags": ["agentflow-coding-node", "verified"],
+                },
+            )
+    else:
+        raise ValueError(f"Unknown Coding node action: {action}")
+
+    return {
+        "action": action,
+        "task": task,
+        "result": result,
+        "recalled_memory_ids": [item["id"] for item in memory],
+    }
 
 
 async def _exec_channel_send(config: dict, context_str: str) -> str:

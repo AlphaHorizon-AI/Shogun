@@ -57,6 +57,20 @@ Delegate a bounded task to an LLM worker and consume all predecessor context.
 - Useful: `expected_output`, `agent_id`, `routing_profile_id`, `timeout`, `retry_count`, `failure_action`, `context_injection`.
 - Use one compiler Samurai after parallel research nodes. Specify a strict output format and ask it to deduplicate sources.
 
+### `coding`
+
+Perform a governed coding operation with IDE Mode and project-scoped programming memory.
+
+- `action`: `analyze`, `list_files`, `search`, `read_file`, `apply_patch`, or `run_task`.
+- Set `task_description` for the exact objective and acceptance criteria.
+- IDE actions require `workspace_id` for an approved VS Code workspace. They remain restricted to Campaign or Ronin posture and the explicit IDE permission set.
+- `search` uses `query` and optional `file_glob`; `read_file` uses a workspace-relative `path`.
+- `apply_patch` uses `path` plus `content_template`; `{{context}}` inserts predecessor output. It creates an IDE restore point before writing.
+- `run_task` uses an allowlisted `command` and optional `timeout`.
+- `recall_memory` is enabled by default and retrieves verified, project-scoped programming memories before work.
+- `remember_on_success` is only meaningful for a successful `run_task`; it stores tests-passed evidence in programming memory. Never store an unverified implementation as a verified solution.
+- Coding nodes never bypass ToolGate, IDE posture, workspace boundaries, protected-file rules, or command restrictions.
+
 ### `shogun_approval`
 
 Apply a workflow quality/policy gate.
