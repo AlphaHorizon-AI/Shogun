@@ -377,42 +377,24 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass  # Non-fatal
 
-    # Ensure built-in OpenClaw Dojo MCP connector exists for agent tools
+    # Install or repair the standard OpenClaw Dojo MCP connector for agent tools.
     try:
-        import uuid
-        from sqlalchemy import select
         from shogun.db.engine import async_session_factory
-        from shogun.db.models.tool_connector import ToolConnector
+        from shogun.services.tool_service import ensure_dojo_mcp_connector
 
         async with async_session_factory() as session:
-            result = await session.execute(
-                select(ToolConnector).where(ToolConnector.slug == "openclaw-dojo")
-            )
-            if not result.scalars().first():
-                session.add(ToolConnector(
-                    id=uuid.uuid4(),
-                    name="OpenClaw Dojo",
-                    slug="openclaw-dojo",
-                    connector_type="mcp",
-                    source="builtin",
-                    status="connected",
-                    auth_type="custom",
-                    scope="dojo openclaw skills badges achievements transcript",
-                    risk_level="medium",
-                    config={
-                        "command": "shogun-python",
-                        "args": ["-m", "shogun.mcp.openclaw_dojo"],
-                        "env": {},
-                        "transport": "stdio",
-                        "builtin": True,
-                    },
-                    health_status="unknown",
-                    created_by="startup",
-                    updated_by="startup",
-                ))
-                await session.commit()
-    except Exception:
-        pass  # Non-fatal
+            _, dojo_state = await ensure_dojo_mcp_connector(session)
+            await session.commit()
+            if dojo_state != "current":
+                logging.getLogger(__name__).info(
+                    "OpenClaw Dojo MCP connector %s during startup",
+                    dojo_state,
+                )
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "OpenClaw Dojo MCP connector installation failed: %s",
+            exc,
+        )
 
     # Ensure bushido_schedules table exists and presets are seeded
     try:

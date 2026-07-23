@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from shogun.api.deps import get_tool_service
 from shogun.schemas.common import ApiResponse
 from shogun.schemas.tools import ToolConnectorCreate, ToolConnectorResponse, ToolConnectorUpdate
-from shogun.services.tool_service import ToolService
+from shogun.services.tool_service import ProtectedBuiltinToolError, ToolService
 
 router = APIRouter(prefix="/tools", tags=["Tools"])
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/tools", tags=["Tools"])
 @router.get("", response_model=ApiResponse)
 async def list_tools(svc: ToolService = Depends(get_tool_service)):
     from shogun.db.models.tool_connector import ToolConnector
-    records, total = await svc.get_all(filters=[ToolConnector.is_deleted == False])
+    records, total = await svc.get_all(filters=[ToolConnector.is_deleted.is_(False)])
     return ApiResponse(
         data=[ToolConnectorResponse.model_validate(r) for r in records],
         meta={"total": total},
@@ -48,7 +48,10 @@ async def update_tool(
     body: ToolConnectorUpdate,
     svc: ToolService = Depends(get_tool_service),
 ):
-    record = await svc.update(tool_id, **body.model_dump(exclude_unset=True))
+    try:
+        record = await svc.update(tool_id, **body.model_dump(exclude_unset=True))
+    except ProtectedBuiltinToolError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not record:
         raise HTTPException(status_code=404, detail="Tool not found")
     return ApiResponse(data=ToolConnectorResponse.model_validate(record))
@@ -61,7 +64,10 @@ async def test_tool(tool_id: uuid.UUID):
 
 @router.post("/{tool_id}/disable", response_model=ApiResponse)
 async def disable_tool(tool_id: uuid.UUID, svc: ToolService = Depends(get_tool_service)):
-    record = await svc.update(tool_id, status="disabled")
+    try:
+        record = await svc.update(tool_id, status="disabled")
+    except ProtectedBuiltinToolError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not record:
         raise HTTPException(status_code=404, detail="Tool not found")
     return ApiResponse(data=ToolConnectorResponse.model_validate(record))
@@ -69,7 +75,10 @@ async def disable_tool(tool_id: uuid.UUID, svc: ToolService = Depends(get_tool_s
 
 @router.delete("/{tool_id}", response_model=ApiResponse)
 async def delete_tool(tool_id: uuid.UUID, svc: ToolService = Depends(get_tool_service)):
-    deleted = await svc.delete(tool_id)
+    try:
+        deleted = await svc.delete(tool_id)
+    except ProtectedBuiltinToolError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Tool not found")
     return ApiResponse(data={"deleted": True})

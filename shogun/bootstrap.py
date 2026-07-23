@@ -54,7 +54,7 @@ async def _seed_defaults():
     from shogun.db.models.persona import Persona
     from shogun.db.models.model_routing import ModelRoutingProfile
     from shogun.db.models.samurai_role import SamuraiRole
-    from shogun.db.models.tool_connector import ToolConnector
+    from shogun.services.tool_service import ensure_dojo_mcp_connector
     from sqlalchemy import select
 
     async with async_session_factory() as session:
@@ -81,34 +81,11 @@ async def _seed_defaults():
         else:
             print("   INFO: OpenClaw College source already exists")
 
-        result = await session.execute(
-            select(ToolConnector).where(ToolConnector.slug == "openclaw-dojo")
-        )
-        if not result.scalars().first():
-            connector = ToolConnector(
-                id=uuid.uuid4(),
-                name="OpenClaw Dojo",
-                slug="openclaw-dojo",
-                connector_type="mcp",
-                source="builtin",
-                base_url=None,
-                status="connected",
-                auth_type="custom",
-                scope="dojo openclaw skills badges achievements transcript",
-                risk_level="medium",
-                config={
-                    "command": "shogun-python",
-                    "args": ["-m", "shogun.mcp.openclaw_dojo"],
-                    "env": {},
-                    "transport": "stdio",
-                    "builtin": True,
-                },
-                health_status="unknown",
-                created_by="bootstrap",
-                updated_by="bootstrap",
-            )
-            session.add(connector)
+        _, dojo_state = await ensure_dojo_mcp_connector(session, actor="bootstrap")
+        if dojo_state == "created":
             print("   OK: Seeded: OpenClaw Dojo MCP connector")
+        elif dojo_state == "repaired":
+            print("   OK: Repaired: OpenClaw Dojo MCP connector")
         else:
             print("   INFO: OpenClaw Dojo MCP connector already exists")
 

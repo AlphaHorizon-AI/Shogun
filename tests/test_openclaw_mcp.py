@@ -5,9 +5,17 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import shogun.mcp.openclaw_dojo as openclaw_dojo
+from shogun.db.models.tool_connector import ToolConnector
 from shogun.services.mcp_bridge import MCPStdioSession
+from shogun.services.tool_service import (
+    DOJO_MCP_DEFAULTS,
+    ProtectedBuiltinToolError,
+    ToolService,
+    ensure_dojo_mcp_connector,
+)
 
 
 async def _request(proc, request_id: int, method: str, params: dict | None = None) -> dict:
@@ -70,6 +78,56 @@ async def test_mcp_bridge_lists_openclaw_tools():
     assert "openclaw_search_skills" in names
     assert "openclaw_list_installed" in names
     assert "openclaw_enroll_specialization" in names
+
+
+@pytest.mark.asyncio
+async def test_dojo_mcp_is_installed_and_repairs_existing_connector():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(ToolConnector.__table__.create)
+
+    async with sessions() as session:
+        connector, state = await ensure_dojo_mcp_connector(session)
+        assert state == "created"
+        assert connector.source == "builtin"
+        assert connector.status == "connected"
+        assert connector.config == DOJO_MCP_DEFAULTS["config"]
+        await session.commit()
+
+        connector.status = "disabled"
+        connector.source = "manual"
+        connector.config = {"command": "broken"}
+        connector.is_deleted = True
+        await session.commit()
+
+        repaired, state = await ensure_dojo_mcp_connector(session)
+        assert state == "repaired"
+        assert repaired.is_deleted is False
+        assert repaired.status == "connected"
+        assert repaired.source == "builtin"
+        assert repaired.config == DOJO_MCP_DEFAULTS["config"]
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_dojo_mcp_cannot_be_modified_or_removed():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(ToolConnector.__table__.create)
+
+    async with sessions() as session:
+        connector, _ = await ensure_dojo_mcp_connector(session)
+        service = ToolService(session)
+
+        with pytest.raises(ProtectedBuiltinToolError):
+            await service.update(connector.id, status="disabled")
+        with pytest.raises(ProtectedBuiltinToolError):
+            await service.delete(connector.id)
+
+    await engine.dispose()
 
 
 @dataclass

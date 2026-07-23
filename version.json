@@ -1,8 +1,8 @@
 {
-  "version": "1.44.1",
+  "version": "1.44.2",
   "name": "Shogun OS",
-  "build": 131,
+  "build": 132,
   "channel": "stable",
-  "released": "2026-07-23T14:53:08Z",
-  "changelog": "Localize all 140 AgentFlow and 180 Flow Stack templates across 14 supported languages, add reproducible LibreTranslate-compatible and local Argos catalog generation with integrity verification, and remove the ALE Benchmark from the Guide Grand Reference."
+  "released": "2026-07-23T14:59:47Z",
+  "changelog": "Install OpenClaw Dojo MCP as an immutable standard Shogun connector, repair missing or altered connector state on every startup, protect it from disable and removal operations, and identify it as Standard in Katana."
 }

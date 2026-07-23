@@ -222,7 +222,6 @@ interface McpServer {
 }
 
 const MCP_SERVERS: McpServer[] = [
-  { name: 'OpenClaw Dojo',       description: 'Browse OpenClaw skills, badges, specializations, achievements, transcripts, installs, and exams through Shogun.', command: 'shogun-python', args: ['-m', 'shogun.mcp.openclaw_dojo'], env_keys: [], transport: 'stdio', category: 'Shogun', risk_level: 'medium', github_url: 'https://github.com/AlphaHorizon-AI/Shogun', npm_package: '' },
   // ── Search ──────────────────────────────────────────────────
   { name: 'Brave Search',        description: 'Web and local search via the Brave Search API.',                                    command: 'npx', args: ['-y', '@modelcontextprotocol/server-brave-search'],   env_keys: ['BRAVE_API_KEY'],                    transport: 'stdio', category: 'Search',        risk_level: 'low',    github_url: 'https://github.com/modelcontextprotocol/servers',                   npm_package: '@modelcontextprotocol/server-brave-search' },
   { name: 'Tavily Search',       description: 'AI-optimized search engine for LLMs and RAG pipelines.',                            command: 'npx', args: ['-y', 'tavily-mcp@latest'],                        env_keys: ['TAVILY_API_KEY'],                   transport: 'stdio', category: 'Search',        risk_level: 'low',    github_url: 'https://github.com/tavily-ai/tavily-mcp',                          npm_package: 'tavily-mcp' },
@@ -2414,20 +2413,29 @@ export function Katana() {
               ) : tools.map((tool) => (
                 <div key={tool.id} className="shogun-card hover:border-shogun-blue/30 transition-all group relative">
                   {/* Delete button */}
-                  <button
-                    onClick={() => handleDeleteTool(tool.id, tool.name)}
-                    className="absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-red-500/50 hover:text-red-500 transition-all"
-                    title={t('katana.remove_connector')}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {tool.source !== 'builtin' && !tool.config?.builtin && (
+                    <button
+                      onClick={() => handleDeleteTool(tool.id, tool.name)}
+                      className="absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-red-500/50 hover:text-red-500 transition-all"
+                      title={t('katana.remove_connector')}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
 
                   <div className="flex items-start gap-3 mb-4">
                     <div className="w-10 h-10 rounded-lg bg-[#050508] border border-shogun-border flex items-center justify-center text-shogun-subdued group-hover:text-shogun-blue transition-colors shrink-0">
                       <Wrench className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
-                      <h4 className="font-bold text-shogun-text truncate">{tool.name}</h4>
+                      <h4 className="font-bold text-shogun-text truncate flex items-center gap-2">
+                        {tool.name}
+                        {(tool.source === 'builtin' || tool.config?.builtin) && (
+                          <span className="text-[8px] uppercase tracking-widest text-indigo-300 border border-indigo-400/30 bg-indigo-500/10 rounded px-1.5 py-0.5">
+                            Standard
+                          </span>
+                        )}
+                      </h4>
                       <p className="text-[10px] text-shogun-subdued font-mono truncate">{tool.slug}</p>
                     </div>
                   </div>
@@ -2753,20 +2761,29 @@ export function Katana() {
                 </div>
               ) : tools.filter(t => t.connector_type === 'mcp').map((tool) => (
                 <div key={tool.id} className="shogun-card hover:border-indigo-500/30 transition-all group relative">
-                  <button
-                    onClick={() => handleDeleteTool(tool.id, tool.name)}
-                    className="absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-red-500/50 hover:text-red-500 transition-all"
-                    title={t('katana.remove_connector')}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {tool.source !== 'builtin' && !tool.config?.builtin && (
+                    <button
+                      onClick={() => handleDeleteTool(tool.id, tool.name)}
+                      className="absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-red-500/50 hover:text-red-500 transition-all"
+                      title={t('katana.remove_connector')}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
 
                   <div className="flex items-start gap-3 mb-4">
                     <div className="w-10 h-10 rounded-lg bg-[#050508] border border-shogun-border flex items-center justify-center text-shogun-subdued group-hover:text-indigo-400 transition-colors shrink-0">
                       <Layers className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
-                      <h4 className="font-bold text-shogun-text truncate">{tool.name}</h4>
+                      <h4 className="font-bold text-shogun-text truncate flex items-center gap-2">
+                        {tool.name}
+                        {(tool.source === 'builtin' || tool.config?.builtin) && (
+                          <span className="text-[8px] uppercase tracking-widest text-indigo-300 border border-indigo-400/30 bg-indigo-500/10 rounded px-1.5 py-0.5">
+                            Standard
+                          </span>
+                        )}
+                      </h4>
                       <p className="text-[10px] text-shogun-subdued font-mono truncate">{tool.config?.transport === 'sse' ? 'SSE' : 'STDIO'} • {tool.slug}</p>
                     </div>
                   </div>
