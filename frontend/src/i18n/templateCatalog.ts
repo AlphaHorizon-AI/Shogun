@@ -41,6 +41,7 @@ const myTemplatesLabels: Record<string, string> = {
   de: 'Meine Vorlagen',
   es: 'Mis plantillas',
   fr: 'Mes modèles',
+  hi: 'मेरे टेम्पलेट',
   it: 'I miei modelli',
   ja: 'マイテンプレート',
   ko: '내 템플릿',

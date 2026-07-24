@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const catalogDir = path.resolve(here, '../src/i18n/templates');
-const languages = ['en', 'da', 'de', 'es', 'fr', 'it', 'ja', 'ko', 'no', 'pl', 'pt', 'sv', 'uk', 'zh'];
+const languages = ['en', 'da', 'de', 'es', 'fr', 'hi', 'it', 'ja', 'ko', 'no', 'pl', 'pt', 'sv', 'uk', 'zh'];
 const requiredSections = ['ui', 'categories', 'difficulty', 'agentFlow', 'flowStack'];
 const english = JSON.parse(fs.readFileSync(path.join(catalogDir, 'en.json'), 'utf8'));
 const failures = [];

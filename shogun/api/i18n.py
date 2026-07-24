@@ -28,6 +28,7 @@ LANGUAGES = [
     {"code": "no", "name": "Norsk",      "englishName": "Norwegian",  "flag": "🇳🇴"},
     {"code": "sv", "name": "Svenska",    "englishName": "Swedish",    "flag": "🇸🇪"},
     {"code": "uk", "name": "Українська", "englishName": "Ukrainian",  "flag": "🇺🇦"},
+    {"code": "hi", "name": "हिन्दी",      "englishName": "Hindi",      "flag": "🇮🇳"},
     {"code": "zh", "name": "中文",       "englishName": "Chinese",    "flag": "🇨🇳"},
     {"code": "ja", "name": "日本語",     "englishName": "Japanese",   "flag": "🇯🇵"},
     {"code": "ko", "name": "한국어",     "englishName": "Korean",     "flag": "🇰🇷"},

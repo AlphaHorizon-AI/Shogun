@@ -1,8 +1,8 @@
 {
-  "version": "1.44.9",
+  "version": "1.44.10",
   "name": "Shogun OS",
-  "build": 139,
+  "build": 140,
   "channel": "stable",
-  "released": "2026-07-24T12:54:29Z",
-  "changelog": "Make AgentFlow cron registration self-healing and prevent ToolGate from treating Telegram or channel message prose as destructive commands."
+  "released": "2026-07-24T14:00:49Z",
+  "changelog": "Add complete Hindi localization for setup, the Shogun interface, the guide, and workflow templates."
 }
