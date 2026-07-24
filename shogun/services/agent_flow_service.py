@@ -167,6 +167,32 @@ class AgentFlowService(BaseService[AgentFlow]):
             )
             self.session.add(edge)
 
+        # Sync flow trigger & schedule_config from Input node if present
+        input_node_data = next((nd for nd in nodes_data if nd.get("node_type") == "input"), None)
+        if input_node_data:
+            cfg = dict(input_node_data.get("config") or {})
+            input_type = str(cfg.get("input_type") or "manual").lower()
+            if input_type == "scheduled":
+                flow.trigger_type = "scheduled"
+                frequency = cfg.get("schedule_frequency") or cfg.get("frequency") or "nightly"
+                sch_cfg = {
+                    "frequency": frequency,
+                    "schedule_time": cfg.get("schedule_time") or "07:00",
+                }
+                if frequency == "weekly":
+                    sch_cfg["schedule_days"] = cfg.get("schedule_days") or ["mon", "tue", "wed", "thu", "fri"]
+                elif frequency == "monthly":
+                    sch_cfg["schedule_day"] = int(cfg.get("schedule_day") or 1)
+                elif frequency == "hourly":
+                    sch_cfg["minute_offset"] = int(cfg.get("minute_offset") or cfg.get("schedule_minute_offset") or 0)
+                flow.schedule_config = sch_cfg
+                if flow.status == "draft":
+                    flow.status = "active"
+            elif input_type in {"api", "event", "nexus"}:
+                flow.trigger_type = input_type
+            else:
+                flow.trigger_type = "manual"
+
         # Update viewport if provided
         if viewport:
             flow.viewport = viewport
@@ -306,6 +332,32 @@ class AgentFlowService(BaseService[AgentFlow]):
                 await self.session.delete(edge)
             else:
                 raise ValueError("Edge operation op must be add, update, or delete.")
+
+        # Sync flow trigger & schedule_config from Input node if present
+        input_node = next((node for node in nodes.values() if node.node_type == "input"), None)
+        if input_node:
+            cfg = dict(input_node.config or {})
+            input_type = str(cfg.get("input_type") or "manual").lower()
+            if input_type == "scheduled":
+                flow.trigger_type = "scheduled"
+                frequency = cfg.get("schedule_frequency") or cfg.get("frequency") or "nightly"
+                sch_cfg = {
+                    "frequency": frequency,
+                    "schedule_time": cfg.get("schedule_time") or "07:00",
+                }
+                if frequency == "weekly":
+                    sch_cfg["schedule_days"] = cfg.get("schedule_days") or ["mon", "tue", "wed", "thu", "fri"]
+                elif frequency == "monthly":
+                    sch_cfg["schedule_day"] = int(cfg.get("schedule_day") or 1)
+                elif frequency == "hourly":
+                    sch_cfg["minute_offset"] = int(cfg.get("minute_offset") or cfg.get("schedule_minute_offset") or 0)
+                flow.schedule_config = sch_cfg
+                if flow.status == "draft":
+                    flow.status = "active"
+            elif input_type in {"api", "event", "nexus"}:
+                flow.trigger_type = input_type
+            else:
+                flow.trigger_type = "manual"
 
         flow.version = int(flow.version or 1) + 1
         await self.session.flush()

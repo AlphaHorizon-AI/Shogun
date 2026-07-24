@@ -263,3 +263,107 @@ async def test_operational_cadence_lists_bushido_and_agentflow(monkeypatch):
         assert flow_item["scheduler_job_id"] == f"agentflow_{flow.id}"
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_save_flow_graph_syncs_scheduled_input_node():
+    from shogun.db.models.agent_flow import AgentFlowEdge, AgentFlowNode
+    from shogun.services.agent_flow_service import AgentFlowService
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(
+            lambda sync_connection: AgentFlow.__table__.create(sync_connection)
+        )
+        await connection.run_sync(
+            lambda sync_connection: AgentFlowNode.__table__.create(sync_connection)
+        )
+        await connection.run_sync(
+            lambda sync_connection: AgentFlowEdge.__table__.create(sync_connection)
+        )
+
+    async with sessions() as session:
+        svc = AgentFlowService(session)
+        flow = await svc.create(name="Scheduled Briefing Flow", status="draft", trigger_type="manual")
+
+        nodes_data = [
+            {
+                "id": str(uuid.uuid4()),
+                "node_type": "input",
+                "label": "Schedule Input",
+                "position_x": 0.0,
+                "position_y": 0.0,
+                "config": {
+                    "input_type": "scheduled",
+                    "schedule_frequency": "nightly",
+                    "schedule_time": "09:15",
+                },
+            }
+        ]
+
+        updated_flow = await svc.save_flow_graph(flow.id, nodes_data, [])
+        assert updated_flow.trigger_type == "scheduled"
+        assert updated_flow.status == "active"
+        assert updated_flow.schedule_config["schedule_time"] == "09:15"
+        assert updated_flow.schedule_config["frequency"] == "nightly"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sync_flow_schedules_auto_heals_unregistered_input_nodes(monkeypatch):
+    import shogun.scheduler as scheduler_module
+    from shogun.db.models.agent_flow import AgentFlowEdge, AgentFlowNode
+
+    scheduler = AsyncIOScheduler()
+    monkeypatch.setattr(scheduler_module, "_scheduler", scheduler)
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(
+            lambda sync_connection: AgentFlow.__table__.create(sync_connection)
+        )
+        await connection.run_sync(
+            lambda sync_connection: AgentFlowNode.__table__.create(sync_connection)
+        )
+        await connection.run_sync(
+            lambda sync_connection: AgentFlowEdge.__table__.create(sync_connection)
+        )
+
+    async with sessions() as session:
+        flow = AgentFlow(
+            name="Legacy Unsynced Scheduled Flow",
+            status="draft",
+            trigger_type="manual",
+            schedule_config={},
+        )
+        session.add(flow)
+        await session.flush()
+
+        node = AgentFlowNode(
+            flow_id=flow.id,
+            node_type="input",
+            label="Schedule Input",
+            config={
+                "input_type": "scheduled",
+                "schedule_frequency": "weekly",
+                "schedule_time": "06:30",
+                "schedule_days": ["mon", "wed", "fri"],
+            },
+        )
+        session.add(node)
+        await session.commit()
+
+        registered_count = await scheduler_module.sync_flow_schedules(session)
+        assert registered_count == 1
+        assert scheduler.get_job(f"agentflow_{flow.id}") is not None
+
+        await session.refresh(flow)
+        assert flow.trigger_type == "scheduled"
+        assert flow.status == "active"
+        assert flow.schedule_config["schedule_time"] == "06:30"
+        assert flow.schedule_config["schedule_days"] == ["mon", "wed", "fri"]
+
+    await engine.dispose()
+

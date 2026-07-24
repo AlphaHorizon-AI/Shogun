@@ -199,10 +199,10 @@ async def _sync_live_flow_schedule(flow) -> None:
 def _normalized_schedule_config(config: dict | None) -> dict:
     """Return a complete schedule_config for Agent Flow cron registration."""
     normalized = dict(config or {})
-    frequency = normalized.get("frequency") or "nightly"
+    frequency = normalized.get("frequency") or normalized.get("schedule_frequency") or "nightly"
     normalized["frequency"] = frequency
     if frequency == "hourly":
-        normalized["minute_offset"] = int(normalized.get("minute_offset") or 0)
+        normalized["minute_offset"] = int(normalized.get("minute_offset") or normalized.get("schedule_minute_offset") or 0)
     else:
         normalized["schedule_time"] = normalized.get("schedule_time") or "07:00"
     if frequency == "weekly":
@@ -912,6 +912,10 @@ async def save_graph(
     )
     if not record:
         raise HTTPException(status_code=404, detail="Agent Flow not found")
+    try:
+        await _sync_live_flow_schedule(record)
+    except Exception as exc:
+        _log.warning("AgentFlow schedule sync failed after graph save: %s", exc)
     return ApiResponse(data=AgentFlowResponse.model_validate(record))
 
 

@@ -1,8 +1,8 @@
 {
-  "version": "1.44.4",
+  "version": "1.44.5",
   "name": "Shogun OS",
-  "build": 134,
+  "build": 135,
   "channel": "stable",
-  "released": "2026-07-23T20:28:00Z",
-  "changelog": "Fix Flow Stack template loading so the complex game, production website, and business application stacks reliably repopulate all eight canvas phases and ten connections whenever opened."
+  "released": "2026-07-24T09:48:15Z",
+  "changelog": "Fix AgentFlow scheduled triggers and cron registration, allowing schedule_time and schedule_config to be edited and auto-synced with APScheduler."
 }

@@ -327,6 +327,10 @@ async def sync_all_schedules(session) -> int:
 # ── Agent Flow Schedule Support ──────────────────────────────
 
 
+
+# ── Agent Flow Schedule Support ──────────────────────────────
+
+
 def _make_flow_job_id(flow_id: uuid.UUID) -> str:
     return f"agentflow_{flow_id}"
 
@@ -345,11 +349,12 @@ async def _fire_flow_schedule(flow_id: str) -> None:
     try:
         await start_flow_run(fid, trigger_type="scheduled")
     except Exception as exc:
-        log.error("AgentFlow scheduled execution failed for %s: %s", flow_id, exc)
+        log.error("AgentFlow scheduled execution failed for %s", flow_id, exc)
 
 
 async def register_flow_schedule(flow) -> None:
     """Register an Agent Flow with APScheduler based on its schedule_config."""
+    from apscheduler.triggers.cron import CronTrigger
     sched = get_scheduler()
     job_id = _make_flow_job_id(flow.id)
 
@@ -361,7 +366,7 @@ async def register_flow_schedule(flow) -> None:
         return
 
     schedule_config = flow.schedule_config or {}
-    frequency = schedule_config.get("frequency", "nightly")
+    frequency = schedule_config.get("frequency") or schedule_config.get("schedule_frequency") or "nightly"
     time_str = schedule_config.get("schedule_time", "02:00")
 
     try:
@@ -370,7 +375,7 @@ async def register_flow_schedule(flow) -> None:
         hour, minute = 2, 0
 
     if frequency == "hourly":
-        offset = schedule_config.get("minute_offset", 0)
+        offset = schedule_config.get("minute_offset") or schedule_config.get("schedule_minute_offset") or 0
         trigger = CronTrigger(minute=offset)
     elif frequency == "nightly":
         trigger = CronTrigger(hour=hour, minute=minute)
@@ -397,16 +402,6 @@ async def register_flow_schedule(flow) -> None:
     )
 
 
-def scheduler_job_snapshot(job_id: str) -> dict:
-    """Return transparent live registration state for a scheduler job."""
-    job = get_scheduler().get_job(job_id)
-    return {
-        "scheduler_job_id": job_id,
-        "scheduler_registered": job is not None,
-        "next_run_at": getattr(job, "next_run_time", None) if job else None,
-    }
-
-
 async def deregister_flow_schedule(flow_id: uuid.UUID) -> None:
     """Remove a flow schedule from APScheduler."""
     sched = get_scheduler()
@@ -422,23 +417,51 @@ async def sync_flow_schedules(session) -> int:
     from shogun.db.models.agent_flow import AgentFlow
 
     result = await session.execute(
-        select(AgentFlow).where(
-            AgentFlow.trigger_type == "scheduled",
-            AgentFlow.status == "active",
-            AgentFlow.is_deleted == False,
-        )
+        select(AgentFlow).where(AgentFlow.is_deleted == False)
     )
     flows = result.scalars().all()
 
     count = 0
     for flow in flows:
-        try:
-            await register_flow_schedule(flow)
-            count += 1
-        except Exception as exc:
-            log.warning("AgentFlow: failed to register schedule for flow %s: %s", flow.id, exc)
+        input_node = next((node for node in flow.nodes if node.node_type == "input"), None)
+        if input_node:
+            cfg = dict(input_node.config or {})
+            if str(cfg.get("input_type") or "").lower() == "scheduled":
+                frequency = cfg.get("schedule_frequency") or cfg.get("frequency") or "nightly"
+                sch_cfg = {
+                    "frequency": frequency,
+                    "schedule_time": cfg.get("schedule_time") or "07:00",
+                }
+                if frequency == "weekly":
+                    sch_cfg["schedule_days"] = cfg.get("schedule_days") or ["mon", "tue", "wed", "thu", "fri"]
+                elif frequency == "monthly":
+                    sch_cfg["schedule_day"] = int(cfg.get("schedule_day") or 1)
+                elif frequency == "hourly":
+                    sch_cfg["minute_offset"] = int(cfg.get("minute_offset") or cfg.get("schedule_minute_offset") or 0)
+                flow.trigger_type = "scheduled"
+                flow.schedule_config = sch_cfg
+                if flow.status == "draft":
+                    flow.status = "active"
 
+        if flow.trigger_type == "scheduled" and flow.status == "active":
+            try:
+                await register_flow_schedule(flow)
+                count += 1
+            except Exception as exc:
+                log.warning("AgentFlow: failed to register schedule for flow %s: %s", flow.id, exc)
+
+    await session.flush()
     return count
+
+
+def scheduler_job_snapshot(job_id: str) -> dict:
+    """Return transparent live registration state for a scheduler job."""
+    job = get_scheduler().get_job(job_id)
+    return {
+        "scheduler_job_id": job_id,
+        "scheduler_registered": job is not None,
+        "next_run_at": getattr(job, "next_run_time", None) if job else None,
+    }
 
 
 # ── Lifecycle ────────────────────────────────────────────────
@@ -457,4 +480,3 @@ async def stop_scheduler() -> None:
     if sched.running:
         sched.shutdown(wait=False)
     log.info("Bushido scheduler stopped.")
-

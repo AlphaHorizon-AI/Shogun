@@ -1968,6 +1968,10 @@ NATIVE_TOOLS = [
                     "flow_id": {"type": "string", "description": "ID of the existing AgentFlow."},
                     "name": {"type": "string", "description": "Optional new name."},
                     "description": {"type": "string", "description": "Optional new description."},
+                    "trigger_type": {"type": "string", "description": "Optional trigger type ('scheduled', 'manual', 'api', 'event')."},
+                    "schedule_config": {"type": "object", "description": "Optional schedule config (e.g. {'frequency': 'nightly', 'schedule_time': '12:00'})."},
+                    "schedule_time": {"type": "string", "description": "Optional schedule run time in HH:MM format (e.g. '12:00'). Shortcut for schedule_config."},
+                    "schedule_frequency": {"type": "string", "description": "Optional schedule frequency ('hourly', 'nightly', 'weekly', 'monthly'). Shortcut for schedule_config."},
                     "nodes": {"type": "array", "items": {"type": "object"}, "description": "Optional complete replacement list of AgentFlow nodes."},
                     "edges": {"type": "array", "items": {"type": "object"}, "description": "Optional complete replacement list of AgentFlow connections."},
                     "activate": {"type": "boolean", "description": "Activate after editing. Requires the separate AgentFlow activation permission."},
@@ -3526,11 +3530,14 @@ async def execute_native_tool(
                 flow = await flow_svc.get_flow_full(flow_id)
                 if not flow or flow.flow_type != "standard" or flow.is_template:
                     return json.dumps({"status": "error", "message": "Editable AgentFlow not found."})
+                from shogun.api.agent_flow import _sync_live_flow_schedule
+
                 updated = await flow_svc.patch_flow_graph(
                     flow_id,
                     node_operations=list(args.get("node_operations") or []),
                     edge_operations=list(args.get("edge_operations") or []),
                 )
+                await _sync_live_flow_schedule(updated)
                 await db_session.commit()
             except (KeyError, ValueError, TypeError) as exc:
                 await db_session.rollback()
@@ -3573,30 +3580,71 @@ async def execute_native_tool(
                 return json.dumps({"status": "error", "message": "AgentFlow activation permission is disabled."})
 
             import uuid as _uuid
+            from shogun.api.agent_flow import _normalized_schedule_config, _sync_live_flow_schedule
             from shogun.services.agent_flow_service import AgentFlowService
             flow_svc = AgentFlowService(db_session)
             flow_id = _uuid.UUID(args["flow_id"])
             flow = await flow_svc.get_flow_full(flow_id)
             if not flow or flow.flow_type == "stack" or flow.is_template:
                 return json.dumps({"status": "error", "message": "Editable AgentFlow not found."})
-            metadata = {key: args[key] for key in ("name", "description") if key in args}
+
+            metadata = {key: args[key] for key in ("name", "description", "trigger_type") if key in args}
+            raw_sch = dict(args.get("schedule_config") or {})
+            if "schedule_time" in args:
+                raw_sch["schedule_time"] = args["schedule_time"]
+            if "schedule_frequency" in args:
+                raw_sch["schedule_frequency"] = args["schedule_frequency"]
+                raw_sch["frequency"] = args["schedule_frequency"]
+
+            if raw_sch:
+                normalized = _normalized_schedule_config({**(flow.schedule_config or {}), **raw_sch})
+                metadata["schedule_config"] = normalized
+                metadata.setdefault("trigger_type", "scheduled")
+                metadata.setdefault("status", "active")
+
             if metadata:
                 await flow_svc.update(flow_id, **metadata)
+
             graph_requested = "nodes" in args or "edges" in args
             if graph_requested:
                 if "nodes" not in args or "edges" not in args:
                     return json.dumps({"status": "error", "message": "Provide both nodes and edges when replacing an AgentFlow graph."})
                 await flow_svc.save_flow_graph(flow_id, args["nodes"], args["edges"], flow.viewport)
-            if activate:
-                from shogun.api.agent_flow import _sync_live_flow_schedule
 
-                activated = await flow_svc.update_status(flow_id, "active")
-                await _sync_live_flow_schedule(activated)
+            # If schedule parameters changed, keep any Input node config aligned
+            updated_flow = await flow_svc.get_flow_full(flow_id)
+            if updated_flow and (raw_sch or "trigger_type" in args):
+                input_node = next((n for n in updated_flow.nodes if n.node_type == "input"), None)
+                if input_node:
+                    cfg = dict(input_node.config or {})
+                    if updated_flow.trigger_type == "scheduled":
+                        cfg["input_type"] = "scheduled"
+                        sch = updated_flow.schedule_config or {}
+                        cfg["schedule_frequency"] = sch.get("frequency", "nightly")
+                        cfg["schedule_time"] = sch.get("schedule_time", "07:00")
+                        if "schedule_days" in sch:
+                            cfg["schedule_days"] = sch["schedule_days"]
+                        if "schedule_day" in sch:
+                            cfg["schedule_day"] = sch["schedule_day"]
+                        if "minute_offset" in sch:
+                            cfg["schedule_minute_offset"] = sch["minute_offset"]
+                    else:
+                        cfg["input_type"] = updated_flow.trigger_type
+                    input_node.config = cfg
+                    await db_session.flush()
+
+            if activate or updated_flow.status == "active":
+                if activate:
+                    updated_flow = await flow_svc.update_status(flow_id, "active")
+                await _sync_live_flow_schedule(updated_flow)
+
             await db_session.commit()
             updated = await flow_svc.get_flow_full(flow_id)
             return json.dumps({
                 "status": "success", "message": f"AgentFlow '{updated.name}' updated.",
                 "flow_id": str(flow_id), "flow_status": updated.status,
+                "trigger_type": updated.trigger_type,
+                "schedule_config": updated.schedule_config,
                 "version": updated.version,
             })
 
