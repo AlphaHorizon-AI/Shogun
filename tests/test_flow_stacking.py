@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from shogun.api.agent_flow import create_flow_stack, get_run_tree
+from shogun.api.agent_flow import _validate_subflow_graph, create_flow_stack, get_run_tree
 from shogun.db.models.agent_flow import AgentFlow, AgentFlowEdge, AgentFlowNode
 from shogun.db.models.agent_flow_run import AgentFlowRun, AgentFlowRunEdge
 from shogun.engine import flow_engine
@@ -71,6 +71,66 @@ def test_child_permission_ceiling_blocks_required_tool():
 
     with pytest.raises(ValueError, match="office"):
         flow_engine._validate_child_permissions(governance, ["workspace", "office"])
+
+
+@pytest.mark.asyncio
+async def test_subflow_validation_ignores_unrelated_broken_flow(flow_sessions):
+    target_id = uuid.uuid4()
+    unrelated_id = uuid.uuid4()
+    missing_id = uuid.uuid4()
+
+    async with flow_sessions() as session:
+        session.add_all([
+            AgentFlow(id=target_id, name="Editable", schedule_config={}, viewport={}),
+            AgentFlow(id=unrelated_id, name="Legacy broken flow", schedule_config={}, viewport={}),
+            AgentFlowNode(
+                flow_id=unrelated_id,
+                node_type="subflow",
+                label="Missing child",
+                config={
+                    "child_flow_id": str(missing_id),
+                    "child_flow_version_mode": "latest",
+                },
+            ),
+        ])
+        await session.commit()
+
+        warnings = await _validate_subflow_graph(session, target_id, [])
+
+    assert warnings == []
+
+
+@pytest.mark.asyncio
+async def test_subflow_validation_checks_broken_references_reachable_from_target(flow_sessions):
+    target_id = uuid.uuid4()
+    child_id = uuid.uuid4()
+    missing_id = uuid.uuid4()
+
+    async with flow_sessions() as session:
+        session.add_all([
+            AgentFlow(id=target_id, name="Editable", schedule_config={}, viewport={}),
+            AgentFlow(id=child_id, name="Reachable child", schedule_config={}, viewport={}),
+            AgentFlowNode(
+                flow_id=child_id,
+                node_type="subflow",
+                label="Missing grandchild",
+                config={
+                    "child_flow_id": str(missing_id),
+                    "child_flow_version_mode": "latest",
+                },
+            ),
+        ])
+        await session.commit()
+
+        proposed = [{
+            "node_type": "subflow",
+            "config": {
+                "child_flow_id": str(child_id),
+                "child_flow_version_mode": "latest",
+            },
+        }]
+        with pytest.raises(ValueError, match=f"Subflow reference {missing_id} does not exist"):
+            await _validate_subflow_graph(session, target_id, proposed)
 
 
 @pytest.mark.asyncio

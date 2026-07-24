@@ -827,14 +827,18 @@ async def _validate_subflow_graph(
             configs[(parent_flow_id, child_id)] = config
 
     warnings: list[str] = []
-    for source, children in adjacency.items():
-        for child_id in children:
+    hard_limit = min(settings.flow_stacking_max_depth, settings.flow_stacking_hard_max_depth)
+
+    def walk(flow_id: uuid.UUID, path: list[uuid.UUID]) -> None:
+        if len(path) - 1 > hard_limit:
+            raise ValueError(f"Subflow hierarchy exceeds the maximum depth of {hard_limit}.")
+        for child_id in adjacency.get(flow_id, []):
             child = flows.get(child_id)
             if not child:
                 raise ValueError(f"Subflow reference {child_id} does not exist.")
             if not child.allow_as_subflow:
                 raise ValueError(f"Flow '{child.name}' is not allowed to run as a subflow.")
-            config = configs.get((source, child_id), {})
+            config = configs.get((flow_id, child_id), {})
             mode = config.get("child_flow_version_mode", "locked")
             locked = config.get("child_flow_version")
             if mode not in {"locked", "latest"}:
@@ -851,13 +855,6 @@ async def _validate_subflow_graph(
                     f"Flow '{child.name}' is locked to unavailable version {locked}; "
                     f"current version is {child.version}."
                 )
-
-    hard_limit = min(settings.flow_stacking_max_depth, settings.flow_stacking_hard_max_depth)
-
-    def walk(flow_id: uuid.UUID, path: list[uuid.UUID]) -> None:
-        if len(path) - 1 > hard_limit:
-            raise ValueError(f"Subflow hierarchy exceeds the maximum depth of {hard_limit}.")
-        for child_id in adjacency.get(flow_id, []):
             if child_id in path:
                 names = [flows[item].name if item in flows else str(item) for item in [*path, child_id]]
                 raise ValueError(f"Subflow cycle detected: {' -> '.join(names)}")

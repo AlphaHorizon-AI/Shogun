@@ -1,8 +1,8 @@
 {
-  "version": "1.44.5",
+  "version": "1.44.6",
   "name": "Shogun OS",
-  "build": 135,
+  "build": 136,
   "channel": "stable",
-  "released": "2026-07-24T09:48:15Z",
-  "changelog": "Fix AgentFlow scheduled triggers and cron registration, allowing schedule_time and schedule_config to be edited and auto-synced with APScheduler."
+  "released": "2026-07-24T10:17:27Z",
+  "changelog": "Fix AgentFlow saves being blocked by unrelated stale Subflow references, make graph and schedule persistence atomic, and surface actionable save errors."
 }

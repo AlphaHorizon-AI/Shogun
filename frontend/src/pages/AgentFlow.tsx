@@ -3082,48 +3082,20 @@ export function AgentFlowCanvas({
         })),
       };
 
+      // The graph endpoint derives trigger metadata from the Input node and
+      // synchronizes the live scheduler in the same save operation.
       await axios.put(`/api/v1/agent-flows/${flow.id}/graph`, graphPayload);
-
-      // ── Sync schedule_config from input nodes ────────────
-      const inputNode = nodes.find((n) => n.type === 'input');
-      if (inputNode) {
-        const cfg = (inputNode.data as any)?.config || {};
-        const inputType = cfg.input_type || 'manual';
-        const patch: Record<string, any> = {};
-
-        if (inputType === 'scheduled') {
-          patch.trigger_type = 'scheduled';
-          patch.schedule_config = {
-            frequency: cfg.schedule_frequency || 'nightly',
-            schedule_time: cfg.schedule_time || '07:00',
-            ...(cfg.schedule_frequency === 'weekly' && { schedule_days: cfg.schedule_days || ['mon', 'tue', 'wed', 'thu', 'fri'] }),
-            ...(cfg.schedule_frequency === 'monthly' && { schedule_day: cfg.schedule_day || 1 }),
-            ...(cfg.schedule_frequency === 'hourly' && { minute_offset: cfg.schedule_minute_offset || 0 }),
-          };
-        } else if (inputType === 'api') {
-          patch.trigger_type = 'api';
-        } else if (inputType === 'event') {
-          patch.trigger_type = 'event';
-        } else {
-          patch.trigger_type = 'manual';
-        }
-
-        // Only PATCH if trigger_type differs from current
-        if (patch.trigger_type !== flow.trigger_type || patch.schedule_config) {
-          await axios.patch(`/api/v1/agent-flows/${flow.id}`, patch);
-        }
-      }
 
       setDirty(false);
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save flow:', err);
-      window.alert('Could not save this AgentFlow.');
+      window.alert(err?.response?.data?.detail || 'Could not save this AgentFlow.');
       return false;
     } finally {
       setSaving(false);
     }
-  }, [flow.id, flow.name, flow.trigger_type, flowName, nodes, edges, reactFlowInstance]);
+  }, [flow.id, flow.name, flowName, nodes, edges, reactFlowInstance]);
 
   const handleToggleStatus = useCallback(async () => {
     if (changingStatus) return;
