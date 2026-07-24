@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/AlphaHorizon-AI/Shogun/releases/latest"><img src="https://img.shields.io/github/v/release/AlphaHorizon-AI/Shogun?style=flat-square&label=Version&color=d4a017" alt="Latest version" /></a>
-  <a href="#languages"><img src="https://img.shields.io/badge/Languages-14-blue?style=flat-square" alt="14 languages" /></a>
+  <a href="#languages"><img src="https://img.shields.io/badge/Languages-15-blue?style=flat-square" alt="15 languages" /></a>
   <a href="#install-shogun-and-the-tenshu"><img src="https://img.shields.io/badge/Install-One_Click-green?style=flat-square" alt="One-click installation" /></a>
   <a href="https://www.youtube.com/@ShogunAIAgents"><img src="https://img.shields.io/badge/YouTube-Video_Guides-red?style=flat-square&logo=youtube" alt="YouTube video guides" /></a>
 </p>
@@ -61,7 +61,7 @@ The nine-step Setup Wizard guides you through:
 8. Optional Ronin desktop control
 9. Configuration review and activation
 
-Changing the language updates the wizard immediately. All setup screens are available in the 14 supported languages.
+Changing the language updates the wizard immediately. All setup screens are available in the 15 supported languages.
 
 ### Single-user and Team mode
 
@@ -289,6 +289,7 @@ The Tenshu and Setup Wizard support:
 | German | Deutsch | `de` |
 | Spanish | Español | `es` |
 | French | Français | `fr` |
+| Hindi | हिन्दी | `hi` |
 | Italian | Italiano | `it` |
 | Japanese | 日本語 | `ja` |
 | Korean | 한국어 | `ko` |
