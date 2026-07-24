@@ -503,6 +503,13 @@ _DESTRUCTIVE_COMMAND_PATTERNS = [
     re.compile(r"\b(shutdown|reboot|halt|poweroff)\b", re.IGNORECASE),
 ]
 
+# These tools deliver prose. Their message bodies can legitimately quote words
+# such as "shutdown" or "halt"; the text is not executed as a command.
+_DESTRUCTIVE_CONTENT_EXEMPT_TOOLS = {
+    "channel_send",
+    "send_telegram_message",
+}
+
 # Patterns that look like credentials or secrets in argument values
 _CREDENTIAL_PATTERNS = [
     re.compile(r"(password|passwd|secret|token|api_key|apikey|access_key|private_key)", re.IGNORECASE),
@@ -560,13 +567,14 @@ def check_dangerous_parameters(tool_name: str, args: dict[str, Any]) -> list[str
                     break
 
     # ── Check for destructive shell command patterns in any string arg ──
-    for key, value in args.items():
-        if not isinstance(value, str):
-            continue
-        for pattern in _DESTRUCTIVE_COMMAND_PATTERNS:
-            if pattern.search(value):
-                flags.append(f"destructive_command:{pattern.pattern[:30]}")
-                break  # one flag per argument is enough
+    if tool_name not in _DESTRUCTIVE_CONTENT_EXEMPT_TOOLS:
+        for key, value in args.items():
+            if not isinstance(value, str):
+                continue
+            for pattern in _DESTRUCTIVE_COMMAND_PATTERNS:
+                if pattern.search(value):
+                    flags.append(f"destructive_command:{pattern.pattern[:30]}")
+                    break  # one flag per argument is enough
 
     return flags
 

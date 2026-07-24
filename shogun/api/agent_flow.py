@@ -186,14 +186,25 @@ _TEMPLATE_CACHE: dict | None = None
 _log = logging.getLogger(__name__)
 
 
-async def _sync_live_flow_schedule(flow) -> None:
+async def _sync_live_flow_schedule(flow) -> dict:
     """Keep one APScheduler job aligned with the persisted AgentFlow state."""
-    from shogun.scheduler import deregister_flow_schedule, register_flow_schedule
+    from shogun.scheduler import (
+        _make_flow_job_id,
+        deregister_flow_schedule,
+        register_flow_schedule,
+        scheduler_job_snapshot,
+    )
 
     if flow.trigger_type == "scheduled" and flow.status == "active" and not flow.is_deleted:
-        await register_flow_schedule(flow)
+        snapshot = await register_flow_schedule(flow)
+        if not snapshot["scheduler_registered"]:
+            raise RuntimeError(
+                f"AgentFlow schedule {_make_flow_job_id(flow.id)} was not registered"
+            )
+        return snapshot
     else:
         await deregister_flow_schedule(flow.id)
+        return scheduler_job_snapshot(_make_flow_job_id(flow.id))
 
 
 def _normalized_schedule_config(config: dict | None) -> dict:
@@ -910,10 +921,18 @@ async def save_graph(
     if not record:
         raise HTTPException(status_code=404, detail="Agent Flow not found")
     try:
-        await _sync_live_flow_schedule(record)
+        scheduler_state = await _sync_live_flow_schedule(record)
     except Exception as exc:
-        _log.warning("AgentFlow schedule sync failed after graph save: %s", exc)
-    return ApiResponse(data=AgentFlowResponse.model_validate(record))
+        raise HTTPException(
+            status_code=422,
+            detail=f"AgentFlow graph was not saved because its schedule could not be registered: {exc}",
+        ) from exc
+    if scheduler_state["next_run_at"]:
+        scheduler_state["next_run_at"] = scheduler_state["next_run_at"].isoformat()
+    return ApiResponse(
+        data=AgentFlowResponse.model_validate(record),
+        meta=scheduler_state,
+    )
 
 
 # ── Duplicate a flow ─────────────────────────────────────────

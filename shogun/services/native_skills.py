@@ -3063,7 +3063,12 @@ async def execute_native_tool(
             })
 
         elif name == "list_cron_jobs":
+            from sqlalchemy import select
+
+            from shogun.db.models.agent_flow import AgentFlow
+            from shogun.scheduler import scheduler_job_snapshot
             from shogun.services.bushido_service import BushidoScheduleService
+
             sched_svc = BushidoScheduleService(db_session)
             records, total = await sched_svc.get_all(limit=200)
             jobs = []
@@ -3078,10 +3083,40 @@ async def execute_native_tool(
                     "is_preset": r.is_preset,
                     "next_run_at": str(r.next_run_at) if r.next_run_at else None,
                     "last_run_at": str(r.last_run_at) if r.last_run_at else None,
+                    "source": "bushido",
+                })
+
+            flow_result = await db_session.execute(
+                select(AgentFlow).where(
+                    AgentFlow.trigger_type == "scheduled",
+                    AgentFlow.is_deleted.is_(False),
+                )
+            )
+            flows = list(flow_result.scalars().all())
+            for flow in flows:
+                config = flow.schedule_config or {}
+                runtime = scheduler_job_snapshot(f"agentflow_{flow.id}")
+                jobs.append({
+                    "id": str(flow.id),
+                    "name": flow.name,
+                    "job_type": "agent_flow",
+                    "frequency": config.get("frequency", "nightly"),
+                    "schedule_time": config.get("schedule_time", "02:00"),
+                    "is_enabled": flow.status == "active",
+                    "is_preset": False,
+                    "next_run_at": (
+                        str(runtime["next_run_at"])
+                        if runtime["next_run_at"]
+                        else None
+                    ),
+                    "last_run_at": None,
+                    "source": "agent_flow",
+                    "scheduler_registered": runtime["scheduler_registered"],
+                    "scheduler_job_id": runtime["scheduler_job_id"],
                 })
             return json.dumps({
                 "status": "success",
-                "total": total,
+                "total": total + len(flows),
                 "schedules": jobs,
             })
 

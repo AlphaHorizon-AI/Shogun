@@ -176,6 +176,42 @@ async def test_parameter_safety_cannot_be_relaxed_by_explicit_allow():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", ["send_telegram_message", "channel_send"])
+async def test_channel_message_content_is_not_treated_as_a_destructive_command(tool_name):
+    decision = await check_tool_access(
+        mode="campaign",
+        tool_name=tool_name,
+        args={
+            "message": (
+                "News update: the operator issued a shutdown, halt, and kill "
+                "order for the affected service."
+            )
+        },
+    )
+
+    assert decision.action == GateAction.ALLOW
+    assert not any(
+        flag.startswith("destructive_command:")
+        for flag in decision.parameter_flags
+    )
+
+
+@pytest.mark.asyncio
+async def test_non_channel_tool_still_blocks_destructive_command_content():
+    decision = await check_tool_access(
+        mode="campaign",
+        tool_name="mcp_call_tool",
+        args={"command": "shutdown now"},
+    )
+
+    assert decision.action == GateAction.BLOCK
+    assert any(
+        flag.startswith("destructive_command:")
+        for flag in decision.parameter_flags
+    )
+
+
+@pytest.mark.asyncio
 async def test_advanced_phrase_rule_confirms_nested_tool_argument():
     set_local_advanced_controls(
         {

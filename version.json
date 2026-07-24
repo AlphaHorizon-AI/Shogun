@@ -1,8 +1,8 @@
 {
-  "version": "1.44.8",
+  "version": "1.44.9",
   "name": "Shogun OS",
-  "build": 138,
+  "build": 139,
   "channel": "stable",
-  "released": "2026-07-24T10:49:22Z",
-  "changelog": "Split long Telegram messages within API limits and surface Telegram's detailed delivery errors when a send fails."
+  "released": "2026-07-24T12:54:29Z",
+  "changelog": "Make AgentFlow cron registration self-healing and prevent ToolGate from treating Telegram or channel message prose as destructive commands."
 }

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 if TYPE_CHECKING:
     from shogun.db.models.bushido import BushidoSchedule
@@ -348,11 +349,11 @@ async def _fire_flow_schedule(flow_id: str) -> None:
 
     try:
         await start_flow_run(fid, trigger_type="scheduled")
-    except Exception as exc:
-        log.error("AgentFlow scheduled execution failed for %s", flow_id, exc)
+    except Exception:
+        log.exception("AgentFlow scheduled execution failed for %s", flow_id)
 
 
-async def register_flow_schedule(flow) -> None:
+async def register_flow_schedule(flow) -> dict:
     """Register an Agent Flow with APScheduler based on its schedule_config."""
     from apscheduler.triggers.cron import CronTrigger
     sched = get_scheduler()
@@ -363,7 +364,7 @@ async def register_flow_schedule(flow) -> None:
         sched.remove_job(job_id)
 
     if flow.trigger_type != "scheduled" or flow.status != "active":
-        return
+        return scheduler_job_snapshot(job_id)
 
     schedule_config = flow.schedule_config or {}
     frequency = schedule_config.get("frequency") or schedule_config.get("schedule_frequency") or "nightly"
@@ -396,10 +397,14 @@ async def register_flow_schedule(flow) -> None:
         replace_existing=True,
         misfire_grace_time=120,
     )
+    snapshot = scheduler_job_snapshot(job_id)
+    if not snapshot["scheduler_registered"]:
+        raise RuntimeError(f"APScheduler did not retain AgentFlow job {job_id}")
     log.info(
         "AgentFlow: registered schedule for '%s' (%s) — freq=%s at %s",
         flow.name, flow.id, frequency, time_str,
     )
+    return snapshot
 
 
 async def deregister_flow_schedule(flow_id: uuid.UUID) -> None:
@@ -411,8 +416,12 @@ async def deregister_flow_schedule(flow_id: uuid.UUID) -> None:
         log.info("AgentFlow: deregistered schedule for flow %s", flow_id)
 
 
-async def sync_flow_schedules(session) -> int:
-    """Load all active scheduled Agent Flows and register with APScheduler."""
+async def sync_flow_schedules(session, *, missing_only: bool = False) -> int:
+    """Align persisted AgentFlow schedules with APScheduler.
+
+    ``missing_only`` repairs lost jobs without continuously replacing healthy
+    cron jobs around their firing time.
+    """
     from sqlalchemy import select
     from shogun.db.models.agent_flow import AgentFlow
 
@@ -422,11 +431,18 @@ async def sync_flow_schedules(session) -> int:
     flows = result.scalars().all()
 
     count = 0
+    active_job_ids: set[str] = set()
     for flow in flows:
         input_node = next((node for node in flow.nodes if node.node_type == "input"), None)
         if input_node:
             cfg = dict(input_node.config or {})
-            if str(cfg.get("input_type") or "").lower() == "scheduled":
+            if (
+                str(cfg.get("input_type") or "").lower() == "scheduled"
+                and (
+                    flow.trigger_type != "scheduled"
+                    or not flow.schedule_config
+                )
+            ):
                 frequency = cfg.get("schedule_frequency") or cfg.get("frequency") or "nightly"
                 sch_cfg = {
                     "frequency": frequency,
@@ -444,14 +460,38 @@ async def sync_flow_schedules(session) -> int:
                     flow.status = "active"
 
         if flow.trigger_type == "scheduled" and flow.status == "active":
+            job_id = _make_flow_job_id(flow.id)
+            active_job_ids.add(job_id)
             try:
-                await register_flow_schedule(flow)
+                if not missing_only or get_scheduler().get_job(job_id) is None:
+                    await register_flow_schedule(flow)
                 count += 1
             except Exception as exc:
                 log.warning("AgentFlow: failed to register schedule for flow %s: %s", flow.id, exc)
 
+    for job in list(get_scheduler().get_jobs()):
+        if (
+            job.id.startswith("agentflow_")
+            and job.id != "agentflow_schedule_reconcile"
+            and job.id not in active_job_ids
+        ):
+            get_scheduler().remove_job(job.id)
+            log.info("AgentFlow: removed stale scheduler job %s", job.id)
+
     await session.flush()
     return count
+
+
+async def _reconcile_flow_schedules() -> None:
+    """Repair missing AgentFlow jobs using a fresh database session."""
+    from shogun.db.engine import async_session_factory
+
+    try:
+        async with async_session_factory() as session:
+            await sync_flow_schedules(session, missing_only=True)
+            await session.commit()
+    except Exception:
+        log.exception("AgentFlow schedule reconciliation failed")
 
 
 def scheduler_job_snapshot(job_id: str) -> dict:
@@ -471,6 +511,15 @@ async def start_scheduler() -> None:
     sched = get_scheduler()
     if not sched.running:
         sched.start()
+    sched.add_job(
+        _reconcile_flow_schedules,
+        trigger=IntervalTrigger(minutes=1),
+        id="agentflow_schedule_reconcile",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=60,
+    )
     log.info("Bushido scheduler started.")
 
 
