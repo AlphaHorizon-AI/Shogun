@@ -17,6 +17,7 @@ from shogun.config import settings
 logger = logging.getLogger("shogun.notifications")
 
 _notifications: deque[dict[str, Any]] = deque(maxlen=200)
+_TELEGRAM_TEXT_LIMIT = 4096
 
 
 def publish_notification(
@@ -92,6 +93,48 @@ def _apply_telegram_message_thread(
     return payload
 
 
+def _split_telegram_message(message: str, limit: int = _TELEGRAM_TEXT_LIMIT) -> list[str]:
+    """Split text on readable boundaries without exceeding Telegram's limit."""
+    if len(message) <= limit:
+        return [message]
+
+    chunks: list[str] = []
+    remaining = message
+    while remaining:
+        if len(remaining) <= limit:
+            chunks.append(remaining)
+            break
+
+        window = remaining[:limit]
+        split_at = max(window.rfind("\n\n"), window.rfind("\n"), window.rfind(" "))
+        if split_at < limit // 2:
+            split_at = limit
+
+        chunk = remaining[:split_at].rstrip()
+        if not chunk:
+            chunk = remaining[:limit]
+            split_at = limit
+        chunks.append(chunk)
+        remaining = remaining[split_at:].lstrip()
+    return chunks
+
+
+def _telegram_api_error(response: httpx.Response) -> str:
+    """Return Telegram's useful error description without exposing credentials."""
+    description = ""
+    try:
+        data = response.json()
+        if isinstance(data, dict):
+            description = str(data.get("description") or "").strip()
+    except (ValueError, TypeError):
+        description = ""
+    return (
+        f"HTTP {response.status_code}: {description}"
+        if description
+        else f"HTTP {response.status_code}"
+    )
+
+
 async def _send_telegram(
     message: str,
     chat_ids: list[str] | None,
@@ -114,6 +157,7 @@ async def _send_telegram(
 
     sent = 0
     errors: list[str] = []
+    chunks = _split_telegram_message(message)
     async with httpx.AsyncClient(timeout=10.0) as client:
         for target in targets:
             if harakiri_latch_active():
@@ -128,23 +172,39 @@ async def _send_telegram(
                 except ValueError:
                     pass
 
-            payload = _apply_telegram_message_thread(
-                {"chat_id": chat_id, "text": message},
-                target_thread_id,
-            )
-
-            try:
-                response = await client.post(
-                    f"https://api.telegram.org/bot{token}/sendMessage",
-                    json=payload,
+            target_delivered = True
+            for part_number, chunk in enumerate(chunks, start=1):
+                payload = _apply_telegram_message_thread(
+                    {"chat_id": chat_id, "text": chunk},
+                    target_thread_id,
                 )
-                if response.is_success:
-                    sent += 1
-                else:
-                    errors.append(f"{target}: HTTP {response.status_code}")
-            except Exception as exc:
-                errors.append(f"{target}: {exc}")
-    return {"ok": sent == len(targets), "sent": sent, "errors": errors}
+                part_label = (
+                    target
+                    if len(chunks) == 1
+                    else f"{target} part {part_number}/{len(chunks)}"
+                )
+
+                try:
+                    response = await client.post(
+                        f"https://api.telegram.org/bot{token}/sendMessage",
+                        json=payload,
+                    )
+                    if not response.is_success:
+                        errors.append(f"{part_label}: {_telegram_api_error(response)}")
+                        target_delivered = False
+                        break
+                except Exception as exc:
+                    errors.append(f"{part_label}: {exc}")
+                    target_delivered = False
+                    break
+            if target_delivered:
+                sent += 1
+    return {
+        "ok": sent == len(targets),
+        "sent": sent,
+        "errors": errors,
+        "parts_per_target": len(chunks),
+    }
 
 
 async def _send_teams(

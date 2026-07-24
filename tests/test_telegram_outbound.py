@@ -229,3 +229,92 @@ async def test_telegram_api_payload_includes_topic_only_when_requested(
     assert result["ok"] is True
     assert posts[0]["url"].endswith("/bottest-token/sendMessage")
     assert posts[0]["json"] == expected_payload
+
+
+@pytest.mark.asyncio
+async def test_telegram_delivery_splits_long_agentflow_messages(monkeypatch):
+    posts: list[dict] = []
+
+    async def config():
+        return {
+            "telegram_config": {
+                "connected": True,
+                "bot_token": "test-token",
+                "allowed_chat_ids": [],
+            }
+        }
+
+    class Response:
+        is_success = True
+        status_code = 200
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url, *, json):
+            posts.append({"url": url, "json": json})
+            return Response()
+
+    monkeypatch.setattr(channel_service, "_get_agent_bushido", config)
+    monkeypatch.setattr(notification_service.httpx, "AsyncClient", Client)
+
+    message = ("Morning briefing paragraph.\n\n" * 220).strip()
+    result = await notification_service._send_telegram(message, ["-100123"])
+
+    assert result["ok"] is True
+    assert result["sent"] == 1
+    assert result["parts_per_target"] == len(posts)
+    assert len(posts) > 1
+    assert all(0 < len(post["json"]["text"]) <= 4096 for post in posts)
+    assert "\n\n".join(post["json"]["text"] for post in posts) == message
+
+
+@pytest.mark.asyncio
+async def test_telegram_delivery_surfaces_api_error_description(monkeypatch):
+    async def config():
+        return {
+            "telegram_config": {
+                "connected": True,
+                "bot_token": "test-token",
+                "allowed_chat_ids": [],
+            }
+        }
+
+    class Response:
+        is_success = False
+        status_code = 400
+
+        @staticmethod
+        def json():
+            return {"ok": False, "description": "Bad Request: chat not found"}
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, _url, *, json):
+            return Response()
+
+    monkeypatch.setattr(channel_service, "_get_agent_bushido", config)
+    monkeypatch.setattr(notification_service.httpx, "AsyncClient", Client)
+
+    result = await notification_service._send_telegram("Morning brief", ["-100123"])
+
+    assert result["ok"] is False
+    assert result["sent"] == 0
+    assert result["errors"] == [
+        "-100123: HTTP 400: Bad Request: chat not found",
+    ]

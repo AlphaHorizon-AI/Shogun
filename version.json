@@ -1,8 +1,8 @@
 {
-  "version": "1.44.7",
+  "version": "1.44.8",
   "name": "Shogun OS",
-  "build": 137,
+  "build": 138,
   "channel": "stable",
-  "released": "2026-07-24T10:35:23Z",
-  "changelog": "Make the AgentFlow node palette and action toolbar responsive so every control remains visible at standard laptop resolutions and 100% browser zoom."
+  "released": "2026-07-24T10:49:22Z",
+  "changelog": "Split long Telegram messages within API limits and surface Telegram's detailed delivery errors when a send fails."
 }
