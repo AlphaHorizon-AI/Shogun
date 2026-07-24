@@ -1,8 +1,8 @@
 {
-  "version": "1.44.6",
+  "version": "1.44.7",
   "name": "Shogun OS",
-  "build": 136,
+  "build": 137,
   "channel": "stable",
-  "released": "2026-07-24T10:17:27Z",
-  "changelog": "Fix AgentFlow saves being blocked by unrelated stale Subflow references, make graph and schedule persistence atomic, and surface actionable save errors."
+  "released": "2026-07-24T10:35:23Z",
+  "changelog": "Make the AgentFlow node palette and action toolbar responsive so every control remains visible at standard laptop resolutions and 100% browser zoom."
 }

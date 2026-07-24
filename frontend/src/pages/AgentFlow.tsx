@@ -3258,8 +3258,8 @@ export function AgentFlowCanvas({
       {/* Canvas */}
       <div className="flex-1 min-w-0 flex flex-col bg-[#060810]">
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-3 py-2 bg-[#0a0e1a] border-b border-[#1a2040]">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-2 px-3 py-2 bg-[#0a0e1a] border-b border-[#1a2040] shrink-0">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               onClick={onBack}
               className="p-1.5 hover:bg-[#1a2040] text-[#7a8899] hover:text-[#c8d0d8] rounded-lg transition-colors"
@@ -3282,7 +3282,7 @@ export function AgentFlowCanvas({
             ) : (
               <button
                 onClick={() => setEditingName(true)}
-                className="text-sm font-bold text-[#d4a017] hover:text-[#d4a017]/80 transition-colors"
+                className="max-w-[min(28rem,60vw)] truncate text-sm font-bold text-[#d4a017] hover:text-[#d4a017]/80 transition-colors"
               >
                 {flowName}
               </button>
@@ -3306,9 +3306,9 @@ export function AgentFlowCanvas({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
             {/* Node palette (inline drag buttons) */}
-            <div className="flex items-center gap-1 mr-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 mr-2">
               {NODE_PALETTE.map((item) => {
                 const PIcon = item.icon;
                 return (
@@ -3319,11 +3319,11 @@ export function AgentFlowCanvas({
                       e.dataTransfer.setData('application/agentflow-node-type', item.type);
                       e.dataTransfer.effectAllowed = 'move';
                     }}
-                    className="flex items-center gap-1.5 px-2 py-1.5 bg-[#0e1225] border border-[#1a2040] rounded-md cursor-grab active:cursor-grabbing hover:border-[#2a3060] transition-colors group"
+                    className="flex shrink-0 items-center gap-1.5 px-2 py-1.5 bg-[#0e1225] border border-[#1a2040] rounded-md cursor-grab active:cursor-grabbing hover:border-[#2a3060] transition-colors group"
                     title={`Drag to add ${item.label}`}
                   >
                     <PIcon className="w-3 h-3" style={{ color: item.color }} />
-                    <span className="text-[9px] font-bold text-[#7a8899] group-hover:text-[#c8d0d8] hidden xl:inline">
+                    <span className="hidden text-[9px] font-bold text-[#7a8899] group-hover:text-[#c8d0d8] lg:inline">
                       {item.label}
                     </span>
                   </div>
