@@ -438,16 +438,25 @@ async def _execute_single_node(
     if config.get("context_injection"):
         context_str += f"\n\n[Additional Context]:\n{config['context_injection']}"
 
-    # Order 9: node-level skill activation. Compact briefs influence execution
-    # but never extend the node's tool or posture permissions.
+    # Order 9: node-level skill activation. Compact briefs influence model
+    # execution but never extend the node's tool or posture permissions. Keep
+    # private instructions separate from predecessor content so deterministic
+    # delivery nodes cannot publish them.
+    execution_context_str = context_str
     active_skill_run_ids: list[str] = []
-    if node_type not in {"input", "output", "logic", "shogun_approval"}:
+    if _node_uses_active_skill_context(node_type, config):
         try:
             from shogun.schemas.skills import SkillActivationRequest
             from shogun.services.active_skill_service import SkillActivationService
             from shogun.services.posture_guard import get_posture_permissions
 
             posture = governance_context or await get_posture_permissions()
+            node_objective = (
+                config.get("task_description")
+                or config.get("prompt")
+                or config.get("description")
+                or node_type
+            )
             async with async_session_factory() as skill_session:
                 activation = await SkillActivationService(skill_session).activate(
                     SkillActivationRequest(
@@ -455,7 +464,7 @@ async def _execute_single_node(
                         flow_id=str(node.flow_id),
                         node_id=node_id,
                         agent_id="shogun",
-                        objective=f"{node.label}: {config.get('prompt') or config.get('description') or node_type}",
+                        objective=f"{node.label}: {node_objective}",
                         context=context_str[-4000:],
                         posture=posture.get("active_tier", posture.get("posture", "guarded")),
                         available_tools=list(
@@ -469,7 +478,7 @@ async def _execute_single_node(
                 await skill_session.commit()
             active_skill_run_ids = [str(item["active_skill_run_id"]) for item in activation["active_skills"]]
             if activation["context_block"]:
-                context_str += f"\n\n{activation['context_block']}"
+                execution_context_str += f"\n\n{activation['context_block']}"
         except Exception as exc:
             logging.getLogger("shogun.flow").warning("Active skill selection skipped: %s", exc)
 
@@ -477,9 +486,9 @@ async def _execute_single_node(
         if node_type == "input":
             result = await _exec_input(config, context_str, run_input or {})
         elif node_type == "samurai":
-            result = await _exec_samurai(config, context_str, governance_context or {})
+            result = await _exec_samurai(config, execution_context_str, governance_context or {})
         elif node_type == "coding":
-            result = await _exec_coding(config, context_str, governance_context or {})
+            result = await _exec_coding(config, execution_context_str, governance_context or {})
         elif node_type == "shogun_approval":
             result = await _exec_approval(config, predecessor_outputs)
         elif node_type == "logic":
@@ -537,6 +546,11 @@ async def _execute_single_node(
         raise
     await _finalize_node_skills(active_skill_run_ids, "success", f"Node '{node.label}' completed")
     return result
+
+
+def _node_uses_active_skill_context(node_type: str, config: dict[str, Any]) -> bool:
+    """Return whether a node actually sends its context to an LLM."""
+    return node_type == "samurai" or (node_type == "coding" and config.get("action", "analyze") == "analyze")
 
 
 async def _finalize_node_skills(active_skill_run_ids: list[str], outcome: str, summary: str) -> None:
@@ -1545,6 +1559,20 @@ async def _exec_mado_browser(
 
         elif action == "extract_content":
             extract_type = config.get("extract_type", "text")
+            # A source node can be self-contained. Previously an extract node's
+            # configured URL was ignored, causing fresh sessions to scrape
+            # about:blank and report an empty result.
+            if url:
+                await permission_guard.check("mado.navigation.open_url", url=url)
+                navigation = await run_governed(
+                    "mado.navigation.open_url",
+                    lambda: mado_service.navigate(session_id=flow_session_id, url=url),
+                    {"verification_type": "no_error_banner"},
+                )
+                if navigation.get("status") == "error":
+                    return f"[ERROR] Navigation failed before extraction: {navigation.get('error', 'Unknown')}"
+                if navigation.get("status") == "blocked":
+                    return f"[BLOCKED] {navigation.get('reason', 'Domain not allowed')}"
             log.info("[Mado/Flow] extract '%s' (type=%s, session=%s)", selector, extract_type, flow_session_id)
             result = await run_governed(
                 "mado.page.extract_text",

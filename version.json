@@ -1,8 +1,8 @@
 {
-  "version": "1.45.0",
+  "version": "1.45.1",
   "name": "Shogun OS",
-  "build": 144,
+  "build": 145,
   "channel": "stable",
-  "released": "2026-07-25T16:54:42Z",
-  "changelog": "Add explicit, privacy-preserving installation telemetry, ingestion, aggregate adoption reporting, and fail-closed deployment controls."
+  "released": "2026-07-25T17:42:25Z",
+  "changelog": "Fix scheduled AgentFlow news extraction, prevent active-skill prompt leakage into Telegram and email delivery, and reduce parallel SQLite contention."
 }
