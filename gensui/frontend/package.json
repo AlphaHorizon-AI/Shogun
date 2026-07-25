@@ -3,19 +3,24 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.12 <25"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "lint:security": "eslint vite.config.ts src/main.tsx",
+    "audit:security": "node ../../scripts/check-npm-audit.mjs .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
-    "axios": "^1.17.0",
+    "axios": "1.18.1",
     "lucide-react": "^1.17.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-router-dom": "^7.17.0",
+    "react-router-dom": "7.18.1",
     "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
@@ -30,6 +35,6 @@
     "globals": "^17.6.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
-    "vite": "^8.0.12"
+    "vite": "8.1.5"
   }
 }

@@ -7,8 +7,16 @@ import logging
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from shogun.api.infrastructure_auth import require_infrastructure_admin
+from shogun.config import settings
+from shogun.services.ssrf_guard import (
+    SSRFValidationError,
+    log_blocked_outbound_request,
+    validate_outbound_url,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/gensui", tags=["gensui-config"])
@@ -71,13 +79,34 @@ async def get_gensui_status():
 
 
 @router.post("/connect")
-async def connect_to_gensui(req: ConnectRequest):
+async def connect_to_gensui(
+    req: ConnectRequest,
+    actor: str = Depends(require_infrastructure_admin),
+):
     """Configure and connect to a Gensui server."""
     server_url = req.server_url.rstrip("/")
 
+    try:
+        validate_outbound_url(
+            server_url,
+            policy=settings.gensui_destination_policy,
+            allowlist=settings.outbound_allowlist,
+            allow_http_on_private_network=settings.allow_http_on_private_network,
+            allow_http_on_public_network=settings.allow_http_on_public_network,
+            allowed_ports=_allowed_ports(settings.gensui_allowed_ports),
+        )
+    except SSRFValidationError as exc:
+        log_blocked_outbound_request(
+            exc,
+            endpoint_type="gensui_connect",
+            destination_policy=settings.gensui_destination_policy,
+            actor=actor,
+        )
+        raise HTTPException(400, str(exc)) from exc
+
     # Test connectivity first
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as client:
             resp = await client.get(f"{server_url}/api/gensui/health")
             if resp.status_code != 200:
                 raise HTTPException(400, f"Gensui server returned {resp.status_code}")
@@ -112,7 +141,9 @@ async def connect_to_gensui(req: ConnectRequest):
 
 
 @router.post("/disconnect")
-async def disconnect_from_gensui():
+async def disconnect_from_gensui(
+    _actor: str = Depends(require_infrastructure_admin),
+):
     """Disconnect from Gensui and clear settings."""
     # Stop the client
     try:
@@ -146,12 +177,33 @@ async def disconnect_from_gensui():
 
 
 @router.post("/test")
-async def test_gensui_connection(req: TestRequest):
+async def test_gensui_connection(
+    req: TestRequest,
+    actor: str = Depends(require_infrastructure_admin),
+):
     """Test connectivity to a Gensui server without enrolling."""
     server_url = req.server_url.rstrip("/")
 
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        validate_outbound_url(
+            server_url,
+            policy=settings.gensui_destination_policy,
+            allowlist=settings.outbound_allowlist,
+            allow_http_on_private_network=settings.allow_http_on_private_network,
+            allow_http_on_public_network=settings.allow_http_on_public_network,
+            allowed_ports=_allowed_ports(settings.gensui_allowed_ports),
+        )
+    except SSRFValidationError as exc:
+        log_blocked_outbound_request(
+            exc,
+            endpoint_type="gensui_test",
+            destination_policy=settings.gensui_destination_policy,
+            actor=actor,
+        )
+        return {"reachable": False, "error": str(exc)}
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as client:
             resp = await client.get(f"{server_url}/api/gensui/health")
             if resp.status_code == 200:
                 data = resp.json()
@@ -171,6 +223,10 @@ async def test_gensui_connection(req: TestRequest):
 
 
 # ── Internal Helpers ─────────────────────────────────────────
+
+def _allowed_ports(value: str) -> set[int] | None:
+    ports = {int(item.strip()) for item in value.split(",") if item.strip()}
+    return ports or None
 
 def _get_client_status() -> dict:
     """Get live status from the GensuiClient singleton."""

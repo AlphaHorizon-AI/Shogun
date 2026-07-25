@@ -69,14 +69,17 @@ if [ ! -f .env.server ]; then
   POSTGRES_SECRET="$(openssl rand -hex 32)"
   APPLICATION_SECRET="$(openssl rand -hex 32)"
   VAULT_SECRET="$(openssl rand -hex 32)"
+  INFRASTRUCTURE_SECRET="$(openssl rand -hex 32)"
   if [ "$(uname -s)" = "Darwin" ]; then
     sed -i '' "s/change-me-postgres-password/$POSTGRES_SECRET/" .env.server
     sed -i '' "s/change-me-to-a-random-64-char-string/$APPLICATION_SECRET/" .env.server
     sed -i '' "s/change-me-to-an-independent-random-64-char-string/$VAULT_SECRET/" .env.server
+    sed -i '' "s/change-me-to-an-independent-infrastructure-admin-token/$INFRASTRUCTURE_SECRET/" .env.server
   else
     sed -i "s/change-me-postgres-password/$POSTGRES_SECRET/" .env.server
     sed -i "s/change-me-to-a-random-64-char-string/$APPLICATION_SECRET/" .env.server
     sed -i "s/change-me-to-an-independent-random-64-char-string/$VAULT_SECRET/" .env.server
+    sed -i "s/change-me-to-an-independent-infrastructure-admin-token/$INFRASTRUCTURE_SECRET/" .env.server
   fi
   chmod 600 .env.server
 else

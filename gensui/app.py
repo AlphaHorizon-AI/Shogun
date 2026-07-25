@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from gensui.config import gensui_settings, GENSUI_ROOT
+from gensui.config import gensui_settings
 
 log = logging.getLogger("gensui")
 
@@ -124,9 +124,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "gensui", "version": "0.1.0"}
 
     # ── Serve Frontend (production) ──────────────────────────
-    frontend_dist = GENSUI_ROOT.parent / "frontend" / "dist"
-    if not frontend_dist.exists():
-        frontend_dist = GENSUI_ROOT / "frontend" / "dist"
+    frontend_dist = gensui_settings.gensui_frontend_dist
     if frontend_dist.exists():
         # Serve /assets/* static files
         assets_path = frontend_dist / "assets"
@@ -149,5 +147,10 @@ def create_app() -> FastAPI:
                 return FileResponse(target)
             # Otherwise serve index.html (SPA client-side routing)
             return FileResponse(str(frontend_dist / "index.html"))
+    else:
+        log.warning(
+            "Gensui frontend distribution is missing at %s; UI routes are disabled",
+            frontend_dist,
+        )
 
     return app

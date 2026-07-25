@@ -17,6 +17,13 @@ case "${VAULT_ENCRYPTION_KEY:-}" in
     ;;
 esac
 
+case "${SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN:-}" in
+  ""|change-me-*)
+    echo "ERROR: SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN must be set to a unique random value." >&2
+    exit 1
+    ;;
+esac
+
 mkdir -p /app/data /app/vault /app/logs /app/configs /app/tmp
 
 if [ "${DEPLOYMENT_MODE:-}" != "server" ]; then

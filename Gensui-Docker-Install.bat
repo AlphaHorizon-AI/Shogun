@@ -119,9 +119,11 @@ cd /d "%INSTALL_DIR%"
 if not exist ".env" (
     copy ".env.example" ".env" >nul 2>&1
     :: Generate random JWT secret using PowerShell
-    for /f "usebackq tokens=*" %%i in (`powershell -NoProfile -Command "[Convert]::ToBase64String([Guid]::NewGuid().ToByteArray() + [Guid]::NewGuid().ToByteArray() + [Guid]::NewGuid().ToByteArray()).Replace('=', '').Replace('+', '').Replace('/', '')"`) do set JWT_SECRET=%%i
-    powershell -NoProfile -Command "(Get-Content .env) -replace 'change-me-to-a-random-64-char-string', '%JWT_SECRET%' | Set-Content .env"
-    echo   [OK] .env created with secure random JWT secret.
+    for /f "usebackq tokens=*" %%i in (`powershell -NoProfile -Command "$b=New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b).Replace('=', '').Replace('+', '').Replace('/', '')"`) do set JWT_SECRET=%%i
+    for /f "usebackq tokens=*" %%i in (`powershell -NoProfile -Command "$b=New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b).Replace('=', '').Replace('+', '').Replace('/', '')"`) do set ADMIN_SECRET=%%i
+    powershell -NoProfile -Command "$c=Get-Content -Raw .env; $c=$c.Replace('change-me-to-a-random-64-char-string','%JWT_SECRET%').Replace('change-me-to-a-random-admin-password','%ADMIN_SECRET%'); Set-Content -Encoding Ascii .env $c"
+    echo   [OK] .env created with secure random JWT and admin secrets.
+    echo   [i] The generated admin password is stored in %INSTALL_DIR%\.env.
 ) else (
     echo   [OK] .env already exists — keeping existing config.
 )

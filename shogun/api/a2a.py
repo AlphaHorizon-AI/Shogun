@@ -25,20 +25,22 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.api.deps import get_db
+from shogun.api.infrastructure_auth import require_infrastructure_admin
 from shogun.config import settings
 from shogun.db.engine import async_session_factory
 from shogun.db.models.agent import Agent
-from shogun.db.models.workspace import Workspace, WorkspacePeer, WorkspaceMessage
+from shogun.db.models.workspace import Workspace, WorkspaceMessage, WorkspacePeer
 from shogun.integrations.a2a_client import (
     build_envelope,
     get_a2a_client,
     verify_signature,
 )
 from shogun.schemas.common import ApiResponse
+from shogun.services.ssrf_guard import SSRFValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +53,7 @@ workspace_router = APIRouter(prefix="/workspaces", tags=["Workspaces"])
 
 async def _get_primary_agent(db: AsyncSession) -> Agent | None:
     result = await db.execute(
-        select(Agent).where(Agent.is_primary == True, Agent.is_deleted == False)
+        select(Agent).where(Agent.is_primary.is_(True), Agent.is_deleted.is_(False))
     )
     return result.scalars().first()
 
@@ -365,6 +367,7 @@ async def patch_document(
     body: PatchDocumentRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    _actor: str = Depends(require_infrastructure_admin),
 ):
     """Update the workspace's shared document and fan it out to all peers."""
     ws = await db.get(Workspace, workspace_id)
@@ -424,6 +427,7 @@ async def invite_peer(
     body: InvitePeerRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    _actor: str = Depends(require_infrastructure_admin),
 ):
     """Invite a remote Shogun to the workspace.
 
@@ -437,6 +441,10 @@ async def invite_peer(
 
     # Ping remote to get real name
     client = get_a2a_client()
+    try:
+        client.validate_peer_url(body.peer_url)
+    except SSRFValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     identity = await client.ping(body.peer_url)
     resolved_name = (
         identity.get("data", {}).get("name") or body.peer_name
@@ -570,6 +578,7 @@ async def post_message(
     body: PostMessageRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    _actor: str = Depends(require_infrastructure_admin),
 ):
     """Post a message to the workspace thread and fan it out to all peers."""
     ws = await db.get(Workspace, workspace_id)

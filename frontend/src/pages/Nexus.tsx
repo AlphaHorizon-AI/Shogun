@@ -34,6 +34,11 @@ import {
   Power,
 } from 'lucide-react';
 import axios from 'axios';
+import {
+  getInfrastructureAdminToken,
+  infrastructureRequestConfig,
+  setInfrastructureAdminToken,
+} from '../lib/infrastructureAuth';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
 
@@ -179,6 +184,9 @@ export function Nexus() {
   // Invite peer modal
   const [showInvite, setShowInvite] = useState(false);
   const [inviteUrl, setInviteUrl] = useState('');
+  const [infrastructureToken, setInfrastructureTokenState] = useState(
+    getInfrastructureAdminToken,
+  );
   const [inviteName, setInviteName] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteMsg, setInviteMsg] = useState<{type: 'success'|'error', text: string}|null>(null);
@@ -300,10 +308,14 @@ export function Nexus() {
     setInviting(true);
     setInviteMsg(null);
     try {
-      await axios.post(`/api/v1/workspaces/${selected.id}/peers`, {
-        peer_url: inviteUrl,
-        peer_name: inviteName || 'Remote Shogun',
-      });
+      await axios.post(
+        `/api/v1/workspaces/${selected.id}/peers`,
+        {
+          peer_url: inviteUrl,
+          peer_name: inviteName || 'Remote Shogun',
+        },
+        infrastructureRequestConfig(infrastructureToken),
+      );
       setInviteMsg({ type: 'success', text: 'Invitation sent. Peer is now pending.' });
       setInviteUrl(''); setInviteName('');
       await refreshSelected();
@@ -316,10 +328,14 @@ export function Nexus() {
     if (!msgContent.trim() || !selected) return;
     setSending(true);
     try {
-      await axios.post(`/api/v1/workspaces/${selected.id}/messages`, {
-        content: msgContent,
-        message_type: msgType,
-      });
+      await axios.post(
+        `/api/v1/workspaces/${selected.id}/messages`,
+        {
+          content: msgContent,
+          message_type: msgType,
+        },
+        infrastructureRequestConfig(infrastructureToken),
+      );
       setMsgContent('');
       await refreshSelected();
     } catch (err) { console.error(err); }
@@ -330,7 +346,11 @@ export function Nexus() {
     if (!selected) return;
     setSavingDoc(true);
     try {
-      await axios.patch(`/api/v1/workspaces/${selected.id}/document`, { content: docContent });
+      await axios.patch(
+        `/api/v1/workspaces/${selected.id}/document`,
+        { content: docContent },
+        infrastructureRequestConfig(infrastructureToken),
+      );
       setEditingDoc(false);
       await refreshSelected();
     } catch (err) { console.error(err); }
@@ -1196,6 +1216,26 @@ export function Nexus() {
                   placeholder="Their Shogun's name..."
                   className="w-full bg-[#050508] border border-shogun-border rounded-xl px-4 py-3 text-sm focus:border-indigo-500 outline-none transition-all"
                 />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">
+                  Infrastructure Admin Token
+                </label>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={infrastructureToken}
+                  onChange={event => {
+                    const value = event.target.value;
+                    setInfrastructureTokenState(value);
+                    setInfrastructureAdminToken(value);
+                  }}
+                  placeholder="Required by Shogun Server mode"
+                  className="w-full bg-[#050508] border border-shogun-border rounded-xl px-4 py-3 text-sm focus:border-indigo-500 outline-none transition-all font-mono"
+                />
+                <p className="text-[9px] text-shogun-subdued/60">
+                  Stored only for this browser tab session.
+                </p>
               </div>
               {inviteMsg && (
                 <div className={cn('p-3 rounded-lg border text-xs', inviteMsg.type === 'success' ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400')}>
