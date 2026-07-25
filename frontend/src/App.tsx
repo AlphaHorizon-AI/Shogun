@@ -22,6 +22,7 @@ const Updates = lazy(() => import('./pages/Updates').then(module => ({ default: 
 const Backups = lazy(() => import('./pages/Backups').then(module => ({ default: module.Backups })))
 const Gensui = lazy(() => import('./pages/Gensui').then(module => ({ default: module.Gensui })))
 const SetupWizard = lazy(() => import('./pages/SetupWizard').then(module => ({ default: module.SetupWizard })))
+const PrivacyTelemetry = lazy(() => import('./pages/PrivacyTelemetry').then(module => ({ default: module.PrivacyTelemetry })))
 
 interface SystemNotification {
   id: string
@@ -77,6 +78,41 @@ function SystemNotifications() {
         <button onClick={() => setNotification(null)} className="text-amber-100/60 hover:text-amber-100" aria-label="Dismiss notification">
           <X className="h-4 w-4" />
         </button>
+      </div>
+    </div>
+  )
+}
+
+function TelemetryInvitation() {
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/v1/telemetry/status')
+      .then(response => response.ok ? response.json() : null)
+      .then(payload => setVisible(Boolean(payload?.show_first_run_prompt)))
+      .catch(() => {})
+  }, [])
+
+  const dismiss = () => {
+    setVisible(false)
+    fetch('/api/v1/telemetry/dismiss', { method: 'POST' }).catch(() => {})
+  }
+
+  if (!visible) return null
+  return (
+    <div className="fixed bottom-5 right-5 z-[9998] w-[min(440px,calc(100vw-2.5rem))] rounded-xl border border-shogun-gold/40 bg-[#11131a] p-4 shadow-2xl">
+      <button onClick={dismiss} className="absolute right-3 top-3 text-shogun-subdued hover:text-shogun-text" aria-label="Dismiss telemetry invitation">
+        <X className="h-4 w-4" />
+      </button>
+      <h2 className="pr-8 font-bold text-shogun-gold">Help improve Shogun AFM</h2>
+      <p className="mt-2 text-sm leading-relaxed text-shogun-subdued">
+        You may optionally share anonymous installation and weekly activity statistics.
+        No prompts, files, memory, messages, identities, or credentials are collected.
+        Nothing is sent unless you explicitly opt in.
+      </p>
+      <div className="mt-3 flex gap-3">
+        <a href="/privacy-telemetry" className="rounded-lg bg-shogun-gold px-3 py-2 text-xs font-bold text-black">Review exact data</a>
+        <button onClick={dismiss} className="rounded-lg border border-shogun-border px-3 py-2 text-xs">No thanks</button>
       </div>
     </div>
   )
@@ -197,6 +233,7 @@ function AppContent() {
           <Route path="/updates" element={<Shell><Updates /></Shell>} />
           <Route path="/backups" element={<Shell><Backups /></Shell>} />
           <Route path="/gensui" element={<Shell><Gensui /></Shell>} />
+          <Route path="/privacy-telemetry" element={<Shell><PrivacyTelemetry /></Shell>} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -213,6 +250,7 @@ function App() {
       <BuildRefreshGuard />
       <AppContent />
       <SystemNotifications />
+      <TelemetryInvitation />
     </I18nProvider>
   )
 }

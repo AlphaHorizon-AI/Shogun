@@ -1,0 +1,6 @@
+# Telemetry schema, consent, service, and privacy changes require owner review.
+/shogun/telemetry/ @AlphaHorizon-AI
+/shogun/api/telemetry.py @AlphaHorizon-AI
+/telemetry_service/ @AlphaHorizon-AI
+/docs/telemetry.md @AlphaHorizon-AI
+/scripts/check-telemetry-privacy.py @AlphaHorizon-AI

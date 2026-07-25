@@ -371,6 +371,14 @@ python -m shogun
 - [VS Code bridge documentation](bridge/vscode/README.md)
 - [Microsoft Teams bridge documentation](bridge/teams/README.md)
 
+## Optional installation telemetry
+
+Shogun's privacy-preserving installation telemetry is disabled by default. It
+sends nothing until an administrator explicitly opts in, never collects
+operational content or personal identity, and can be previewed, withdrawn, or
+deleted from **Privacy & Telemetry** in The Tenshu. See the
+[exact schema, frequency, firewall, Docker, and deletion documentation](docs/telemetry.md).
+
 ## License
 
 [Proprietary](LICENSE.md) — [AlphaHorizon AI](https://github.com/AlphaHorizon-AI)

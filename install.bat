@@ -2,6 +2,20 @@
 chcp 65001 >nul 2>&1
 setlocal EnableDelayedExpansion
 
+set "TELEMETRY_MODE=ask"
+set "TELEMETRY_NOTICE="
+:parse_args
+if "%~1"=="" goto args_done
+if /I "%~1"=="--telemetry=on" set "TELEMETRY_MODE=on"
+if /I "%~1"=="--telemetry=off" set "TELEMETRY_MODE=off"
+for /f "tokens=1,* delims==" %%a in ("%~1") do (
+    if /I "%%a"=="--accept-telemetry-notice" set "TELEMETRY_NOTICE=%%b"
+)
+shift
+goto parse_args
+:args_done
+if defined CI if /I "%TELEMETRY_MODE%"=="ask" set "TELEMETRY_MODE=off"
+
 :: ===============================================================
 ::  SHOGUN - One-Click Installer (Windows)
 :: ===============================================================
@@ -80,6 +94,37 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 echo        Python dependencies installed.
+
+:: -- Optional installation telemetry (unchecked/off by default) --
+if /I "%TELEMETRY_MODE%"=="ask" (
+    echo.
+    echo  Help improve Shogun AFM ^(optional^)
+    echo  Shared: version, OS family, install type, operating mode,
+    echo  random installation ID, and one weekly active signal.
+    echo  Never shared: prompts, responses, files, memory, messages,
+    echo  people, credentials, local paths, hostnames, or hardware IDs.
+    echo  Exact schema: docs\telemetry.md
+    echo  Privacy: https://www.alphahorizon.io/shogun/telemetry-privacy/
+    set /p "TELEMETRY_CHOICE= Share anonymous installation statistics? [y/N]: "
+    if /I "!TELEMETRY_CHOICE!"=="y" (
+        set "TELEMETRY_MODE=on"
+        set "TELEMETRY_NOTICE=1.0"
+    ) else (
+        set "TELEMETRY_MODE=off"
+    )
+)
+if /I "%TELEMETRY_MODE%"=="on" (
+    if "%TELEMETRY_NOTICE%"=="1.0" (
+        python -m shogun.telemetry.cli enable --notice-version 1.0
+        echo        Optional installation telemetry enabled.
+    ) else (
+        python -m shogun.telemetry.cli disable
+        echo        Telemetry remains disabled: notice version 1.0 was not explicitly accepted.
+    )
+) else (
+    python -m shogun.telemetry.cli disable
+    echo        Optional installation telemetry remains disabled.
+)
 
 :: -- Step 4b: Install Mado browser (Playwright Chromium) --------
 echo        Installing Mado browser engine (Chromium)...

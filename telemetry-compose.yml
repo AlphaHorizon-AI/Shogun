@@ -1,0 +1,46 @@
+name: shogun-installation-telemetry
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: telemetry_service/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      TELEMETRY_ENVIRONMENT: production
+      TELEMETRY_DATABASE_URL: postgresql+psycopg://${TELEMETRY_DB_USER}:${TELEMETRY_DB_PASSWORD}@db:5432/${TELEMETRY_DB_NAME}
+      TELEMETRY_HMAC_SECRET: ${TELEMETRY_HMAC_SECRET}
+      TELEMETRY_IDENTITY_PROXY_SECRET: ${TELEMETRY_IDENTITY_PROXY_SECRET}
+      TELEMETRY_ALLOWED_ADMIN_GROUP: ${TELEMETRY_ALLOWED_ADMIN_GROUP:-alpha-horizon-telemetry}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [telemetry_private]
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${TELEMETRY_DB_USER}
+      POSTGRES_PASSWORD: ${TELEMETRY_DB_PASSWORD}
+      POSTGRES_DB: ${TELEMETRY_DB_NAME}
+    volumes:
+      - telemetry_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [telemetry_private]
+
+networks:
+  telemetry_private:
+    internal: true
+
+volumes:
+  telemetry_db:

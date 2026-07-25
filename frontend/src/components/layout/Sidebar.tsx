@@ -16,6 +16,7 @@ import {
   HardDrive,
   ShieldCheck,
   LockKeyhole,
+  Radio,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '../../lib/utils';
@@ -229,6 +230,13 @@ export const Sidebar = () => {
             subLabel={t('nav.backups_sub', 'Data Protection')} 
             active={location.pathname === '/backups'}
             onClick={() => navigate('/backups')}
+          />
+          <NavItem
+            icon={Radio}
+            label={t('nav.privacy_telemetry', 'Privacy & Telemetry')}
+            subLabel={t('nav.privacy_telemetry_sub', 'Optional Statistics')}
+            active={location.pathname === '/privacy-telemetry'}
+            onClick={() => navigate('/privacy-telemetry')}
           />
           <NavItem 
             icon={Download} 

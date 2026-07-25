@@ -1,6 +1,6 @@
 [project]
 name = "shogun"
-version = "1.44.13"
+version = "1.45.0"
 description = "Shogun — A GUI-first AI agent framework with structured memory, governed autonomy, and OpenClaw compatibility"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -64,6 +64,9 @@ server = [
     "openpyxl>=3.1.0",
     "python-docx>=1.1.0",
     "python-pptx>=0.6.23",
+]
+telemetry-service = [
+    "psycopg[binary]>=3.2.0",
 ]
 ronin = [
     "mss>=9.0.0",

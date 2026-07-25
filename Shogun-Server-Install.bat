@@ -8,6 +8,19 @@ set "BRANCH=main"
 set "INSTALL_DIR=%USERPROFILE%\Shogun-Server"
 set "ARCHIVE_URL=https://github.com/%REPO%/archive/refs/heads/%BRANCH%.zip"
 set "TEMP_ROOT=%TEMP%\shogun-server-install"
+set "TELEMETRY_MODE=ask"
+set "TELEMETRY_NOTICE="
+:parse_args
+if "%~1"=="" goto args_done
+if /I "%~1"=="--telemetry=on" set "TELEMETRY_MODE=on"
+if /I "%~1"=="--telemetry=off" set "TELEMETRY_MODE=off"
+for /f "tokens=1,* delims==" %%a in ("%~1") do (
+  if /I "%%a"=="--accept-telemetry-notice" set "TELEMETRY_NOTICE=%%b"
+)
+shift
+goto parse_args
+:args_done
+if defined CI if /I "%TELEMETRY_MODE%"=="ask" set "TELEMETRY_MODE=off"
 
 echo.
 echo  Shogun Server mode installer
@@ -69,6 +82,28 @@ if not exist ".env.server" (
 ) else (
   echo       Existing .env.server retained.
 )
+
+if /I "%TELEMETRY_MODE%"=="ask" (
+  echo.
+  echo Help improve Shogun AFM ^(optional^)
+  echo Share version, OS family, Docker install type, Team Mode, a random
+  echo installation ID, and one weekly active signal.
+  echo No prompts, files, memory, messages, identities, or credentials are shared.
+  echo Privacy: https://www.alphahorizon.io/shogun/telemetry-privacy/
+  set /p "TELEMETRY_CHOICE=Share anonymous installation statistics? [y/N]: "
+  if /I "!TELEMETRY_CHOICE!"=="y" (
+    set "TELEMETRY_MODE=on"
+    set "TELEMETRY_NOTICE=1.0"
+  ) else (
+    set "TELEMETRY_MODE=off"
+  )
+)
+if /I "%TELEMETRY_MODE%"=="on" if not "%TELEMETRY_NOTICE%"=="1.0" (
+  echo Telemetry remains disabled: notice version 1.0 was not explicitly accepted.
+  set "TELEMETRY_MODE=off"
+  set "TELEMETRY_NOTICE="
+)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p='.env.server'; $c=Get-Content -Raw -LiteralPath $p; $values=@{'SHOGUN_TELEMETRY'='!TELEMETRY_MODE!';'SHOGUN_TELEMETRY_NOTICE_VERSION'='!TELEMETRY_NOTICE!'}; foreach($key in $values.Keys){$line=$key+'='+$values[$key]; if($c -match ('(?m)^'+[regex]::Escape($key)+'=.*$')){$c=[regex]::Replace($c,('(?m)^'+[regex]::Escape($key)+'=.*$'),$line)}else{$c=$c.TrimEnd()+[Environment]::NewLine+$line+[Environment]::NewLine}}; Set-Content -LiteralPath $p -Value $c -Encoding utf8"
 
 echo [4/5] Building and starting Shogun Server...
 docker compose --env-file .env.server -f docker-compose.server.yml up -d --build

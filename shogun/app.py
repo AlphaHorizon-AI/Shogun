@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from shogun import __version__
 from shogun.config import settings
 
 # Calculate project root (assuming this file is in shogun/app.py)
@@ -440,7 +441,7 @@ async def lifespan(app: FastAPI):
         await EventLogger.emit_system_event(
             "system.startup", "Shogun server started",
             detail={
-                "version": "1.24.2",
+                "version": __version__,
                 "platform": platform.system(),
                 "python": platform.python_version(),
             },
@@ -487,6 +488,16 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             import logging
             logging.getLogger(__name__).warning("Gensui client startup failed: %s", exc)
+
+    # Installation telemetry is an independent, opt-in subsystem. Its startup
+    # never blocks Shogun and it performs no network request while disabled.
+    try:
+        from shogun.telemetry.service import telemetry_service
+        await telemetry_service.start()
+    except Exception as exc:
+        logging.getLogger(__name__).debug(
+            "Installation telemetry startup skipped safely: %s", exc
+        )
 
     yield
 
@@ -552,6 +563,12 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+    try:
+        from shogun.telemetry.service import telemetry_service
+        await telemetry_service.stop()
+    except Exception:
+        pass
+
     from shogun.db.engine import engine
     await engine.dispose()
 
@@ -561,7 +578,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Shogun",
         description="AI Agent Framework — REST API",
-        version="1.24.2",
+        version=__version__,
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,
@@ -613,6 +630,7 @@ def create_app() -> FastAPI:
     from shogun.api.skillopt import router as skillopt_router
     from shogun.api.skill_lifecycle import router as skill_lifecycle_router
     from shogun.api.files import router as files_router
+    from shogun.api.telemetry import router as telemetry_router
 
     prefix = "/api/v1"
     app.include_router(system_router, prefix=prefix)
@@ -652,6 +670,7 @@ def create_app() -> FastAPI:
     app.include_router(katana_command_router, prefix=prefix)
     app.include_router(ide_router, prefix=prefix)
     app.include_router(files_router, prefix=prefix)
+    app.include_router(telemetry_router, prefix=prefix)
 
     # Office App Mode (Katana)
     from shogun.api.office import router as office_router

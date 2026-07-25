@@ -8,6 +8,23 @@ set -e
 # Ensure we run from the script's own directory
 cd "$(dirname "$0")"
 
+TELEMETRY_MODE="${SHOGUN_TELEMETRY:-ask}"
+TELEMETRY_NOTICE="${SHOGUN_TELEMETRY_NOTICE_VERSION:-}"
+for argument in "$@"; do
+    case "$argument" in
+        --telemetry=on) TELEMETRY_MODE="on" ;;
+        --telemetry=off) TELEMETRY_MODE="off" ;;
+        --accept-telemetry-notice=*) TELEMETRY_NOTICE="${argument#*=}" ;;
+        *)
+            echo "ERROR: Unknown installer argument: $argument" >&2
+            exit 2
+            ;;
+    esac
+done
+if [ ! -t 0 ] && [ "$TELEMETRY_MODE" = "ask" ]; then
+    TELEMETRY_MODE="off"
+fi
+
 # Colors
 GOLD='\033[1;33m'
 BLUE='\033[1;34m'
@@ -99,6 +116,35 @@ source venv/bin/activate
 echo -e "${GOLD}[4/8]${NC} Installing Python dependencies..."
 pip install ".[office]" --quiet --disable-pip-version-check
 echo -e "       ${GREEN}Python dependencies installed.${NC}"
+
+# Optional installation telemetry — separate from licence acceptance and off by default.
+if [ "$TELEMETRY_MODE" = "ask" ]; then
+    echo ""
+    echo -e "${GOLD}  Help improve Shogun AFM (optional)${NC}"
+    echo "  Share: version, OS family, install type, operating mode, random installation ID,"
+    echo "  and one weekly active-installation signal."
+    echo "  Never share: prompts, responses, files, memory, messages, people, credentials,"
+    echo "  local paths, hostnames, or hardware identifiers."
+    echo "  Exact schema: docs/telemetry.md"
+    echo "  Privacy notice: https://www.alphahorizon.io/shogun/telemetry-privacy/"
+    read -r -p "  Share anonymous installation statistics? [y/N]: " TELEMETRY_CHOICE
+    if [[ "$TELEMETRY_CHOICE" =~ ^[Yy]$ ]]; then
+        TELEMETRY_MODE="on"
+        TELEMETRY_NOTICE="1.0"
+    else
+        TELEMETRY_MODE="off"
+    fi
+fi
+if [ "$TELEMETRY_MODE" = "on" ] && [ "$TELEMETRY_NOTICE" = "1.0" ]; then
+    $PYTHON_CMD -m shogun.telemetry.cli enable --notice-version 1.0
+    echo -e "       ${GREEN}Optional installation telemetry enabled.${NC}"
+elif [ "$TELEMETRY_MODE" = "on" ]; then
+    echo -e "       ${RED}Telemetry remains disabled: notice version 1.0 was not explicitly accepted.${NC}"
+    $PYTHON_CMD -m shogun.telemetry.cli disable
+else
+    $PYTHON_CMD -m shogun.telemetry.cli disable
+    echo "       Optional installation telemetry remains disabled."
+fi
 
 # Install Mado browser engine (Playwright Chromium)
 echo "       Installing Mado browser engine (Chromium)..."

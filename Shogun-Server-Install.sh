@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+TELEMETRY_MODE="${SHOGUN_TELEMETRY:-ask}"
+TELEMETRY_NOTICE="${SHOGUN_TELEMETRY_NOTICE_VERSION:-}"
+for argument in "$@"; do
+  case "$argument" in
+    --telemetry=on) TELEMETRY_MODE=on ;;
+    --telemetry=off) TELEMETRY_MODE=off ;;
+    --accept-telemetry-notice=*) TELEMETRY_NOTICE="${argument#*=}" ;;
+    *) echo "ERROR: Unknown installer argument: $argument" >&2; exit 2 ;;
+  esac
+done
+if [ ! -t 0 ] && [ "$TELEMETRY_MODE" = "ask" ]; then
+  TELEMETRY_MODE=off
+fi
+
 REPO="AlphaHorizon-AI/Shogun"
 BRANCH="main"
 INSTALL_DIR="${SHOGUN_SERVER_DIR:-$HOME/shogun-server}"
@@ -63,6 +77,26 @@ fi
 
 cd "$INSTALL_DIR"
 
+if [ "$TELEMETRY_MODE" = "ask" ]; then
+  echo ""
+  echo "Help improve Shogun AFM (optional)"
+  echo "Share version, platform family, Docker install type, Team Mode, a random"
+  echo "installation ID, and one weekly active signal. No operational content is shared."
+  echo "Privacy notice: https://www.alphahorizon.io/shogun/telemetry-privacy/"
+  read -r -p "Share anonymous installation statistics? [y/N]: " TELEMETRY_CHOICE
+  if [[ "$TELEMETRY_CHOICE" =~ ^[Yy]$ ]]; then
+    TELEMETRY_MODE=on
+    TELEMETRY_NOTICE=1.0
+  else
+    TELEMETRY_MODE=off
+  fi
+fi
+if [ "$TELEMETRY_MODE" = "on" ] && [ "$TELEMETRY_NOTICE" != "1.0" ]; then
+  echo "Telemetry remains disabled: notice version 1.0 was not explicitly accepted."
+  TELEMETRY_MODE=off
+  TELEMETRY_NOTICE=
+fi
+
 echo "[3/5] Configuring secrets..."
 if [ ! -f .env.server ]; then
   cp .env.server.example .env.server
@@ -85,6 +119,22 @@ if [ ! -f .env.server ]; then
 else
   echo "      Existing .env.server retained."
 fi
+
+set_env_value() {
+  local key="$1"
+  local value="$2"
+  if grep -q "^${key}=" .env.server; then
+    if [ "$(uname -s)" = "Darwin" ]; then
+      sed -i '' "s|^${key}=.*|${key}=${value}|" .env.server
+    else
+      sed -i "s|^${key}=.*|${key}=${value}|" .env.server
+    fi
+  else
+    printf '%s=%s\n' "$key" "$value" >> .env.server
+  fi
+}
+set_env_value SHOGUN_TELEMETRY "$TELEMETRY_MODE"
+set_env_value SHOGUN_TELEMETRY_NOTICE_VERSION "$TELEMETRY_NOTICE"
 
 echo "[4/5] Building and starting Shogun Server..."
 docker compose --env-file .env.server -f docker-compose.server.yml up -d --build
