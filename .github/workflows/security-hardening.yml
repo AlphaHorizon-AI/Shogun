@@ -220,9 +220,9 @@ jobs:
         run: |
           cp .env.server.example .env.server
           sed -i 's/change-me-postgres-password/ci-postgres-password/' .env.server
-          sed -i 's/change-me-to-a-random-64-char-string/ci-application-secret-0123456789/' .env.server
-          sed -i 's/change-me-to-an-independent-random-64-char-string/ci-vault-secret-0123456789/' .env.server
-          sed -i 's/change-me-to-an-independent-infrastructure-admin-token/ci-infrastructure-token-0123456789/' .env.server
+          sed -i 's/change-me-to-a-random-64-char-string/ci-application-secret-0123456789abcdefghijklmnopqrstuvwxyz/' .env.server
+          sed -i 's/change-me-to-an-independent-random-64-char-string/ci-vault-secret-0123456789abcdefghijklmnopqrstuvwxyz/' .env.server
+          sed -i 's/change-me-to-an-independent-infrastructure-admin-token/ci-infrastructure-token-0123456789abcdefghijklmnopqrstuvwxyz/' .env.server
       - name: Scan Shogun image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:

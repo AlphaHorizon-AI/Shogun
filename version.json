@@ -1,8 +1,8 @@
 {
-  "version": "1.46.2",
+  "version": "1.46.3",
   "name": "Shogun OS",
-  "build": 148,
+  "build": 149,
   "channel": "stable",
-  "released": "2026-07-25T19:40:00Z",
-  "changelog": "Fix upgraded desktop startup by removing logger shadowing during legacy database repair and preserve Uvicorn migration error reporting."
+  "released": "2026-07-25T19:44:00Z",
+  "changelog": "Validate the desktop startup repair with hardened server-container credentials that satisfy production security requirements."
 }
