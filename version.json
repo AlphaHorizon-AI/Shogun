@@ -1,8 +1,8 @@
 {
-  "version": "1.44.12",
+  "version": "1.44.13",
   "name": "Shogun OS",
-  "build": 142,
+  "build": 143,
   "channel": "stable",
-  "released": "2026-07-25T08:31:07Z",
-  "changelog": "Security and deployment hardening for Shogun, Tenshu, and Gensui."
+  "released": "2026-07-25T08:45:39Z",
+  "changelog": "Fix the production frontend build by excluding Vitest sources from application TypeScript compilation."
 }
