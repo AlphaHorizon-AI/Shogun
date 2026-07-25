@@ -309,7 +309,6 @@ async def lifespan(app: FastAPI):
             if columns and ("event_category" not in columns or "confidence_score" not in columns):
                 # Schema missing NIS2/SOC2 or EU AI Act columns — rebuild
                 await conn.execute(text("DROP TABLE IF EXISTS execution_events"))
-                import logging
                 logging.getLogger(__name__).info("Migrated execution_events schema (NIS2/SOC2 + EU AI Act)")
             # Ensure table exists with full schema
             from shogun.db.base import Base
@@ -345,7 +344,6 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text(
                     "ALTER TABLE skill_installations ADD COLUMN openclaw_skill_id VARCHAR(255)"
                 ))
-                import logging
                 logging.getLogger(__name__).info("Migrated skill_installations: added openclaw_skill_id column")
     except Exception:
         logging.getLogger(__name__).exception("Skill installation schema migration failed")
@@ -375,7 +373,6 @@ async def lifespan(app: FastAPI):
                         patched += 1
             if patched:
                 await session.commit()
-                import logging
                 logging.getLogger(__name__).info(
                     f"Backfilled openclaw_skill_id for {patched} existing installation(s)"
                 )
@@ -406,7 +403,6 @@ async def lifespan(app: FastAPI):
         from shogun.services.bushido_engine import ensure_preset_schedules
         await ensure_preset_schedules()
     except Exception as exc:
-        import logging
         logging.getLogger(__name__).warning("Bushido preset seeding failed: %s", exc)
 
     # ── Start APScheduler and load all enabled schedules
@@ -417,7 +413,6 @@ async def lifespan(app: FastAPI):
         async with async_session_factory() as session:
             await sync_all_schedules(session)
     except Exception as exc:
-        import logging
         logging.getLogger(__name__).warning("Bushido scheduler startup failed: %s", exc)
 
     # ── Start backup scheduler if enabled
@@ -425,7 +420,6 @@ async def lifespan(app: FastAPI):
         from shogun.services.backup_scheduler import sync_backup_schedule
         await sync_backup_schedule()
     except Exception as exc:
-        import logging
         logging.getLogger(__name__).warning("Backup scheduler startup failed: %s", exc)
 
     # ── Start Telegram Autonomous Poller
@@ -435,7 +429,6 @@ async def lifespan(app: FastAPI):
         import asyncio
         telegram_task = asyncio.create_task(telegram_poller_task())
     except Exception as exc:
-        import logging
         logging.getLogger(__name__).error("Telegram poller startup failed: %s", exc)
 
     # ── EVENT: System Startup ─────────────────────────────────
@@ -476,10 +469,8 @@ async def lifespan(app: FastAPI):
             if cleaned:
                 _log.getLogger(__name__).info("Office temp cleanup: removed %d files", cleaned)
     except (TimeoutError, _aio.TimeoutError):
-        import logging
         logging.getLogger(__name__).warning("Office detection timed out after 10s — skipping")
     except Exception as exc:
-        import logging
         logging.getLogger(__name__).debug("Office detection/cleanup skipped: %s", exc)
 
     # ── Start Gensui Membership Client ────────────────────────
@@ -490,7 +481,6 @@ async def lifespan(app: FastAPI):
             gensui = gensui_client
             await gensui.start()
         except Exception as exc:
-            import logging
             logging.getLogger(__name__).warning("Gensui client startup failed: %s", exc)
 
     # Installation telemetry is an independent, opt-in subsystem. Its startup
@@ -511,7 +501,6 @@ async def lifespan(app: FastAPI):
         from shogun.services.mado_service import close_all_browsers
         closed = await close_all_browsers()
         if closed:
-            import logging
             logging.getLogger(__name__).info("Mado: closed %d browser sessions on shutdown", closed)
     except Exception:
         pass
@@ -540,7 +529,6 @@ async def lifespan(app: FastAPI):
         pm = get_process_manager()
         closed = pm.close_all()
         if closed:
-            import logging
             logging.getLogger(__name__).info("Office: closed %d COM instances on shutdown", closed)
         shutdown_pool()
     except Exception:

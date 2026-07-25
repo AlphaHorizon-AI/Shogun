@@ -18,7 +18,9 @@ import shogun.db.models  # noqa: F401
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Alembic runs inside Uvicorn during Shogun startup. Keep the server's
+    # existing loggers alive so later lifespan failures retain their traceback.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Override sqlalchemy.url from settings
 config.set_main_option("sqlalchemy.url", settings.database_url)

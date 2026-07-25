@@ -1,8 +1,8 @@
 {
-  "version": "1.46.1",
+  "version": "1.46.2",
   "name": "Shogun OS",
-  "build": 147,
+  "build": 148,
   "channel": "stable",
-  "released": "2026-07-25T19:02:18Z",
-  "changelog": "Require per-install control-plane authentication on desktop loopback and authenticate all Gensui policy routes."
+  "released": "2026-07-25T19:40:00Z",
+  "changelog": "Fix upgraded desktop startup by removing logger shadowing during legacy database repair and preserve Uvicorn migration error reporting."
 }
