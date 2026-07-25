@@ -257,7 +257,7 @@ def test_invalid_outbound_port_configuration_fails_closed() -> None:
         Settings(_env_file=None, a2a_allowed_ports="443,70000")
 
 
-def test_desktop_infrastructure_routes_are_loopback_only(
+def test_desktop_infrastructure_routes_require_token_even_on_loopback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app = FastAPI()
@@ -269,11 +269,17 @@ def test_desktop_infrastructure_routes_are_loopback_only(
     monkeypatch.setattr(settings, "deployment_mode", "desktop")
     monkeypatch.setattr(settings, "infrastructure_admin_token", None)
     with TestClient(app, client=("team-member", 50000)) as remote_client:
-        assert remote_client.get("/protected").status_code == 403
+        assert remote_client.get("/protected").status_code == 503
     with TestClient(app, client=("127.0.0.1", 50000)) as local_client:
-        response = local_client.get("/protected")
+        assert local_client.get("/protected").status_code == 503
+        monkeypatch.setattr(settings, "infrastructure_admin_token", "correct-secret")
+        assert local_client.get("/protected").status_code == 401
+        response = local_client.get(
+            "/protected",
+            headers={"X-Shogun-Infrastructure-Token": "correct-secret"},
+        )
         assert response.status_code == 200
-        assert response.json()["actor"] == "local_primary_admin"
+        assert response.json()["actor"] == "token_admin"
 
 
 def test_gensui_route_rejects_unauthenticated_requests_before_network(

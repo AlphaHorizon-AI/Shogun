@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gensui.api.deps import get_db, get_current_admin, require_role, get_shogun_identity
+from gensui.api.deps import get_db, get_shogun_identity, require_role
 from gensui.services.posture_service import PostureService
 from gensui.services.audit_service import AuditService
 
@@ -102,7 +102,7 @@ async def clear_global_posture(
 ):
     """Deactivate the global posture override."""
     svc = PostureService(db)
-    state = await svc.clear_global_posture()
+    await svc.clear_global_posture()
 
     audit = AuditService(db)
     await audit.append(
@@ -113,7 +113,10 @@ async def clear_global_posture(
 
 
 @router.get("/global")
-async def get_global_posture(db: AsyncSession = Depends(get_db)):
+async def get_global_posture(
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_role("owner", "admin", "security_operator", "auditor")),
+):
     """Get the current global posture state."""
     svc = PostureService(db)
     state = await svc.get_global_state()

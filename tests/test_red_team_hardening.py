@@ -52,7 +52,31 @@ async def test_desktop_control_plane_rejects_remote_clients(monkeypatch):
         _request("/api/v1/model-providers", "192.168.1.20"),
         allowed,
     )
-    assert response.status_code == 401
+    assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_desktop_control_plane_requires_token_on_loopback(monkeypatch):
+    monkeypatch.setattr(settings, "deployment_mode", "desktop")
+    monkeypatch.setattr(settings, "infrastructure_admin_token", "correct-secret")
+
+    async def allowed(_request):
+        return Response(status_code=204)
+
+    denied = await enforce_control_plane_access(
+        _request("/api/v1/model-providers", "127.0.0.1"),
+        allowed,
+    )
+    accepted = await enforce_control_plane_access(
+        _request(
+            "/api/v1/model-providers",
+            "127.0.0.1",
+            [(b"x-shogun-infrastructure-token", b"correct-secret")],
+        ),
+        allowed,
+    )
+    assert denied.status_code == 401
+    assert accepted.status_code == 204
 
 
 @pytest.mark.asyncio

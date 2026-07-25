@@ -46,7 +46,21 @@ def _secure_env_file(env_path: Path) -> None:
     ).replace(
         "VAULT_ENCRYPTION_KEY=change-me-to-a-fernet-base64-key",
         f"VAULT_ENCRYPTION_KEY={secrets.token_urlsafe(48)}",
+    ).replace(
+        "SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN=change-me-to-a-random-infrastructure-token",
+        f"SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN={secrets.token_urlsafe(48)}",
     )
+    if "SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN=\n" in secured:
+        secured = secured.replace(
+            "SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN=\n",
+            f"SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN={secrets.token_urlsafe(48)}\n",
+        )
+    if secured.rstrip().endswith("SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN="):
+        secured = secured.rstrip() + secrets.token_urlsafe(48) + "\n"
+    if "SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN=" not in secured:
+        secured = secured.rstrip() + (
+            f"\nSHOGUN_INFRASTRUCTURE_ADMIN_TOKEN={secrets.token_urlsafe(48)}\n"
+        )
     if "DEPLOYMENT_MODE=server" not in secured:
         secured = secured.replace("API_HOST=0.0.0.0", "API_HOST=127.0.0.1")
     if secured != text:
@@ -146,7 +160,8 @@ def _open_browser_when_ready(url: str, health_url: str, timeout_seconds: int = 1
             pass
 
     def worker() -> None:
-        log(f"Server-side browser opener waiting. Url={url} HealthUrl={health_url}")
+        safe_url = url.split("#", 1)[0]
+        log(f"Server-side browser opener waiting. Url={safe_url} HealthUrl={health_url}")
         deadline = time.time() + timeout_seconds
         ready = False
         while time.time() < deadline:
@@ -218,6 +233,10 @@ def main() -> None:
 
     # Step 4: Open browser once the server is actually ready
     url = _browser_url(settings.api_host, settings.api_port)
+    if settings.deployment_mode == "desktop" and settings.infrastructure_admin_token:
+        from urllib.parse import quote
+
+        url = f"{url}#infrastructure_token={quote(settings.infrastructure_admin_token, safe='')}"
     health_url = f"http://localhost:{settings.api_port}/api/v1/health"
     _open_browser_when_ready(url, health_url)
 

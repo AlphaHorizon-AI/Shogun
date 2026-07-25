@@ -1,8 +1,8 @@
 {
-  "version": "1.46.0",
+  "version": "1.46.1",
   "name": "Shogun OS",
-  "build": 146,
+  "build": 147,
   "channel": "stable",
-  "released": "2026-07-25T18:50:07Z",
-  "changelog": "Security hardening for control-plane access, peer and member authentication, outbound request validation, credential protection, deployment defaults, and response safeguards."
+  "released": "2026-07-25T19:02:18Z",
+  "changelog": "Require per-install control-plane authentication on desktop loopback and authenticate all Gensui policy routes."
 }

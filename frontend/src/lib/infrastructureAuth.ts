@@ -22,6 +22,15 @@ export function infrastructureRequestConfig(token: string) {
     : {};
 }
 
+export function consumeInfrastructureTokenFromLocation(): void {
+  if (typeof window === 'undefined' || !window.location.hash) return;
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const token = params.get('infrastructure_token');
+  if (!token) return;
+  setInfrastructureAdminToken(token);
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+}
+
 export function installInfrastructureFetchGuard(): void {
   if (typeof window === 'undefined') return;
   const originalFetch = window.fetch.bind(window);

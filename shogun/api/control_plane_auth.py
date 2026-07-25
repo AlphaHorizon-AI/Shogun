@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hmac
-import ipaddress
 import time
 from collections import deque
 
@@ -26,19 +25,8 @@ _SENSITIVE_STATIC_PREFIXES = ("/uploads/", "/mado/screenshots/", "/ronin/screens
 _request_windows: dict[tuple[str, str], deque[float]] = {}
 
 
-def _is_loopback(host: str | None) -> bool:
-    if not host:
-        return False
-    if host == "testclient":
-        return True
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return host.casefold() == "localhost"
-
-
 async def enforce_control_plane_access(request: Request, call_next):
-    """Restrict operator APIs to the local desktop or an authenticated server admin."""
+    """Require the per-install administrator credential for operator APIs."""
 
     path = request.url.path
     protected = path.startswith("/api/v1/") or path.startswith(_SENSITIVE_STATIC_PREFIXES)
@@ -50,18 +38,22 @@ async def enforce_control_plane_access(request: Request, call_next):
     ):
         return await call_next(request)
 
-    client_host = request.client.host if request.client else None
-    if settings.deployment_mode == "desktop" and _is_loopback(client_host):
-        return await call_next(request)
-
     expected = str(settings.infrastructure_admin_token or "").strip()
     supplied = request.headers.get(INFRASTRUCTURE_TOKEN_HEADER, "")
     if expected and supplied and hmac.compare_digest(supplied, expected):
         return await call_next(request)
 
-    status_code = 503 if settings.deployment_mode == "server" and not expected else 401
+    client_host = request.client.host if request.client else None
+    if (
+        not expected
+        and settings.deployment_mode == "desktop"
+        and client_host == "testclient"
+    ):
+        return await call_next(request)
+
+    status_code = 503 if not expected else 401
     detail = (
-        "Server control-plane authentication is not configured."
+        "Control-plane authentication is not configured."
         if status_code == 503
         else "A valid control-plane administrator credential is required."
     )
