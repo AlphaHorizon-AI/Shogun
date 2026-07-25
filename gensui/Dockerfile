@@ -30,8 +30,12 @@ COPY .env.example ./.env.example
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# Create data directory
-RUN mkdir -p /app/data /app/logs
+# Create data directory and drop root privileges
+RUN groupadd --gid 1000 gensui \
+    && useradd --uid 1000 --gid gensui --shell /bin/bash --create-home gensui \
+    && mkdir -p /app/data /app/logs \
+    && chown -R gensui:gensui /app
+USER gensui
 
 # Expose port
 EXPOSE 8787
