@@ -51,11 +51,14 @@ Blocked requests emit a structured `outbound_request_blocked` security log with
 the actor, endpoint class, normalized hostname, policy, reason, and correlation
 fields. Tokens, URL credentials, and query strings are not logged.
 
-## Residual DNS risk
+## DNS rebinding protection
 
-Shogun resolves and validates immediately before opening the request and rejects
-any unsafe answer. The HTTP client still performs its own connection-time DNS
-lookup, so a malicious authoritative DNS server could theoretically change its
-answer between those two operations. Use `allowlist_only` with controlled DNS,
-an egress firewall, or a service mesh for high-assurance deployments. A future
-transport may pin the validated address while preserving TLS SNI.
+Shogun resolves and validates every returned address immediately before opening
+the request, then connects directly to one of those validated IP addresses. The
+original hostname is retained in the HTTP `Host` header and TLS SNI extension,
+so certificate and virtual-host validation continue to use the configured
+hostname without a second DNS lookup. Redirect following and environment proxy
+discovery are disabled for these guarded requests.
+
+For high-assurance deployments, `allowlist_only`, controlled DNS, an egress
+firewall, or a service mesh remain useful defense-in-depth controls.
