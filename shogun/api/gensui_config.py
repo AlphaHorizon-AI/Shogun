@@ -87,7 +87,7 @@ async def connect_to_gensui(
     server_url = req.server_url.rstrip("/")
 
     try:
-        validate_outbound_url(
+        destination = validate_outbound_url(
             server_url,
             policy=settings.gensui_destination_policy,
             allowlist=settings.outbound_allowlist,
@@ -102,12 +102,23 @@ async def connect_to_gensui(
             destination_policy=settings.gensui_destination_policy,
             actor=actor,
         )
-        raise HTTPException(400, str(exc)) from exc
+        raise HTTPException(
+            400,
+            f"Destination blocked by outbound policy ({exc.reason})",
+        ) from exc
 
     # Test connectivity first
     try:
-        async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as client:
-            resp = await client.get(f"{server_url}/api/gensui/health")
+        async with httpx.AsyncClient(
+            timeout=5.0,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            resp = await client.get(  # lgtm[py/full-ssrf]
+                f"{destination.pinned_url.rstrip('/')}/api/gensui/health",
+                headers={"Host": destination.host_header},
+                extensions=destination.request_extensions,
+            )
             if resp.status_code != 200:
                 raise HTTPException(400, f"Gensui server returned {resp.status_code}")
     except httpx.ConnectError:
@@ -185,7 +196,7 @@ async def test_gensui_connection(
     server_url = req.server_url.rstrip("/")
 
     try:
-        validate_outbound_url(
+        destination = validate_outbound_url(
             server_url,
             policy=settings.gensui_destination_policy,
             allowlist=settings.outbound_allowlist,
@@ -200,11 +211,22 @@ async def test_gensui_connection(
             destination_policy=settings.gensui_destination_policy,
             actor=actor,
         )
-        return {"reachable": False, "error": str(exc)}
+        return {
+            "reachable": False,
+            "error": f"Destination blocked by outbound policy ({exc.reason})",
+        }
 
     try:
-        async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as client:
-            resp = await client.get(f"{server_url}/api/gensui/health")
+        async with httpx.AsyncClient(
+            timeout=5.0,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            resp = await client.get(  # lgtm[py/full-ssrf]
+                f"{destination.pinned_url.rstrip('/')}/api/gensui/health",
+                headers={"Host": destination.host_header},
+                extensions=destination.request_extensions,
+            )
             if resp.status_code == 200:
                 data = resp.json()
                 return {
@@ -218,8 +240,9 @@ async def test_gensui_connection(
         return {"reachable": False, "error": "Connection refused — is Gensui running?"}
     except httpx.TimeoutException:
         return {"reachable": False, "error": "Connection timed out"}
-    except Exception as e:
-        return {"reachable": False, "error": str(e)}
+    except Exception:
+        log.warning("Unexpected Gensui connection-test failure", exc_info=True)
+        return {"reachable": False, "error": "Connection test failed"}
 
 
 # ── Internal Helpers ─────────────────────────────────────────

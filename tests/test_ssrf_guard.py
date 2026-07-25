@@ -346,7 +346,9 @@ async def test_a2a_does_not_follow_redirects(monkeypatch: pytest.MonkeyPatch) ->
         async def __aexit__(self, *args):
             return None
 
-        async def get(self, url: str):
+        async def get(self, url: str, **kwargs):
+            assert kwargs["headers"] == {"Host": "peer.example"}
+            assert kwargs["extensions"] == {"sni_hostname": "peer.example"}
             calls.append(url)
             return httpx.Response(
                 302,
@@ -354,8 +356,13 @@ async def test_a2a_does_not_follow_redirects(monkeypatch: pytest.MonkeyPatch) ->
                 request=httpx.Request("GET", url),
             )
 
-    monkeypatch.setattr(A2AClient, "_validate", lambda *args, **kwargs: None)
+    destination = validate_outbound_url(
+        "https://peer.example/api/v1/a2a/identity",
+        policy=OutboundDestinationPolicy.PUBLIC_ONLY,
+        resolver=resolver("93.184.216.34"),
+    )
+    monkeypatch.setattr(A2AClient, "_validate", lambda *args, **kwargs: destination)
     monkeypatch.setattr(httpx, "AsyncClient", RedirectingClient)
 
     assert await A2AClient().ping("https://peer.example") is None
-    assert calls == ["https://peer.example/api/v1/a2a/identity"]
+    assert calls == ["https://93.184.216.34/api/v1/a2a/identity"]

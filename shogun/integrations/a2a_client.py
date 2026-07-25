@@ -30,6 +30,7 @@ import httpx
 from shogun.config import settings
 from shogun.services.ssrf_guard import (
     SSRFValidationError,
+    ValidatedDestination,
     log_blocked_outbound_request,
     validate_outbound_url,
 )
@@ -104,9 +105,9 @@ class A2AClient:
         return ports or None
 
     @staticmethod
-    def _validate(url: str, *, endpoint_type: str) -> None:
+    def _validate(url: str, *, endpoint_type: str) -> ValidatedDestination:
         try:
-            validate_outbound_url(
+            return validate_outbound_url(
                 url,
                 policy=settings.a2a_destination_policy,
                 allowlist=settings.outbound_allowlist,
@@ -156,13 +157,21 @@ class A2AClient:
         # Normalise: peer_url may be a base URL — append the path if needed
         inbound_url = self._inbound_url(peer_url)
 
-        self._validate(inbound_url, endpoint_type="a2a_send")
+        destination = self._validate(inbound_url, endpoint_type="a2a_send")
 
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=False) as client:
-            resp = await client.post(
-                inbound_url,
+        async with httpx.AsyncClient(
+            timeout=self.timeout,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            resp = await client.post(  # lgtm[py/full-ssrf]
+                destination.pinned_url,
                 json=envelope,
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "Host": destination.host_header,
+                },
+                extensions=destination.request_extensions,
             )
             resp.raise_for_status()
             return resp.json()
@@ -175,9 +184,17 @@ class A2AClient:
         """
         identity_url = self._identity_url(peer_url)
         try:
-            self._validate(identity_url, endpoint_type="a2a_ping")
-            async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as client:
-                resp = await client.get(identity_url)
+            destination = self._validate(identity_url, endpoint_type="a2a_ping")
+            async with httpx.AsyncClient(
+                timeout=5.0,
+                follow_redirects=False,
+                trust_env=False,
+            ) as client:
+                resp = await client.get(  # lgtm[py/full-ssrf]
+                    destination.pinned_url,
+                    headers={"Host": destination.host_header},
+                    extensions=destination.request_extensions,
+                )
                 resp.raise_for_status()
                 return resp.json()
         except SSRFValidationError as exc:

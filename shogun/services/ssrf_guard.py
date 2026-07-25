@@ -10,13 +10,12 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
-import re
 import socket
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +44,30 @@ class ValidatedDestination:
     port: int
     addresses: tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, ...]
 
+    @property
+    def pinned_url(self) -> str:
+        """Return the URL with its authority pinned to a validated address."""
+
+        parsed = urlsplit(self.url)
+        address = str(self.addresses[0])
+        literal = f"[{address}]" if ":" in address else address
+        default_port = 443 if self.scheme == "https" else 80
+        authority = literal if self.port == default_port else f"{literal}:{self.port}"
+        return urlunsplit((self.scheme, authority, parsed.path or "/", parsed.query, ""))
+
+    @property
+    def host_header(self) -> str:
+        """Return the original validated authority for HTTP Host routing."""
+
+        default_port = 443 if self.scheme == "https" else 80
+        return self.host if self.port == default_port else f"{self.host}:{self.port}"
+
+    @property
+    def request_extensions(self) -> dict[str, str]:
+        """Preserve certificate validation for the original host over a pinned IP."""
+
+        return {"sni_hostname": self.host}
+
 
 Resolver = Callable[[str, int], Iterable[str]]
 
@@ -58,9 +81,6 @@ _METADATA_ADDRESSES = {
     ipaddress.ip_address("169.254.169.254"),
     ipaddress.ip_address("fd00:ec2::254"),
 }
-_SUSPICIOUS_NUMERIC_HOST = re.compile(r"^(?:0x[0-9a-f]+|0[0-7]+|\d+)(?:\.(?:0x[0-9a-f]+|0[0-7]+|\d+))*$", re.I)
-
-
 def _default_resolver(host: str, port: int) -> Iterable[str]:
     for _, _, _, _, sockaddr in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM):
         yield sockaddr[0]
@@ -77,6 +97,23 @@ def _normalize_ip(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
     if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
         return address.ipv4_mapped
     return address
+
+
+def _is_suspicious_numeric_host(host: str) -> bool:
+    """Detect legacy integer/hex/octal IPv4 spellings without a regular expression."""
+
+    labels = host.casefold().split(".")
+    if not labels or any(not label for label in labels):
+        return False
+    return all(
+        label.isdecimal()
+        or (
+            label.startswith("0x")
+            and len(label) > 2
+            and all(character in "0123456789abcdef" for character in label[2:])
+        )
+        for label in labels
+    )
 
 
 def _is_private_network(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -166,7 +203,7 @@ def validate_outbound_url(
     try:
         ipaddress.ip_address(host)
     except ValueError:
-        if _SUSPICIOUS_NUMERIC_HOST.fullmatch(host):
+        if _is_suspicious_numeric_host(host):
             raise _reject(
                 f"Ambiguous numeric hostname {host!r} is not allowed",
                 reason="ambiguous_numeric_host",
