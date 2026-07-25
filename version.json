@@ -1,8 +1,8 @@
 {
-  "version": "1.44.11",
+  "version": "1.44.12",
   "name": "Shogun OS",
-  "build": 141,
+  "build": 142,
   "channel": "stable",
-  "released": "2026-07-24T14:04:36Z",
-  "changelog": "Document Hindi as a supported Shogun language in the project README."
+  "released": "2026-07-25T08:31:07Z",
+  "changelog": "Security and deployment hardening for Shogun, Tenshu, and Gensui."
 }
