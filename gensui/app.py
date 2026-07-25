@@ -124,7 +124,9 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "gensui", "version": "0.1.0"}
 
     # ── Serve Frontend (production) ──────────────────────────
-    frontend_dist = GENSUI_ROOT / "frontend" / "dist"
+    frontend_dist = GENSUI_ROOT.parent / "frontend" / "dist"
+    if not frontend_dist.exists():
+        frontend_dist = GENSUI_ROOT / "frontend" / "dist"
     if frontend_dist.exists():
         # Serve /assets/* static files
         assets_path = frontend_dist / "assets"
