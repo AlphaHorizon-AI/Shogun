@@ -82,7 +82,8 @@ async def test_register_and_list_agents(client: AsyncClient):
     list_resp = await client.get("/api/v1/nexus/external/agents")
     assert list_resp.status_code == 200
     agents = list_resp.json()["data"]
-    assert any(a["token"] == agent_token for a in agents)
+    assert any(a["name"] == payload["name"] and a["token"] == "********" for a in agents)
+    assert all(a["token"] != agent_token for a in agents)
 
 
 @pytest.mark.asyncio
@@ -97,15 +98,19 @@ async def test_list_capabilities(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-@patch("shogun.nexus.protocols.internal_shogun_adapter.InternalShogunAdapter._call_llm")
-async def test_a2a_task_execution_flow(mock_call_llm, client: AsyncClient, seed_agents):
+@patch("shogun.nexus.protocols.internal_shogun_adapter.InternalShogunAdapter.execute_on_agent")
+async def test_a2a_task_execution_flow(mock_execute, client: AsyncClient, seed_agents):
     """Test complete successful A2A task lifecycle: registration, auth, policy, execution, and logs."""
-    mock_call_llm.return_value = "Mocked summary: Supplier risk is low."
+    mock_execute.return_value = {
+        "status": "success",
+        "output": "Mocked summary: Supplier risk is low.",
+    }
 
     # 1. Register external agent to get token
     reg_payload = {"name": "Test M365", "platform": "microsoft_365"}
     reg_resp = await client.post("/api/v1/nexus/external/register-agent", json=reg_payload)
-    token = reg_resp.json()["data"]["token"]
+    registration = reg_resp.json()["data"]
+    token = registration["token"]
     
     # 2. Submit allowed A2A task
     task_payload = {
@@ -184,7 +189,8 @@ async def test_task_callback_update(client: AsyncClient, seed_agents):
     # 1. Register agent
     reg_payload = {"name": "Test M365 Callback", "platform": "microsoft_365"}
     reg_resp = await client.post("/api/v1/nexus/external/register-agent", json=reg_payload)
-    token = reg_resp.json()["data"]["token"]
+    registration = reg_resp.json()["data"]
+    token = registration["token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     # 2. Add a dummy task record first
@@ -192,7 +198,7 @@ async def test_task_callback_update(client: AsyncClient, seed_agents):
     from shogun.db.models.nexus import NexusTaskModel
     async with async_session_factory() as session:
         dummy_task = NexusTaskModel(
-            source_agent_id="test_m365",
+            source_agent_id=registration["id"],
             source_platform="microsoft_365",
             source_protocol="a2a",
             requested_action="document.summarize",

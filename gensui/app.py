@@ -19,6 +19,7 @@ log = logging.getLogger("gensui")
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown hooks."""
     # ── Startup ──────────────────────────────────────────────
+    gensui_settings.validate_security()
     gensui_settings.ensure_directories()
 
     # Create all tables
@@ -44,6 +45,13 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE security_postures ADD COLUMN advanced_toolgate_json TEXT"
             ))
             log.info("Migration: added advanced_toolgate_json column to security_postures")
+        except Exception:  # noqa: BLE001, S110
+            pass  # Column already exists
+        try:
+            await conn.execute(sa_text(
+                "ALTER TABLE shogun_members ADD COLUMN member_token_hash VARCHAR(64)"
+            ))
+            log.info("Migration: added member_token_hash column to shogun_members")
         except Exception:  # noqa: BLE001, S110
             pass  # Column already exists
 
@@ -78,8 +86,9 @@ def create_app() -> FastAPI:
     # CORS — allow admin UI connections
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=[],
+        allow_origin_regex=r"^https?://(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$",
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )

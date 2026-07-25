@@ -196,8 +196,8 @@ if "%USE_TLS%"=="true" (
 )
 echo  :   API docs at http(s)://localhost(:8787)/docs            :
 echo  :                                                          :
-echo  :   Default admin: admin@gensui.local / changeme          :
-echo  :   CHANGE THE PASSWORD AFTER FIRST LOGIN!                 :
+echo  :   Admin: admin@gensui.local                              :
+echo  :   Password: stored in the protected .env file            :
 echo  :                                                          :
 echo  :   To stop: docker compose down                           :
 echo  :                                                          :

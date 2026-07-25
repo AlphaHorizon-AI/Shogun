@@ -2,7 +2,7 @@ import uuid
 from typing import Any
 from shogun.engine.vector_store import get_vector_store
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -20,6 +20,22 @@ from shogun.db.models.agent import Agent
 from shogun.db.models.mission import Mission
 
 router = APIRouter(prefix="/system", tags=["System"])
+
+
+def _local_model_destination(base_url: str, path: str):
+    from shogun.services.ssrf_guard import SSRFValidationError, validate_outbound_url
+
+    target = f"{base_url.rstrip('/')}{path}"
+    try:
+        return validate_outbound_url(
+            target,
+            policy="allowlist_only" if settings.outbound_allowlist.strip() else "loopback_only",
+            allowlist=settings.outbound_allowlist,
+            allow_http_on_private_network=True,
+            allow_http_on_public_network=False,
+        )
+    except SSRFValidationError as exc:
+        raise HTTPException(status_code=400, detail="Local model destination is not permitted") from exc
 
 
 class CollegeTelemetryUpdate(BaseModel):
@@ -242,13 +258,17 @@ async def pull_model_stream(
     import httpx
     from fastapi.responses import StreamingResponse
 
+    destination = _local_model_destination(base_url, "/api/pull")
+
     async def event_stream():
         _pull_succeeded = False
         try:
             async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream(
                     "POST",
-                    f"{base_url}/api/pull",
+                    destination.pinned_url,
+                    headers={"Host": destination.host_header},
+                    extensions=destination.request_extensions,
                     json={"name": model, "stream": True},
                 ) as resp:
                     async for line in resp.aiter_lines():
@@ -341,11 +361,15 @@ async def get_local_models(
     """Proxy requests to local providers to retrieve currently loaded/downloaded models, avoiding CORS issues."""
     import httpx
 
-    url = base_url.rstrip("/")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             if provider_type == "ollama":
-                resp = await client.get(f"{url}/api/tags")
+                destination = _local_model_destination(base_url, "/api/tags")
+                resp = await client.get(
+                    destination.pinned_url,
+                    headers={"Host": destination.host_header},
+                    extensions=destination.request_extensions,
+                )
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m.get("name") or m.get("model") for m in data.get("models", [])]
@@ -366,7 +390,12 @@ async def get_local_models(
                     )
             else:
                 # lmstudio or other OpenAI-compatible local provider
-                resp = await client.get(f"{url}/models")
+                destination = _local_model_destination(base_url, "/models")
+                resp = await client.get(
+                    destination.pinned_url,
+                    headers={"Host": destination.host_header},
+                    extensions=destination.request_extensions,
+                )
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m.get("id") for m in data.get("data", [])]
@@ -570,10 +599,13 @@ async def delete_ollama_model(
     import httpx
 
     try:
+        destination = _local_model_destination(base_url, "/api/delete")
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.request(
                 "DELETE",
-                f"{base_url}/api/delete",
+                destination.pinned_url,
+                headers={"Host": destination.host_header},
+                extensions=destination.request_extensions,
                 json={"name": model},
             )
             if resp.status_code == 200:
@@ -769,6 +801,8 @@ async def import_backup(
       Set to False for a merge/additive restore.
     """
     raw = await file.read()
+    if len(raw) > 256 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Backup archive exceeds the 256 MiB limit")
 
     # Validate it's a valid zip
     try:
@@ -777,6 +811,11 @@ async def import_backup(
         return ApiResponse(success=False, data={}, meta={"error": "Invalid ZIP file"})
 
     names = zf.namelist()
+    total_uncompressed = sum(info.file_size for info in zf.infolist())
+    if total_uncompressed > 1024 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Expanded backup exceeds the 1 GiB limit")
+    if any(info.file_size > 512 * 1024 * 1024 for info in zf.infolist()):
+        raise HTTPException(status_code=413, detail="Backup contains an oversized member")
 
     # Load and validate manifest
     if "manifest.json" not in names and "shogun.db" not in names:

@@ -27,10 +27,10 @@ class CommandService:
         )
         return list(result.scalars().all())
 
-    async def acknowledge(self, command_id: uuid.UUID) -> Command | None:
+    async def acknowledge(self, command_id: uuid.UUID, shogun_id: uuid.UUID) -> Command | None:
         """Mark a command as acknowledged by the Shogun."""
         result = await self.session.execute(
-            select(Command).where(Command.id == command_id)
+            select(Command).where(Command.id == command_id, Command.shogun_id == shogun_id)
         )
         cmd = result.scalars().first()
         if cmd is None:
@@ -43,12 +43,13 @@ class CommandService:
     async def report_result(
         self,
         command_id: uuid.UUID,
+        shogun_id: uuid.UUID,
         result_json: dict | None = None,
         error_message: str | None = None,
     ) -> Command | None:
         """Report the result of a command execution."""
         result = await self.session.execute(
-            select(Command).where(Command.id == command_id)
+            select(Command).where(Command.id == command_id, Command.shogun_id == shogun_id)
         )
         cmd = result.scalars().first()
         if cmd is None:

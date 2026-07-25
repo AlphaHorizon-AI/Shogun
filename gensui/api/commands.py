@@ -21,6 +21,8 @@ async def get_pending_commands(
     identity: dict = Depends(get_shogun_identity),
 ):
     """Get pending commands for a Shogun instance."""
+    if str(shogun_id) != identity["shogun_id"]:
+        return []
     svc = CommandService(db)
     commands = await svc.get_pending(shogun_id)
     return [
@@ -51,7 +53,7 @@ async def acknowledge_command(
 ):
     """Acknowledge receipt of a command."""
     svc = CommandService(db)
-    cmd = await svc.acknowledge(command_id)
+    cmd = await svc.acknowledge(command_id, uuid.UUID(identity["shogun_id"]))
     if cmd is None:
         return {"status": "not_found"}
     return {"status": "acknowledged"}
@@ -66,7 +68,12 @@ async def report_command_result(
 ):
     """Report the result of a command execution."""
     svc = CommandService(db)
-    cmd = await svc.report_result(command_id, req.result, req.error)
+    cmd = await svc.report_result(
+        command_id,
+        uuid.UUID(identity["shogun_id"]),
+        req.result,
+        req.error,
+    )
     if cmd is None:
         return {"status": "not_found"}
     return {"status": cmd.status}

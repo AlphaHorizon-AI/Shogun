@@ -12,6 +12,7 @@ from shogun.db.models.model_definition import ModelDefinition
 from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_routing import ModelRoutingProfile
 from shogun.services.base_service import BaseService
+from shogun.services.provider_credentials import protect_provider_config
 
 
 class ModelProviderService(BaseService[ModelProvider]):
@@ -23,6 +24,19 @@ class ModelProviderService(BaseService[ModelProvider]):
             select(ModelProvider).where(ModelProvider.slug == slug)
         )
         return result.scalars().first()
+
+    async def create(self, **kwargs) -> ModelProvider:
+        if "config" in kwargs:
+            kwargs["config"] = protect_provider_config(kwargs["config"])
+        return await super().create(**kwargs)
+
+    async def update(self, record_id: uuid.UUID, **kwargs) -> ModelProvider | None:
+        if "config" in kwargs and kwargs["config"] is not None:
+            current = await self.get_by_id(record_id)
+            if current is None:
+                return None
+            kwargs["config"] = protect_provider_config(kwargs["config"], current.config)
+        return await super().update(record_id, **kwargs)
 
 
 class ModelDefinitionService(BaseService[ModelDefinition]):

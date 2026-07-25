@@ -197,3 +197,4 @@ class SecurityPostureSelectRequest(ShogunBase):
 
     tier: SecurityTier | None = None
     policy_id: uuid.UUID | None = None
+    confirmed: bool = False

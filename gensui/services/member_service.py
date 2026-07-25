@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import uuid
+import hashlib
 import secrets
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import select, func
@@ -30,8 +31,9 @@ class MemberService:
         expires_at: datetime | None = None,
     ) -> EnrollmentToken:
         """Generate a new enrollment token."""
+        raw_token = f"gensui_enroll_{secrets.token_urlsafe(32)}"
         token = EnrollmentToken(
-            token=f"gensui_enroll_{secrets.token_urlsafe(32)}",
+            token=f"sha256:{hashlib.sha256(raw_token.encode('utf-8')).hexdigest()}",
             label=label,
             max_uses=max_uses,
             created_by_admin_id=created_by,
@@ -40,14 +42,24 @@ class MemberService:
         self.session.add(token)
         await self.session.flush()
         await self.session.refresh(token)
+        token._issued_token = raw_token
         return token
 
     async def validate_token(self, token_str: str) -> EnrollmentToken | None:
         """Validate an enrollment token. Returns it if valid, None otherwise."""
+        token_hash = f"sha256:{hashlib.sha256(token_str.encode('utf-8')).hexdigest()}"
         result = await self.session.execute(
-            select(EnrollmentToken).where(EnrollmentToken.token == token_str)
+            select(EnrollmentToken).where(EnrollmentToken.token == token_hash)
         )
         token = result.scalars().first()
+        if token is None:
+            legacy = await self.session.execute(
+                select(EnrollmentToken).where(EnrollmentToken.token == token_str)
+            )
+            token = legacy.scalars().first()
+            if token is not None:
+                token.token = token_hash
+                await self.session.flush()
         if token is None:
             return None
         if token.is_revoked:
@@ -103,6 +115,7 @@ class MemberService:
         # Determine initial enrollment status
         status = "pending" if gensui_settings.gensui_require_enrollment_approval else "active"
 
+        member_token = secrets.token_urlsafe(48)
         member = ShogunMember(
             instance_name=instance_name,
             hostname=hostname,
@@ -112,6 +125,7 @@ class MemberService:
             version=version,
             build_hash=build_hash,
             public_key=public_key,
+            member_token_hash=hashlib.sha256(member_token.encode("ascii")).hexdigest(),
             local_os=local_os,
             deployment_type=deployment_type,
             enrollment_status=status,
@@ -122,6 +136,7 @@ class MemberService:
         self.session.add(member)
         await self.session.flush()
         await self.session.refresh(member)
+        member._issued_member_token = member_token
         return member
 
     async def approve(self, member_id: uuid.UUID) -> ShogunMember | None:

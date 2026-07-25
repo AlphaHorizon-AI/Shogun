@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class ExternalAgentBase(BaseModel):
@@ -30,3 +30,7 @@ class ExternalAgentResponse(ExternalAgentBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("token")
+    def redact_token(self, _token: str) -> str:
+        return "********"

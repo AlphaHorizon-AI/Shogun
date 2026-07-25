@@ -69,11 +69,15 @@ echo "[6/7] Configuring environment..."
 if [ ! -f ".env" ]; then
     cp .env.example .env
     JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))")
+    ADMIN_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
     if [[ "$OSTYPE" == "darwin"* ]]; then
         sed -i '' "s/change-me-to-a-random-64-char-string/$JWT_SECRET/" .env
+        sed -i '' "s/change-me-to-a-random-admin-password/$ADMIN_SECRET/" .env
     else
         sed -i "s/change-me-to-a-random-64-char-string/$JWT_SECRET/" .env
+        sed -i "s/change-me-to-a-random-admin-password/$ADMIN_SECRET/" .env
     fi
+    chmod 600 .env
     echo "       .env created with random secrets."
 else
     echo "       .env already exists — keeping existing config."
@@ -89,8 +93,8 @@ echo "  :                                                          :"
 echo "  :   Gensui is starting at http://localhost:8787            :"
 echo "  :   API docs at http://localhost:8787/docs                 :"
 echo "  :                                                          :"
-echo "  :   Default admin: admin@gensui.local / changeme          :"
-echo "  :   CHANGE THE PASSWORD AFTER FIRST LOGIN!                :"
+echo "  :   Admin: admin@gensui.local                              :"
+echo "  :   Password: stored in gensui/.env (mode 600)             :"
 echo "  :                                                          :"
 echo "  :   Press Ctrl+C to stop the server.                       :"
 echo "  :                                                          :"

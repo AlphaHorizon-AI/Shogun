@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, field_serializer
 
 from shogun.schemas.common import (
     AuthType,
@@ -60,6 +60,24 @@ class ModelProviderResponse(ShogunBase):
     config: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("config")
+    def serialize_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Never return stored provider credentials through the control API."""
+
+        sensitive = {"api_key", "token", "access_token", "refresh_token", "password", "secret"}
+
+        def redact(value: Any) -> Any:
+            if isinstance(value, dict):
+                return {
+                    key: "********" if key.casefold() in sensitive else redact(item)
+                    for key, item in value.items()
+                }
+            if isinstance(value, list):
+                return [redact(item) for item in value]
+            return value
+
+        return redact(config)
 
 
 # ── Model Definition ─────────────────────────────────────────

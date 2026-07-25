@@ -392,7 +392,7 @@ async def update_security_posture(body: dict):
     """Update security posture fields. Persisted across restarts."""
     current = await _get_agent_posture()
     old_tier = current.get("active_tier", "tactical")
-    allowed_fields = set(_DEFAULT_POSTURE.keys())
+    allowed_fields = set(_DEFAULT_POSTURE.keys()) - {"active_tier", "kill_switch_enabled"}
     updates = {k: v for k, v in body.items() if k in allowed_fields}
     current.update(updates)
     # ── Apply tier-specific constraints when active_tier changes ──
@@ -460,12 +460,16 @@ async def select_active_security_posture(body: SecurityPostureSelectRequest):
                     status_code=422,
                     detail="Built-in postures must be selected by tier",
                 )
+            if policy.tier in {"campaign", "ronin"} and not body.confirmed:
+                raise HTTPException(status_code=409, detail="Explicit confirmation is required for elevated postures")
             agent.security_policy_id = policy.id
             current["active_tier"] = policy.tier
             current.update(TIER_CONSTRAINTS.get(policy.tier, {}))
             new_label = policy.name
         else:
             tier = body.tier.value
+            if tier in {"campaign", "ronin"} and not body.confirmed:
+                raise HTTPException(status_code=409, detail="Explicit confirmation is required for elevated postures")
             agent.security_policy_id = None
             current["active_tier"] = tier
             current.update(TIER_CONSTRAINTS[tier])

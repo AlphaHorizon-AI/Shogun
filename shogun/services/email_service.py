@@ -19,16 +19,16 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from shogun.config import settings
 from shogun.db.models.email_account import EmailAccount
 from shogun.schemas.channels import EmailAccountCreate, EmailAccountUpdate, EmailComposeRequest
 from shogun.services.base_service import BaseService
 
 
-def _get_fernet() -> Fernet:
+def _get_fernet(key: str | None = None) -> Fernet:
     """Derive a 32-byte URL-safe base64 key from settings.vault_encryption_key."""
-    key_bytes = settings.vault_encryption_key.encode("utf-8")
+    key_bytes = (key or settings.vault_encryption_key).encode("utf-8")
     hashed = hashlib.sha256(key_bytes).digest()
     fernet_key = base64.urlsafe_b64encode(hashed)
     return Fernet(fernet_key)
@@ -40,8 +40,16 @@ def encrypt_password(password: str) -> str:
 
 
 def decrypt_password(encrypted: str) -> str:
-    f = _get_fernet()
-    return f.decrypt(encrypted.encode("utf-8")).decode("utf-8")
+    payload = encrypted.encode("utf-8")
+    try:
+        return _get_fernet().decrypt(payload).decode("utf-8")
+    except InvalidToken:
+        # Keep credentials created by older desktop installers readable after
+        # replacing the historical placeholder vault key on upgrade.
+        legacy_key = "change-me-to-a-fernet-base64-key"
+        if settings.vault_encryption_key == legacy_key:
+            raise
+        return _get_fernet(legacy_key).decrypt(payload).decode("utf-8")
 
 
 def parse_header_str(header_value: str | None) -> str:

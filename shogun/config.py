@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     app_env: Literal["development", "staging", "production"] = "production"
     deployment_mode: Literal["desktop", "server"] = "desktop"
     debug: bool = False
-    api_host: str = "0.0.0.0"
+    api_host: str = "127.0.0.1"
     api_port: int = 8000
     ui_port: int = 7860
 
@@ -219,6 +219,29 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    def validate_security(self) -> None:
+        """Fail closed when a network deployment still uses bootstrap secrets."""
+        if self.deployment_mode != "server":
+            return
+
+        invalid: list[str] = []
+        if len(self.secret_key) < 32 or self.secret_key.casefold().startswith("change-me"):
+            invalid.append("SECRET_KEY")
+        if len(self.vault_encryption_key) < 32 or self.vault_encryption_key.casefold().startswith(
+            "change-me"
+        ):
+            invalid.append("VAULT_ENCRYPTION_KEY")
+        if (
+            not self.infrastructure_admin_token
+            or len(self.infrastructure_admin_token) < 32
+            or self.infrastructure_admin_token.casefold().startswith("change-me")
+        ):
+            invalid.append("SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN")
+        if invalid:
+            raise RuntimeError(
+                "Secure server configuration required for: " + ", ".join(invalid)
+            )
 
     def ensure_directories(self) -> None:
         """Create required filesystem directories if they don't exist."""

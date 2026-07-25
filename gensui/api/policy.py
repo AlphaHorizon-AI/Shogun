@@ -30,8 +30,11 @@ class GlobalPostureRequest(BaseModel):
 async def get_effective_posture(
     shogun_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(get_shogun_identity),
 ):
     """Get the effective posture for a Shogun instance (used by Shogun client for policy sync)."""
+    if str(shogun_id) != identity["shogun_id"]:
+        raise HTTPException(status_code=403, detail="Cannot access another Shogun's policy")
     svc = PostureService(db)
     result = await svc.get_effective_posture_with_explanation(shogun_id)
     return result

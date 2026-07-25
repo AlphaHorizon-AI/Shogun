@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import platform
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,6 +41,7 @@ class GensuiClient:
         self.telemetry_mode = getattr(settings, "gensui_telemetry_mode", "STANDARD")
 
         self._shogun_id: str | None = None
+        self._member_token: str | None = None
         self._cache_path = Path(getattr(settings, "gensui_data_path", "data")) / "gensui_membership.json"
         self._effective_posture: dict | None = None
         self._connected = False
@@ -58,6 +60,13 @@ class GensuiClient:
             if self._cache_path.exists():
                 data = json.loads(self._cache_path.read_text())
                 self._shogun_id = data.get("shogun_id")
+                cached_token = data.get("member_token")
+                if isinstance(cached_token, str) and cached_token.startswith("enc:"):
+                    from shogun.services.email_service import decrypt_password
+
+                    self._member_token = decrypt_password(cached_token.removeprefix("enc:"))
+                else:
+                    self._member_token = cached_token
                 self._effective_posture = data.get("effective_posture")
                 self._apply_toolgate_overrides()
                 log.info("[GensuiClient] Loaded cached membership: %s", self._shogun_id)
@@ -82,15 +91,25 @@ class GensuiClient:
     def _save_cache(self):
         """Save membership state to disk."""
         try:
+            from shogun.services.email_service import encrypt_password
+
             self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+            protected_token = (
+                f"enc:{encrypt_password(self._member_token)}" if self._member_token else None
+            )
             data = {
                 "shogun_id": self._shogun_id,
+                "member_token": protected_token,
                 "effective_posture": self._effective_posture,
                 "last_sync_at": datetime.now(timezone.utc).isoformat(),
                 "server_url": self.server_url,
                 "disconnect_behavior": self.disconnect_behavior,
             }
             self._cache_path.write_text(json.dumps(data, indent=2))
+            try:
+                os.chmod(self._cache_path, 0o600)
+            except OSError:
+                pass
         except Exception as e:
             log.warning("[GensuiClient] Failed to save cache: %s", e)
 
@@ -101,6 +120,8 @@ class GensuiClient:
             headers = {}
             if self._shogun_id:
                 headers["X-Shogun-Id"] = self._shogun_id
+            if self._member_token:
+                headers["X-Shogun-Token"] = self._member_token
             self._http = httpx.AsyncClient(
                 base_url=self.server_url,
                 headers=headers,
@@ -114,6 +135,8 @@ class GensuiClient:
             client = self._get_client()
             if self._shogun_id:
                 client.headers["X-Shogun-Id"] = self._shogun_id
+            if self._member_token:
+                client.headers["X-Shogun-Token"] = self._member_token
             response = await client.request(method, path, **kwargs)
             if response.status_code < 400:
                 self._connected = True
@@ -146,8 +169,9 @@ class GensuiClient:
             "version": "1.3.2",
         })
 
-        if result and result.get("shogun_id"):
+        if result and result.get("shogun_id") and result.get("member_token"):
             self._shogun_id = result["shogun_id"]
+            self._member_token = result["member_token"]
             self._save_cache()
             log.info("[GensuiClient] Enrolled successfully: %s (status: %s)",
                      self._shogun_id, result.get("enrollment_status"))

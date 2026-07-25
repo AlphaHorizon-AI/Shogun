@@ -24,6 +24,7 @@ class ShogunMember(Base, UUIDMixin, AuditMixin):
     version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     build_hash: Mapped[str | None] = mapped_column(String(100), nullable=True)
     public_key: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    member_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     # ── Enrollment ───────────────────────────────────────────
     # pending | active | disabled | revoked

@@ -241,8 +241,8 @@ fi
 
 echo -e "${GREEN}  ║   API docs at http(s)://localhost(:8787)/docs            ║${NC}"
 echo -e "${GREEN}  ║                                                          ║${NC}"
-echo -e "${GREEN}  ║   Default admin: admin@gensui.local / changeme          ║${NC}"
-echo -e "${GREEN}  ║   CHANGE THE PASSWORD AFTER FIRST LOGIN!                 ║${NC}"
+echo -e "${GREEN}  ║   Admin: admin@gensui.local                              ║${NC}"
+echo -e "${GREEN}  ║   Password: stored in the protected .env file            ║${NC}"
 echo -e "${GREEN}  ║                                                          ║${NC}"
 echo -e "${GREEN}  ║   To stop: docker compose down                           ║${NC}"
 echo -e "${GREEN}  ║                                                          ║${NC}"

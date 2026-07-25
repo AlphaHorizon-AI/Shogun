@@ -21,6 +21,7 @@ from shogun.db.engine import async_session_factory
 from shogun.db.models.bushido import BushidoJob, BushidoSchedule
 from shogun.db.models.tool_connector import ToolConnector
 from shogun.db.models.memory_record import MemoryRecord
+from shogun.services.provider_credentials import provider_api_key
 
 log = logging.getLogger(__name__)
 
@@ -255,7 +256,7 @@ async def _run_memory_consolidation(
         try:
             await sync_skills_to_memory(session, str(agent_id))
         except Exception as e:
-            logger.error("Skill sync failed for agent %s: %s", agent_id, e)
+            log.error("Skill sync failed for agent %s: %s", agent_id, e)
 
         # Apply decay
         decayed = await svc.apply_decay_batch(agent_id=agent_id, limit=2000)
@@ -790,7 +791,7 @@ async def _run_persona_drift_check(
         or (provider.config.get("models") or [None])[0]
         or provider.name
     )
-    api_key = provider.config.get("api_key") or provider.config.get("api-key")
+    api_key = provider_api_key(provider.config)
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"

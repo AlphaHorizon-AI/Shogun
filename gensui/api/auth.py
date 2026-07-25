@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import time
 import uuid
+from collections import deque
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +14,22 @@ from gensui.api.deps import get_db, get_current_admin
 from gensui.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+_login_attempts: dict[str, deque[float]] = {}
+
+
+def _check_login_rate(client: str) -> None:
+    now = time.monotonic()
+    attempts = _login_attempts.get(client)
+    if attempts is None:
+        if len(_login_attempts) >= 10_000:
+            raise HTTPException(status_code=429, detail="Login rate limit capacity exceeded")
+        attempts = deque()
+        _login_attempts[client] = attempts
+    while attempts and attempts[0] <= now - 60:
+        attempts.popleft()
+    if len(attempts) >= 5:
+        raise HTTPException(status_code=429, detail="Too many login attempts")
+    attempts.append(now)
 
 
 class LoginRequest(BaseModel):
@@ -32,14 +50,17 @@ class AdminProfile(BaseModel):
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Authenticate an admin user and return a JWT token."""
+    client = request.client.host if request.client else "unknown"
+    _check_login_rate(client)
     auth = AuthService(db)
     admin = await auth.authenticate(req.email, req.password)
     if admin is None:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     token = AuthService.create_token(str(admin.id), admin.email, admin.role)
+    _login_attempts.pop(client, None)
 
     return LoginResponse(
         token=token,
@@ -82,8 +103,8 @@ async def change_password(
     if not AuthService.verify_password(req.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
-    if len(req.new_password) < 6:
-        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+    if len(req.new_password) < 12:
+        raise HTTPException(status_code=400, detail="New password must be at least 12 characters")
 
     user.password_hash = AuthService.hash_password(req.new_password)
     await db.commit()
@@ -165,8 +186,8 @@ async def create_admin(
     if req.role not in ("owner", "admin", "auditor", "operator", "viewer"):
         raise HTTPException(status_code=400, detail="Invalid role")
 
-    if len(req.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(req.password) < 12:
+        raise HTTPException(status_code=400, detail="Password must be at least 12 characters")
 
     auth = AuthService(db)
 

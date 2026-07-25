@@ -45,8 +45,11 @@ async def register_agent(body: ExternalAgentRegister, db: AsyncSession = Depends
     try:
         agent = await registry.register_agent(body)
         return ApiResponse(
-            data=ExternalAgentResponse.model_validate(agent),
-            meta={"message": "Agent registered successfully. Use the provided token for authorization."}
+            data={
+                **ExternalAgentResponse.model_validate(agent).model_dump(exclude={"token"}),
+                "token": agent._issued_token,
+            },
+            meta={"message": "Agent registered successfully. Save the token; it is shown only once."}
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -84,6 +87,8 @@ async def receive_a2a_task(
     
     # 1. Map to normalized task schema
     task_req = A2AAdapter.to_normalized_task(body)
+    task_req.source_agent_id = str(agent.id)
+    task_req.source_platform = agent.platform
     
     # 2. Persist task as pending
     manager = TaskManager(db)
@@ -149,6 +154,11 @@ async def receive_a2a_task(
 
 # ── Task Status & Callback Endpoints ─────────────────────────
 
+def _agent_owns_task(task, agent) -> bool:
+    target = (task.audit_metadata or {}).get("target_agent_id")
+    return task.source_agent_id == str(agent.id) or target == str(agent.id)
+
+
 @router.get("/external/task/{task_id}", response_model=ApiResponse)
 async def get_task_status(
     task_id: uuid.UUID,
@@ -159,6 +169,8 @@ async def get_task_status(
     manager = TaskManager(db)
     task = await manager.get_task(task_id)
     if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    if not _agent_owns_task(task, agent):
         raise HTTPException(status_code=404, detail="Task not found.")
         
     return ApiResponse(data=NexusTaskResponse.model_validate(task))
@@ -176,8 +188,12 @@ async def receive_task_callback(
     task = await manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found.")
+    if not _agent_owns_task(task, agent):
+        raise HTTPException(status_code=404, detail="Task not found.")
         
     status = body.get("status", "completed")
+    if status not in {"completed", "failed", "blocked"}:
+        raise HTTPException(status_code=422, detail="Invalid callback status")
     result = body.get("result", {})
     error = body.get("error")
     

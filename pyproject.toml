@@ -1,13 +1,11 @@
 [project]
 name = "shogun"
-version = "1.45.0"
+version = "1.46.0"
 description = "Shogun — A GUI-first AI agent framework with structured memory, governed autonomy, and OpenClaw compatibility"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary" }
-authors = [
-    { name = "Michael", email = "michael@example.com" },
-]
+authors = [{ name = "Alpha Horizon" }]
 
 dependencies = [
     # --- Web Framework & API ---

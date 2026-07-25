@@ -197,8 +197,20 @@ class NoCacheStaticFiles(StaticFiles):
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown hooks."""
     # Startup
+    settings.validate_security()
     settings.ensure_directories()
     await _upgrade_database_schema()
+
+    from shogun.db.engine import async_session_factory
+    from shogun.services.provider_credentials import migrate_provider_credentials
+
+    async with async_session_factory() as credential_session:
+        migrated_credentials = await migrate_provider_credentials(credential_session)
+        if migrated_credentials:
+            await credential_session.commit()
+            logging.getLogger(__name__).info(
+                "Protected credentials for %d model provider(s)", migrated_credentials
+            )
 
     # ── Auto-migrate execution_events to NIS2/SOC2 schema ──────
     try:
@@ -316,19 +328,9 @@ async def lifespan(app: FastAPI):
         from shogun.services.stack_orchestrator import recover_interrupted_stack_runs
         await recover_interrupted_stack_runs()
     except Exception:
-        pass  # Non-fatal — table will be created on first use
-
-    # ── Auto-heal: promote any stuck 'not_configured' providers to 'connected'
-    try:
-        from shogun.db.engine import async_session_factory
-        from sqlalchemy import text
-        async with async_session_factory() as session:
-            await session.execute(
-                text("UPDATE model_providers SET status = 'connected' WHERE status = 'not_configured'")
-            )
-            await session.commit()
-    except Exception:
-        pass  # Non-fatal — don't block startup
+        logging.getLogger(__name__).exception("Critical database initialization failed")
+        if settings.deployment_mode == "server":
+            raise
 
     # ── Auto-migrate skill_installations: add openclaw_skill_id ───
     try:
@@ -346,7 +348,9 @@ async def lifespan(app: FastAPI):
                 import logging
                 logging.getLogger(__name__).info("Migrated skill_installations: added openclaw_skill_id column")
     except Exception:
-        pass  # Non-fatal
+        logging.getLogger(__name__).exception("Skill installation schema migration failed")
+        if settings.deployment_mode == "server":
+            raise
 
     # ── Backfill openclaw_skill_id from skill.manifest for existing rows ──
     try:
@@ -376,7 +380,7 @@ async def lifespan(app: FastAPI):
                     f"Backfilled openclaw_skill_id for {patched} existing installation(s)"
                 )
     except Exception:
-        pass  # Non-fatal
+        logging.getLogger(__name__).exception("OpenClaw skill identifier backfill failed")
 
     # Install or repair the standard OpenClaw Dojo MCP connector for agent tools.
     try:
@@ -447,7 +451,7 @@ async def lifespan(app: FastAPI):
             },
         )
     except Exception:
-        pass
+        logging.getLogger(__name__).exception("System startup audit event failed")
 
     # ── Office App Mode: Detection + temp cleanup ─────────────
     import asyncio as _aio
@@ -567,7 +571,7 @@ async def lifespan(app: FastAPI):
         from shogun.telemetry.service import telemetry_service
         await telemetry_service.stop()
     except Exception:
-        pass
+        logging.getLogger(__name__).exception("Installation telemetry shutdown failed")
 
     from shogun.db.engine import engine
     await engine.dispose()
@@ -584,11 +588,23 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS
+    from shogun.api.control_plane_auth import (
+        add_security_headers,
+        enforce_control_plane_access,
+        enforce_rate_limit,
+    )
+
+    app.middleware("http")(enforce_control_plane_access)
+    app.middleware("http")(enforce_rate_limit)
+    app.middleware("http")(add_security_headers)
+
+    # The desktop UI is same-origin. Permit only explicit loopback origins for
+    # development clients instead of granting arbitrary websites API access.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=[],
+        allow_origin_regex=r"^https?://(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$",
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )

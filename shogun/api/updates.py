@@ -122,7 +122,8 @@ async def apply_update():
                 raise HTTPException(status_code=502, detail=f"Download failed: HTTP {resp.status_code}")
 
         # Step 2: Save to temp
-        tmp_zip = Path(tempfile.mktemp(suffix=".zip"))
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as temporary:
+            tmp_zip = Path(temporary.name)
         tmp_zip.write_bytes(resp.content)
         logger.info("Downloaded %d bytes to %s", len(resp.content), tmp_zip)
 

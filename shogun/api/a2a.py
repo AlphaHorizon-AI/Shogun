@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import logging
 import secrets
+import time
 import uuid
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -43,6 +45,9 @@ from shogun.schemas.common import ApiResponse
 from shogun.services.ssrf_guard import SSRFValidationError
 
 logger = logging.getLogger(__name__)
+_A2A_REPLAY_WINDOW_SECONDS = 300
+_seen_signatures: dict[str, float] = {}
+_peer_requests: dict[str, deque[float]] = defaultdict(deque)
 
 # Two routers: one for the A2A protocol itself, one for Workspace CRUD
 a2a_router = APIRouter(prefix="/a2a", tags=["A2A Protocol"])
@@ -100,6 +105,31 @@ def _peer_dict(p: WorkspacePeer) -> dict:
     }
 
 
+def _protect_peer_secret(secret: str) -> str:
+    from shogun.services.email_service import encrypt_password
+
+    return f"enc:{encrypt_password(secret)}"
+
+
+def _reveal_peer_secret(secret: str) -> str:
+    if not secret.startswith("enc:"):
+        return secret
+    from shogun.services.email_service import decrypt_password
+
+    return decrypt_password(secret.removeprefix("enc:"))
+
+
+def _check_a2a_replay(envelope: InboundEnvelope) -> None:
+    now = time.time()
+    if abs(now - envelope.ts) > _A2A_REPLAY_WINDOW_SECONDS:
+        raise HTTPException(status_code=403, detail="A2A message timestamp is outside the accepted window")
+    for signature, seen_at in list(_seen_signatures.items()):
+        if seen_at < now - _A2A_REPLAY_WINDOW_SECONDS:
+            _seen_signatures.pop(signature, None)
+    if envelope.sig in _seen_signatures:
+        raise HTTPException(status_code=409, detail="A2A message was already received")
+
+
 def _msg_dict(m: WorkspaceMessage) -> dict:
     return {
         "id": str(m.id),
@@ -133,7 +163,18 @@ async def _fan_out(
 
     for peer in peers:
         try:
-            await client.send(peer.peer_url, envelope)
+            peer_envelope = dict(envelope)
+            peer_envelope.pop("sig", None)
+            peer_envelope = build_envelope(
+                from_name=peer_envelope["from_name"],
+                from_url=peer_envelope["from_url"],
+                workspace_id=peer_envelope["workspace_id"],
+                message_type=peer_envelope["message_type"],
+                content=peer_envelope["content"],
+                metadata=peer_envelope.get("metadata"),
+                secret=_reveal_peer_secret(peer.shared_secret),
+            )
+            await client.send(peer.peer_url, peer_envelope)
             # mark last_seen / delivery status
             peer.last_seen_at = datetime.now(timezone.utc)
         except Exception as exc:
@@ -166,7 +207,7 @@ class InboundEnvelope(BaseModel):
     from_url: str
     workspace_id: str
     message_type: str
-    content: str
+    content: str = Field(max_length=100_000)
     metadata: dict = Field(default_factory=dict)
     ts: int
     sig: str
@@ -192,6 +233,7 @@ async def a2a_inbound(
         "metadata": envelope.metadata,
         "ts": envelope.ts,
     }
+    _check_a2a_replay(envelope)
 
     # Find the peer to get their shared_secret
     try:
@@ -207,14 +249,21 @@ async def a2a_inbound(
     )
     peer = peer_result.scalars().first()
 
-    # Verify signature if we know this peer
-    if peer and peer.shared_secret:
-        if not verify_signature(unsigned, envelope.sig, peer.shared_secret):
-            raise HTTPException(status_code=403, detail="Invalid A2A signature")
-        # Update last_seen
-        peer.last_seen_at = datetime.now(timezone.utc)
-        if peer.status == "pending":
-            peer.status = "active"
+    if not peer or not peer.shared_secret:
+        raise HTTPException(status_code=403, detail="Unknown or untrusted A2A peer")
+    if not verify_signature(unsigned, envelope.sig, _reveal_peer_secret(peer.shared_secret)):
+        raise HTTPException(status_code=403, detail="Invalid A2A signature")
+    now = time.time()
+    attempts = _peer_requests[envelope.from_url]
+    while attempts and attempts[0] < now - 60:
+        attempts.popleft()
+    if len(attempts) >= 60:
+        raise HTTPException(status_code=429, detail="A2A peer rate limit exceeded")
+    attempts.append(now)
+    _seen_signatures[envelope.sig] = now
+    peer.last_seen_at = datetime.now(timezone.utc)
+    if peer.status == "pending":
+        peer.status = "active"
 
     # Store the message
     msg = WorkspaceMessage(
@@ -461,7 +510,7 @@ async def invite_peer(
         peer_url=body.peer_url,
         role=body.role,
         status="pending",
-        shared_secret=shared_secret,
+        shared_secret=_protect_peer_secret(shared_secret),
         peer_meta=identity.get("data", {}) if identity else {},
         created_at=now,
         updated_at=now,
@@ -509,7 +558,7 @@ async def invite_peer(
 
     background_tasks.add_task(_send_invite)
 
-    return ApiResponse(data=_peer_dict(peer), meta={"shared_secret": shared_secret})
+    return ApiResponse(data=_peer_dict(peer))
 
 
 class PatchPeerStatusRequest(BaseModel):

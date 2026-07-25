@@ -91,7 +91,9 @@ if not exist ".env" (
     copy ".env.example" ".env" >nul 2>&1
     :: Generate random JWT secret
     for /f %%i in ('python -c "import secrets; print(secrets.token_urlsafe(48))"') do set JWT_SECRET=%%i
+    for /f %%i in ('python -c "import secrets; print(secrets.token_urlsafe(32))"') do set ADMIN_SECRET=%%i
     powershell -Command "(Get-Content .env) -replace 'change-me-to-a-random-64-char-string', '%JWT_SECRET%' | Set-Content .env"
+    powershell -Command "(Get-Content .env) -replace 'change-me-to-a-random-admin-password', '%ADMIN_SECRET%' | Set-Content .env"
     echo        .env created with random secrets.
 ) else (
     echo        .env already exists — keeping existing config.
@@ -107,8 +109,8 @@ echo  :                                                          :
 echo  :   Gensui is starting at http://localhost:8787            :
 echo  :   API docs at http://localhost:8787/docs                 :
 echo  :                                                          :
-echo  :   Default admin: admin@gensui.local / changeme          :
-echo  :   CHANGE THE PASSWORD AFTER FIRST LOGIN!                :
+echo  :   Admin: admin@gensui.local                              :
+echo  :   Password: stored in gensui\.env                       :
 echo  :                                                          :
 echo  :   Press Ctrl+C to stop the server.                       :
 echo  :                                                          :

@@ -292,8 +292,6 @@ class IdentityService:
         This is a simplified implementation — production should use
         proper JWKS verification from the provider's discovery endpoint.
         """
-        import jwt as pyjwt
-
         # Get provider
         if provider_id:
             provider = await self.get_sso_provider(provider_id)
@@ -302,77 +300,42 @@ class IdentityService:
 
         if provider is None:
             return None
-
-        try:
-            # Decode without verification first to get the header
-            unverified = pyjwt.decode(token, options={"verify_signature": False})
-
-            # Basic validation
-            if provider.audience and unverified.get("aud") != provider.audience:
-                log.warning("OIDC token audience mismatch")
-                return None
-
-            if provider.issuer_url and unverified.get("iss") != provider.issuer_url:
-                log.warning("OIDC token issuer mismatch")
-                return None
-
-            # Map claims
-            claims = {}
-            mapping = provider.claim_mapping_json or {
-                "email": "email",
-                "name": "preferred_username",
-            }
-            for local_key, remote_key in mapping.items():
-                claims[local_key] = unverified.get(remote_key)
-
-            # Map role
-            role_mapping = provider.role_mapping_json or {}
-            external_roles = []
-            # Try to extract roles from common claim paths
-            for path in ["realm_access.roles", "roles", "groups"]:
-                parts = path.split(".")
-                val = unverified
-                for p in parts:
-                    if isinstance(val, dict):
-                        val = val.get(p)
-                if isinstance(val, list):
-                    external_roles.extend(val)
-
-            mapped_role = provider.default_role
-            for ext_role, int_role in role_mapping.items():
-                if ext_role in external_roles:
-                    mapped_role = int_role
-                    break
-
-            claims["role"] = mapped_role
-            claims["provider_id"] = str(provider.id)
-            claims["provider_name"] = provider.name
-
-            return claims
-
-        except Exception as e:
-            log.error("OIDC token validation failed: %s", e)
-            return None
+        # Fail closed until issuer discovery, JWKS retrieval, signature
+        # verification, and key rotation are implemented as one unit.
+        log.warning("OIDC authentication is disabled because signed-token verification is not configured")
+        return None
 
     # ── Encryption helpers ───────────────────────────────────
 
     @staticmethod
     def _encrypt_secret(value: str) -> str:
-        """Simple obfuscation of secrets at rest.
+        """Encrypt a provider secret with authenticated encryption."""
+        import base64
+        import hashlib
 
-        NOTE: In production, use proper AES-256-GCM encryption
-        with a hardware-backed key. This is a basic XOR obfuscation
-        suitable for development environments.
-        """
-        key = gensui_settings.gensui_jwt_secret.encode("utf-8")
-        result = []
-        for i, char in enumerate(value.encode("utf-8")):
-            result.append(char ^ key[i % len(key)])
-        return result.__class__(result).hex()
+        from cryptography.fernet import Fernet
+
+        key = base64.urlsafe_b64encode(
+            hashlib.sha256(f"gensui-sso:{gensui_settings.gensui_jwt_secret}".encode()).digest()
+        )
+        return "fernet:" + Fernet(key).encrypt(value.encode("utf-8")).decode("ascii")
 
     @staticmethod
     def _decrypt_secret(encrypted: str) -> str:
-        """Reverse the obfuscation."""
+        """Decrypt current secrets and read legacy values for migration."""
+        import base64
+        import hashlib
+
+        from cryptography.fernet import Fernet
+
+        if encrypted.startswith("fernet:"):
+            key = base64.urlsafe_b64encode(
+                hashlib.sha256(f"gensui-sso:{gensui_settings.gensui_jwt_secret}".encode()).digest()
+            )
+            return Fernet(key).decrypt(encrypted.removeprefix("fernet:").encode("ascii")).decode("utf-8")
+
+        # Legacy XOR values are accepted only so an existing provider can be
+        # loaded and re-saved with authenticated encryption.
         key = gensui_settings.gensui_jwt_secret.encode("utf-8")
         data = bytes.fromhex(encrypted)
         result = []

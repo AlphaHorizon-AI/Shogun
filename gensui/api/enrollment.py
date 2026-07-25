@@ -69,6 +69,7 @@ async def enroll(req: EnrollRequest, db: AsyncSession = Depends(get_db)):
 
     return {
         "shogun_id": str(member.id),
+        "member_token": member._issued_member_token,
         "instance_name": member.instance_name,
         "enrollment_status": member.enrollment_status,
         "message": "Enrollment successful" if member.enrollment_status == "active"
@@ -154,7 +155,7 @@ async def create_token(
         label=req.label, max_uses=req.max_uses, created_by=admin["id"],
     )
     return {
-        "token": token.token,
+        "token": token._issued_token,
         "label": token.label,
         "max_uses": token.max_uses,
         "id": str(token.id),
@@ -172,7 +173,7 @@ async def list_tokens(
     return [
         {
             "id": str(t.id),
-            "token": t.token,
+            "token": "********",
             "label": t.label,
             "max_uses": t.max_uses,
             "use_count": t.use_count,

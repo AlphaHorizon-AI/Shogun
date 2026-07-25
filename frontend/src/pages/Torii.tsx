@@ -126,9 +126,10 @@ export function Torii() {
 
   const selectPosture = async (selection: { tier: TierType } | { policy_id: string }, label: string) => {
     if (saving) return;
+    if (!window.confirm(`Activate the ${label} security posture? This changes Shogun's permitted capabilities.`)) return;
     setSaving(true);
     try {
-      const response = await axios.put('/api/v1/security/posture/active', selection);
+      const response = await axios.put('/api/v1/security/posture/active', { ...selection, confirmed: true });
       setPosture(response.data.data);
       flash('success', `${t('torii.posture_updated')} ${label}`);
     } catch (error: unknown) {

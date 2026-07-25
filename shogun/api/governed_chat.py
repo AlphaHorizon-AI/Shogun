@@ -19,6 +19,8 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
+from shogun.services.provider_credentials import provider_api_key
+
 logger = logging.getLogger(__name__)
 
 
@@ -158,7 +160,7 @@ async def _shogun_governed_chat(
             yield "data: [DONE]\n\n"
         return StreamingResponse(_no_model(), media_type="text/event-stream")
 
-    api_key = provider.config.get("api_key") or provider.config.get("api-key")
+    api_key = provider_api_key(provider.config)
     req_headers: dict[str, str] = {"Content-Type": "application/json"}
     if api_key:
         req_headers["Authorization"] = f"Bearer {api_key}"

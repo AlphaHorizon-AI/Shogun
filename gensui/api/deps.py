@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+import hashlib
+import hmac
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends, HTTPException, Header
@@ -103,8 +105,8 @@ async def get_shogun_identity(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Validate a Shogun instance's identity from request headers."""
-    if not x_shogun_id:
-        raise HTTPException(status_code=401, detail="Missing X-Shogun-Id header")
+    if not x_shogun_id or not x_shogun_token:
+        raise HTTPException(status_code=401, detail="Missing Shogun membership credentials")
 
     from gensui.services.member_service import MemberService
     svc = MemberService(db)
@@ -119,6 +121,11 @@ async def get_shogun_identity(
 
     if member.enrollment_status != "active":
         raise HTTPException(status_code=403, detail=f"Shogun enrollment status: {member.enrollment_status}")
+    presented_hash = hashlib.sha256(x_shogun_token.encode("utf-8")).hexdigest()
+    if not member.member_token_hash or not hmac.compare_digest(
+        presented_hash, member.member_token_hash
+    ):
+        raise HTTPException(status_code=401, detail="Invalid Shogun membership credential")
 
     return {
         "shogun_id": str(member.id),

@@ -29,6 +29,7 @@ from shogun.services.model_router import (
     read_routing_config,
 )
 from shogun.services.model_service import ModelRoutingProfileService
+from shogun.services.provider_credentials import provider_api_key
 
 router = APIRouter(prefix="/models", tags=["Model Router"])
 
@@ -146,7 +147,8 @@ async def test_registry(model_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     if not provider or provider.status != "connected":
         raise HTTPException(409, "Model provider is not connected.")
     base = (provider.base_url or "").rstrip("/")
-    headers = {"Authorization": f"Bearer {provider.config.get('api_key')}"} if provider.config.get("api_key") else {}
+    api_key = provider_api_key(provider.config)
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     url = f"{base}/api/tags" if provider.provider_type == "ollama" else f"{base}/models"
     try:
         async with httpx.AsyncClient(timeout=10) as client:

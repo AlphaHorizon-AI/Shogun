@@ -1,1 +1,0 @@
-var e=`shogun.infrastructureAdminToken`;function t(){return typeof window>`u`?``:window.sessionStorage.getItem(e)||``}function n(t){typeof window>`u`||(t?window.sessionStorage.setItem(e,t):window.sessionStorage.removeItem(e))}function r(e){return e?{headers:{"X-Shogun-Infrastructure-Token":e}}:{}}export{r as n,n as r,t};

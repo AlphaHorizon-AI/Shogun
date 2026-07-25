@@ -124,7 +124,7 @@ async def test_select_custom_posture_assigns_policy_and_base_tier(monkeypatch):
     monkeypatch.setattr(engine_module, "async_session_factory", lambda: _Session(agent, policy))
 
     response = await select_active_security_posture(
-        SecurityPostureSelectRequest(policy_id=policy_id)
+        SecurityPostureSelectRequest(policy_id=policy_id, confirmed=True)
     )
 
     assert agent.security_policy_id == policy_id

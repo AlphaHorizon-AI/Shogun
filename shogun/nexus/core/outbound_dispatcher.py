@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.db.models.nexus import ExternalAgentModel, NexusTaskModel
+from shogun.nexus.security.outbound import validate_nexus_destination
 
 logger = logging.getLogger(__name__)
 
@@ -90,15 +91,17 @@ class OutboundDispatcher:
         }
 
         try:
+            destination = validate_nexus_destination(agent.endpoint_url)
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
-                    agent.endpoint_url,
+                    destination.pinned_url,
                     json=payload,
                     headers={
-                        "Authorization": f"Bearer {agent.token}",
+                        "Host": destination.host_header,
                         "Content-Type": "application/json",
                         "X-Shogun-Task-Id": str(task.id),
                     },
+                    extensions=destination.request_extensions,
                 )
 
             latency_ms = int((time.monotonic() - t_start) * 1000)

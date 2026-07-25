@@ -68,6 +68,14 @@ class GensuiSettings(BaseSettings):
         ]:
             directory.mkdir(parents=True, exist_ok=True)
 
+    def validate_security(self) -> None:
+        """Refuse to expose Gensui with public placeholder credentials."""
+
+        if len(self.gensui_jwt_secret) < 32 or self.gensui_jwt_secret.startswith("change-me-"):
+            raise RuntimeError("GENSUI_JWT_SECRET must be a unique random value")
+        if len(self.gensui_admin_password) < 12 or self.gensui_admin_password.startswith("change-me"):
+            raise RuntimeError("GENSUI_ADMIN_PASSWORD must be a unique password of at least 12 characters")
+
 
 # Singleton instance
 gensui_settings = GensuiSettings()

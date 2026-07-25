@@ -33,6 +33,7 @@ class OutboundDestinationPolicy(str, Enum):
     PUBLIC_ONLY = "public_only"
     PRIVATE_ALLOWED = "private_allowed"
     LOOPBACK_ALLOWED = "loopback_allowed"
+    LOOPBACK_ONLY = "loopback_only"
     ALLOWLIST_ONLY = "allowlist_only"
 
 
@@ -269,6 +270,12 @@ def validate_outbound_url(
             raise _reject(
                 f"Address {address} is outside approved public, private, and loopback ranges",
                 reason="unsupported_loopback_range",
+                host=host,
+            )
+        if selected_policy is OutboundDestinationPolicy.LOOPBACK_ONLY and not address.is_loopback:
+            raise _reject(
+                f"Address {address} is not a loopback destination",
+                reason="non_loopback_address",
                 host=host,
             )
         if selected_policy is OutboundDestinationPolicy.ALLOWLIST_ONLY and not (

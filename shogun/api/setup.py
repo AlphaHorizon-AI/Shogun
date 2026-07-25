@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 from shogun.config import PROJECT_ROOT, settings
 from shogun.db.engine import async_session_factory
 from shogun.schemas.common import ApiResponse
+from shogun.services.provider_credentials import protect_provider_config
 
 router = APIRouter(prefix="/setup", tags=["Setup"])
 
@@ -317,10 +318,10 @@ async def complete_setup(payload: SetupCompletePayload):
             if existing_record:
                 # Update existing
                 existing_record.base_url = prov.base_url
-                existing_record.config = {
+                existing_record.config = protect_provider_config({
                     "api_key": prov.api_key,
                     "models": prov.models,
-                }
+                }, existing_record.config)
                 existing_record.status = "connected"
                 created_provider_ids.append(str(existing_record.id))
                 # We don't know the frontend UUID here but we'll try to match below
@@ -334,10 +335,10 @@ async def complete_setup(payload: SetupCompletePayload):
                     is_local=prov.provider_type in ("ollama", "lmstudio", "local"),
                     status="connected",
                     health_status="unknown",
-                    config={
+                    config=protect_provider_config({
                         "api_key": prov.api_key,
                         "models": prov.models,
-                    },
+                    }),
                 )
                 session.add(provider_record)
                 await session.flush()

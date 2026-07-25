@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.db.models.nexus import NexusTaskModel
 from shogun.nexus.schemas.nexus_task import NexusTaskCreate
+from shogun.nexus.security.outbound import validate_nexus_destination
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +88,14 @@ class TaskManager:
         }
         logger.info("Firing task callback to %s for task %s", task.callback_url, task.id)
         try:
+            destination = validate_nexus_destination(task.callback_url)
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(task.callback_url, json=payload)
+                resp = await client.post(
+                    destination.pinned_url,
+                    json=payload,
+                    headers={"Host": destination.host_header},
+                    extensions=destination.request_extensions,
+                )
                 if resp.status_code >= 400:
                     logger.warning("Callback to %s returned status %d", task.callback_url, resp.status_code)
         except Exception as exc:

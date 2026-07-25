@@ -11,6 +11,7 @@ import shutil
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from shogun.services.workflow_operator import (
     WORKFLOW_OPERATOR_GUIDE,
@@ -20,6 +21,7 @@ from shogun.services.workflow_operator import (
     requires_workflow_tools,
     workflow_intent_keywords,
 )
+from shogun.services.provider_credentials import provider_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -1007,7 +1009,7 @@ async def _shogun_fast_chat(
             yield "data: [DONE]\n\n"
         return StreamingResponse(_no_model(), media_type="text/event-stream")
 
-    api_key = provider.config.get("api_key") or provider.config.get("api-key")
+    api_key = provider_api_key(provider.config)
     req_headers: dict[str, str] = {"Content-Type": "application/json"}
     if api_key:
         req_headers["Authorization"] = f"Bearer {api_key}"
@@ -1498,13 +1500,13 @@ async def _shogun_chat_internal(
             asyncio.ensure_future(EL.emit_model_event(
                 "model.selected", f"Model resolved: {model_name} via {provider.provider_type}",
                 model_used=model_name, provider_used=provider.provider_type,
-                trace_id=_trace_id, agent_id=_agent_id_str, user_id=operator_name,
+                trace_id=_trace_id, agent_id=_agent_id_str, user_id="Daimyo",
                 detail={"reason": res_reason, "provider_id": str(provider.id), "base_url": base_url},
             ))
         except Exception:
             pass
 
-        api_key = provider.config.get("api_key") or provider.config.get("api-key")
+        api_key = provider_api_key(provider.config)
         req_headers: dict[str, str] = {"Content-Type": "application/json"}
         if api_key:
             req_headers["Authorization"] = f"Bearer {api_key}"

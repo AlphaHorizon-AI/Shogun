@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, field_serializer
 
 from shogun.schemas.common import (
     AuthType,
@@ -62,3 +62,21 @@ class ToolConnectorResponse(ShogunBase):
     health_status: HealthStatus
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("config")
+    def serialize_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        sensitive_fragments = ("key", "token", "password", "secret", "credential", "authorization")
+
+        def redact(value: Any) -> Any:
+            if isinstance(value, dict):
+                return {
+                    key: "********"
+                    if any(fragment in key.casefold() for fragment in sensitive_fragments)
+                    else redact(item)
+                    for key, item in value.items()
+                }
+            if isinstance(value, list):
+                return [redact(item) for item in value]
+            return value
+
+        return redact(config)

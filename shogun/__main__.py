@@ -7,10 +7,10 @@ Enables:
 
 from __future__ import annotations
 
+import secrets
 import shutil
 import sys
 import traceback
-import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -38,11 +38,27 @@ def _reexec_in_project_venv() -> None:
             )
 
 
+def _secure_env_file(env_path: Path) -> None:
+    text = env_path.read_text(encoding="utf-8")
+    secured = text.replace(
+        "SECRET_KEY=change-me-to-a-random-64-char-string",
+        f"SECRET_KEY={secrets.token_urlsafe(48)}",
+    ).replace(
+        "VAULT_ENCRYPTION_KEY=change-me-to-a-fernet-base64-key",
+        f"VAULT_ENCRYPTION_KEY={secrets.token_urlsafe(48)}",
+    )
+    if "DEPLOYMENT_MODE=server" not in secured:
+        secured = secured.replace("API_HOST=0.0.0.0", "API_HOST=127.0.0.1")
+    if secured != text:
+        env_path.write_text(secured, encoding="utf-8")
+
+
 def _ensure_env_file() -> None:
     """Auto-generate .env from .env.example on first run if missing."""
     project_root = Path(__file__).resolve().parent.parent
     env_path = project_root / ".env"
     if env_path.exists():
+        _secure_env_file(env_path)
         return
 
     # Try to find .env.example relative to CWD or package root
@@ -53,6 +69,7 @@ def _ensure_env_file() -> None:
     for example in candidates:
         if example.exists():
             shutil.copy(example, env_path)
+            _secure_env_file(env_path)
             print("[INFO] Created .env from .env.example - edit it to configure API keys.")
             return
 
@@ -61,12 +78,12 @@ def _ensure_env_file() -> None:
     env_path.write_text(
         f"APP_ENV=production\n"
         f"DEBUG=false\n"
-        f"API_HOST=0.0.0.0\n"
+        f"API_HOST=127.0.0.1\n"
         f"API_PORT=8000\n"
         f"DATABASE_URL=sqlite+aiosqlite:///{project_root}/data/shogun.db\n"
         f"QDRANT_PATH={project_root}/data/qdrant\n"
-        f"SECRET_KEY={uuid.uuid4().hex}\n"
-        f"VAULT_ENCRYPTION_KEY=change-me-to-a-fernet-base64-key\n"
+        f"SECRET_KEY={secrets.token_urlsafe(48)}\n"
+        f"VAULT_ENCRYPTION_KEY={secrets.token_urlsafe(48)}\n"
         f"VAULT_PATH={project_root}/vault\n"
         f"LOG_PATH={project_root}/logs\n"
         f"CONFIG_PATH={project_root}/configs\n",
