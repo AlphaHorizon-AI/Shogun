@@ -1,9 +1,9 @@
 # ── Stage 1: Build Admin UI ──────────────────────────────────
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
-COPY frontend/package*.json ./
+COPY gensui/frontend/package*.json ./
 RUN npm ci --silent
-COPY frontend/ ./
+COPY gensui/frontend/ ./
 RUN npm run build
 
 # ── Stage 2: Python Runtime ─────────────────────────────────
