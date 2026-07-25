@@ -29,7 +29,7 @@ dependencies = [
     "reflex>=0.6.0",
 
     # --- Security & Secrets ---
-    "cryptography>=43.0.0",
+    "cryptography>=49.0.0",
     "python-dotenv>=1.0.0",
     "bcrypt>=4.0.0",
     "pyjwt>=2.9.0",
