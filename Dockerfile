@@ -32,6 +32,10 @@ COPY migrations/ ./migrations/
 
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.4.0" \
     && pip install --no-cache-dir ".[server]" \
+    && pip install --no-cache-dir --upgrade \
+        "jaraco.context>=6.1.0" \
+        "setuptools>=78.1.1" \
+        "wheel>=0.46.2" \
     && python -m playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/* /root/.cache
 
