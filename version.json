@@ -1,8 +1,8 @@
 {
-  "version": "1.46.3",
+  "version": "1.46.4",
   "name": "Shogun OS",
-  "build": 149,
+  "build": 150,
   "channel": "stable",
-  "released": "2026-07-25T19:44:00Z",
-  "changelog": "Validate the desktop startup repair with hardened server-container credentials that satisfy production security requirements."
+  "released": "2026-07-25T19:49:00Z",
+  "changelog": "Handle duplicate desktop launches cleanly, report foreign port conflicts clearly, and keep the control-plane token out of terminal output."
 }

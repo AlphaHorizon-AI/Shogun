@@ -135,6 +135,30 @@ def _browser_url(host: str, port: int) -> str:
     return f"http://{browser_host}:{port}"
 
 
+def _port_in_use(host: str, port: int) -> bool:
+    """Return whether another process already owns the configured listener."""
+    import socket
+
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    with socket.socket(family, socket.SOCK_STREAM) as listener:
+        try:
+            listener.bind((host, port))
+        except OSError:
+            return True
+    return False
+
+
+def _existing_shogun_is_ready(health_url: str) -> bool:
+    """Recognize an already-running local Shogun instance."""
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(health_url, timeout=2) as response:
+            return 200 <= response.status < 500
+    except Exception:
+        return False
+
+
 def _open_browser_when_ready(url: str, health_url: str, timeout_seconds: int = 180) -> None:
     """Open the local UI as soon as the server responds."""
     import os
@@ -228,19 +252,31 @@ def main() -> None:
 
     settings.ensure_directories()
 
-    # Step 3: Auto-bootstrap if needed
-    _auto_bootstrap()
-
-    # Step 4: Open browser once the server is actually ready
+    # Step 3: Resolve the local endpoints and avoid a second competing server.
     url = _browser_url(settings.api_host, settings.api_port)
     if settings.deployment_mode == "desktop" and settings.infrastructure_admin_token:
         from urllib.parse import quote
 
         url = f"{url}#infrastructure_token={quote(settings.infrastructure_admin_token, safe='')}"
     health_url = f"http://localhost:{settings.api_port}/api/v1/health"
+
+    if _port_in_use(settings.api_host, settings.api_port):
+        if _existing_shogun_is_ready(health_url):
+            print(f"[INFO] Shogun is already running on port {settings.api_port}.")
+            _open_browser_when_ready(url, health_url)
+            return
+        raise RuntimeError(
+            f"Port {settings.api_port} is already in use by another application. "
+            "Close that application or configure a different API_PORT before starting Shogun."
+        )
+
+    # Step 4: Auto-bootstrap if needed
+    _auto_bootstrap()
+
+    # Step 5: Open browser once the server is actually ready
     _open_browser_when_ready(url, health_url)
 
-    # Step 5: Run Server
+    # Step 6: Run Server
     print("=" * 60)
     print("  SHOGUN — The Tenshu (FastAPI + React)")
     print("=" * 60)
@@ -261,7 +297,7 @@ def main() -> None:
         )
     else:
         print("  [PRODUCTION MODE]")
-        print(f"  - Serving Shogun at {url}")
+        print(f"  - Serving Shogun at {url.split('#', 1)[0]}")
         print("-" * 60)
 
         uvicorn.run(
