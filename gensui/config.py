@@ -7,6 +7,7 @@ Completely independent from Shogun's config.
 from __future__ import annotations
 
 from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 GENSUI_ROOT = Path(__file__).resolve().parent
