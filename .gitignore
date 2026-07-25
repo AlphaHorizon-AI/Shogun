@@ -69,6 +69,8 @@ qdrant_data/
 # ── Local-only assets ────────────────────────────────────────
 Blueprints and Requirement specs/
 Assets/
+!frontend/public/assets/
+!frontend/public/assets/**
 docker-compose.yml
 
 scratch/

@@ -27,6 +27,11 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from '../lib/utils';
+import {
+  getInfrastructureAdminToken,
+  infrastructureRequestConfig,
+  setInfrastructureAdminToken,
+} from '../lib/infrastructureAuth';
 import { useTranslation } from '../i18n';
 
 // ── Types ──────────────────────────────────────────────────────
@@ -97,6 +102,9 @@ export function Gensui() {
   const [enrollmentToken, setEnrollmentToken] = useState('');
   const [instanceName, setInstanceName] = useState('');
   const [environment, setEnvironment] = useState('development');
+  const [infrastructureToken, setInfrastructureTokenState] = useState(
+    getInfrastructureAdminToken,
+  );
 
   // Actions
   const [testing, setTesting] = useState(false);
@@ -131,7 +139,11 @@ export function Gensui() {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await axios.post('/api/v1/gensui/test', { server_url: serverUrl });
+      const res = await axios.post(
+        '/api/v1/gensui/test',
+        { server_url: serverUrl },
+        infrastructureRequestConfig(infrastructureToken),
+      );
       setTestResult(res.data);
     } catch (err: any) {
       setTestResult({ reachable: false, error: err.response?.data?.detail || 'Test failed' });
@@ -146,12 +158,16 @@ export function Gensui() {
     setConnecting(true);
     setConnectMsg(null);
     try {
-      const res = await axios.post('/api/v1/gensui/connect', {
-        server_url: serverUrl,
-        enrollment_token: enrollmentToken || null,
-        instance_name: instanceName || null,
-        environment,
-      });
+      const res = await axios.post(
+        '/api/v1/gensui/connect',
+        {
+          server_url: serverUrl,
+          enrollment_token: enrollmentToken || null,
+          instance_name: instanceName || null,
+          environment,
+        },
+        infrastructureRequestConfig(infrastructureToken),
+      );
       setConnectMsg({ type: 'success', text: res.data.message || 'Connected' });
       await fetchStatus();
     } catch (err: any) {
@@ -166,7 +182,11 @@ export function Gensui() {
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
-      await axios.post('/api/v1/gensui/disconnect');
+      await axios.post(
+        '/api/v1/gensui/disconnect',
+        {},
+        infrastructureRequestConfig(infrastructureToken),
+      );
       setConfirmDisconnect(false);
       await fetchStatus();
     } catch (err) {
@@ -211,6 +231,27 @@ export function Gensui() {
         >
           <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
         </button>
+      </div>
+
+      <div className="shogun-card">
+        <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest flex items-center gap-1.5">
+          <Key className="w-3 h-3" /> Infrastructure Admin Token
+        </label>
+        <input
+          type="password"
+          autoComplete="off"
+          value={infrastructureToken}
+          onChange={event => {
+            const value = event.target.value;
+            setInfrastructureTokenState(value);
+            setInfrastructureAdminToken(value);
+          }}
+          placeholder="Required by Shogun Server mode"
+          className="mt-2 w-full bg-[#050508] border border-shogun-border rounded-xl px-4 py-3 text-sm font-mono focus:border-indigo-500 outline-none transition-all"
+        />
+        <p className="mt-2 text-[10px] text-shogun-subdued">
+          Kept only in this browser tab session. Desktop requests from localhost do not require it.
+        </p>
       </div>
 
       {/* ── Connected State ─────────────────────────────────── */}

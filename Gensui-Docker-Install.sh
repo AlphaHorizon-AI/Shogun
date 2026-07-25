@@ -156,12 +156,17 @@ if [ ! -f ".env" ]; then
     
     # Generate random JWT secret
     JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n' | tr -d '=' | tr -d '+' | tr -d '/')
+    ADMIN_SECRET=$(openssl rand -base64 36 | tr -d '\n' | tr -d '=' | tr -d '+' | tr -d '/')
     if [[ "$OSTYPE" == "darwin"* ]]; then
         sed -i '' "s/change-me-to-a-random-64-char-string/$JWT_SECRET/" .env
+        sed -i '' "s/change-me-to-a-random-admin-password/$ADMIN_SECRET/" .env
     else
         sed -i "s/change-me-to-a-random-64-char-string/$JWT_SECRET/" .env
+        sed -i "s/change-me-to-a-random-admin-password/$ADMIN_SECRET/" .env
     fi
-    echo -e "  ${GREEN}✅  .env created with secure random JWT secret.${NC}"
+    echo -e "  ${GREEN}✅  .env created with secure random JWT and admin secrets.${NC}"
+    echo -e "  ${GRAY}The generated admin password is stored in $INSTALL_DIR/.env (mode 600).${NC}"
+    chmod 600 .env
 else
     echo -e "  ${GREEN}✅  .env already exists — keeping existing config.${NC}"
 fi

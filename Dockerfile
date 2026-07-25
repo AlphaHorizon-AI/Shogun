@@ -31,7 +31,11 @@ COPY shogun/ ./shogun/
 COPY migrations/ ./migrations/
 
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.4.0" \
-    && pip install --no-cache-dir ".[postgres,office]" \
+    && pip install --no-cache-dir ".[server]" \
+    && pip install --no-cache-dir --upgrade \
+        "jaraco.context>=6.1.0" \
+        "setuptools>=78.1.1" \
+        "wheel>=0.46.2" \
     && python -m playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/* /root/.cache
 
@@ -43,7 +47,9 @@ RUN groupadd --gid 10001 shogun \
     && mkdir -p /app/data /app/vault /app/logs /app/configs /app/tmp \
     && touch /app/.env \
     && chmod 0755 /usr/local/bin/shogun-entrypoint \
-    && chown -R shogun:shogun /app /ms-playwright
+    && chown -R shogun:shogun \
+        /app/data /app/vault /app/logs /app/configs /app/tmp /app/.env \
+    && chmod -R a+rX /ms-playwright
 
 USER shogun
 

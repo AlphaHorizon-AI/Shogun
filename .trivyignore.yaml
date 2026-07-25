@@ -1,0 +1,10 @@
+vulnerabilities:
+  - id: GHSA-qwww-vcr4-c8h2
+    paths:
+      - "frontend/package-lock.json"
+      - "gensui/frontend/package-lock.json"
+    expired_at: 2026-08-31
+    statement: >-
+      The advisory affects unstable React Server Components APIs, which these
+      Vite SPAs do not use. No patched react-router-dom 7.x release exists;
+      reassess the React Router 8 migration before this exception expires.

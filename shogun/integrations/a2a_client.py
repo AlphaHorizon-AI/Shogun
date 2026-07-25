@@ -27,6 +27,14 @@ from typing import Any
 
 import httpx
 
+from shogun.config import settings
+from shogun.services.ssrf_guard import (
+    SSRFValidationError,
+    ValidatedDestination,
+    log_blocked_outbound_request,
+    validate_outbound_url,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,6 +95,56 @@ class A2AClient:
     def __init__(self, timeout: float = 15.0):
         self.timeout = timeout
 
+    @staticmethod
+    def _allowed_ports() -> set[int] | None:
+        ports = {
+            int(item.strip())
+            for item in settings.a2a_allowed_ports.split(",")
+            if item.strip()
+        }
+        return ports or None
+
+    @staticmethod
+    def _validate(url: str, *, endpoint_type: str) -> ValidatedDestination:
+        try:
+            return validate_outbound_url(
+                url,
+                policy=settings.a2a_destination_policy,
+                allowlist=settings.outbound_allowlist,
+                allow_http_on_private_network=settings.allow_http_on_private_network,
+                allow_http_on_public_network=settings.allow_http_on_public_network,
+                allowed_ports=A2AClient._allowed_ports(),
+            )
+        except SSRFValidationError as exc:
+            log_blocked_outbound_request(
+                exc,
+                endpoint_type=endpoint_type,
+                destination_policy=settings.a2a_destination_policy,
+            )
+            raise
+
+    @staticmethod
+    def _inbound_url(peer_url: str) -> str:
+        inbound_url = peer_url.rstrip("/")
+        if inbound_url.endswith("/a2a/inbound"):
+            return inbound_url
+        if inbound_url.endswith("/api/v1"):
+            inbound_url = inbound_url[: -len("/api/v1")]
+        return inbound_url.rstrip("/") + "/api/v1/a2a/inbound"
+
+    @staticmethod
+    def _identity_url(peer_url: str) -> str:
+        base = peer_url.rstrip("/")
+        for suffix in ("/a2a/inbound", "/a2a"):
+            if base.endswith(suffix):
+                base = base[: -len(suffix)]
+                break
+        return base.rstrip("/") + "/api/v1/a2a/identity"
+
+    def validate_peer_url(self, peer_url: str) -> None:
+        """Validate a peer before any database state or background work is created."""
+        self._validate(self._identity_url(peer_url), endpoint_type="a2a_invite")
+
     async def send(
         self,
         peer_url: str,
@@ -97,15 +155,23 @@ class A2AClient:
         Returns the peer's acknowledgment dict, or raises on failure.
         """
         # Normalise: peer_url may be a base URL — append the path if needed
-        inbound_url = peer_url.rstrip("/")
-        if not inbound_url.endswith("/a2a/inbound"):
-            inbound_url = inbound_url.rstrip("/api/v1").rstrip("/") + "/api/v1/a2a/inbound"
+        inbound_url = self._inbound_url(peer_url)
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(
-                inbound_url,
+        destination = self._validate(inbound_url, endpoint_type="a2a_send")
+
+        async with httpx.AsyncClient(
+            timeout=self.timeout,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            resp = await client.post(  # lgtm[py/full-ssrf]
+                destination.pinned_url,
                 json=envelope,
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "Host": destination.host_header,
+                },
+                extensions=destination.request_extensions,
             )
             resp.raise_for_status()
             return resp.json()
@@ -116,18 +182,24 @@ class A2AClient:
         Calls GET /api/v1/a2a/identity on the remote.
         Returns identity dict or None if unreachable.
         """
-        base = peer_url.rstrip("/")
-        # Strip paths down to origin + /api/v1
-        for suffix in ["/a2a/inbound", "/a2a"]:
-            if base.endswith(suffix):
-                base = base[: -len(suffix)]
-                break
-        identity_url = base.rstrip("/") + "/api/v1/a2a/identity"
+        identity_url = self._identity_url(peer_url)
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(identity_url)
+            destination = self._validate(identity_url, endpoint_type="a2a_ping")
+            async with httpx.AsyncClient(
+                timeout=5.0,
+                follow_redirects=False,
+                trust_env=False,
+            ) as client:
+                resp = await client.get(  # lgtm[py/full-ssrf]
+                    destination.pinned_url,
+                    headers={"Host": destination.host_header},
+                    extensions=destination.request_extensions,
+                )
                 resp.raise_for_status()
                 return resp.json()
+        except SSRFValidationError as exc:
+            logger.warning("A2A ping blocked for %s: %s", exc.host or "unknown-host", exc)
+            return None
         except Exception as exc:
             logger.debug("A2A ping failed for %s: %s", peer_url, exc)
             return None

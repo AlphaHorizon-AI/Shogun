@@ -7,10 +7,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
-from gensui.config import gensui_settings, GENSUI_ROOT
+from gensui.config import gensui_settings
 
 log = logging.getLogger("gensui")
 
@@ -22,9 +22,9 @@ async def lifespan(app: FastAPI):
     gensui_settings.ensure_directories()
 
     # Create all tables
-    from gensui.db.engine import engine
-    from gensui.db.base import Base
     import gensui.db.models  # noqa: F401 — register models
+    from gensui.db.base import Base
+    from gensui.db.engine import engine
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -37,14 +37,14 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE security_postures ADD COLUMN tool_overrides_json TEXT"
             ))
             log.info("Migration: added tool_overrides_json column to security_postures")
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass  # Column already exists
         try:
             await conn.execute(sa_text(
                 "ALTER TABLE security_postures ADD COLUMN advanced_toolgate_json TEXT"
             ))
             log.info("Migration: added advanced_toolgate_json column to security_postures")
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass  # Column already exists
 
     # Seed built-in postures and initial admin
@@ -85,21 +85,21 @@ def create_app() -> FastAPI:
     )
 
     # ── Register API Routers ─────────────────────────────────
-    from gensui.api.auth import router as auth_router
-    from gensui.api.enrollment import router as enrollment_router
-    from gensui.api.heartbeat import router as heartbeat_router
-    from gensui.api.telemetry import router as telemetry_router
-    from gensui.api.policy import router as policy_router
-    from gensui.api.commands import router as commands_router
-    from gensui.api.harakiri import router as harakiri_router
-    from gensui.api.members import router as members_router
-    from gensui.api.postures import router as postures_router
-    from gensui.api.audit import router as audit_router
     from gensui.api.alerts import router as alerts_router
+    from gensui.api.audit import router as audit_router
+    from gensui.api.auth import router as auth_router
+    from gensui.api.commands import router as commands_router
     from gensui.api.dashboard import router as dashboard_router
-    from gensui.api.monitoring import router as monitoring_router
+    from gensui.api.enrollment import router as enrollment_router
     from gensui.api.fleet_audit import router as fleet_audit_router
+    from gensui.api.harakiri import router as harakiri_router
+    from gensui.api.heartbeat import router as heartbeat_router
     from gensui.api.identity import router as identity_router
+    from gensui.api.members import router as members_router
+    from gensui.api.monitoring import router as monitoring_router
+    from gensui.api.policy import router as policy_router
+    from gensui.api.postures import router as postures_router
+    from gensui.api.telemetry import router as telemetry_router
 
     prefix = "/api/gensui"
     app.include_router(auth_router, prefix=prefix)
@@ -124,9 +124,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "gensui", "version": "0.1.0"}
 
     # ── Serve Frontend (production) ──────────────────────────
-    frontend_dist = GENSUI_ROOT.parent / "frontend" / "dist"
-    if not frontend_dist.exists():
-        frontend_dist = GENSUI_ROOT / "frontend" / "dist"
+    frontend_dist = gensui_settings.gensui_frontend_dist
     if frontend_dist.exists():
         # Serve /assets/* static files
         assets_path = frontend_dist / "assets"
@@ -141,7 +139,7 @@ def create_app() -> FastAPI:
         # Catch-all for SPA routing — must NOT match /api, /docs, /redoc
         @app.get("/{full_path:path}")
         async def serve_frontend(full_path: str):
-            if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("redoc") or full_path.startswith("openapi"):
+            if full_path.startswith(("api/", "docs", "redoc", "openapi")):
                 raise HTTPException(status_code=404)
             # Serve actual file if it exists (favicon.svg, logo.png, etc.)
             target = frontend_dist / full_path
@@ -149,5 +147,10 @@ def create_app() -> FastAPI:
                 return FileResponse(target)
             # Otherwise serve index.html (SPA client-side routing)
             return FileResponse(str(frontend_dist / "index.html"))
+    else:
+        log.warning(
+            "Gensui frontend distribution is missing at %s; UI routes are disabled",
+            frontend_dist,
+        )
 
     return app

@@ -61,10 +61,11 @@ cd /d "%INSTALL_DIR%"
 echo [3/5] Configuring secrets...
 if not exist ".env.server" (
   copy /y ".env.server.example" ".env.server" >nul
-  for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "-join ((1..64) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })"`) do set "POSTGRES_SECRET=%%i"
-  for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "-join ((1..64) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })"`) do set "APPLICATION_SECRET=%%i"
-  for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "-join ((1..64) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })"`) do set "VAULT_SECRET=%%i"
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "$p='.env.server'; $c=Get-Content -Raw -LiteralPath $p; $c=$c.Replace('change-me-postgres-password','!POSTGRES_SECRET!').Replace('change-me-to-a-random-64-char-string','!APPLICATION_SECRET!').Replace('change-me-to-an-independent-random-64-char-string','!VAULT_SECRET!'); Set-Content -LiteralPath $p -Value $c -Encoding utf8"
+  for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$b=New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { $_.ToString('x2') })"`) do set "POSTGRES_SECRET=%%i"
+  for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$b=New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { $_.ToString('x2') })"`) do set "APPLICATION_SECRET=%%i"
+  for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$b=New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { $_.ToString('x2') })"`) do set "VAULT_SECRET=%%i"
+  for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$b=New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { $_.ToString('x2') })"`) do set "INFRASTRUCTURE_SECRET=%%i"
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$p='.env.server'; $c=Get-Content -Raw -LiteralPath $p; $c=$c.Replace('change-me-postgres-password','!POSTGRES_SECRET!').Replace('change-me-to-a-random-64-char-string','!APPLICATION_SECRET!').Replace('change-me-to-an-independent-random-64-char-string','!VAULT_SECRET!').Replace('change-me-to-an-independent-infrastructure-admin-token','!INFRASTRUCTURE_SECRET!'); Set-Content -LiteralPath $p -Value $c -Encoding utf8"
 ) else (
   echo       Existing .env.server retained.
 )

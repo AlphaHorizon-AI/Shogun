@@ -3,29 +3,35 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.12 <25"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "lint:security": "eslint src/lib/infrastructureAuth.ts src/lib/safeMarkdown.ts src/lib/safeMarkdown.test.ts",
     "test:i18n": "node scripts/check-setup-i18n.mjs",
     "test:template-i18n": "node scripts/check-template-i18n.mjs",
+    "test:security": "vitest run src/lib/safeMarkdown.test.ts",
+    "audit:security": "node ../scripts/check-npm-audit.mjs .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/react-router-dom": "^5.3.3",
     "@xyflow/react": "^12.10.2",
-    "axios": "^1.16.0",
+    "axios": "1.18.1",
     "clsx": "^2.1.1",
     "js-yaml": "^4.1.1",
     "lucide-react": "^1.8.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^7.15.1",
+    "react-router-dom": "7.18.1",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
+    "@eslint/js": "10.0.1",
     "@tailwindcss/postcss": "^4.2.2",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^24.12.2",
@@ -33,14 +39,15 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.5.0",
-    "eslint": "^9.39.4",
-    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint": "10.8.0",
+    "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
-    "globals": "^17.4.0",
-    "postcss": "^8.5.9",
+    "globals": "17.6.0",
+    "postcss": "8.5.23",
     "tailwindcss": "^4.2.2",
     "typescript": "~6.0.2",
-    "typescript-eslint": "^8.58.0",
-    "vite": "^8.0.16"
+    "typescript-eslint": "8.59.2",
+    "vite": "8.1.5",
+    "vitest": "4.1.10"
   }
 }

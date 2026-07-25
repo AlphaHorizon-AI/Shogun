@@ -45,7 +45,8 @@ Download one installer from the [latest GitHub release](https://github.com/Alpha
 
 The installer downloads Shogun, creates the Python environment, installs dependencies, builds The Tenshu, creates a desktop shortcut, and opens the Setup Wizard.
 
-Shogun requires **Python 3.10+** and **Node.js 20.19+** (or 22.12+). The installer checks that both runtimes are available and provides installation links when they are missing.
+Shogun requires **Python 3.10+**. Frontend builds and CI use **Node.js 22.12+**;
+`.nvmrc` and `.node-version` pin the supported major.
 
 ### Complete the Setup Wizard
 
@@ -94,7 +95,8 @@ Server mode runs Shogun and The Tenshu continuously in containers with dedicated
 
 The Server installer:
 
-- Generates independent application, vault-encryption, and PostgreSQL secrets.
+- Generates independent application, vault-encryption, infrastructure-admin,
+  and PostgreSQL secrets.
 - Builds Shogun and The Tenshu as a non-root container.
 - Starts PostgreSQL and Qdrant on an internal Docker network.
 - Stores application data, memories, configuration, vault content, and logs in named volumes.
@@ -104,11 +106,19 @@ The Server installer:
 
 After installation, the Primary Admin opens [http://127.0.0.1:8000/setup](http://127.0.0.1:8000/setup) on the server and selects Single-user or Team mode. Team members communicate through Telegram or Microsoft Teams; they do not receive access to The Tenshu.
 
+Privileged Gensui connection and Nexus peer-invitation actions require the
+generated infrastructure token in Server mode. Paste it into the corresponding
+Tenshu field; it is kept only for the browser-tab session. See the
+[outbound destination security guide](docs/security/outbound-destination-policy.md).
+
 > **Secure by default:** Do not change `SHOGUN_BIND_ADDRESS` to a public interface without placing The Tenshu behind an authenticated HTTPS reverse proxy. For remote administration, prefer a VPN or SSH tunnel.
 
 > **Important — Ronin does not work in Server mode:** A container cannot safely access the server's physical desktop. Ronin screenshots, mouse and keyboard control, native application control, and host-desktop sessions are therefore disabled and rejected by the server. Selecting the Torii posture named RONIN does not override this container boundary. Use a normal desktop installation when Ronin Desktop Control is required.
 
 Mado browser automation still works because its managed Chromium browser runs inside the container. Agent Flows, Flow Stacking, Telegram, Teams, Nexus, memory, ToolGate, HARAKIRI, and externally hosted local-model services such as Ollama remain available.
+
+See the [Docker capability matrix and migration guide](docs/deployment/docker.md)
+for the complete native-versus-headless scope.
 
 <details>
 <summary><strong>Start Server mode from a source checkout</strong></summary>
@@ -257,7 +267,9 @@ Download one installer from the [latest GitHub release](https://github.com/Alpha
 | **Linux/macOS Docker server** | [⬇️ Gensui-Docker-Install.sh](https://github.com/AlphaHorizon-AI/Shogun/releases/latest/download/Gensui-Docker-Install.sh) | Run `bash Gensui-Docker-Install.sh` |
 | **Windows Docker server** | [⬇️ Gensui-Docker-Install.bat](https://github.com/AlphaHorizon-AI/Shogun/releases/latest/download/Gensui-Docker-Install.bat) | Double-click the downloaded file |
 
-Gensui opens at [http://localhost:8787](http://localhost:8787). Change the default administrator password immediately after first login.
+Gensui opens at [http://localhost:8787](http://localhost:8787). The Docker
+installers generate a random initial administrator password in the protected
+`.env` file; rotate it after first login.
 
 <details>
 <summary><strong>Developer installation for Gensui</strong></summary>

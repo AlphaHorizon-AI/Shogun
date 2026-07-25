@@ -7,7 +7,6 @@ Completely independent from Shogun's config.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -59,6 +58,7 @@ class GensuiSettings(BaseSettings):
     # ── Paths ────────────────────────────────────────────────
     gensui_data_path: Path = GENSUI_ROOT / "data"
     gensui_log_path: Path = GENSUI_ROOT / "logs"
+    gensui_frontend_dist: Path = GENSUI_ROOT / "frontend" / "dist"
 
     def ensure_directories(self) -> None:
         """Create required filesystem directories."""

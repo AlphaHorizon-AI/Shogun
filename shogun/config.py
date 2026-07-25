@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -71,6 +71,42 @@ class Settings(BaseSettings):
     # ── Security ─────────────────────────────────────────────
     secret_key: str = "change-me-to-a-random-64-char-string"
     vault_encryption_key: str = "change-me-to-a-fernet-base64-key"
+    infrastructure_admin_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN",
+            "INFRASTRUCTURE_ADMIN_TOKEN",
+        ),
+    )
+    a2a_destination_policy: Literal[
+        "public_only", "private_allowed", "loopback_allowed", "allowlist_only"
+    ] = "private_allowed"
+    gensui_destination_policy: Literal[
+        "public_only", "private_allowed", "loopback_allowed", "allowlist_only"
+    ] = "loopback_allowed"
+    outbound_allowlist: str = ""
+    allow_http_on_private_network: bool = True
+    allow_http_on_public_network: bool = False
+    a2a_allowed_ports: str = ""
+    gensui_allowed_ports: str = ""
+
+    @field_validator("a2a_allowed_ports", "gensui_allowed_ports", mode="before")
+    @classmethod
+    def _validate_outbound_ports(cls, value: object) -> str:
+        raw = str(value or "")
+        normalized: list[str] = []
+        for item in raw.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            try:
+                port = int(item)
+            except ValueError as exc:
+                raise ValueError(f"Invalid outbound port {item!r}") from exc
+            if not 1 <= port <= 65535:
+                raise ValueError(f"Outbound port must be between 1 and 65535: {port}")
+            normalized.append(str(port))
+        return ",".join(normalized)
 
     # ── Storage Paths ────────────────────────────────────────
     vault_path: Path = PROJECT_ROOT / "vault"
