@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import {
-  AlertTriangle, CheckCircle2, Eye, EyeOff, Loader2, Radio,
-  Send, ShieldCheck, Trash2, XCircle,
+  AlertTriangle, BarChart3, CheckCircle2, ExternalLink, Eye, EyeOff, Loader2, Radio,
+  Send, ShieldCheck, ToggleLeft, ToggleRight, Trash2, XCircle,
 } from 'lucide-react';
 import {
   getInfrastructureAdminToken,
@@ -31,6 +31,13 @@ interface Preview {
   notice: string;
 }
 
+interface CollegeTelemetrySettings {
+  enabled: boolean;
+  shared_fields: string[];
+  never_shared: string[];
+  last_delivery: { state: string; at: string | null; error: string | null };
+}
+
 const formatDate = (value: string | null) =>
   value ? new Date(value).toLocaleString() : 'Not yet';
 
@@ -43,8 +50,22 @@ export function PrivacyTelemetry() {
   const [error, setError] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [identifier, setIdentifier] = useState('');
+  const [collegeTelemetry, setCollegeTelemetry] = useState<CollegeTelemetrySettings | null>(null);
+  const [savingCollegeTelemetry, setSavingCollegeTelemetry] = useState(false);
+  const [collegeTelemetryError, setCollegeTelemetryError] = useState('');
 
   const config = useCallback(() => infrastructureRequestConfig(token), [token]);
+  const loadCollegeTelemetry = useCallback(async () => {
+    try {
+      const response = await axios.get('/api/v1/system/college-telemetry');
+      setCollegeTelemetry(response.data.data);
+      setCollegeTelemetryError('');
+    } catch {
+      setCollegeTelemetry(null);
+      setCollegeTelemetryError('Could not load OpenClaw College sharing settings.');
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     setError('');
     try {
@@ -63,6 +84,29 @@ export function PrivacyTelemetry() {
     const timer = window.setTimeout(() => void refresh(), 0);
     return () => window.clearTimeout(timer);
   }, [refresh]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadCollegeTelemetry(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadCollegeTelemetry]);
+
+  const toggleCollegeTelemetry = async () => {
+    if (!collegeTelemetry) return;
+    setSavingCollegeTelemetry(true);
+    setCollegeTelemetryError('');
+    try {
+      const response = await axios.put('/api/v1/system/college-telemetry', {
+        enabled: !collegeTelemetry.enabled,
+      });
+      setCollegeTelemetry(response.data.data);
+    } catch (caught) {
+      setCollegeTelemetryError(axios.isAxiosError(caught)
+        ? String(caught.response?.data?.detail || caught.message)
+        : 'Could not update OpenClaw College sharing settings.');
+    } finally {
+      setSavingCollegeTelemetry(false);
+    }
+  };
 
   const act = async (name: string, action: () => Promise<unknown>) => {
     setBusy(name);
@@ -115,6 +159,43 @@ export function PrivacyTelemetry() {
 
         {error && <div className="flex gap-2 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300"><XCircle className="h-5 w-5" />{error}</div>}
         {message && <div className="flex gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-300"><CheckCircle2 className="h-5 w-5" />{message}</div>}
+
+        <section className="space-y-5 rounded-xl border border-shogun-border bg-shogun-card p-6">
+          <div className="flex items-start justify-between gap-5">
+            <div className="flex gap-3">
+              <div className="rounded-lg bg-cyan-500/10 p-2.5 text-cyan-300"><BarChart3 className="h-5 w-5" /></div>
+              <div>
+                <h2 className="text-sm font-semibold text-white">OpenClaw College ecosystem intelligence</h2>
+                <p className="mt-1 max-w-xl text-xs leading-relaxed text-shogun-subdued">
+                  Contribute anonymous, coarse model-performance signals to ecosystem benchmarks. Sharing is on by default and can be disabled at any time.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => void toggleCollegeTelemetry()}
+              disabled={!collegeTelemetry || savingCollegeTelemetry}
+              className="shrink-0 text-cyan-300 disabled:opacity-40"
+              title={collegeTelemetry?.enabled ? 'Disable ecosystem sharing' : 'Enable ecosystem sharing'}
+            >
+              {collegeTelemetry?.enabled ? <ToggleRight className="h-9 w-9" /> : <ToggleLeft className="h-9 w-9 text-shogun-subdued" />}
+            </button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
+              <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-emerald-300"><ShieldCheck className="h-3.5 w-3.5" /> Never shared</div>
+              <p className="text-[11px] leading-relaxed text-shogun-subdued">Prompts, outputs, files, agent names, credentials, exact IP addresses, or error contents.</p>
+            </div>
+            <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/[0.04] p-4">
+              <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-cyan-300">Coarse signals only</div>
+              <p className="text-[11px] leading-relaxed text-shogun-subdued">Model, provider, task category, success, bucketed usage, local/cloud, country code, Shogun version, and a weekly rotating anonymous ID.</p>
+            </div>
+          </div>
+          {collegeTelemetryError && <p className="text-xs text-red-300">{collegeTelemetryError}</p>}
+          <div className="flex items-center justify-between text-[11px] text-shogun-subdued">
+            <span>Status: <strong className={collegeTelemetry?.enabled ? 'text-emerald-300' : 'text-shogun-text'}>{collegeTelemetry?.enabled ? 'Contributing anonymously' : 'Not sharing'}</strong></span>
+            <a href="https://www.openclawcollege.com/#/dashboard" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-cyan-300 hover:underline">View ecosystem insights <ExternalLink className="h-3 w-3" /></a>
+          </div>
+        </section>
 
         {status && (
           <>

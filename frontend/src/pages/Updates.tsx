@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, RefreshCw, CheckCircle, AlertTriangle, ArrowUpCircle, Clock, BarChart3, ShieldCheck, ToggleLeft, ToggleRight, ExternalLink } from 'lucide-react';
+import { Download, RefreshCw, CheckCircle, AlertTriangle, ArrowUpCircle, Clock } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
 interface UpdateStatus {
@@ -21,13 +21,6 @@ interface UpdateStatus {
   restart_required?: boolean;
 }
 
-interface CollegeTelemetrySettings {
-  enabled: boolean;
-  shared_fields: string[];
-  never_shared: string[];
-  last_delivery: { state: string; at: string | null; error: string | null };
-}
-
 export const Updates = () => {
   const { t } = useTranslation();
   const [status, setStatus] = useState<UpdateStatus | null>(null);
@@ -36,36 +29,6 @@ export const Updates = () => {
   const [installResult, setInstallResult] = useState<string | null>(null);
   const [githubToken, setGithubToken] = useState('');
   const [savingToken, setSavingToken] = useState(false);
-  const [collegeTelemetry, setCollegeTelemetry] = useState<CollegeTelemetrySettings | null>(null);
-  const [savingTelemetry, setSavingTelemetry] = useState(false);
-
-  const loadCollegeTelemetry = async () => {
-    try {
-      const response = await fetch('/api/v1/system/college-telemetry');
-      const payload = await response.json();
-      if (response.ok) setCollegeTelemetry(payload.data);
-    } catch {
-      setCollegeTelemetry(null);
-    }
-  };
-
-  const toggleCollegeTelemetry = async () => {
-    if (!collegeTelemetry) return;
-    setSavingTelemetry(true);
-    try {
-      const response = await fetch('/api/v1/system/college-telemetry', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !collegeTelemetry.enabled }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
-      setCollegeTelemetry(payload.data);
-    } finally {
-      setSavingTelemetry(false);
-    }
-  };
-
   const saveUpdateAccess = async () => {
     if (!githubToken.trim()) return;
     setSavingToken(true);
@@ -81,8 +44,8 @@ export const Updates = () => {
       setGithubToken('');
       setStatus(data.status);
       setInstallResult('Update access saved securely on this device.');
-    } catch (e: any) {
-      setInstallResult(`Could not save update access: ${e.message}`);
+    } catch (e: unknown) {
+      setInstallResult(`Could not save update access: ${e instanceof Error ? e.message : 'Unknown error'}`);
     } finally {
       setSavingToken(false);
     }
@@ -98,7 +61,7 @@ export const Updates = () => {
       }
       const data = await r.json();
       setStatus(data.data ? data.data : data);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setStatus({
         update_available: false,
         local_version: 'error',
@@ -108,7 +71,7 @@ export const Updates = () => {
         changelog: null,
         released: null,
         last_checked: new Date().toISOString(),
-        error: e.message || 'Failed to check updates'
+        error: e instanceof Error ? e.message : 'Failed to check updates'
       });
     }
     setChecking(false);
@@ -129,13 +92,16 @@ export const Updates = () => {
       } else {
         setInstallResult(`❌ ${data.detail || 'Update failed'}`);
       }
-    } catch (e: any) {
-      setInstallResult(`❌ Update failed: ${e.message}`);
+    } catch (e: unknown) {
+      setInstallResult(`❌ Update failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
     setInstalling(false);
   };
 
-  useEffect(() => { checkForUpdates(); void loadCollegeTelemetry(); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void checkForUpdates(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   return (
     <div className="p-8 max-w-3xl mx-auto space-y-8">
@@ -278,43 +244,6 @@ export const Updates = () => {
             {installing ? t('updates_page.installing') : t('updates_page.install_update')}
           </button>
         )}
-      </div>
-
-      {/* OpenClaw College ecosystem intelligence */}
-      <div className="bg-shogun-card border border-shogun-border rounded-xl p-6 space-y-5">
-        <div className="flex items-start justify-between gap-5">
-          <div className="flex gap-3">
-            <div className="rounded-lg bg-cyan-500/10 p-2.5 text-cyan-300"><BarChart3 className="w-5 h-5" /></div>
-            <div>
-              <h3 className="text-sm font-semibold text-white">OpenClaw College ecosystem intelligence</h3>
-              <p className="mt-1 max-w-xl text-xs leading-relaxed text-shogun-subdued">
-                Contribute anonymous, coarse model-performance signals to ecosystem benchmarks. Sharing is on by default and can be disabled at any time.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={toggleCollegeTelemetry}
-            disabled={!collegeTelemetry || savingTelemetry}
-            className="shrink-0 text-cyan-300 disabled:opacity-40"
-            title={collegeTelemetry?.enabled ? 'Disable ecosystem sharing' : 'Enable ecosystem sharing'}
-          >
-            {collegeTelemetry?.enabled ? <ToggleRight className="h-9 w-9" /> : <ToggleLeft className="h-9 w-9 text-shogun-subdued" />}
-          </button>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
-            <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-emerald-300"><ShieldCheck className="h-3.5 w-3.5" /> Never shared</div>
-            <p className="text-[11px] leading-relaxed text-shogun-subdued">Prompts, outputs, files, agent names, credentials, exact IP addresses, or error contents.</p>
-          </div>
-          <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/[0.04] p-4">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-cyan-300">Coarse signals only</div>
-            <p className="text-[11px] leading-relaxed text-shogun-subdued">Model, provider, task category, success, bucketed usage, local/cloud, country code, Shogun version, and a weekly rotating anonymous ID.</p>
-          </div>
-        </div>
-        <div className="flex items-center justify-between text-[11px] text-shogun-subdued">
-          <span>Status: <strong className={collegeTelemetry?.enabled ? 'text-emerald-300' : 'text-shogun-text'}>{collegeTelemetry?.enabled ? 'Contributing anonymously' : 'Not sharing'}</strong></span>
-          <a href="https://www.openclawcollege.com/#/dashboard" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-cyan-300 hover:underline">View ecosystem insights <ExternalLink className="h-3 w-3" /></a>
-        </div>
       </div>
 
       {/* Info */}

@@ -1,8 +1,8 @@
 {
-  "version": "1.47.1",
+  "version": "1.47.2",
   "name": "Shogun OS",
-  "build": 152,
+  "build": 153,
   "channel": "stable",
-  "released": "2026-07-26T09:27:51Z",
-  "changelog": "Restore Google Calendar writes through the supported CalDAV v2 event collection and consolidate Mail and Calendar permissions under ToolGate Comms."
+  "released": "2026-07-26T09:37:59Z",
+  "changelog": "Move OpenClaw College ecosystem intelligence controls from Updates to the Privacy & Telemetry page."
 }
