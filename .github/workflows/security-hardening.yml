@@ -38,18 +38,28 @@ jobs:
             shogun/api/telemetry.py \
             shogun/config.py \
             shogun/integrations/a2a_client.py \
+            shogun/services/a2a_crypto.py \
+            shogun/services/request_context.py \
+            shogun/services/startup_notices.py \
             shogun/services/ssrf_guard.py \
             shogun/services/provider_credentials.py \
             shogun/nexus/security/outbound.py \
             shogun/telemetry \
             telemetry_service \
             gensui/app.py \
+            gensui/api/auth.py \
+            gensui/api/deps.py \
             gensui/config.py \
+            gensui/services/audit_service.py \
+            gensui/services/auth_service.py \
+            gensui/services/identity_service.py \
+            gensui/services/request_context.py \
             tests/test_ssrf_guard.py \
             tests/test_gensui_frontend.py \
             tests/test_install_telemetry.py \
             tests/test_telemetry_ingestion.py \
-            tests/test_red_team_hardening.py
+            tests/test_red_team_hardening.py \
+            tests/test_security_punch_list.py
       - name: Security regression tests
         # The repository-wide suite has unrelated pre-existing failures. Keep
         # this required gate scoped to the remediation's security regressions.
@@ -59,7 +69,8 @@ jobs:
             tests/test_gensui_frontend.py \
             tests/test_install_telemetry.py \
             tests/test_telemetry_ingestion.py \
-            tests/test_red_team_hardening.py
+            tests/test_red_team_hardening.py \
+            tests/test_security_punch_list.py
           python scripts/check-telemetry-privacy.py
 
   frontends:
@@ -186,6 +197,9 @@ jobs:
           done
           curl --fail --silent http://127.0.0.1:8787/
           curl --fail --silent http://127.0.0.1:8787/agents
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8787/docs)" = "404"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8787/redoc)" = "404"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8787/openapi.json)" = "404"
           login_json="$(curl --fail --silent \
             -H 'Content-Type: application/json' \
             -d '{"email":"admin@gensui.local","password":"ci-only-random-admin-password"}' \
@@ -223,6 +237,7 @@ jobs:
           sed -i 's/change-me-to-a-random-64-char-string/ci-application-secret-0123456789abcdefghijklmnopqrstuvwxyz/' .env.server
           sed -i 's/change-me-to-an-independent-random-64-char-string/ci-vault-secret-0123456789abcdefghijklmnopqrstuvwxyz/' .env.server
           sed -i 's/change-me-to-an-independent-infrastructure-admin-token/ci-infrastructure-token-0123456789abcdefghijklmnopqrstuvwxyz/' .env.server
+          sed -i 's/change-me-to-an-independent-a2a-encryption-key/ci-a2a-encryption-key-0123456789abcdefghijklmnopqrstuvwxyz/' .env.server
       - name: Scan Shogun image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:

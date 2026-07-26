@@ -1,8 +1,8 @@
 {
-  "version": "1.46.4",
+  "version": "1.47.0",
   "name": "Shogun OS",
-  "build": 150,
+  "build": 151,
   "channel": "stable",
-  "released": "2026-07-25T19:49:00Z",
-  "changelog": "Handle duplicate desktop launches cleanly, report foreign port conflicts clearly, and keep the control-plane token out of terminal output."
+  "released": "2026-07-26T09:11:34Z",
+  "changelog": "Harden Gensui sessions and network exposure, protect A2A workspace operations and peer secrets, bound replay defense, improve audit attribution, and surface startup migration warnings."
 }

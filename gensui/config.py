@@ -6,6 +6,8 @@ Completely independent from Shogun's config.
 
 from __future__ import annotations
 
+import os
+import secrets
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,7 +26,7 @@ class GensuiSettings(BaseSettings):
     )
 
     # ── Server ───────────────────────────────────────────────
-    gensui_server_host: str = "0.0.0.0"
+    gensui_server_host: str = "127.0.0.1"
     gensui_server_port: int = 8787
     debug: bool = False
 
@@ -32,9 +34,15 @@ class GensuiSettings(BaseSettings):
     gensui_database_url: str = f"sqlite+aiosqlite:///{GENSUI_ROOT / 'data' / 'gensui.db'}"
 
     # ── Security ─────────────────────────────────────────────
-    gensui_jwt_secret: str = "change-me-to-a-random-64-char-string"
+    # Raw values remain supported for backwards compatibility. New installs
+    # use a mounted secret file so signing material is not stored in .env.
+    gensui_jwt_secret: str | None = None
+    gensui_jwt_secret_file: Path = GENSUI_ROOT / "data" / "secrets" / "jwt_secret"
     gensui_jwt_algorithm: str = "HS256"
-    gensui_jwt_expire_hours: int = 24
+    gensui_access_token_minutes: int = 15
+    gensui_refresh_token_days: int = 7
+    gensui_cookie_secure: bool = False
+    gensui_trusted_proxies: str = ""
 
     # ── Initial Admin ────────────────────────────────────────
     gensui_admin_email: str = "admin@gensui.local"
@@ -65,14 +73,39 @@ class GensuiSettings(BaseSettings):
         for directory in [
             self.gensui_data_path,
             self.gensui_log_path,
+            self.gensui_jwt_secret_file.parent,
         ]:
             directory.mkdir(parents=True, exist_ok=True)
+        if not self.gensui_jwt_secret and not self.gensui_jwt_secret_file.exists():
+            secret = secrets.token_urlsafe(64) + "\n"
+            try:
+                descriptor = os.open(
+                    self.gensui_jwt_secret_file,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                )
+            except FileExistsError:
+                pass
+            else:
+                with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                    handle.write(secret)
+
+    @property
+    def jwt_secret(self) -> str:
+        """Resolve JWT signing material from a mounted file or legacy env value."""
+        if self.gensui_jwt_secret:
+            return self.gensui_jwt_secret.strip()
+        try:
+            return self.gensui_jwt_secret_file.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise RuntimeError("Gensui JWT secret file is unavailable") from exc
 
     def validate_security(self) -> None:
         """Refuse to expose Gensui with public placeholder credentials."""
 
-        if len(self.gensui_jwt_secret) < 32 or self.gensui_jwt_secret.startswith("change-me-"):
-            raise RuntimeError("GENSUI_JWT_SECRET must be a unique random value")
+        secret = self.jwt_secret
+        if len(secret) < 32 or secret.startswith("change-me-"):
+            raise RuntimeError("Gensui JWT signing secret must be a unique random value")
         if len(self.gensui_admin_password) < 12 or self.gensui_admin_password.startswith("change-me"):
             raise RuntimeError("GENSUI_ADMIN_PASSWORD must be a unique password of at least 12 characters")
 

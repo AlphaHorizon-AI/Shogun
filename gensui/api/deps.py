@@ -7,7 +7,7 @@ import hashlib
 import hmac
 from collections.abc import AsyncGenerator
 
-from fastapi import Depends, HTTPException, Header
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gensui.db.engine import get_async_session
@@ -21,16 +21,22 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def get_current_admin(
-    authorization: str = Header(None),
+    request: Request,
+    authorization: str | None = Header(None),
+    x_csrf_token: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Extract and validate the current admin from JWT token."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
-
-    token = authorization.split("Bearer ")[1]
+    """Validate an API bearer token or the browser's HttpOnly access cookie."""
+    bearer = authorization.removeprefix("Bearer ").strip() if authorization and authorization.startswith("Bearer ") else None
+    token = bearer or request.cookies.get("gensui_access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing authentication token")
+    if not bearer and request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+        csrf_cookie = request.cookies.get("gensui_csrf_token")
+        if not csrf_cookie or not x_csrf_token or not hmac.compare_digest(csrf_cookie, x_csrf_token):
+            raise HTTPException(status_code=403, detail="CSRF validation failed")
     try:
-        payload = AuthService.decode_token(token)
+        payload = AuthService.decode_token(token, expected_type="access")
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 

@@ -96,6 +96,10 @@ class EventLogger:
 
         Returns the event_id for reference.
         """
+        if ip_address is None:
+            from shogun.services.request_context import current_client_ip
+
+            ip_address = current_client_ip()
         event_id = f"evt_{uuid.uuid4().hex[:16]}"
 
         # ── Layer 1: Operational log (async SQLite via SQLAlchemy) ──

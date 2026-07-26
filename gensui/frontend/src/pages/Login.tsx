@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Eye, EyeOff } from 'lucide-react';
+import axios from 'axios';
+import { Eye, EyeOff } from 'lucide-react';
 import api from '../lib/api';
 import { setAuth } from '../lib/auth';
 import { useTranslation } from '../i18n';
@@ -20,10 +21,11 @@ export default function Login() {
     setLoading(true);
     try {
       const { data } = await api.post('/auth/login', { email, password });
-      setAuth(data.token, data.admin);
+      setAuth(data.admin);
       navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed');
+    } catch (err: unknown) {
+      const detail = axios.isAxiosError(err) ? err.response?.data?.detail : undefined;
+      setError(typeof detail === 'string' ? detail : 'Login failed');
     } finally {
       setLoading(false);
     }

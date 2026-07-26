@@ -19,8 +19,8 @@ log = logging.getLogger("gensui")
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown hooks."""
     # ── Startup ──────────────────────────────────────────────
-    gensui_settings.validate_security()
     gensui_settings.ensure_directories()
+    gensui_settings.validate_security()
 
     # Create all tables
     import gensui.db.models  # noqa: F401 — register models
@@ -78,10 +78,21 @@ def create_app() -> FastAPI:
         title="Gensui",
         description="Central Command & Security Control Plane for Shogun",
         version="0.1.0",
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url="/docs" if gensui_settings.debug else None,
+        redoc_url="/redoc" if gensui_settings.debug else None,
+        openapi_url="/openapi.json" if gensui_settings.debug else None,
         lifespan=lifespan,
     )
+
+    @app.middleware("http")
+    async def capture_request_metadata(request, call_next):
+        from gensui.services.request_context import begin_request, end_request
+
+        token = begin_request(request)
+        try:
+            return await call_next(request)
+        finally:
+            end_request(token)
 
     # CORS — allow admin UI connections
     app.add_middleware(

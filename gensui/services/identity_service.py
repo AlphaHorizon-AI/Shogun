@@ -17,7 +17,7 @@ import uuid
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import select, func, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gensui.config import gensui_settings
@@ -41,7 +41,7 @@ class IdentityService:
     def _hash_api_key(key: str) -> str:
         """Hash an API key using HMAC-SHA256."""
         return hmac.new(
-            gensui_settings.gensui_jwt_secret.encode("utf-8"),
+            gensui_settings.jwt_secret.encode("utf-8"),
             key.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
@@ -94,7 +94,7 @@ class IdentityService:
         result = await self.session.execute(
             select(ServiceAccount)
             .where(ServiceAccount.api_key_hash == key_hash)
-            .where(ServiceAccount.is_active == True)
+            .where(ServiceAccount.is_active.is_(True))
         )
         sa = result.scalars().first()
 
@@ -245,8 +245,8 @@ class IdentityService:
         """Get the primary (login page) SSO provider."""
         result = await self.session.execute(
             select(SSOProvider)
-            .where(SSOProvider.is_primary == True)
-            .where(SSOProvider.is_active == True)
+            .where(SSOProvider.is_primary.is_(True))
+            .where(SSOProvider.is_active.is_(True))
         )
         return result.scalars().first()
 
@@ -316,7 +316,7 @@ class IdentityService:
         from cryptography.fernet import Fernet
 
         key = base64.urlsafe_b64encode(
-            hashlib.sha256(f"gensui-sso:{gensui_settings.gensui_jwt_secret}".encode()).digest()
+            hashlib.sha256(f"gensui-sso:{gensui_settings.jwt_secret}".encode()).digest()
         )
         return "fernet:" + Fernet(key).encrypt(value.encode("utf-8")).decode("ascii")
 
@@ -330,13 +330,13 @@ class IdentityService:
 
         if encrypted.startswith("fernet:"):
             key = base64.urlsafe_b64encode(
-                hashlib.sha256(f"gensui-sso:{gensui_settings.gensui_jwt_secret}".encode()).digest()
+                hashlib.sha256(f"gensui-sso:{gensui_settings.jwt_secret}".encode()).digest()
             )
             return Fernet(key).decrypt(encrypted.removeprefix("fernet:").encode("ascii")).decode("utf-8")
 
         # Legacy XOR values are accepted only so an existing provider can be
         # loaded and re-saved with authenticated encryption.
-        key = gensui_settings.gensui_jwt_secret.encode("utf-8")
+        key = gensui_settings.jwt_secret.encode("utf-8")
         data = bytes.fromhex(encrypted)
         result = []
         for i, byte in enumerate(data):

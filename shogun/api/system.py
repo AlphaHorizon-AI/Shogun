@@ -82,6 +82,8 @@ async def get_system_health():
     """Return system health status for all components."""
     qdrant_status = await _check_qdrant()
     
+    from shogun.services.startup_notices import list_startup_notices
+
     return ApiResponse(
         success=True,
         data={
@@ -91,6 +93,7 @@ async def get_system_health():
             "telegram": "not_configured",
             "security_tier": "guarded",
             "active_samurai": 0,
+            "startup_warnings": list_startup_notices(),
         },
     )
 
@@ -162,6 +165,8 @@ async def get_overview(
     posture = await _get_agent_posture()
     security_tier = posture.get("active_tier", "tactical")
 
+    from shogun.services.startup_notices import list_startup_notices
+
     return ApiResponse(
         success=True,
         data={
@@ -182,6 +187,7 @@ async def get_overview(
                 {"type": "system", "message": "Database backup completed", "timestamp": "15 mins ago"},
                 {"type": "agent", "message": "Neural lattice synchronized", "timestamp": "Recent"},
             ],
+            "startup_warnings": list_startup_notices(),
         },
     )
 

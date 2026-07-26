@@ -89,12 +89,9 @@ if exist "frontend\package.json" (
 echo [6/7] Configuring environment...
 if not exist ".env" (
     copy ".env.example" ".env" >nul 2>&1
-    :: Generate random JWT secret
-    for /f %%i in ('python -c "import secrets; print(secrets.token_urlsafe(48))"') do set JWT_SECRET=%%i
     for /f %%i in ('python -c "import secrets; print(secrets.token_urlsafe(32))"') do set ADMIN_SECRET=%%i
-    powershell -Command "(Get-Content .env) -replace 'change-me-to-a-random-64-char-string', '%JWT_SECRET%' | Set-Content .env"
     powershell -Command "(Get-Content .env) -replace 'change-me-to-a-random-admin-password', '%ADMIN_SECRET%' | Set-Content .env"
-    echo        .env created with random secrets.
+    echo        .env created; JWT material will be generated in data\secrets.
 ) else (
     echo        .env already exists — keeping existing config.
 )
@@ -107,7 +104,7 @@ echo  :                                                          :
 echo  :   Installation complete!                                 :
 echo  :                                                          :
 echo  :   Gensui is starting at http://localhost:8787            :
-echo  :   API docs at http://localhost:8787/docs                 :
+echo  :   API docs are disabled unless DEBUG=true                :
 echo  :                                                          :
 echo  :   Admin: admin@gensui.local                              :
 echo  :   Password: stored in gensui\.env                       :

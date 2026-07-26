@@ -22,7 +22,7 @@ import logging
 import secrets
 import time
 import uuid
-from collections import defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -42,11 +42,13 @@ from shogun.integrations.a2a_client import (
     verify_signature,
 )
 from shogun.schemas.common import ApiResponse
+from shogun.services.a2a_crypto import protect_peer_secret, reveal_peer_secret
 from shogun.services.ssrf_guard import SSRFValidationError
 
 logger = logging.getLogger(__name__)
 _A2A_REPLAY_WINDOW_SECONDS = 300
-_seen_signatures: dict[str, float] = {}
+_A2A_REPLAY_CACHE_LIMIT = 10_000
+_seen_signatures: OrderedDict[str, float] = OrderedDict()
 _peer_requests: dict[str, deque[float]] = defaultdict(deque)
 
 # Two routers: one for the A2A protocol itself, one for Workspace CRUD
@@ -65,6 +67,18 @@ async def _get_primary_agent(db: AsyncSession) -> Agent | None:
 
 def _self_url(path: str = "/api/v1/a2a/inbound") -> str:
     """Build a fully qualified URL for this running instance."""
+    if settings.a2a_public_url:
+        from urllib.parse import urlsplit
+
+        public_url = settings.a2a_public_url.rstrip("/")
+        parsed = urlsplit(public_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise RuntimeError("A2A_PUBLIC_URL must be an absolute HTTP(S) URL")
+        if settings.deployment_mode == "server" and parsed.scheme != "https":
+            raise RuntimeError("A2A_PUBLIC_URL must use HTTPS in server mode")
+        return f"{public_url}{path}"
+    if settings.deployment_mode == "server":
+        raise RuntimeError("A2A_PUBLIC_URL is required for A2A in server mode")
     host = settings.api_host if settings.api_host != "0.0.0.0" else "localhost"
     port = settings.api_port
     return f"http://{host}:{port}{path}"
@@ -106,28 +120,54 @@ def _peer_dict(p: WorkspacePeer) -> dict:
 
 
 def _protect_peer_secret(secret: str) -> str:
-    from shogun.services.email_service import encrypt_password
-
-    return f"enc:{encrypt_password(secret)}"
+    return protect_peer_secret(secret)
 
 
 def _reveal_peer_secret(secret: str) -> str:
-    if not secret.startswith("enc:"):
-        return secret
-    from shogun.services.email_service import decrypt_password
+    return reveal_peer_secret(secret)
 
-    return decrypt_password(secret.removeprefix("enc:"))
+
+def _fanout_payload(
+    *,
+    from_name: str,
+    from_url: str,
+    workspace_id: str,
+    message_type: str,
+    content: str,
+    metadata: dict,
+) -> dict:
+    """Build an unsigned payload; each peer receives its own HMAC signature."""
+    return {
+        "from_name": from_name,
+        "from_url": from_url,
+        "workspace_id": workspace_id,
+        "message_type": message_type,
+        "content": content,
+        "metadata": metadata,
+        "ts": int(time.time()),
+    }
 
 
 def _check_a2a_replay(envelope: InboundEnvelope) -> None:
     now = time.time()
     if abs(now - envelope.ts) > _A2A_REPLAY_WINDOW_SECONDS:
         raise HTTPException(status_code=403, detail="A2A message timestamp is outside the accepted window")
-    for signature, seen_at in list(_seen_signatures.items()):
-        if seen_at < now - _A2A_REPLAY_WINDOW_SECONDS:
-            _seen_signatures.pop(signature, None)
+    cutoff = now - _A2A_REPLAY_WINDOW_SECONDS
+    while _seen_signatures:
+        signature, seen_at = next(iter(_seen_signatures.items()))
+        if seen_at >= cutoff:
+            break
+        _seen_signatures.pop(signature, None)
     if envelope.sig in _seen_signatures:
         raise HTTPException(status_code=409, detail="A2A message was already received")
+
+
+def _remember_a2a_signature(signature: str, seen_at: float) -> None:
+    if signature in _seen_signatures:
+        raise HTTPException(status_code=409, detail="A2A message was already received")
+    while len(_seen_signatures) >= _A2A_REPLAY_CACHE_LIMIT:
+        _seen_signatures.popitem(last=False)
+    _seen_signatures[signature] = seen_at
 
 
 def _msg_dict(m: WorkspaceMessage) -> dict:
@@ -233,8 +273,6 @@ async def a2a_inbound(
         "metadata": envelope.metadata,
         "ts": envelope.ts,
     }
-    _check_a2a_replay(envelope)
-
     # Find the peer to get their shared_secret
     try:
         ws_id = uuid.UUID(envelope.workspace_id)
@@ -253,6 +291,7 @@ async def a2a_inbound(
         raise HTTPException(status_code=403, detail="Unknown or untrusted A2A peer")
     if not verify_signature(unsigned, envelope.sig, _reveal_peer_secret(peer.shared_secret)):
         raise HTTPException(status_code=403, detail="Invalid A2A signature")
+    _check_a2a_replay(envelope)
     now = time.time()
     attempts = _peer_requests[envelope.from_url]
     while attempts and attempts[0] < now - 60:
@@ -260,7 +299,7 @@ async def a2a_inbound(
     if len(attempts) >= 60:
         raise HTTPException(status_code=429, detail="A2A peer rate limit exceeded")
     attempts.append(now)
-    _seen_signatures[envelope.sig] = now
+    _remember_a2a_signature(envelope.sig, now)
     peer.last_seen_at = datetime.now(timezone.utc)
     if peer.status == "pending":
         peer.status = "active"
@@ -318,6 +357,7 @@ async def list_workspaces(db: AsyncSession = Depends(get_db)):
 async def create_workspace(
     body: CreateWorkspaceRequest,
     db: AsyncSession = Depends(get_db),
+    _actor: str = Depends(require_infrastructure_admin),
 ):
     """Create a new workspace and seed a system message."""
     agent = await _get_primary_agent(db)
@@ -390,6 +430,7 @@ async def patch_workspace(
     workspace_id: uuid.UUID,
     body: PatchWorkspaceRequest,
     db: AsyncSession = Depends(get_db),
+    _actor: str = Depends(require_infrastructure_admin),
 ):
     ws = await db.get(Workspace, workspace_id)
     if not ws:
@@ -430,14 +471,13 @@ async def patch_document(
 
     # Fan-out doc update to peers
     agent = await _get_primary_agent(db)
-    envelope = build_envelope(
+    envelope = _fanout_payload(
         from_name=agent.name if agent else "Shogun",
         from_url=_self_url(),
         workspace_id=str(workspace_id),
         message_type="plan_revision",
         content=body.content,
         metadata={"document_version": ws.document_version},
-        secret=settings.secret_key,
     )
     background_tasks.add_task(_fan_out, str(workspace_id), envelope, db)
 
@@ -451,6 +491,7 @@ async def patch_document(
 async def delete_workspace(
     workspace_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    _actor: str = Depends(require_infrastructure_admin),
 ):
     """Permanently delete a workspace and all its peers and messages."""
     ws = await db.get(Workspace, workspace_id)
@@ -571,6 +612,7 @@ async def update_peer_status(
     peer_id: uuid.UUID,
     body: PatchPeerStatusRequest,
     db: AsyncSession = Depends(get_db),
+    _actor: str = Depends(require_infrastructure_admin),
 ):
     peer = await db.get(WorkspacePeer, peer_id)
     if not peer or peer.workspace_id != workspace_id:
@@ -586,6 +628,7 @@ async def remove_peer(
     workspace_id: uuid.UUID,
     peer_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    _actor: str = Depends(require_infrastructure_admin),
 ):
     peer = await db.get(WorkspacePeer, peer_id)
     if not peer or peer.workspace_id != workspace_id:
@@ -661,14 +704,13 @@ async def post_message(
     await db.refresh(msg)
 
     # Fan-out to peers in background
-    envelope = build_envelope(
+    envelope = _fanout_payload(
         from_name=agent.name if agent else "Shogun",
         from_url=_self_url(),
         workspace_id=str(workspace_id),
         message_type=body.message_type,
         content=body.content,
         metadata={**body.metadata, "local_message_id": str(msg.id)},
-        secret=settings.secret_key,
     )
     background_tasks.add_task(_fan_out, str(workspace_id), envelope, db)
 

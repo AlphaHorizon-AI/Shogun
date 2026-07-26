@@ -39,7 +39,7 @@ The Gensui Dockerfile must be built from the repository root:
 docker build -f gensui/Dockerfile .
 cd gensui
 cp .env.example .env
-# Replace both change-me secrets.
+# Replace the administrator password placeholder.
 docker compose up -d --build
 ```
 
@@ -48,9 +48,10 @@ capability, enables `no-new-privileges`, uses a read-only root filesystem, and
 writes only to `/app/data`, `/app/logs`, and `/tmp`. The optional `server`
 profile starts Nginx for operator-supplied TLS certificates.
 
-The one-click installers generate both the JWT secret and initial administrator
-password. The password is stored in the protected `.env` file and must be
-rotated after first login.
+The one-click installers generate the initial administrator password in the
+protected `.env` file. JWT signing material is generated separately in the
+persistent `data/secrets` volume and is never written to `.env`. Rotate the
+administrator password after first login.
 
 ## Existing Gensui volume migration
 

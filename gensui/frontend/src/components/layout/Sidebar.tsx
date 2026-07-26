@@ -6,6 +6,7 @@ import {
   Network, Settings, BookOpen, BarChart3, Key, Globe, LockKeyhole
 } from 'lucide-react';
 import { clearAuth, getAdmin } from '../../lib/auth';
+import api from '../../lib/api';
 import { useTranslation } from '../../i18n';
 
 const NAV_ITEMS = [
@@ -33,6 +34,11 @@ export default function Sidebar() {
   const { t, language, setLanguage, languages } = useTranslation();
   const [showLangPicker, setShowLangPicker] = useState(false);
   const currentLang = languages.find(l => l.code === language);
+  const logout = async () => {
+    try { await api.post('/auth/logout'); } catch { /* clear local state regardless */ }
+    clearAuth();
+    window.location.href = '/login';
+  };
 
   return (
     <aside className={`flex flex-col h-screen bg-gensui-800/40 border-r border-gensui-700/30 transition-all duration-300 ${collapsed ? 'w-16' : 'w-64'}`}>
@@ -120,7 +126,7 @@ export default function Sidebar() {
               <p className="text-[10px] text-gensui-500 uppercase">{admin.role}</p>
             </div>
             <button
-              onClick={() => { clearAuth(); window.location.href = '/login'; }}
+              onClick={logout}
               className="p-1.5 text-gensui-500 hover:text-crimson-400 transition-colors"
               title="Logout"
             >
@@ -130,7 +136,7 @@ export default function Sidebar() {
         )}
         {collapsed && (
           <button
-            onClick={() => { clearAuth(); window.location.href = '/login'; }}
+            onClick={logout}
             className="w-full flex justify-center p-2 text-gensui-500 hover:text-crimson-400 transition-colors"
             title="Logout"
           >

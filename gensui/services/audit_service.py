@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import select, func
@@ -35,7 +34,7 @@ class AuditService:
         """Compute HMAC-SHA256 hash chained to the previous entry."""
         chain = (previous_hash or "genesis") + payload
         return hmac.new(
-            gensui_settings.gensui_jwt_secret.encode("utf-8"),
+            gensui_settings.jwt_secret.encode("utf-8"),
             chain.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
@@ -55,6 +54,11 @@ class AuditService:
         metadata_json: dict | None = None,
     ) -> AuditLog:
         """Append a new audit log entry with HMAC chain."""
+        from gensui.services.request_context import current_request_metadata
+
+        request_ip, request_user_agent = current_request_metadata()
+        ip_address = ip_address or request_ip
+        user_agent = user_agent or request_user_agent
         previous_hash = await self._get_last_hash()
 
         # Build payload for hashing

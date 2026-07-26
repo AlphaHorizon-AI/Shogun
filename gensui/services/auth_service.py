@@ -35,30 +35,57 @@ class AuthService:
     # ── JWT Tokens ───────────────────────────────────────────
 
     @staticmethod
-    def create_token(admin_id: str, email: str, role: str) -> str:
-        """Create a JWT access token."""
+    def _create_token(admin_id: str, email: str, role: str, token_type: str) -> str:
+        """Create a typed, short-lived JWT."""
+        if token_type == "access":
+            expires = datetime.now(timezone.utc) + timedelta(
+                minutes=gensui_settings.gensui_access_token_minutes
+            )
+        elif token_type == "refresh":
+            expires = datetime.now(timezone.utc) + timedelta(
+                days=gensui_settings.gensui_refresh_token_days
+            )
+        else:
+            raise ValueError("Unsupported token type")
         payload = {
             "sub": admin_id,
             "email": email,
             "role": role,
+            "type": token_type,
             "iat": datetime.now(timezone.utc),
-            "exp": datetime.now(timezone.utc) + timedelta(hours=gensui_settings.gensui_jwt_expire_hours),
+            "exp": expires,
             "jti": uuid.uuid4().hex,
         }
         return jwt.encode(
             payload,
-            gensui_settings.gensui_jwt_secret,
+            gensui_settings.jwt_secret,
             algorithm=gensui_settings.gensui_jwt_algorithm,
         )
 
     @staticmethod
-    def decode_token(token: str) -> dict:
-        """Decode and validate a JWT token."""
-        return jwt.decode(
+    def create_access_token(admin_id: str, email: str, role: str) -> str:
+        return AuthService._create_token(admin_id, email, role, "access")
+
+    @staticmethod
+    def create_refresh_token(admin_id: str, email: str, role: str) -> str:
+        return AuthService._create_token(admin_id, email, role, "refresh")
+
+    @staticmethod
+    def create_token(admin_id: str, email: str, role: str) -> str:
+        """Compatibility alias for non-browser API clients."""
+        return AuthService.create_access_token(admin_id, email, role)
+
+    @staticmethod
+    def decode_token(token: str, expected_type: str = "access") -> dict:
+        """Decode and validate a typed JWT token."""
+        payload = jwt.decode(
             token,
-            gensui_settings.gensui_jwt_secret,
+            gensui_settings.jwt_secret,
             algorithms=[gensui_settings.gensui_jwt_algorithm],
         )
+        if payload.get("type", "access") != expected_type:
+            raise jwt.InvalidTokenError("Unexpected token type")
+        return payload
 
     # ── Admin CRUD ───────────────────────────────────────────
 
@@ -110,6 +137,6 @@ class AuthService:
     async def list_admins(self) -> list[AdminUser]:
         """List all admin users."""
         result = await self.session.execute(
-            select(AdminUser).where(AdminUser.is_active == True)
+            select(AdminUser).where(AdminUser.is_active.is_(True))
         )
         return list(result.scalars().all())

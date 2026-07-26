@@ -199,7 +199,18 @@ async def lifespan(app: FastAPI):
     # Startup
     settings.validate_security()
     settings.ensure_directories()
-    await _upgrade_database_schema()
+    try:
+        await _upgrade_database_schema()
+    except Exception:
+        from shogun.services.startup_notices import record_startup_notice
+
+        record_startup_notice(
+            "database_migration_failed",
+            "A database migration did not complete. Run Shogun Repair/Update before restarting.",
+            severity="error",
+        )
+        logging.getLogger(__name__).exception("Database migration failed during startup")
+        raise
 
     from shogun.db.engine import async_session_factory
     from shogun.services.provider_credentials import migrate_provider_credentials
@@ -327,6 +338,12 @@ async def lifespan(app: FastAPI):
         from shogun.services.stack_orchestrator import recover_interrupted_stack_runs
         await recover_interrupted_stack_runs()
     except Exception:
+        from shogun.services.startup_notices import record_startup_notice
+
+        record_startup_notice(
+            "database_repair_incomplete",
+            "A legacy database repair could not be completed. Some Tenshu features may be unavailable.",
+        )
         logging.getLogger(__name__).exception("Critical database initialization failed")
         if settings.deployment_mode == "server":
             raise
@@ -346,6 +363,12 @@ async def lifespan(app: FastAPI):
                 ))
                 logging.getLogger(__name__).info("Migrated skill_installations: added openclaw_skill_id column")
     except Exception:
+        from shogun.services.startup_notices import record_startup_notice
+
+        record_startup_notice(
+            "skill_schema_repair_incomplete",
+            "The installed-skill schema repair could not be completed.",
+        )
         logging.getLogger(__name__).exception("Skill installation schema migration failed")
         if settings.deployment_mode == "server":
             raise
@@ -585,6 +608,16 @@ def create_app() -> FastAPI:
     app.middleware("http")(enforce_control_plane_access)
     app.middleware("http")(enforce_rate_limit)
     app.middleware("http")(add_security_headers)
+
+    @app.middleware("http")
+    async def capture_request_metadata(request, call_next):
+        from shogun.services.request_context import begin_request, end_request
+
+        token = begin_request(request)
+        try:
+            return await call_next(request)
+        finally:
+            end_request(token)
 
     # The desktop UI is same-origin. Permit only explicit loopback origins for
     # development clients instead of granting arbitrary websites API access.

@@ -78,6 +78,9 @@ class Settings(BaseSettings):
             "INFRASTRUCTURE_ADMIN_TOKEN",
         ),
     )
+    a2a_public_url: str | None = None
+    a2a_encryption_key: str | None = None
+    trusted_proxies: str = ""
     a2a_destination_policy: Literal[
         "public_only", "private_allowed", "loopback_allowed", "allowlist_only"
     ] = "private_allowed"
@@ -238,6 +241,12 @@ class Settings(BaseSettings):
             or self.infrastructure_admin_token.casefold().startswith("change-me")
         ):
             invalid.append("SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN")
+        if (
+            not self.a2a_encryption_key
+            or len(self.a2a_encryption_key) < 32
+            or self.a2a_encryption_key.casefold().startswith("change-me")
+        ):
+            invalid.append("A2A_ENCRYPTION_KEY")
         if invalid:
             raise RuntimeError(
                 "Secure server configuration required for: " + ", ".join(invalid)

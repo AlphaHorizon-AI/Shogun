@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import time
+import hmac
+import secrets
 import uuid
 from collections import deque
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gensui.api.deps import get_db, get_current_admin
+from gensui.config import gensui_settings
 from gensui.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -49,8 +52,55 @@ class AdminProfile(BaseModel):
     display_name: str
 
 
+def _admin_payload(admin) -> dict:
+    return {
+        "id": str(admin.id),
+        "email": admin.email,
+        "role": admin.role,
+        "display_name": admin.display_name,
+    }
+
+
+def _issue_browser_session(response: Response, admin) -> str:
+    access = AuthService.create_access_token(str(admin.id), admin.email, admin.role)
+    refresh = AuthService.create_refresh_token(str(admin.id), admin.email, admin.role)
+    csrf = secrets.token_urlsafe(32)
+    common = {
+        "secure": gensui_settings.gensui_cookie_secure,
+        "samesite": "strict",
+        "path": "/",
+    }
+    response.set_cookie(
+        "gensui_access_token",
+        access,
+        httponly=True,
+        max_age=gensui_settings.gensui_access_token_minutes * 60,
+        **common,
+    )
+    response.set_cookie(
+        "gensui_refresh_token",
+        refresh,
+        httponly=True,
+        max_age=gensui_settings.gensui_refresh_token_days * 86_400,
+        **common,
+    )
+    response.set_cookie(
+        "gensui_csrf_token",
+        csrf,
+        httponly=False,
+        max_age=gensui_settings.gensui_refresh_token_days * 86_400,
+        **common,
+    )
+    return access
+
+
 @router.post("/login", response_model=LoginResponse)
-async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+async def login(
+    req: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     """Authenticate an admin user and return a JWT token."""
     client = request.client.host if request.client else "unknown"
     _check_login_rate(client)
@@ -59,18 +109,45 @@ async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(
     if admin is None:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    token = AuthService.create_token(str(admin.id), admin.email, admin.role)
+    token = _issue_browser_session(response, admin)
     _login_attempts.pop(client, None)
 
     return LoginResponse(
         token=token,
-        admin={
-            "id": str(admin.id),
-            "email": admin.email,
-            "role": admin.role,
-            "display_name": admin.display_name,
-        },
+        admin=_admin_payload(admin),
     )
+
+
+@router.post("/refresh", response_model=LoginResponse)
+async def refresh_session(
+    request: Request,
+    response: Response,
+    x_csrf_token: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    csrf_cookie = request.cookies.get("gensui_csrf_token")
+    if not csrf_cookie or not x_csrf_token or not hmac.compare_digest(csrf_cookie, x_csrf_token):
+        raise HTTPException(status_code=403, detail="CSRF validation failed")
+    refresh_token = request.cookies.get("gensui_refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Missing refresh token")
+    try:
+        payload = AuthService.decode_token(refresh_token, expected_type="refresh")
+        admin_id = uuid.UUID(payload["sub"])
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token") from exc
+    admin = await AuthService(db).get_by_id(admin_id)
+    if admin is None or not admin.is_active:
+        raise HTTPException(status_code=401, detail="Admin account not found or inactive")
+    access = _issue_browser_session(response, admin)
+    return LoginResponse(token=access, admin=_admin_payload(admin))
+
+
+@router.post("/logout")
+async def logout(response: Response, _admin: dict = Depends(get_current_admin)):
+    for name in ("gensui_access_token", "gensui_refresh_token", "gensui_csrf_token"):
+        response.delete_cookie(name, path="/")
+    return {"status": "ok"}
 
 
 @router.get("/me")

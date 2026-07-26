@@ -49,6 +49,9 @@ def _secure_env_file(env_path: Path) -> None:
     ).replace(
         "SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN=change-me-to-a-random-infrastructure-token",
         f"SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN={secrets.token_urlsafe(48)}",
+    ).replace(
+        "A2A_ENCRYPTION_KEY=change-me-to-a-dedicated-a2a-encryption-key",
+        f"A2A_ENCRYPTION_KEY={secrets.token_urlsafe(48)}",
     )
     if "SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN=\n" in secured:
         secured = secured.replace(
@@ -61,6 +64,8 @@ def _secure_env_file(env_path: Path) -> None:
         secured = secured.rstrip() + (
             f"\nSHOGUN_INFRASTRUCTURE_ADMIN_TOKEN={secrets.token_urlsafe(48)}\n"
         )
+    if "A2A_ENCRYPTION_KEY=" not in secured:
+        secured = secured.rstrip() + f"\nA2A_ENCRYPTION_KEY={secrets.token_urlsafe(48)}\n"
     if "DEPLOYMENT_MODE=server" not in secured:
         secured = secured.replace("API_HOST=0.0.0.0", "API_HOST=127.0.0.1")
     if secured != text:
@@ -98,6 +103,8 @@ def _ensure_env_file() -> None:
         f"QDRANT_PATH={project_root}/data/qdrant\n"
         f"SECRET_KEY={secrets.token_urlsafe(48)}\n"
         f"VAULT_ENCRYPTION_KEY={secrets.token_urlsafe(48)}\n"
+        f"SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN={secrets.token_urlsafe(48)}\n"
+        f"A2A_ENCRYPTION_KEY={secrets.token_urlsafe(48)}\n"
         f"VAULT_PATH={project_root}/vault\n"
         f"LOG_PATH={project_root}/logs\n"
         f"CONFIG_PATH={project_root}/configs\n",

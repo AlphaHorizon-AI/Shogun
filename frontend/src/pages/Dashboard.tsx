@@ -25,6 +25,11 @@ import { Link } from 'react-router-dom';
 import { HarakiriModal } from '../components/HarakiriModal';
 import { useTranslation } from '../i18n';
 
+interface StartupWarning {
+  id: string;
+  message: string;
+}
+
 const StatCard = ({ title, value, status, icon: Icon, colorClass, trend, to }: any) => {
   const content = (
     <div className={cn("shogun-card group transition-all duration-300 relative overflow-hidden", to && "cursor-pointer hover:border-shogun-blue/50 hover:shadow-lg hover:shadow-shogun-blue/5")}>
@@ -145,6 +150,16 @@ export const Dashboard = () => {
           </button>
         </div>
       )}
+
+      {((data?.startup_warnings || []) as StartupWarning[]).slice(0, 3).map((warning) => (
+        <div key={warning.id} className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/35 rounded-xl">
+          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-bold text-amber-300 uppercase tracking-wider">Startup migration warning</p>
+            <p className="text-[11px] text-amber-100/80 mt-1">{warning.message}</p>
+          </div>
+        </div>
+      ))}
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
