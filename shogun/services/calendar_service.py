@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone, timedelta
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import quote
 
 import caldav
 from fastapi import HTTPException
@@ -15,7 +16,50 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shogun.db.models.email_account import EmailAccount
 from shogun.schemas.channels import CalendarEventCreate, CalendarEventResponse
 from shogun.services.base_service import BaseService
+from shogun.services.comms_permissions import require_comms_permission
 from shogun.services.email_service import decrypt_password
+
+_GOOGLE_CALDAV_PREFIX = "https://apidata.googleusercontent.com/caldav/"
+
+
+def google_caldav_url(email_address: str, calendar_id: str | None = None) -> str:
+    """Return Google's supported v2 event-collection URL."""
+    identifier = (calendar_id or email_address).strip()
+    if identifier.casefold() == "primary":
+        identifier = email_address.strip()
+    return f"{_GOOGLE_CALDAV_PREFIX}v2/{quote(identifier, safe='')}/events"
+
+
+def _calendar_url(acc: EmailAccount) -> str:
+    credentials = acc.calendar_credentials or {}
+    configured = (acc.caldav_url or "").strip()
+    if acc.calendar_provider == "google_api" or configured.startswith(_GOOGLE_CALDAV_PREFIX):
+        calendar_id = credentials.get("calendar_id") if isinstance(credentials, dict) else None
+        return google_caldav_url(acc.email_address, calendar_id)
+    return configured
+
+
+def _dav_client(acc: EmailAccount) -> caldav.DAVClient:
+    password = decrypt_password(acc.encrypted_password)
+    credentials = acc.calendar_credentials or {}
+    access_token = credentials.get("access_token") if isinstance(credentials, dict) else None
+    if access_token:
+        return caldav.DAVClient(
+            url=_calendar_url(acc),
+            password=str(access_token),
+            auth_type="bearer",
+        )
+    return caldav.DAVClient(
+        url=_calendar_url(acc),
+        username=acc.username,
+        password=password,
+    )
+
+
+def _calendars(acc: EmailAccount, client: caldav.DAVClient) -> list[caldav.Calendar]:
+    if acc.calendar_provider == "google_api" or _calendar_url(acc).startswith(_GOOGLE_CALDAV_PREFIX):
+        return [caldav.Calendar(client=client, url=_calendar_url(acc))]
+    return client.principal().calendars()
 
 
 def parse_ical_date(val: str) -> datetime:
@@ -69,7 +113,7 @@ def parse_ical(ical_text: str) -> dict[str, Any]:
 
 
 class CalendarService(BaseService[EmailAccount]):
-    """Service to handle CalDAV calendar operations governed by Katana permissions."""
+    """Handle CalDAV operations governed by ToolGate's Comms policy."""
 
     def __init__(self, session: AsyncSession):
         super().__init__(EmailAccount, session)
@@ -84,22 +128,14 @@ class CalendarService(BaseService[EmailAccount]):
         acc = await self.get_account()
         if not acc:
             raise HTTPException(status_code=404, detail="No email/calendar account configured")
-        if not acc.perm_read_calendar:
-            raise HTTPException(status_code=403, detail="Permission denied: perm_read_calendar is disabled")
+        await require_comms_permission("perm_read_calendar")
 
         # 1. Fetch CalDAV events if configured
         caldav_events = []
         if acc.calendar_provider != "none" and acc.caldav_url:
-            password = decrypt_password(acc.encrypted_password)
-
             def _fetch():
-                client = caldav.DAVClient(
-                    url=acc.caldav_url,
-                    username=acc.username,
-                    password=password,
-                )
-                principal = client.principal()
-                calendars = principal.calendars()
+                client = _dav_client(acc)
+                calendars = _calendars(acc, client)
 
                 parsed_events = []
                 for cal in calendars:
@@ -133,7 +169,7 @@ class CalendarService(BaseService[EmailAccount]):
         cron_events = []
         try:
             from shogun.db.models.bushido import BushidoSchedule
-            stmt = select(BushidoSchedule).where(BushidoSchedule.is_enabled == True)
+            stmt = select(BushidoSchedule).where(BushidoSchedule.is_enabled.is_(True))
             result = await self.session.execute(stmt)
             schedules = result.scalars().all()
 
@@ -233,7 +269,10 @@ class CalendarService(BaseService[EmailAccount]):
                         start=occ,
                         end=occ + timedelta(minutes=30),
                         location="Shogun Operations",
-                        description=f"Job Type: {sched.job_type}\nFrequency: {sched.frequency}\nInstruction: {sched.task_instruction or 'None'}",
+                        description=(
+                            f"Job Type: {sched.job_type}\nFrequency: {sched.frequency}\n"
+                            f"Instruction: {sched.task_instruction or 'None'}"
+                        ),
                         all_day=False,
                         color="cron_job",
                     ))
@@ -248,22 +287,15 @@ class CalendarService(BaseService[EmailAccount]):
         acc = await self.get_account()
         if not acc:
             raise HTTPException(status_code=404, detail="No email/calendar account configured")
-        if not acc.perm_create_events:
-            raise HTTPException(status_code=403, detail="Permission denied: perm_create_events is disabled")
+        await require_comms_permission("perm_create_events")
         if acc.calendar_provider == "none" or not acc.caldav_url:
             raise HTTPException(status_code=400, detail="Calendar integration is not configured or enabled")
 
-        password = decrypt_password(acc.encrypted_password)
         uid = str(uuid.uuid4())
 
         def _create():
-            client = caldav.DAVClient(
-                url=acc.caldav_url,
-                username=acc.username,
-                password=password,
-            )
-            principal = client.principal()
-            calendars = principal.calendars()
+            client = _dav_client(acc)
+            calendars = _calendars(acc, client)
             if not calendars:
                 raise Exception("No calendars found on the server.")
 
@@ -307,25 +339,20 @@ END:VCALENDAR"""
     async def update_event(self, event_id: str, data: CalendarEventCreate) -> CalendarEventResponse:
         """Update an event by deleting and re-creating it with the same ID."""
         if event_id.startswith("cron_"):
-            raise HTTPException(status_code=400, detail="Cannot edit system cron job events from the calendar. Please manage them from the Operations dashboard.")
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot edit system cron job events from the calendar. Manage them from Operations.",
+            )
         acc = await self.get_account()
         if not acc:
             raise HTTPException(status_code=404, detail="No email/calendar account configured")
-        if not acc.perm_edit_events:
-            raise HTTPException(status_code=403, detail="Permission denied: perm_edit_events is disabled")
+        await require_comms_permission("perm_edit_events")
         if acc.calendar_provider == "none" or not acc.caldav_url:
             raise HTTPException(status_code=400, detail="Calendar integration is not configured or enabled")
 
-        password = decrypt_password(acc.encrypted_password)
-
         def _update():
-            client = caldav.DAVClient(
-                url=acc.caldav_url,
-                username=acc.username,
-                password=password,
-            )
-            principal = client.principal()
-            calendars = principal.calendars()
+            client = _dav_client(acc)
+            calendars = _calendars(acc, client)
 
             # Delete existing
             deleted = False
@@ -381,25 +408,20 @@ END:VCALENDAR"""
     async def delete_event(self, event_id: str) -> dict[str, Any]:
         """Delete an event via CalDAV."""
         if event_id.startswith("cron_"):
-            raise HTTPException(status_code=400, detail="Cannot delete system cron job events from the calendar. Please manage them from the Operations dashboard.")
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete system cron job events from the calendar. Manage them from Operations.",
+            )
         acc = await self.get_account()
         if not acc:
             raise HTTPException(status_code=404, detail="No email/calendar account configured")
-        if not acc.perm_delete_events:
-            raise HTTPException(status_code=403, detail="Permission denied: perm_delete_events is disabled")
+        await require_comms_permission("perm_delete_events")
         if acc.calendar_provider == "none" or not acc.caldav_url:
             raise HTTPException(status_code=400, detail="Calendar integration is not configured or enabled")
 
-        password = decrypt_password(acc.encrypted_password)
-
         def _delete():
-            client = caldav.DAVClient(
-                url=acc.caldav_url,
-                username=acc.username,
-                password=password,
-            )
-            principal = client.principal()
-            calendars = principal.calendars()
+            client = _dav_client(acc)
+            calendars = _calendars(acc, client)
 
             deleted = False
             for cal in calendars:

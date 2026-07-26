@@ -35,10 +35,14 @@ jobs:
             shogun/api/control_plane_auth.py \
             shogun/api/gensui_config.py \
             shogun/api/infrastructure_auth.py \
+            shogun/api/email.py \
             shogun/api/telemetry.py \
             shogun/config.py \
             shogun/integrations/a2a_client.py \
             shogun/services/a2a_crypto.py \
+            shogun/services/calendar_service.py \
+            shogun/services/comms_permissions.py \
+            shogun/services/email_service.py \
             shogun/services/request_context.py \
             shogun/services/startup_notices.py \
             shogun/services/ssrf_guard.py \
@@ -59,6 +63,7 @@ jobs:
             tests/test_install_telemetry.py \
             tests/test_telemetry_ingestion.py \
             tests/test_red_team_hardening.py \
+            tests/test_calendar_permissions.py \
             tests/test_security_punch_list.py
       - name: Security regression tests
         # The repository-wide suite has unrelated pre-existing failures. Keep
@@ -70,6 +75,7 @@ jobs:
             tests/test_install_telemetry.py \
             tests/test_telemetry_ingestion.py \
             tests/test_red_team_hardening.py \
+            tests/test_calendar_permissions.py \
             tests/test_security_punch_list.py
           python scripts/check-telemetry-privacy.py
 

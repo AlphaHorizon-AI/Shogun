@@ -337,22 +337,13 @@ export function Katana() {
     smtp_use_ssl: true,
     username: '',
     password: '',
-    caldav_url: 'https://apidata.googleusercontent.com/caldav/v1/calendars/primary/events',
+    caldav_url: '',
     calendar_provider: 'google_api',
     calendar_credentials: null as any,
   });
   const [mailSaving, setMailSaving] = useState(false);
   const [mailTesting, setMailTesting] = useState(false);
   const [mailTestResult, setMailTestResult] = useState<{ ok: boolean; imap_ok: boolean; smtp_ok: boolean; message?: string } | null>(null);
-  const [mailPermissions, setMailPermissions] = useState({
-    perm_read_mail: true,
-    perm_send_mail: false,
-    perm_delete_mail: false,
-    perm_read_calendar: true,
-    perm_create_events: false,
-    perm_edit_events: false,
-    perm_delete_events: false,
-  });
   const [showMailPassword, setShowMailPassword] = useState(false);
 
   // ── Office App Mode state ─────────────────────────────────────
@@ -740,7 +731,7 @@ export function Katana() {
         smtp_host: 'smtp.gmail.com',
         smtp_port: 587,
         smtp_use_ssl: true,
-        caldav_url: 'https://apidata.googleusercontent.com/caldav/v1/calendars/primary/events',
+        caldav_url: '',
         calendar_provider: 'google_api',
       }));
     } else if (prov === 'outlook') {
@@ -793,15 +784,6 @@ export function Katana() {
           calendar_provider: acc.calendar_provider || 'none',
           calendar_credentials: acc.calendar_credentials || null,
         });
-        setMailPermissions({
-          perm_read_mail: acc.perm_read_mail,
-          perm_send_mail: acc.perm_send_mail,
-          perm_delete_mail: acc.perm_delete_mail,
-          perm_read_calendar: acc.perm_read_calendar,
-          perm_create_events: acc.perm_create_events,
-          perm_edit_events: acc.perm_edit_events,
-          perm_delete_events: acc.perm_delete_events,
-        });
       }
     } catch { /* ignore */ }
   };
@@ -841,7 +823,7 @@ export function Katana() {
         smtp_use_ssl: true,
         username: '',
         password: '',
-        caldav_url: 'https://apidata.googleusercontent.com/caldav/v1/calendars/primary/events',
+        caldav_url: '',
         calendar_provider: 'google_api',
         calendar_credentials: null,
       });
@@ -863,20 +845,6 @@ export function Katana() {
       setMailTestResult({ ok: false, imap_ok: false, smtp_ok: false, message: e.response?.data?.detail || e.message || 'Test request failed' });
     } finally {
       setMailTesting(false);
-    }
-  };
-
-  const handleMailSavePermissions = async () => {
-    setMailSaving(true);
-    try {
-      const res = await axios.patch('/api/v1/channels/email/account/permissions', mailPermissions);
-      setMailAccount(res.data.data);
-      setStatusMessage({ type: 'success', text: 'Permissions updated successfully!' });
-    } catch {
-      setStatusMessage({ type: 'error', text: 'Failed to update permissions.' });
-    } finally {
-      setMailSaving(false);
-      setTimeout(() => setStatusMessage(null), 3000);
     }
   };
 
@@ -3813,58 +3781,8 @@ export function Katana() {
                 </div>
               </div>
 
-              {/* Right Column: Permissions & Setup Guides */}
+              {/* Right Column: Setup guides */}
               <div className="lg:col-span-2 space-y-5">
-                {/* Permissions Panel */}
-                {mailAccount && (
-                  <div className="shogun-card space-y-4">
-                    <h4 className="text-sm font-bold text-shogun-text flex items-center gap-2">
-                      <ShieldCheck className="w-4 h-4 text-shogun-gold" />
-                      {t('katana.permissions_toggles', 'Account Scopes')}
-                    </h4>
-                    <p className="text-[10px] text-shogun-subdued leading-relaxed">
-                      {t('katana.permissions_help', 'Choose which operations this connected account exposes. ToolGate remains the runtime authority and may further restrict or require confirmation for every action.')}
-                    </p>
-
-                    <div className="space-y-3 pt-2">
-                      {[
-                        { key: 'perm_read_mail', label: t('katana.perm_read_mail', '📨 Read Mail (Inbox/Folders)') },
-                        { key: 'perm_send_mail', label: t('katana.perm_send_mail', '✉️ Send / Reply to Mail') },
-                        { key: 'perm_delete_mail', label: t('katana.perm_delete_mail', '🗑️ Delete Mail (Move to Trash)') },
-                        { key: 'perm_read_calendar', label: t('katana.perm_read_calendar', '📅 Read Calendar Events') },
-                        { key: 'perm_create_events', label: t('katana.perm_create_events', '➕ Create Calendar Events') },
-                        { key: 'perm_edit_events', label: t('katana.perm_edit_events', '✏️ Edit Calendar Events') },
-                        { key: 'perm_delete_events', label: t('katana.perm_delete_events', '🗑️ Delete Calendar Events') },
-                      ].map(({ key, label }) => (
-                        <label key={key} className="flex items-center justify-between py-2 border-b border-shogun-border/30 cursor-pointer group">
-                          <span className="text-xs text-shogun-subdued group-hover:text-shogun-text transition-colors">{label}</span>
-                          <input
-                            type="checkbox"
-                            checked={(mailPermissions as any)[key]}
-                            onChange={e => setMailPermissions({ ...mailPermissions, [key]: e.target.checked })}
-                            className="w-4 h-4 accent-shogun-blue cursor-pointer"
-                          />
-                        </label>
-                      ))}
-                    </div>
-
-                    <button
-                      onClick={handleMailSavePermissions}
-                      disabled={mailSaving}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 mt-2 bg-shogun-gold hover:bg-shogun-gold/90 text-black font-bold rounded-lg text-xs transition-all"
-                    >
-                      {mailSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                      {t('katana.save_permissions', 'Save Permissions')}
-                    </button>
-                    <button
-                      onClick={() => navigate('/toolgate')}
-                      className="w-full rounded-lg border border-shogun-border py-2.5 text-xs font-bold text-shogun-blue transition-colors hover:border-shogun-blue/40 hover:bg-shogun-blue/10"
-                    >
-                      View effective rules in ToolGate
-                    </button>
-                  </div>
-                )}
-
                 {/* Setup Guides */}
                 <div className="shogun-card space-y-4">
                   <h4 className="text-sm font-bold text-shogun-text flex items-center gap-2">

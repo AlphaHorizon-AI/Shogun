@@ -2514,7 +2514,7 @@ Content-Type: application/json
             <div className="p-2.5 bg-[#e879a8]/5 border border-[#e879a8]/20 rounded-lg">
               <p className="text-[8px] text-[#e879a8]/80">
                 <strong>Mail ✉</strong> — Sends via the SMTP account configured in the Mail page.
-                Requires <code className="text-[#e879a8]">perm_send_mail</code> to be enabled.
+                Requires Mail writes to be enabled in ToolGate &gt; Comms.
               </p>
             </div>
           </>

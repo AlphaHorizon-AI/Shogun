@@ -5,25 +5,25 @@ from __future__ import annotations
 import asyncio
 import base64
 import email
-from email.header import decode_header
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 import hashlib
 import imaplib
 import re
 import smtplib
+from email.header import decode_header
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Any
-import uuid
 
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cryptography.fernet import Fernet, InvalidToken
 from shogun.config import settings
 from shogun.db.models.email_account import EmailAccount
 from shogun.schemas.channels import EmailAccountCreate, EmailAccountUpdate, EmailComposeRequest
 from shogun.services.base_service import BaseService
+from shogun.services.comms_permissions import require_comms_permission
 
 
 def _get_fernet(key: str | None = None) -> Fernet:
@@ -161,7 +161,7 @@ def _select_mailbox(mail: imaplib.IMAP4, folder: str):
 
 
 class EmailService(BaseService[EmailAccount]):
-    """Service to handle mail operations governed by Katana permissions."""
+    """Handle mail operations governed by ToolGate's Comms policy."""
 
     def __init__(self, session: AsyncSession):
         super().__init__(EmailAccount, session)
@@ -175,6 +175,15 @@ class EmailService(BaseService[EmailAccount]):
         """Upsert the single email account."""
         existing = await self.get_account()
         encrypted_pwd = encrypt_password(data.password)
+        caldav_url = data.caldav_url
+        if data.calendar_provider == "google_api":
+            from shogun.services.calendar_service import google_caldav_url
+
+            credentials = data.calendar_credentials or {}
+            caldav_url = google_caldav_url(
+                data.email_address,
+                credentials.get("calendar_id") if isinstance(credentials, dict) else None,
+            )
 
         fields = {
             "provider": data.provider,
@@ -189,7 +198,7 @@ class EmailService(BaseService[EmailAccount]):
             "smtp_use_ssl": data.smtp_use_ssl,
             "username": data.username,
             "encrypted_password": encrypted_pwd,
-            "caldav_url": data.caldav_url,
+            "caldav_url": caldav_url,
             "calendar_provider": data.calendar_provider,
             "calendar_credentials": data.calendar_credentials,
             "is_active": True,
@@ -215,20 +224,6 @@ class EmailService(BaseService[EmailAccount]):
         await self.session.commit()
         return True
 
-    async def update_permissions(self, perms: dict[str, bool]) -> EmailAccount:
-        """Update permission flags on the account."""
-        acc = await self.get_account()
-        if not acc:
-            raise HTTPException(status_code=404, detail="No email account configured")
-
-        for k, v in perms.items():
-            if hasattr(acc, k) and k.startswith("perm_"):
-                setattr(acc, k, v)
-
-        await self.session.flush()
-        await self.session.commit()
-        return acc
-
     async def test_connection(self, data: EmailAccountCreate | EmailAccountUpdate) -> dict[str, Any]:
         """Test connection to IMAP/SMTP without modifying DB."""
         password = data.password
@@ -238,7 +233,12 @@ class EmailService(BaseService[EmailAccount]):
                 password = decrypt_password(acc.encrypted_password)
 
         if not password:
-            return {"ok": False, "imap_ok": False, "smtp_ok": False, "message": "Password is required to test connection."}
+            return {
+                "ok": False,
+                "imap_ok": False,
+                "smtp_ok": False,
+                "message": "Password is required to test connection.",
+            }
 
         imap_ok = False
         smtp_ok = False
@@ -305,8 +305,7 @@ class EmailService(BaseService[EmailAccount]):
         acc = await self.get_account()
         if not acc:
             raise HTTPException(status_code=404, detail="No email account configured")
-        if not acc.perm_read_mail:
-            raise HTTPException(status_code=403, detail="Permission denied: perm_read_mail is disabled")
+        await require_comms_permission("perm_read_mail")
 
         password = decrypt_password(acc.encrypted_password)
 
@@ -333,7 +332,7 @@ class EmailService(BaseService[EmailAccount]):
 
         try:
             return await asyncio.to_thread(_get_folders)
-        except Exception as e:
+        except Exception:
             # Fallback to defaults if IMAP list fails
             return ["INBOX", "Sent", "Drafts", "Trash", "Archive"]
 
@@ -342,8 +341,7 @@ class EmailService(BaseService[EmailAccount]):
         acc = await self.get_account()
         if not acc:
             raise HTTPException(status_code=404, detail="No email account configured")
-        if not acc.perm_read_mail:
-            raise HTTPException(status_code=403, detail="Permission denied: perm_read_mail is disabled")
+        await require_comms_permission("perm_read_mail")
 
         password = decrypt_password(acc.encrypted_password)
 
@@ -353,7 +351,7 @@ class EmailService(BaseService[EmailAccount]):
             else:
                 mail = imaplib.IMAP4(acc.imap_host, acc.imap_port)
             mail.login(acc.username, password)
-            
+
             # Select folder
             status, _ = _select_mailbox(mail, folder)
             if status != "OK":
@@ -379,7 +377,11 @@ class EmailService(BaseService[EmailAccount]):
 
             uid_seq = b",".join(page_uids).decode()
             # Fetch headers + flags + mime structure + body preview snippet (first 500 bytes)
-            status, fetch_data = mail.uid("fetch", uid_seq, "(RFC822.HEADER FLAGS BODY.PEEK[1.MIME] BODY.PEEK[1]<0.500>)")
+            status, fetch_data = mail.uid(
+                "fetch",
+                uid_seq,
+                "(RFC822.HEADER FLAGS BODY.PEEK[1.MIME] BODY.PEEK[1]<0.500>)",
+            )
             if status != "OK":
                 mail.logout()
                 return [], total
@@ -401,12 +403,12 @@ class EmailService(BaseService[EmailAccount]):
                                 "body_bytes": b"",
                                 "flags_str": ""
                             }
-                    
+
                     if current_uid:
                         flags_match = re.search(r"FLAGS\s+\((.*?)\)", meta_str, re.IGNORECASE)
                         if flags_match:
                             messages_dict[current_uid]["flags_str"] = flags_match.group(1)
-                            
+
                         if "RFC822.HEADER" in meta_str:
                             messages_dict[current_uid]["header_bytes"] = item[1]
                         elif "BODY[1.MIME]" in meta_str or "BODY.PEEK[1.MIME]" in meta_str:
@@ -435,7 +437,7 @@ class EmailService(BaseService[EmailAccount]):
                 uid_str = uid_bytes.decode()
                 if uid_str in messages_dict:
                     msg_data = messages_dict[uid_str]
-                    
+
                     # Parse standard headers
                     msg = email.message_from_bytes(msg_data["header_bytes"])
                     subject = parse_header_str(msg.get("Subject", "(No Subject)"))
@@ -443,7 +445,7 @@ class EmailService(BaseService[EmailAccount]):
                     to_addr = parse_header_str(msg.get("To", "(Unknown Recipient)"))
                     date_str = parse_header_str(msg.get("Date", ""))
                     is_read = "\\Seen" in msg_data["flags_str"]
-                    
+
                     # Generate and decode body preview
                     preview = ""
                     if msg_data["body_bytes"]:
@@ -464,7 +466,7 @@ class EmailService(BaseService[EmailAccount]):
                                 text = msg_data["body_bytes"].decode("utf-8", errors="replace")
                             except Exception:
                                 text = ""
-                        
+
                         # Strip HTML tags
                         text = re.sub(r"<[^>]*>", " ", text)
                         # Normalize whitespace
@@ -474,7 +476,7 @@ class EmailService(BaseService[EmailAccount]):
                     # Detect attachments from headers
                     content_type = msg.get("Content-Type", "")
                     has_attachments = "multipart/mixed" in content_type.lower()
-                    
+
                     parsed_messages.append({
                         "uid": uid_str,
                         "from_address": from_addr,
@@ -497,8 +499,7 @@ class EmailService(BaseService[EmailAccount]):
         acc = await self.get_account()
         if not acc:
             raise HTTPException(status_code=404, detail="No email account configured")
-        if not acc.perm_read_mail:
-            raise HTTPException(status_code=403, detail="Permission denied: perm_read_mail is disabled")
+        await require_comms_permission("perm_read_mail")
 
         password = decrypt_password(acc.encrypted_password)
 
@@ -604,8 +605,7 @@ class EmailService(BaseService[EmailAccount]):
         acc = await self.get_account()
         if not acc:
             raise HTTPException(status_code=404, detail="No email account configured")
-        if not acc.perm_send_mail:
-            raise HTTPException(status_code=403, detail="Permission denied: perm_send_mail is disabled")
+        await require_comms_permission("perm_send_mail")
 
         password = decrypt_password(acc.encrypted_password)
 
@@ -641,7 +641,7 @@ class EmailService(BaseService[EmailAccount]):
                     server.ehlo()
                 except Exception:
                     pass
-            
+
             server.login(acc.username, password)
             server.sendmail(acc.email_address, recipients, msg.as_string())
             server.quit()
@@ -654,8 +654,7 @@ class EmailService(BaseService[EmailAccount]):
         acc = await self.get_account()
         if not acc:
             raise HTTPException(status_code=404, detail="No email account configured")
-        if not acc.perm_read_mail:
-            raise HTTPException(status_code=403, detail="Permission denied: perm_read_mail is disabled")
+        await require_comms_permission("perm_read_mail")
 
         password = decrypt_password(acc.encrypted_password)
 
@@ -682,8 +681,7 @@ class EmailService(BaseService[EmailAccount]):
         acc = await self.get_account()
         if not acc:
             raise HTTPException(status_code=404, detail="No email account configured")
-        if not acc.perm_delete_mail:
-            raise HTTPException(status_code=403, detail="Permission denied: perm_delete_mail is disabled")
+        await require_comms_permission("perm_delete_mail")
 
         password = decrypt_password(acc.encrypted_password)
 

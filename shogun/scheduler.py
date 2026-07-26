@@ -203,12 +203,12 @@ async def _run_heartbeat() -> None:
             log.error("Failed to update agent heartbeats: %s", exc)
             agents = []
 
-        # 2. Check emails if account exists & perm_read_mail is enabled
+        # 2. Check email when the account is active and ToolGate allows reads.
         email_sync_success = False
         try:
             email_svc = EmailService(session)
             email_acc = await email_svc.get_account()
-            if email_acc and email_acc.is_active and email_acc.perm_read_mail:
+            if email_acc and email_acc.is_active:
                 # Fetch folders to confirm connection is good
                 await email_svc.fetch_folders()
                 email_acc.last_sync_at = datetime.now(timezone.utc)

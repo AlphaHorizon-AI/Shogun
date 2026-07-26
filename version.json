@@ -1,8 +1,8 @@
 {
-  "version": "1.47.0",
+  "version": "1.47.1",
   "name": "Shogun OS",
-  "build": 151,
+  "build": 152,
   "channel": "stable",
-  "released": "2026-07-26T09:11:34Z",
-  "changelog": "Harden Gensui sessions and network exposure, protect A2A workspace operations and peer secrets, bound replay defense, improve audit attribution, and surface startup migration warnings."
+  "released": "2026-07-26T09:27:51Z",
+  "changelog": "Restore Google Calendar writes through the supported CalDAV v2 event collection and consolidate Mail and Calendar permissions under ToolGate Comms."
 }

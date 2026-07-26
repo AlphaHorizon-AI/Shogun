@@ -117,6 +117,15 @@ const RISK_STYLES: Record<string, string> = {
   critical: 'text-red-400',
 };
 
+const COMMS_LABELS: Record<string, string> = {
+  allow_read_email: 'Read mail',
+  allow_send_email: 'Mail writes (send and delete)',
+  allow_read_calendar: 'Read calendar events',
+  allow_create_events: 'Calendar writes (create, edit, and delete)',
+  allow_list_cron: 'List scheduled jobs',
+  allow_manage_cron: 'Manage scheduled jobs',
+};
+
 const DEFAULT_POLICY_PERMISSIONS: Record<string, Record<string, unknown>> = {
   filesystem: { mode: 'scoped', allowed_paths: [], allow_home_access: false, allow_arbitrary_paths: false },
   network: { mode: 'allowlist', allowed_domains: [], allow_arbitrary_requests: false },
@@ -715,10 +724,15 @@ export function ToolGate() {
               <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-shogun-gold">
                 {categoryName.replace(/_/g, ' ')}
               </p>
+              {categoryName === 'comms' && (
+                <p className="mb-3 text-[9px] leading-relaxed text-shogun-subdued">
+                  Single authority for Comms, Mail, and Calendar. These rules also govern direct UI actions.
+                </p>
+              )}
               <div className="space-y-2">
                 {Object.entries(permissions || {}).map(([key, value]) => (
                   <label key={key} className="flex min-h-8 items-center justify-between gap-3 text-[10px] text-shogun-subdued">
-                    <span className="capitalize">{key.replace(/_/g, ' ')}</span>
+                    <span className="capitalize">{categoryName === 'comms' ? COMMS_LABELS[key] || key.replace(/_/g, ' ') : key.replace(/_/g, ' ')}</span>
                     {typeof value === 'boolean' ? (
                       <button
                         type="button"

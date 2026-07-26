@@ -1677,8 +1677,6 @@ async def _exec_email_send(config: dict, context_str: str) -> str:
         acc = await svc.get_account()
         if not acc:
             raise ValueError("No email account configured. Set up an account in the Mail page first.")
-        if not acc.perm_send_mail:
-            raise ValueError("Email sending permission is disabled. Enable perm_send_mail in the Mail settings.")
 
         compose = EmailComposeRequest(
             to_address=to_address,

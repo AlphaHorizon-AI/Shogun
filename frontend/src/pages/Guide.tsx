@@ -1110,7 +1110,7 @@ export function Guide() {
                       <p className="text-xs text-shogun-subdued leading-relaxed">Connect your email account for AI-powered mail capabilities. Configure an <strong>IMAP/SMTP</strong> account by entering server addresses, port numbers, and credentials. Once connected, the Shogun can:</p>
                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
                          <li><strong>Read emails:</strong> Fetch and analyze incoming mail from the inbox.</li>
-                         <li><strong>Send emails:</strong> Compose and send messages (requires <code>perm_send_mail</code> to be enabled).</li>
+                         <li><strong>Send emails:</strong> Compose and send messages when Mail writes are enabled in ToolGate &gt; Comms.</li>
                          <li><strong>Calendar events:</strong> Create and manage calendar entries (when supported by the provider).</li>
                       </ul>
                       <p className="text-xs text-shogun-subdued leading-relaxed">The tab shows <strong>connection status</strong>, account details, and <strong>Account Scopes</strong> for read, send, and calendar access. These scopes describe what the connected account exposes; ToolGate remains the runtime authority and can further restrict or require confirmation for every action. All mail activity is logged in the immutable audit chain.</p>

@@ -3,23 +3,29 @@
 from __future__ import annotations
 
 from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from shogun.api.deps import get_email_service
 from shogun.schemas.channels import (
     EmailAccountCreate,
-    EmailAccountUpdate,
     EmailAccountPermissionsUpdate,
     EmailAccountResponse,
-    EmailTestResponse,
-    EmailMessageSummary,
-    EmailMessageFull,
+    EmailAccountUpdate,
     EmailComposeRequest,
+    EmailMessageFull,
+    EmailTestResponse,
 )
 from shogun.schemas.common import ApiResponse
+from shogun.services.comms_permissions import effective_account_permissions
 from shogun.services.email_service import EmailService
 
 router = APIRouter(prefix="/channels/email", tags=["Email"])
+
+
+async def _account_response(acc) -> EmailAccountResponse:
+    response = EmailAccountResponse.model_validate(acc)
+    return response.model_copy(update=await effective_account_permissions())
 
 
 @router.get("/account", response_model=ApiResponse[EmailAccountResponse | None])
@@ -27,7 +33,7 @@ async def get_account(email_svc: EmailService = Depends(get_email_service)):
     acc = await email_svc.get_account()
     if not acc:
         return ApiResponse(data=None)
-    return ApiResponse(data=EmailAccountResponse.model_validate(acc))
+    return ApiResponse(data=await _account_response(acc))
 
 
 @router.post("/account", response_model=ApiResponse[EmailAccountResponse])
@@ -36,7 +42,7 @@ async def configure_account(
     email_svc: EmailService = Depends(get_email_service),
 ):
     acc = await email_svc.configure_account(body)
-    return ApiResponse(data=EmailAccountResponse.model_validate(acc))
+    return ApiResponse(data=await _account_response(acc))
 
 
 @router.patch("/account", response_model=ApiResponse[EmailAccountResponse])
@@ -62,7 +68,7 @@ async def update_account(
 
     await email_svc.session.flush()
     await email_svc.session.commit()
-    return ApiResponse(data=EmailAccountResponse.model_validate(acc))
+    return ApiResponse(data=await _account_response(acc))
 
 
 @router.delete("/account", response_model=ApiResponse[bool])
@@ -71,13 +77,19 @@ async def remove_account(email_svc: EmailService = Depends(get_email_service)):
     return ApiResponse(data=ok)
 
 
-@router.patch("/account/permissions", response_model=ApiResponse[EmailAccountResponse])
+@router.patch(
+    "/account/permissions",
+    response_model=ApiResponse[EmailAccountResponse],
+    deprecated=True,
+)
 async def update_permissions(
-    body: EmailAccountPermissionsUpdate,
-    email_svc: EmailService = Depends(get_email_service),
+    _body: EmailAccountPermissionsUpdate,
+    _email_svc: EmailService = Depends(get_email_service),
 ):
-    acc = await email_svc.update_permissions(body.model_dump())
-    return ApiResponse(data=EmailAccountResponse.model_validate(acc))
+    raise HTTPException(
+        status_code=410,
+        detail="Account scopes moved to ToolGate > Capability boundaries > Comms.",
+    )
 
 
 @router.post("/account/test", response_model=ApiResponse[EmailTestResponse])
