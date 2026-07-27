@@ -41,6 +41,24 @@ def test_gensui_secret_file_is_generated_with_strong_material(tmp_path: Path):
     assert len(config.jwt_secret) >= 64
 
 
+def test_gensui_default_secret_file_uses_configured_data_path(tmp_path: Path):
+    from gensui.config import GensuiSettings
+
+    config = GensuiSettings(
+        _env_file=None,
+        gensui_data_path=tmp_path / "data",
+        gensui_log_path=tmp_path / "logs",
+        gensui_jwt_secret=None,
+        gensui_admin_password="correct-horse-battery-staple",
+    )
+
+    config.ensure_directories()
+
+    assert config.jwt_secret_path == tmp_path / "data" / "secrets" / "jwt_secret"
+    assert config.jwt_secret_path.exists()
+    assert len(config.jwt_secret) >= 64
+
+
 def test_gensui_tokens_are_typed_and_browser_cookies_are_httponly(monkeypatch):
     from gensui.api.auth import _issue_browser_session
     from gensui.config import gensui_settings

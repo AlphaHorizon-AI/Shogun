@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import uuid
 import hashlib
 import hmac
+import uuid
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends, Header, HTTPException, Request
@@ -27,7 +27,11 @@ async def get_current_admin(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Validate an API bearer token or the browser's HttpOnly access cookie."""
-    bearer = authorization.removeprefix("Bearer ").strip() if authorization and authorization.startswith("Bearer ") else None
+    bearer = (
+        authorization.removeprefix("Bearer ").strip()
+        if authorization and authorization.startswith("Bearer ")
+        else None
+    )
     token = bearer or request.cookies.get("gensui_access_token")
     if not token:
         raise HTTPException(status_code=401, detail="Missing authentication token")

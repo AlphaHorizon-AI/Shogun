@@ -7,6 +7,7 @@ Enables:
 
 from __future__ import annotations
 
+import os
 import secrets
 import shutil
 import sys
@@ -27,8 +28,6 @@ def _reexec_in_project_venv() -> None:
     current = Path(sys.executable).resolve()
     for candidate in candidates:
         if candidate.exists() and candidate.resolve() != current:
-            import os
-
             env = os.environ.copy()
             env["SHOGUN_PROJECT_VENV"] = str(candidate)
             os.execve(
@@ -74,6 +73,11 @@ def _secure_env_file(env_path: Path) -> None:
 
 def _ensure_env_file() -> None:
     """Auto-generate .env from .env.example on first run if missing."""
+    # Server containers receive their configuration through environment
+    # variables and may intentionally have a read-only root filesystem.
+    if os.environ.get("DEPLOYMENT_MODE", "").casefold() == "server":
+        return
+
     project_root = Path(__file__).resolve().parent.parent
     env_path = project_root / ".env"
     if env_path.exists():

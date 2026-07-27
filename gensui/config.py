@@ -37,7 +37,7 @@ class GensuiSettings(BaseSettings):
     # Raw values remain supported for backwards compatibility. New installs
     # use a mounted secret file so signing material is not stored in .env.
     gensui_jwt_secret: str | None = None
-    gensui_jwt_secret_file: Path = GENSUI_ROOT / "data" / "secrets" / "jwt_secret"
+    gensui_jwt_secret_file: Path | None = None
     gensui_jwt_algorithm: str = "HS256"
     gensui_access_token_minutes: int = 15
     gensui_refresh_token_days: int = 7
@@ -68,19 +68,24 @@ class GensuiSettings(BaseSettings):
     gensui_log_path: Path = GENSUI_ROOT / "logs"
     gensui_frontend_dist: Path = GENSUI_ROOT / "frontend" / "dist"
 
+    @property
+    def jwt_secret_path(self) -> Path:
+        """Resolve the secret file under the configured writable data path."""
+        return self.gensui_jwt_secret_file or self.gensui_data_path / "secrets" / "jwt_secret"
+
     def ensure_directories(self) -> None:
         """Create required filesystem directories."""
         for directory in [
             self.gensui_data_path,
             self.gensui_log_path,
-            self.gensui_jwt_secret_file.parent,
+            self.jwt_secret_path.parent,
         ]:
             directory.mkdir(parents=True, exist_ok=True)
-        if not self.gensui_jwt_secret and not self.gensui_jwt_secret_file.exists():
+        if not self.gensui_jwt_secret and not self.jwt_secret_path.exists():
             secret = secrets.token_urlsafe(64) + "\n"
             try:
                 descriptor = os.open(
-                    self.gensui_jwt_secret_file,
+                    self.jwt_secret_path,
                     os.O_WRONLY | os.O_CREAT | os.O_EXCL,
                     0o600,
                 )
@@ -96,7 +101,7 @@ class GensuiSettings(BaseSettings):
         if self.gensui_jwt_secret:
             return self.gensui_jwt_secret.strip()
         try:
-            return self.gensui_jwt_secret_file.read_text(encoding="utf-8").strip()
+            return self.jwt_secret_path.read_text(encoding="utf-8").strip()
         except OSError as exc:
             raise RuntimeError("Gensui JWT secret file is unavailable") from exc
 
