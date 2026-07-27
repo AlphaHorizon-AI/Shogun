@@ -1,8 +1,8 @@
 {
-  "version": "1.47.7",
+  "version": "1.47.8",
   "name": "Shogun OS",
-  "build": 158,
+  "build": 159,
   "channel": "stable",
-  "released": "2026-07-27T15:00:00Z",
-  "changelog": "Add a controlled Restart Shogun action to Updates with graceful shutdown and launcher or supervisor restart support."
+  "released": "2026-07-27T16:00:00Z",
+  "changelog": "Fix custom-profile provider authentication and add multiple strict named routing profiles in Katana."
 }

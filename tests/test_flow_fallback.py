@@ -43,6 +43,19 @@ def test_provider_connection_resolves_protected_api_key(monkeypatch):
     assert headers["Authorization"] == "Bearer decrypted-api-key"
 
 
+def test_provider_connection_accepts_bearer_token_credentials():
+    provider = SimpleNamespace(
+        config={"access_token": "provider-access-token", "model": "test-model"},
+        base_url="https://provider.invalid/v1",
+        provider_type="custom",
+        name="Token Provider",
+    )
+
+    _, _, _, headers = flow_engine._provider_connection(provider)
+
+    assert headers["Authorization"] == "Bearer provider-access-token"
+
+
 @pytest.mark.asyncio
 async def test_samurai_falls_back_after_timeout(monkeypatch):
     calls: list[tuple[str, int]] = []

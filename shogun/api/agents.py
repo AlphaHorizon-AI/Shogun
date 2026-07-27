@@ -2173,7 +2173,7 @@ BEHAVIOUR:
                                     )
                                 except Exception:
                                     pass
-                                yield f"data: {json.dumps({'type': 'error', 'content': f'ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â LLM error ({resp.status_code}): {err}'})}\n\n"
+                                yield f"data: {json.dumps({'type': 'error', 'content': f'⚠️ LLM error ({resp.status_code}): {err}'})}\n\n"
                                 yield "data: [DONE]\n\n"
                                 return
 

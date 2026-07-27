@@ -565,9 +565,13 @@ class ModelRoutingService:
             if all((item.capabilities or {}).get(capability, False) for capability in requirements)
         ]
         preferred_ids = self._legacy_preference(profile, task_type)
-        if profile_key == "custom":
+        # Any profile with an explicit model order is a strict, named custom
+        # profile (for example Finance or Engineering).  Built-in heuristic
+        # profiles have no rules and continue to consider every eligible model.
+        is_custom_profile = profile_key == "custom" or profile_key not in DEFAULT_PROFILES
+        if is_custom_profile or preferred_ids:
             if not preferred_ids:
-                raise NoEligibleModelError("Custom routing has no models configured.")
+                raise NoEligibleModelError(f"{profile.name} routing has no models configured.")
             candidates = [item for item in candidates if self._matches_preference(item, preferred_ids)]
         if not candidates:
             required = ", ".join(sorted(requirements)) or "connected chat model"

@@ -13,6 +13,8 @@ from shogun.db.models.agent import Agent
 from shogun.db.models.model_definition import ModelDefinition
 from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_router import ModelRegistryEntry
+from shogun.db.models.model_routing import ModelRoutingProfile
+from shogun.engine.flow_engine import _resolve_model_target
 from shogun.schemas.model_router import ActiveProfileRequest, ModelRouteRequest, ModelUsageCreate
 from shogun.services.model_router import (
     ComplexityScoringService,
@@ -188,6 +190,74 @@ async def test_custom_profile_routes_only_across_operator_selected_models(routin
     assert result.selected.id == primary.id
     assert excluded.id not in {result.selected.id, *(item.id for item in result.fallbacks)}
     assert {item.id for item in result.fallbacks} == {fallback.id}
+
+
+@pytest.mark.asyncio
+async def test_named_custom_profiles_keep_independent_strict_model_orders(routing_session):
+    finance_primary = await _model(
+        routing_session, "finance-primary", quality=3, cost=3,
+        capabilities={"chat": True, "reasoning": True},
+    )
+    finance_fallback = await _model(
+        routing_session, "finance-fallback", quality=4, cost=2,
+        capabilities={"chat": True, "reasoning": True},
+    )
+    engineering = await _model(
+        routing_session, "engineering-only", quality=5, cost=1,
+        capabilities={"chat": True, "reasoning": True},
+    )
+    finance = ModelRoutingProfile(
+        name="Finance",
+        description="Finance-specialized route",
+        rules=[{
+            "task_type": "*",
+            "primary_model_id": str(finance_primary.id),
+            "fallback_model_ids": [str(finance_fallback.id)],
+        }],
+    )
+    routing_session.add(finance)
+    await routing_session.flush()
+
+    result = await ModelRoutingService(routing_session).route(ModelRouteRequest(
+        prompt="Review this financial model",
+        required_capabilities=["chat", "reasoning"],
+        profile_override=str(finance.id),
+    ))
+
+    assert result.selected.id == finance_primary.id
+    assert [item.id for item in result.fallbacks] == [finance_fallback.id]
+    assert engineering.id not in {result.selected.id, *(item.id for item in result.fallbacks)}
+
+
+@pytest.mark.asyncio
+async def test_empty_named_custom_profile_does_not_fall_back_to_all_models(routing_session):
+    await _model(routing_session, "unscoped-model", quality=5, cost=1)
+    finance = ModelRoutingProfile(name="Finance", rules=[])
+    routing_session.add(finance)
+    await routing_session.flush()
+
+    with pytest.raises(NoEligibleModelError, match="Finance routing has no models configured"):
+        await ModelRoutingService(routing_session).route(ModelRouteRequest(
+            prompt="Review this financial model",
+            profile_override=str(finance.id),
+        ))
+
+
+@pytest.mark.asyncio
+async def test_registry_routing_target_uses_exact_provider_and_credential(routing_session):
+    entry = await _model(
+        routing_session, "vendor/secured-model", quality=4, cost=2,
+        capabilities={"chat": True},
+    )
+    provider = await routing_session.get(ModelProvider, entry.provider_id)
+    provider.config = {"models": [entry.model_id], "api_key": "provider-secret"}
+
+    target = await _resolve_model_target(routing_session, entry.id)
+
+    assert target is not None
+    assert target[0].id == provider.id
+    assert target[1] == entry.model_id
+    assert target[3]["Authorization"] == "Bearer provider-secret"
 
 
 @pytest.mark.asyncio

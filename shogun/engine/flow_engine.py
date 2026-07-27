@@ -35,6 +35,7 @@ from shogun.db.models.agent_flow import AgentFlow, AgentFlowEdge, AgentFlowNode
 from shogun.db.models.agent_flow_run import AgentFlowRun, AgentFlowRunEdge
 from shogun.db.models.model_definition import ModelDefinition
 from shogun.db.models.model_provider import ModelProvider
+from shogun.db.models.model_router import ModelRegistryEntry
 from shogun.db.models.model_routing import ModelRoutingProfile
 from shogun.services.provider_credentials import provider_api_key
 
@@ -2112,7 +2113,12 @@ def _provider_connection(
 async def _resolve_model_target(
     session: AsyncSession, target_id: str | uuid.UUID
 ) -> tuple[ModelProvider, str, str, dict] | None:
-    """Resolve routing IDs that refer to either providers or model definitions."""
+    """Resolve routing IDs for registry entries, providers, or model definitions.
+
+    Katana's governed router stores model-registry IDs in custom profiles.  Those
+    IDs must resolve through the registry entry's exact ``provider_id`` so the
+    selected provider's protected credential and endpoint travel with the model.
+    """
     try:
         parsed_id = target_id if isinstance(target_id, uuid.UUID) else uuid.UUID(str(target_id))
     except (TypeError, ValueError):
@@ -2126,6 +2132,17 @@ async def _resolve_model_target(
     )
     if provider:
         return _provider_connection(provider)
+
+    registry_entry = await session.get(ModelRegistryEntry, parsed_id)
+    if registry_entry and registry_entry.enabled and registry_entry.provider_id:
+        provider = await session.scalar(
+            select(ModelProvider).where(
+                ModelProvider.id == registry_entry.provider_id,
+                ModelProvider.status == "connected",
+            )
+        )
+        if provider:
+            return _provider_connection(provider, registry_entry.model_id)
 
     definition = await session.scalar(select(ModelDefinition).where(ModelDefinition.id == parsed_id))
     if definition and definition.provider and definition.provider.status == "connected":

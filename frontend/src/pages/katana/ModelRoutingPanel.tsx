@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Activity, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Edit2, Gauge, Play, RefreshCw, Route, Server, X, Zap } from 'lucide-react';
+import { Activity, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Edit2, Gauge, Play, Plus, RefreshCw, Route, Server, Trash2, X, Zap } from 'lucide-react';
 
 type Profile = {
   id: string; name: string; description?: string; is_default: boolean;
@@ -54,6 +54,14 @@ const TIER_OPTIONS = {
 } as const;
 
 const COMPLEXITY_LABELS = ['Simple', 'Routine', 'Involved', 'Complex', 'Expert'];
+const AUTOMATIC_PROFILE_NAMES = new Set(['Ultra Economy', 'Economy', 'Balanced', 'High Capability', 'Premium']);
+
+const orderedModels = (profile?: Profile): string[] => {
+  const rule = profile?.rules?.find(item => item.task_type === '*') || profile?.rules?.[0];
+  return rule?.primary_model_id
+    ? [String(rule.primary_model_id), ...(rule.fallback_model_ids || []).map(String)]
+    : [];
+};
 
 type ModelRoutingPanelProps = {
   isEditingProfiles?: boolean;
@@ -73,6 +81,9 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
   const [requirements, setRequirements] = useState<string[]>(['coding', 'tool_use']);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [customModels, setCustomModels] = useState<string[]>([]);
+  const [customProfileId, setCustomProfileId] = useState('');
+  const [newProfileName, setNewProfileName] = useState('');
+  const [newProfileDescription, setNewProfileDescription] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -86,12 +97,13 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       setModels(registryRes.data.data || []);
       setUsage(usageRes.data.data || {});
       const active = (profilesRes.data.data || []).find((item: Profile) => item.is_default);
-      if (active) setProfile(active.name.toLowerCase().replaceAll(' ', '_'));
-      const custom = loadedProfiles.find(item => item.name === 'Custom');
-      const rule = custom?.rules?.find(item => item.task_type === '*') || custom?.rules?.[0];
-      setCustomModels(rule?.primary_model_id
-        ? [String(rule.primary_model_id), ...(rule.fallback_model_ids || []).map(String)]
-        : []);
+      if (active) setProfile(active.id);
+      const editableProfiles = loadedProfiles.filter(item => item.name === 'Custom' || !AUTOMATIC_PROFILE_NAMES.has(item.name));
+      const selected = editableProfiles.find(item => item.id === customProfileId)
+        || editableProfiles.find(item => item.name === 'Custom')
+        || editableProfiles[0];
+      setCustomProfileId(selected?.id || '');
+      setCustomModels(orderedModels(selected));
     } catch (error: any) {
       setMessage(error?.response?.data?.detail || 'Model routing data could not be loaded.');
     } finally { setLoading(false); }
@@ -99,7 +111,19 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
   useEffect(() => { load(); }, []);
 
   const activeProfile = useMemo(() => profiles.find(item => item.is_default), [profiles]);
-  const customProfile = useMemo(() => profiles.find(item => item.name === 'Custom'), [profiles]);
+  const customProfiles = useMemo(
+    () => profiles.filter(item => item.name === 'Custom' || !AUTOMATIC_PROFILE_NAMES.has(item.name)),
+    [profiles],
+  );
+  const customProfile = useMemo(
+    () => customProfiles.find(item => item.id === customProfileId) || customProfiles[0],
+    [customProfiles, customProfileId],
+  );
+  const selectCustomProfile = (profileId: string) => {
+    const selected = customProfiles.find(item => item.id === profileId);
+    setCustomProfileId(profileId);
+    setCustomModels(orderedModels(selected));
+  };
   const setActive = async (item: Profile) => {
     setBusy(item.id);
     try {
@@ -123,23 +147,64 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
     catch (error: any) { setMessage(error?.response?.data?.detail || 'Connection test failed.'); }
     finally { setBusy(''); }
   };
-  const saveCustom = async () => {
+  const saveCustom = async (activate = false) => {
     if (!customProfile || customModels.length === 0) {
-      setMessage('Choose at least one model for Custom routing.');
+      setMessage('Choose at least one model for this routing profile.');
       return;
     }
-    setBusy('custom');
+    setBusy(activate ? 'custom-activate' : 'custom-save');
     try {
       await axios.post(`/api/v1/models/routing/profiles/${customProfile.id}/update`, {
         rules: [{
           task_type: '*', primary_model_id: customModels[0], fallback_model_ids: customModels.slice(1),
         }],
       });
-      await axios.post('/api/v1/models/routing/profiles/active', { profile_id: customProfile.id });
-      setMessage('Custom routing saved and activated.');
+      if (activate) {
+        await axios.post('/api/v1/models/routing/profiles/active', { profile_id: customProfile.id });
+      }
+      setMessage(`${customProfile.name} routing saved${activate ? ' and activated' : ''}.`);
       await load();
     } catch (error: any) {
-      setMessage(error?.response?.data?.detail || 'Custom routing could not be saved.');
+      setMessage(error?.response?.data?.detail || 'Routing profile could not be saved.');
+    } finally { setBusy(''); }
+  };
+  const createCustomProfile = async () => {
+    const name = newProfileName.trim();
+    if (!name) return;
+    if (profiles.some(item => item.name.toLowerCase() === name.toLowerCase())) {
+      setMessage('A routing profile with that name already exists.');
+      return;
+    }
+    setBusy('custom-create');
+    try {
+      const response = await axios.post('/api/v1/model-routing-profiles', {
+        name,
+        description: newProfileDescription.trim() || null,
+        rules: [],
+        is_default: false,
+      });
+      const created: Profile = response.data.data;
+      setNewProfileName('');
+      setNewProfileDescription('');
+      setMessage(`${created.name} created. Select its models and save it.`);
+      await load();
+      setCustomProfileId(created.id);
+      setCustomModels([]);
+    } catch (error: any) {
+      setMessage(error?.response?.data?.detail || 'Routing profile could not be created.');
+    } finally { setBusy(''); }
+  };
+  const deleteCustomProfile = async () => {
+    if (!customProfile || customProfile.name === 'Custom' || customProfile.is_default) return;
+    if (!window.confirm(`Delete routing profile "${customProfile.name}"?`)) return;
+    setBusy('custom-delete');
+    try {
+      await axios.delete(`/api/v1/model-routing-profiles/${customProfile.id}`);
+      setCustomProfileId('');
+      setMessage(`${customProfile.name} deleted.`);
+      await load();
+    } catch (error: any) {
+      setMessage(error?.response?.data?.detail || 'Routing profile could not be deleted.');
     } finally { setBusy(''); }
   };
   const preview = async () => {
@@ -168,22 +233,48 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-2">
-        {profiles.filter(item => ['Ultra Economy','Economy','Balanced','High Capability','Premium','Custom'].includes(item.name)).map(item =>
+        {profiles.map(item =>
           <button key={item.id} onClick={() => setActive(item)} disabled={busy === item.id}
             className={`text-left p-3 rounded-lg border transition-all ${item.is_default ? 'border-purple-400 bg-purple-400/15' : 'border-shogun-border hover:border-purple-400/40'}`}>
             <div className="text-xs font-bold flex items-center gap-1.5">{item.is_default && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />}{item.name}</div>
             <p className="text-[9px] text-shogun-subdued mt-1 line-clamp-2">{item.description}</p>
           </button>)}
       </div>
-      {customProfile && <div className="mt-5 pt-5 border-t border-purple-400/20">
+      <div className="mt-5 pt-5 border-t border-purple-400/20">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-          <div><h4 className="text-sm font-bold">Custom model order</h4>
-            <p className="text-[10px] text-shogun-subdued mt-1">Only these models may be routed. The first eligible model is preferred; capability and safety gates still apply.</p></div>
-          <button onClick={saveCustom} disabled={busy === 'custom' || customModels.length === 0}
-            className="px-3 py-2 rounded bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-[10px] font-bold">
-            {busy === 'custom' ? 'Saving…' : 'Save & activate Custom'}
-          </button>
+          <div><h4 className="text-sm font-bold">Named custom routing profiles</h4>
+            <p className="text-[10px] text-shogun-subdued mt-1">Create focused profiles such as Finance or Engineering. Each profile keeps its own strict primary and fallback model order.</p></div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => saveCustom(false)} disabled={!customProfile || busy !== '' || customModels.length === 0}
+              className="px-3 py-2 rounded border border-purple-400/40 hover:bg-purple-400/10 disabled:opacity-40 text-[10px] font-bold">
+              {busy === 'custom-save' ? 'Saving…' : 'Save profile'}
+            </button>
+            <button onClick={() => saveCustom(true)} disabled={!customProfile || busy !== '' || customModels.length === 0}
+              className="px-3 py-2 rounded bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-[10px] font-bold">
+              {busy === 'custom-activate' ? 'Saving…' : 'Save & activate'}
+            </button>
+          </div>
         </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 mb-3">
+          <label className="text-[9px] uppercase text-shogun-subdued">Edit profile
+            <select value={customProfile?.id || ''} onChange={event => selectCustomProfile(event.target.value)} className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-2 text-xs normal-case">
+              {customProfiles.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-[9px] uppercase text-shogun-subdued">New profile name
+              <input value={newProfileName} onChange={event => setNewProfileName(event.target.value)} placeholder="Finance" className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-2 text-xs normal-case" />
+            </label>
+            <label className="text-[9px] uppercase text-shogun-subdued">Description
+              <input value={newProfileDescription} onChange={event => setNewProfileDescription(event.target.value)} placeholder="Models for finance work" className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-2 text-xs normal-case" />
+            </label>
+          </div>
+          <div className="flex items-end gap-1">
+            <button onClick={createCustomProfile} disabled={!newProfileName.trim() || busy !== ''} title="Create named profile" className="h-[34px] px-3 rounded border border-purple-400/40 text-purple-300 hover:bg-purple-400/10 disabled:opacity-40"><Plus className="w-4 h-4" /></button>
+            <button onClick={deleteCustomProfile} disabled={!customProfile || customProfile.name === 'Custom' || customProfile.is_default || busy !== ''} title={customProfile?.is_default ? 'Activate another profile before deleting this one' : 'Delete named profile'} className="h-[34px] px-3 rounded border border-red-400/30 text-red-400 hover:bg-red-400/10 disabled:opacity-30"><Trash2 className="w-4 h-4" /></button>
+          </div>
+        </div>
+        {customProfile ? <>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <div className="max-h-44 overflow-y-auto rounded-lg border border-shogun-border p-2 space-y-1">
             {models.filter(item => item.enabled).map(item => {
@@ -210,7 +301,8 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
             {!customModels.length && <p className="text-[10px] text-shogun-subdued text-center py-6">Select models from the registry.</p>}
           </div>
         </div>
-      </div>}
+        </> : <p className="text-[10px] text-shogun-subdued py-4">Create a named profile to configure its model order.</p>}
+      </div>
     </div>
 
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -248,7 +340,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       <div className="space-y-6">
         <div className="shogun-card"><h4 className="font-bold flex items-center gap-2 mb-4"><BrainCircuit className="w-4 h-4 text-shogun-gold" /> Preview Decision</h4>
           <div className="space-y-3"><label className="text-[9px] uppercase text-shogun-subdued">Task type<select value={taskType} onChange={event => setTaskType(event.target.value)} className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-2 text-xs">{TASKS.map(item => <option key={item}>{item}</option>)}</select></label>
-            <label className="text-[9px] uppercase text-shogun-subdued">Profile<select value={profile} onChange={event => setProfile(event.target.value)} className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-2 text-xs">{profiles.map(item => <option key={item.id} value={item.name.toLowerCase().replaceAll(' ', '_')}>{item.name}</option>)}</select></label>
+            <label className="text-[9px] uppercase text-shogun-subdued">Profile<select value={profile} onChange={event => setProfile(event.target.value)} className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-2 text-xs">{profiles.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label className="text-[9px] uppercase text-shogun-subdued">Task complexity: <strong className="text-shogun-text normal-case">{COMPLEXITY_LABELS[complexity - 1]}</strong><input type="range" min="1" max="5" value={complexity} onChange={event => setComplexity(Number(event.target.value))} className="block w-full mt-2" /></label>
             <div className="flex flex-wrap gap-1">{CAPS.map(cap => <button key={cap} onClick={() => setRequirements(current => current.includes(cap) ? current.filter(item => item !== cap) : [...current, cap])} className={`text-[8px] border rounded px-1.5 py-1 ${requirements.includes(cap) ? 'border-shogun-gold text-shogun-gold' : 'border-shogun-border text-shogun-subdued'}`}>{CAP_LABELS[cap]}</button>)}</div>
             <button onClick={preview} disabled={busy === 'preview'} className="w-full flex items-center justify-center gap-2 p-2 rounded bg-purple-600 hover:bg-purple-500 font-bold text-xs"><Play className="w-3.5 h-3.5" /> Preview route</button>

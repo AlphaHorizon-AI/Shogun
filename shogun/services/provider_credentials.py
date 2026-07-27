@@ -55,7 +55,12 @@ def reveal_provider_secret(value: Any) -> str | None:
 
 def provider_api_key(config: dict[str, Any] | None) -> str | None:
     config = config or {}
-    return reveal_provider_secret(config.get("api_key") or config.get("api-key"))
+    return reveal_provider_secret(
+        config.get("api_key")
+        or config.get("api-key")
+        or config.get("access_token")
+        or config.get("token")
+    )
 
 
 async def migrate_provider_credentials(session: AsyncSession) -> int:
