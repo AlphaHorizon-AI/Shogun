@@ -30,7 +30,7 @@ jobs:
           python -c "import shogun.app; import gensui.app"
           # Full-tree lint has substantial pre-existing debt. Gate the security
           # boundary and deployment-path files introduced by this remediation.
-          python -m ruff check \
+          python -m ruff check --select E,F,I,N,W,UP --ignore B008 \
             shogun/api/a2a.py \
             shogun/api/control_plane_auth.py \
             shogun/api/gensui_config.py \
@@ -194,6 +194,10 @@ jobs:
             --cap-drop ALL --security-opt no-new-privileges:true \
             -e GENSUI_JWT_SECRET=ci-only-random-jwt-secret-0123456789 \
             -e GENSUI_ADMIN_PASSWORD=ci-only-random-admin-password \
+            -e GENSUI_DATABASE_URL=sqlite+aiosqlite:////app/data/gensui.db \
+            -e GENSUI_DATA_PATH=/app/data \
+            -e GENSUI_LOG_PATH=/app/logs \
+            -e GENSUI_JWT_SECRET_FILE=/app/data/secrets/jwt_secret \
             -p 127.0.0.1:8787:8787 \
             -v gensui-ci-data:/app/data -v gensui-ci-logs:/app/logs \
             shogun-gensui:ci

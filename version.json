@@ -1,8 +1,8 @@
 {
-  "version": "1.47.5",
+  "version": "1.47.6",
   "name": "Shogun OS",
-  "build": 156,
+  "build": 157,
   "channel": "stable",
-  "released": "2026-07-27T13:00:00Z",
-  "changelog": "Resolve CodeQL findings across file handling, backup restore, error responses, regular expressions, and frontend rendering."
+  "released": "2026-07-27T14:00:00Z",
+  "changelog": "Restore green security CI for read-only Shogun and Gensui containers and stabilize the Python lint gate."
 }

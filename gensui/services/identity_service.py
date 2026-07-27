@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import secrets
 import uuid
-import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import select
