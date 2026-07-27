@@ -17,10 +17,10 @@ def test_gensui_defaults_to_loopback_and_hides_production_schema(monkeypatch):
 
     assert GensuiSettings(_env_file=None).gensui_server_host == "127.0.0.1"
     monkeypatch.setattr(gensui_settings, "debug", False)
-    paths = {route.path for route in create_app().routes}
-    assert "/docs" not in paths
-    assert "/redoc" not in paths
-    assert "/openapi.json" not in paths
+    app = create_app()
+    assert app.docs_url is None
+    assert app.redoc_url is None
+    assert app.openapi_url is None
 
 
 def test_gensui_secret_file_is_generated_with_strong_material(tmp_path: Path):

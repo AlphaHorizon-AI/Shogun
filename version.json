@@ -1,8 +1,8 @@
 {
-  "version": "1.47.2",
+  "version": "1.47.3",
   "name": "Shogun OS",
-  "build": 153,
+  "build": 154,
   "channel": "stable",
-  "released": "2026-07-26T09:37:59Z",
-  "changelog": "Move OpenClaw College ecosystem intelligence controls from Updates to the Privacy & Telemetry page."
+  "released": "2026-07-27T06:30:00Z",
+  "changelog": "Fix hardened Gensui security regression testing and container CI startup."
 }
