@@ -10,11 +10,13 @@ import shogun.db.models  # noqa: F401
 from shogun.api.model_router import set_active_profile
 from shogun.db.base import Base
 from shogun.db.models.agent import Agent
+from shogun.db.models.model_definition import ModelDefinition
 from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_router import ModelRegistryEntry
 from shogun.schemas.model_router import ActiveProfileRequest, ModelRouteRequest, ModelUsageCreate
 from shogun.services.model_router import (
     ComplexityScoringService,
+    ModelRegistryService,
     ModelRoutingService,
     ModelUsageLogger,
     NoEligibleModelError,
@@ -71,6 +73,79 @@ async def _model(
     session.add_all([provider, entry])
     await session.flush()
     return entry
+
+
+@pytest.mark.asyncio
+async def test_registry_sync_uses_explicit_models_even_when_definitions_exist(routing_session):
+    provider = ModelProvider(
+        provider_type="openrouter",
+        name="Primary OpenRouter",
+        slug="primary-openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        status="connected",
+        config={"models": ["vendor/custom-model"]},
+    )
+    routing_session.add(provider)
+    await routing_session.flush()
+    routing_session.add(ModelDefinition(
+        provider_id=provider.id,
+        model_key="vendor/catalog-model",
+        display_name="Catalog model",
+    ))
+    await routing_session.flush()
+
+    entries = await ModelRegistryService(routing_session).list()
+
+    assert [(item.model_id, item.display_name, item.enabled) for item in entries] == [
+        ("vendor/custom-model", "vendor/custom-model", True)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_registry_sync_treats_an_empty_model_list_as_explicit(routing_session):
+    entry = await _model(routing_session, "vendor/old-model", quality=3, cost=2)
+    provider = await routing_session.get(ModelProvider, entry.provider_id)
+    provider.config = {"models": []}
+
+    entries = await ModelRegistryService(routing_session).list()
+
+    assert len(entries) == 1
+    assert entries[0].enabled is False
+
+
+@pytest.mark.asyncio
+async def test_registry_sync_preserves_manual_toggle_across_provider_availability(routing_session):
+    entry = await _model(routing_session, "vendor/selected-model", quality=3, cost=2)
+    provider = await routing_session.get(ModelProvider, entry.provider_id)
+    provider.config = {"models": [entry.model_id]}
+    entry.enabled = False
+
+    service = ModelRegistryService(routing_session)
+    await service.sync_connected()
+    assert entry.enabled is False
+
+    provider.status = "disabled"
+    await service.sync_connected()
+    assert entry.enabled is False
+
+    provider.status = "connected"
+    await service.sync_connected()
+    assert entry.enabled is False
+
+
+@pytest.mark.asyncio
+async def test_routing_excludes_disabled_models_and_disconnected_providers(routing_session):
+    disconnected = await _model(routing_session, "vendor/disconnected", quality=5, cost=1)
+    disconnected_provider = await routing_session.get(ModelProvider, disconnected.provider_id)
+    disconnected_provider.status = "disabled"
+    disabled = await _model(routing_session, "vendor/manually-disabled", quality=5, cost=1)
+    disabled.enabled = False
+    eligible = await _model(routing_session, "vendor/eligible", quality=3, cost=3)
+
+    result = await ModelRoutingService(routing_session).route(ModelRouteRequest(prompt="Hello"))
+
+    assert result.selected.id == eligible.id
+    assert disconnected.enabled is False
 
 
 @pytest.mark.asyncio

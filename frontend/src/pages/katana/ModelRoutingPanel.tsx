@@ -220,8 +220,8 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
         <div className="space-y-3 max-h-[560px] overflow-y-auto pr-1">
           {models.map(item => <div key={item.id} className={`rounded-xl border p-4 ${item.enabled ? 'border-shogun-border bg-[#080b14]' : 'border-shogun-border/40 opacity-60'}`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><div className="flex items-center gap-2"><span className="font-bold text-sm">{item.display_name}</span><span className="text-[8px] uppercase border border-shogun-border rounded px-1.5 py-0.5">{item.local ? 'local' : item.provider}</span></div>
-                <p className="font-mono text-[9px] text-shogun-subdued mt-1">{item.model_id} · {(item.context_window / 1000).toFixed(0)}K context</p></div>
+              <div><div className="flex items-center gap-2 flex-wrap"><span className="font-bold font-mono text-sm text-shogun-text">{item.model_id}</span><span className="text-[9px] font-bold uppercase tracking-widest border border-purple-400/30 bg-purple-500/10 text-purple-300 rounded px-1.5 py-0.5">{item.provider}</span>{item.local && <span className="text-[8px] uppercase border border-shogun-border rounded px-1.5 py-0.5">local</span>}</div>
+                <p className="font-mono text-[9px] text-shogun-subdued mt-1">{item.display_name !== item.model_id ? `${item.display_name} · ` : ''}{(item.context_window / 1000).toFixed(0)}K context window</p></div>
               <div className="flex items-center gap-2"><button onClick={() => testModel(item)} className="px-2 py-1 text-[9px] border border-shogun-border rounded hover:border-shogun-blue">{busy === `test-${item.id}` ? 'Testing…' : 'Test'}</button>
                 <button onClick={() => patchModel(item, { enabled: !item.enabled })} className={`w-10 h-5 rounded-full p-0.5 ${item.enabled ? 'bg-green-500' : 'bg-gray-700'}`}><span className={`block w-4 h-4 bg-white rounded-full transition-transform ${item.enabled ? 'translate-x-5' : ''}`} /></button></div>
             </div>

@@ -84,6 +84,14 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
   custom:     '',
 };
 
+const PROVIDER_MODEL_PRESETS: Record<string, string[]> = {
+  openai: ['gpt-5'],
+  anthropic: ['claude-sonnet-5'],
+  google: ['gemini-3.5-flash'],
+  openrouter: ['z-ai/glm-5.2', 'google/gemini-3.5-flash', 'anthropic/claude-sonnet-5'],
+  ollama: ['llama3.2', 'qwen2.5-coder', 'deepseek-r1:8b', 'mistral'],
+};
+
 const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'local'];
 const isLocalProvider = (type: string) => LOCAL_PROVIDERS.includes(type);
 
@@ -432,6 +440,9 @@ export function Katana() {
     base_url: PROVIDER_BASE_URLS['openai'],
     is_active: true
   });
+  const [configuredModels, setConfiguredModels] = useState<string[]>([]);
+  const [customModelInput, setCustomModelInput] = useState('');
+  const [providerConfigBase, setProviderConfigBase] = useState<Record<string, any>>({});
   const [baseUrlOverride, setBaseUrlOverride] = useState(false);
   const [localModelPath, setLocalModelPath]   = useState('');
   const [scanningModels, setScanningModels]   = useState(false);
@@ -990,7 +1001,11 @@ export function Katana() {
         base_url:      newProvider.base_url || null,
         is_local:      isLocalProvider(newProvider.provider_type),
         auth_type:     isLocalProvider(newProvider.provider_type) ? 'none' : newProvider.auth_type,
-        config:        newProvider.api_key ? { api_key: newProvider.api_key } : {},
+        config:        {
+          ...providerConfigBase,
+          ...(newProvider.api_key ? { api_key: newProvider.api_key } : {}),
+          models: configuredModels,
+        },
       };
 
       if (editingProviderId) {
@@ -1002,6 +1017,9 @@ export function Katana() {
       }
 
       setNewProvider({ name: '', provider_type: 'openai', auth_type: 'api_key', api_key: '', base_url: PROVIDER_BASE_URLS['openai'], is_active: true });
+      setConfiguredModels([]);
+      setCustomModelInput('');
+      setProviderConfigBase({});
       setEditingProviderId(null);
       setBaseUrlOverride(false);
       fetchData();
@@ -1027,6 +1045,12 @@ export function Katana() {
       base_url: p.base_url || PROVIDER_BASE_URLS[p.provider_type] || '',
       is_active: p.status === 'connected'
     });
+    const models: string[] = Array.isArray(p.config?.models)
+      ? p.config.models.filter((value: unknown): value is string => typeof value === 'string' && !!value.trim())
+      : [p.config?.model_id, p.config?.model].filter((value: unknown): value is string => typeof value === 'string' && !!value.trim());
+    setConfiguredModels([...new Set(models.map((value: string) => value.trim()))]);
+    setCustomModelInput('');
+    setProviderConfigBase(p.config || {});
     setBaseUrlOverride(!!p.base_url);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1041,6 +1065,9 @@ export function Katana() {
       base_url: PROVIDER_BASE_URLS['openai'],
       is_active: true
     });
+    setConfiguredModels([]);
+    setCustomModelInput('');
+    setProviderConfigBase({});
     setBaseUrlOverride(false);
   };
 
@@ -1482,6 +1509,9 @@ export function Katana() {
                           name: '',
                           base_url: PROVIDER_BASE_URLS[type] || '',
                         });
+                        setConfiguredModels([]);
+                        setCustomModelInput('');
+                        setProviderConfigBase({});
                         setBaseUrlOverride(false);
                       }}
                       className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
@@ -1552,6 +1582,88 @@ export function Katana() {
                         <span className="text-[9px] text-shogun-subdued">• Ensure {newProvider.provider_type === 'ollama' ? 'Ollama' : 'LM Studio'} is running</span>
                       </div>
                     )}
+                  </div>
+
+                  <div className="space-y-2.5 pt-2 border-t border-shogun-border/40">
+                    <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest flex items-center justify-between">
+                      <span>Active Models ({configuredModels.length})</span>
+                      <span className="text-[8px] text-purple-400 font-semibold normal-case">Router candidates</span>
+                    </label>
+                    <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-[#050508] border border-shogun-border rounded-lg">
+                      {configuredModels.map((modelId) => (
+                        <span key={modelId} className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 font-semibold">
+                          {modelId}
+                          <button
+                            type="button"
+                            onClick={() => setConfiguredModels(current => current.filter(item => item !== modelId))}
+                            className="text-purple-400 hover:text-red-400 font-bold ml-0.5"
+                            aria-label={`Remove ${modelId}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                      {configuredModels.length === 0 && (
+                        <span className="text-[10px] text-shogun-subdued italic py-0.5">No models selected. This provider will not be used for routing.</span>
+                      )}
+                    </div>
+
+                    {!!PROVIDER_MODEL_PRESETS[newProvider.provider_type]?.length && (
+                      <div className="space-y-1">
+                        <span className="text-[9px] text-shogun-subdued font-medium">Quick add:</span>
+                        <div className="flex flex-wrap gap-1">
+                          {PROVIDER_MODEL_PRESETS[newProvider.provider_type].map((preset) => {
+                            const selected = configuredModels.includes(preset);
+                            return (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => setConfiguredModels(current => selected
+                                  ? current.filter(modelId => modelId !== preset)
+                                  : [...current, preset])}
+                                className={cn(
+                                  "text-[9px] font-mono px-2 py-0.5 rounded border transition-all",
+                                  selected
+                                    ? "bg-purple-500/20 border-purple-400 text-purple-300 font-bold"
+                                    : "bg-[#050508] border-shogun-border text-shogun-subdued hover:border-purple-400/40 hover:text-shogun-text"
+                                )}
+                              >
+                                {selected ? `✓ ${preset}` : `+ ${preset}`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-1.5 pt-1">
+                      <input
+                        type="text"
+                        placeholder="Exact model ID"
+                        value={customModelInput}
+                        onChange={(event) => setCustomModelInput(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter' || !customModelInput.trim()) return;
+                          event.preventDefault();
+                          const modelId = customModelInput.trim();
+                          setConfiguredModels(current => current.includes(modelId) ? current : [...current, modelId]);
+                          setCustomModelInput('');
+                        }}
+                        className="flex-1 bg-[#050508] border border-shogun-border rounded-lg px-2.5 py-1.5 text-xs font-mono focus:border-purple-400 outline-none"
+                      />
+                      <button
+                        type="button"
+                        disabled={!customModelInput.trim()}
+                        onClick={() => {
+                          const modelId = customModelInput.trim();
+                          if (modelId) setConfiguredModels(current => current.includes(modelId) ? current : [...current, modelId]);
+                          setCustomModelInput('');
+                        }}
+                        className="px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 text-[10px] font-bold uppercase rounded-lg disabled:opacity-40"
+                      >
+                        Add
+                      </button>
+                    </div>
                   </div>
 
                   {/* Auth Configuration (cloud only) */}
@@ -1991,6 +2103,15 @@ export function Katana() {
                                 </span>
                                 <span className="text-xs text-shogun-subdued">{p.base_url || t('katana.default_endpoint')}</span>
                               </div>
+                              {Array.isArray(p.config?.models) && p.config.models.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {p.config.models.map((modelId: string) => (
+                                    <span key={modelId} className="text-[9px] font-mono px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/25 text-purple-300 font-semibold">
+                                      {modelId}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">

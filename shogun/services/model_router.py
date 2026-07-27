@@ -297,18 +297,24 @@ class ModelRegistryService:
 
     async def sync_connected(self) -> None:
         existing = list((await self.session.execute(select(ModelRegistryEntry))).scalars().all())
-        keys = {(str(item.provider_id), item.model_id) for item in existing}
+        existing_map = {(str(item.provider_id), item.model_id): item for item in existing}
         providers = list((await self.session.execute(select(ModelProvider))).scalars().all())
         definitions = list((await self.session.execute(select(ModelDefinition))).scalars().all())
         by_provider: dict[uuid.UUID, list[ModelDefinition]] = {}
         for definition in definitions:
             by_provider.setdefault(definition.provider_id, []).append(definition)
         for provider in providers:
-            model_names = [item.model_key for item in by_provider.get(provider.id, [])]
-            if not model_names:
-                configured = provider.config or {}
+            configured = provider.config or {}
+            provider_definitions = by_provider.get(provider.id, [])
+            definitions_by_key = {item.model_key: item for item in provider_definitions}
+            has_explicit_selection = "models" in configured
+            if has_explicit_selection:
+                raw_models = configured.get("models")
+                model_names = list(raw_models) if isinstance(raw_models, (list, tuple)) else []
+            else:
+                model_names = [item.model_key for item in provider_definitions]
+            if not model_names and not has_explicit_selection:
                 model_names = [
-                    *list(configured.get("models") or []),
                     configured.get("model_id"),
                     configured.get("model"),
                     provider.name,
@@ -318,12 +324,36 @@ class ModelRegistryService:
                 for model_id in model_names
                 if is_concrete_model_id(model_id, provider.provider_type)
             ))
-            for model_id in model_names:
-                if (str(provider.id), model_id) in keys:
+            selected_models = set(model_names)
+            provider_connected = provider.status == "connected"
+
+            # Provider availability is a routing constraint, not a replacement for
+            # an operator's manual registry toggle. Remember the previous toggle
+            # while a provider/model is unavailable, then restore it if selected
+            # and connected again.
+            for (provider_id, model_id), item in list(existing_map.items()):
+                if provider_id != str(provider.id):
                     continue
-                definition = next(
-                    (item for item in by_provider.get(provider.id, []) if item.model_key == model_id), None
-                )
+                available = provider_connected and model_id in selected_models
+                state = dict(item.config_json or {})
+                was_available = state.get("provider_available")
+                if not available:
+                    if was_available is not False:
+                        state["enabled_before_provider_unavailable"] = bool(item.enabled)
+                    item.enabled = False
+                elif was_available is False:
+                    item.enabled = bool(state.pop("enabled_before_provider_unavailable", True))
+                state["provider_available"] = available
+                item.config_json = state
+
+            for model_id in model_names:
+                key = (str(provider.id), model_id)
+                definition = definitions_by_key.get(model_id)
+                if key in existing_map:
+                    item = existing_map[key]
+                    if (item.config_json or {}).get("auto_discovered"):
+                        item.display_name = definition.display_name if definition else model_id
+                    continue
                 caps = infer_capabilities(model_id, provider.provider_type)
                 if definition:
                     caps.update(
@@ -334,26 +364,30 @@ class ModelRegistryService:
                         }
                     )
                 quality, cost, latency = infer_tiers(model_id, provider.is_local)
-                self.session.add(
-                    ModelRegistryEntry(
-                        model_id=model_id,
-                        display_name=definition.display_name if definition else provider.name,
-                        provider_id=provider.id,
-                        provider=provider.provider_type,
-                        connection_type="local" if provider.is_local else "api",
-                        enabled=provider.status == "connected",
-                        capabilities=caps,
-                        quality_tier=quality,
-                        cost_tier=cost,
-                        latency_tier=latency,
-                        context_window=(
-                            definition.context_window if definition and definition.context_window else 8192
-                        ),
-                        local=provider.is_local,
-                        role_tags=self._roles(caps, quality, provider.is_local),
-                        config_json={"auto_discovered": True},
-                    )
+                item = ModelRegistryEntry(
+                    model_id=model_id,
+                    display_name=definition.display_name if definition else model_id,
+                    provider_id=provider.id,
+                    provider=provider.provider_type,
+                    connection_type="local" if provider.is_local else "api",
+                    enabled=provider_connected,
+                    capabilities=caps,
+                    quality_tier=quality,
+                    cost_tier=cost,
+                    latency_tier=latency,
+                    context_window=(
+                        definition.context_window if definition and definition.context_window else 8192
+                    ),
+                    local=provider.is_local,
+                    role_tags=self._roles(caps, quality, provider.is_local),
+                    config_json={
+                        "auto_discovered": True,
+                        "provider_available": provider_connected,
+                        **({"enabled_before_provider_unavailable": True} if not provider_connected else {}),
+                    },
                 )
+                self.session.add(item)
+                existing_map[key] = item
         await self.session.flush()
 
     @staticmethod
