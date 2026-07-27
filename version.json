@@ -1,8 +1,8 @@
 {
-  "version": "1.47.8",
+  "version": "1.47.9",
   "name": "Shogun OS",
-  "build": 159,
+  "build": 160,
   "channel": "stable",
-  "released": "2026-07-27T16:00:00Z",
-  "changelog": "Fix custom-profile provider authentication and add multiple strict named routing profiles in Katana."
+  "released": "2026-07-27T17:00:00Z",
+  "changelog": "Restore cloud and local model discovery with click-to-add provider model selection in Katana."
 }

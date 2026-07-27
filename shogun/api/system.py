@@ -205,7 +205,7 @@ async def scan_local_models(
     import os
     from pathlib import Path
 
-    base = Path(path)
+    base = Path(os.path.expandvars(os.path.expanduser(path)))
     if not base.exists():
         return ApiResponse(
             success=False,

@@ -70,6 +70,7 @@ class ProviderType(str, Enum):
     ANTHROPIC = "anthropic"
     OPENROUTER = "openrouter"
     OLLAMA = "ollama"
+    LMSTUDIO = "lmstudio"
     LOCAL = "local"
     CUSTOM = "custom"
 

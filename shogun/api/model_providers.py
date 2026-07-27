@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from shogun.api.deps import get_model_provider_service, get_model_routing_service
 from shogun.schemas.common import ApiResponse
 from shogun.schemas.models import (
+    ModelDiscoveryRequest,
     ModelProviderCreate,
     ModelProviderResponse,
     ModelProviderUpdate,
@@ -16,7 +17,9 @@ from shogun.schemas.models import (
     ModelRoutingProfileResponse,
     ModelRoutingProfileUpdate,
 )
+from shogun.services.model_discovery import ModelDiscoveryError, discover_provider_models
 from shogun.services.model_service import ModelProviderService, ModelRoutingProfileService
+from shogun.services.provider_credentials import provider_api_key, reveal_provider_secret
 
 router = APIRouter(tags=["Models"])
 
@@ -49,6 +52,39 @@ async def create_provider(
     except Exception:
         pass
     return ApiResponse(data=ModelProviderResponse.model_validate(record))
+
+
+@provider_router.post("/discover-models", response_model=ApiResponse)
+async def discover_models(
+    body: ModelDiscoveryRequest,
+    svc: ModelProviderService = Depends(get_model_provider_service),
+):
+    """Return models advertised by a cloud provider using its exact credential."""
+
+    provider_type = body.provider_type.value if hasattr(body.provider_type, "value") else str(body.provider_type)
+    base_url = body.base_url or ""
+    api_key = reveal_provider_secret(body.api_key) if body.api_key not in {None, "", "********"} else None
+    if body.provider_id:
+        provider = await svc.get_by_id(body.provider_id)
+        if not provider:
+            raise HTTPException(status_code=404, detail="Provider not found")
+        if provider.provider_type != provider_type:
+            raise HTTPException(status_code=400, detail="Provider type does not match the saved provider")
+        base_url = base_url or provider.base_url or ""
+        api_key = api_key or provider_api_key(provider.config)
+    if provider_type in {"ollama", "lmstudio", "local"}:
+        raise HTTPException(status_code=400, detail="Use local model discovery for this provider")
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Provider base URL is required")
+    try:
+        models = await discover_provider_models(
+            provider_type=provider_type,
+            base_url=base_url,
+            api_key=api_key,
+        )
+    except ModelDiscoveryError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return ApiResponse(data=models, meta={"count": len(models), "provider_type": provider_type})
 
 
 @provider_router.patch("/{provider_id}", response_model=ApiResponse)

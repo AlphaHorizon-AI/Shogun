@@ -45,6 +45,15 @@ class ModelProviderUpdate(ShogunBase):
     status: ProviderStatus | None = None
 
 
+class ModelDiscoveryRequest(ShogunBase):
+    """Discover models exposed by a configured or not-yet-saved provider."""
+
+    provider_type: ProviderType
+    base_url: str | None = None
+    api_key: str | None = None
+    provider_id: uuid.UUID | None = None
+
+
 class ModelProviderResponse(ShogunBase):
     """Response model for a model provider."""
 

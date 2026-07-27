@@ -85,6 +85,13 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
   custom:     '',
 };
 
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  openai: 'OpenAI',
+  google: 'Google Gemini',
+  anthropic: 'Anthropic Claude',
+  openrouter: 'OpenRouter',
+};
+
 const PROVIDER_MODEL_PRESETS: Record<string, string[]> = {
   openai: ['gpt-5'],
   anthropic: ['claude-sonnet-5'],
@@ -437,6 +444,8 @@ export function Katana() {
   });
   const [configuredModels, setConfiguredModels] = useState<string[]>([]);
   const [customModelInput, setCustomModelInput] = useState('');
+  const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
+  const [discoveringModels, setDiscoveringModels] = useState(false);
   const [providerConfigBase, setProviderConfigBase] = useState<Record<string, any>>({});
   const [baseUrlOverride, setBaseUrlOverride] = useState(false);
   const [localModelPath, setLocalModelPath]   = useState('');
@@ -877,6 +886,44 @@ export function Katana() {
     }
   };
 
+  const addConfiguredModel = (modelId: string) => {
+    const normalized = modelId.trim();
+    if (!normalized) return;
+    setConfiguredModels(current => current.includes(normalized) ? current : [...current, normalized]);
+    if (!isLocalProvider(newProvider.provider_type) && !newProvider.name.trim()) {
+      setNewProvider(current => ({
+        ...current,
+        name: PROVIDER_DISPLAY_NAMES[current.provider_type] || current.provider_type,
+      }));
+    }
+  };
+
+  const handleDiscoverProviderModels = async () => {
+    setDiscoveringModels(true);
+    setDiscoveredModels([]);
+    try {
+      const res = await axios.post('/api/v1/model-providers/discover-models', {
+        provider_type: newProvider.provider_type,
+        base_url: newProvider.base_url || null,
+        api_key: newProvider.api_key || null,
+        provider_id: editingProviderId,
+      });
+      const found: string[] = res.data?.data || [];
+      setDiscoveredModels(found);
+      setStatusMessage({
+        type: 'success',
+        text: `Found ${found.length} model${found.length === 1 ? '' : 's'}. Click any model to add it.`,
+      });
+    } catch (error: any) {
+      setStatusMessage({
+        type: 'error',
+        text: error?.response?.data?.detail || 'Could not retrieve this provider’s model catalog.',
+      });
+    } finally {
+      setDiscoveringModels(false);
+    }
+  };
+
   // Scan the filesystem path via the backend endpoint
   const handleScanLocalModels = async () => {
     const rawPath = localModelPath.trim();
@@ -1014,6 +1061,7 @@ export function Katana() {
       setNewProvider({ name: '', provider_type: 'openai', auth_type: 'api_key', api_key: '', base_url: PROVIDER_BASE_URLS['openai'], is_active: true });
       setConfiguredModels([]);
       setCustomModelInput('');
+      setDiscoveredModels([]);
       setProviderConfigBase({});
       setEditingProviderId(null);
       setBaseUrlOverride(false);
@@ -1045,6 +1093,7 @@ export function Katana() {
       : [p.config?.model_id, p.config?.model].filter((value: unknown): value is string => typeof value === 'string' && !!value.trim());
     setConfiguredModels([...new Set(models.map((value: string) => value.trim()))]);
     setCustomModelInput('');
+    setDiscoveredModels([]);
     setProviderConfigBase(p.config || {});
     setBaseUrlOverride(!!p.base_url);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1062,6 +1111,7 @@ export function Katana() {
     });
     setConfiguredModels([]);
     setCustomModelInput('');
+    setDiscoveredModels([]);
     setProviderConfigBase({});
     setBaseUrlOverride(false);
   };
@@ -1506,6 +1556,7 @@ export function Katana() {
                         });
                         setConfiguredModels([]);
                         setCustomModelInput('');
+                        setDiscoveredModels([]);
                         setProviderConfigBase({});
                         setBaseUrlOverride(false);
                       }}
@@ -1547,7 +1598,11 @@ export function Katana() {
                       <select
                         required
                         value={newProvider.name}
-                        onChange={(e) => setNewProvider({...newProvider, name: e.target.value})}
+                        onChange={(e) => {
+                          const modelId = e.target.value;
+                          setNewProvider({...newProvider, name: modelId});
+                          addConfiguredModel(modelId);
+                        }}
                         className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
                       >
                         <option value="" disabled>{t('katana.select_pulled_model')}</option>
@@ -1730,6 +1785,50 @@ export function Katana() {
                       )}
                     </div>
                   </div>
+
+                  {!isLocal && (
+                    <div className="space-y-2 rounded-lg border border-shogun-blue/20 bg-shogun-blue/5 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-shogun-text">Provider model catalog</p>
+                          <p className="text-[9px] text-shogun-subdued mt-0.5">Scan the provider and click models to add them as router candidates.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleDiscoverProviderModels}
+                          disabled={discoveringModels || !newProvider.base_url}
+                          className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-shogun-blue/30 bg-shogun-blue/10 hover:bg-shogun-blue/20 disabled:opacity-40 text-shogun-blue text-[9px] font-bold uppercase tracking-wider"
+                        >
+                          <RefreshCw className={cn("w-3 h-3", discoveringModels && "animate-spin")} />
+                          {discoveringModels ? 'Scanning…' : 'Scan models'}
+                        </button>
+                      </div>
+                      {discoveredModels.length > 0 && (
+                        <div className="max-h-44 overflow-y-auto grid grid-cols-1 gap-1 pt-1">
+                          {discoveredModels.map(modelId => {
+                            const selected = configuredModels.includes(modelId);
+                            return (
+                              <button
+                                key={modelId}
+                                type="button"
+                                onClick={() => addConfiguredModel(modelId)}
+                                disabled={selected}
+                                className={cn(
+                                  "flex items-center justify-between gap-2 rounded border px-2.5 py-1.5 text-left text-[10px] font-mono transition-all",
+                                  selected
+                                    ? "border-green-500/30 bg-green-500/10 text-green-300"
+                                    : "border-shogun-border bg-[#050508] text-shogun-text hover:border-purple-400/50 hover:text-purple-300",
+                                )}
+                              >
+                                <span className="truncate">{modelId}</span>
+                                <span className="shrink-0 text-[9px] font-sans font-bold">{selected ? '✓ Added' : '+ Add'}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Model Location — local providers only */}
                   {isLocal && (
@@ -2002,6 +2101,14 @@ export function Katana() {
                               <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
                               <span className="text-[10px] font-mono text-shogun-text truncate">{m}</span>
                             </div>
+                            <button
+                              type="button"
+                              disabled={configuredModels.includes(m)}
+                              onClick={() => addConfiguredModel(m)}
+                              className="ml-auto shrink-0 px-2 py-1 rounded-lg border border-purple-500/30 text-purple-300 hover:bg-purple-500/10 disabled:border-green-500/30 disabled:text-green-400 text-[9px] font-bold uppercase"
+                            >
+                              {configuredModels.includes(m) ? 'Added' : '+ Add'}
+                            </button>
                             {localProviderType === 'ollama' && (
                               <button
                                 type="button"
@@ -2179,6 +2286,14 @@ export function Katana() {
                               <span className="text-xs font-mono text-shogun-text truncate font-semibold" title={m}>{m}</span>
                             </div>
                           </div>
+                          <button
+                            type="button"
+                            disabled={configuredModels.includes(m)}
+                            onClick={() => addConfiguredModel(m)}
+                            className="ml-auto mr-2 shrink-0 px-2.5 py-1.5 rounded-lg border border-purple-500/30 text-purple-300 hover:bg-purple-500/10 disabled:border-green-500/30 disabled:text-green-400 text-[9px] font-bold uppercase"
+                          >
+                            {configuredModels.includes(m) ? 'Added' : '+ Add'}
+                          </button>
                           {localProviderType === 'ollama' && (
                             <button
                               type="button"
