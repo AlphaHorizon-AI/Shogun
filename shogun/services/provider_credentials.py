@@ -30,7 +30,14 @@ def protect_provider_config(
     def protect(value: Any, previous: Any = None, key: str = "") -> Any:
         if isinstance(value, dict):
             old = previous if isinstance(previous, dict) else {}
-            return {name: protect(item, old.get(name), name) for name, item in value.items()}
+            protected = {name: protect(item, old.get(name), name) for name, item in value.items()}
+            for name, old_value in old.items():
+                if name in protected:
+                    continue
+                retained = retain_secrets(old_value, name)
+                if retained is not None:
+                    protected[name] = retained
+            return protected
         if isinstance(value, list):
             return [protect(item) for item in value]
         if key.casefold() not in _SENSITIVE_KEYS or not isinstance(value, str) or not value:
@@ -40,6 +47,23 @@ def protect_provider_config(
         if value.startswith("enc:"):
             return value
         return "enc:" + encrypt_password(value)
+
+    def retain_secrets(value: Any, key: str = "") -> Any:
+        """Retain omitted encrypted secrets without retaining unrelated stale config."""
+
+        if key.casefold() in _SENSITIVE_KEYS and isinstance(value, str) and value:
+            return value
+        if isinstance(value, dict):
+            retained = {
+                name: secret
+                for name, item in value.items()
+                if (secret := retain_secrets(item, name)) is not None
+            }
+            return retained or None
+        if isinstance(value, list):
+            retained_items = [secret for item in value if (secret := retain_secrets(item)) is not None]
+            return retained_items or None
+        return None
 
     return protect(dict(config or {}), dict(existing or {}))
 

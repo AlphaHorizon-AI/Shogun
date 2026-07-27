@@ -1,8 +1,8 @@
 {
-  "version": "1.47.9",
+  "version": "1.47.10",
   "name": "Shogun OS",
-  "build": 160,
+  "build": 161,
   "channel": "stable",
-  "released": "2026-07-27T17:00:00Z",
-  "changelog": "Restore cloud and local model discovery with click-to-add provider model selection in Katana."
+  "released": "2026-07-27T17:15:00Z",
+  "changelog": "Preserve and correctly replace protected AI-provider credentials during Katana edits."
 }

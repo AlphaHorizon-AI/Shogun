@@ -103,6 +103,24 @@ const PROVIDER_MODEL_PRESETS: Record<string, string[]> = {
 const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'local'];
 const isLocalProvider = (type: string) => LOCAL_PROVIDERS.includes(type);
 
+const PROVIDER_SECRET_KEYS = new Set(['api_key', 'api-key', 'access_token', 'refresh_token', 'token', 'password', 'secret']);
+const hasProviderSecret = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some(hasProviderSecret);
+  return Object.entries(value as Record<string, unknown>).some(
+    ([key, item]) => (PROVIDER_SECRET_KEYS.has(key.toLowerCase()) && typeof item === 'string' && !!item) || hasProviderSecret(item),
+  );
+};
+const withoutProviderSecrets = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withoutProviderSecrets);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !PROVIDER_SECRET_KEYS.has(key.toLowerCase()))
+      .map(([key, item]) => [key, withoutProviderSecrets(item)]),
+  );
+};
+
 // ── Ollama live search result type ───────────────────────────────
 interface OllamaSearchResult {
   id: string; name: string; description: string;
@@ -446,6 +464,7 @@ export function Katana() {
   const [customModelInput, setCustomModelInput] = useState('');
   const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
   const [discoveringModels, setDiscoveringModels] = useState(false);
+  const [hasStoredProviderCredential, setHasStoredProviderCredential] = useState(false);
   const [providerConfigBase, setProviderConfigBase] = useState<Record<string, any>>({});
   const [baseUrlOverride, setBaseUrlOverride] = useState(false);
   const [localModelPath, setLocalModelPath]   = useState('');
@@ -1045,7 +1064,7 @@ export function Katana() {
         auth_type:     isLocalProvider(newProvider.provider_type) ? 'none' : newProvider.auth_type,
         config:        {
           ...providerConfigBase,
-          ...(newProvider.api_key ? { api_key: newProvider.api_key } : {}),
+          ...(newProvider.api_key.trim() ? { api_key: newProvider.api_key.trim() } : {}),
           models: configuredModels,
         },
       };
@@ -1062,6 +1081,7 @@ export function Katana() {
       setConfiguredModels([]);
       setCustomModelInput('');
       setDiscoveredModels([]);
+      setHasStoredProviderCredential(false);
       setProviderConfigBase({});
       setEditingProviderId(null);
       setBaseUrlOverride(false);
@@ -1084,17 +1104,23 @@ export function Katana() {
       name: p.name,
       provider_type: p.provider_type,
       auth_type: p.auth_type || 'api_key',
-      api_key: p.config?.api_key || '',
+      api_key: '',
       base_url: p.base_url || PROVIDER_BASE_URLS[p.provider_type] || '',
       is_active: p.status === 'connected'
     });
-    const models: string[] = Array.isArray(p.config?.models)
+    const configured: string[] = Array.isArray(p.config?.models)
       ? p.config.models.filter((value: unknown): value is string => typeof value === 'string' && !!value.trim())
       : [p.config?.model_id, p.config?.model].filter((value: unknown): value is string => typeof value === 'string' && !!value.trim());
+    const genericName = (PROVIDER_DISPLAY_NAMES[p.provider_type] || p.provider_type || '').toLowerCase();
+    const legacyModel = typeof p.name === 'string' && p.name.trim() && p.name.trim().toLowerCase() !== genericName
+      ? p.name.trim()
+      : '';
+    const models = configured.length > 0 ? configured : legacyModel ? [legacyModel] : [];
     setConfiguredModels([...new Set(models.map((value: string) => value.trim()))]);
     setCustomModelInput('');
     setDiscoveredModels([]);
-    setProviderConfigBase(p.config || {});
+    setHasStoredProviderCredential(hasProviderSecret(p.config));
+    setProviderConfigBase(withoutProviderSecrets(p.config || {}) as Record<string, any>);
     setBaseUrlOverride(!!p.base_url);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1112,6 +1138,7 @@ export function Katana() {
     setConfiguredModels([]);
     setCustomModelInput('');
     setDiscoveredModels([]);
+    setHasStoredProviderCredential(false);
     setProviderConfigBase({});
     setBaseUrlOverride(false);
   };
@@ -1557,6 +1584,7 @@ export function Katana() {
                         setConfiguredModels([]);
                         setCustomModelInput('');
                         setDiscoveredModels([]);
+                        setHasStoredProviderCredential(false);
                         setProviderConfigBase({});
                         setBaseUrlOverride(false);
                       }}
@@ -1736,11 +1764,19 @@ export function Katana() {
                         </label>
                         <input
                           type="password"
-                          placeholder={newProvider.auth_type === 'oauth' ? 'Bearer ...' : 'sk-...'}
+                          placeholder={hasStoredProviderCredential
+                            ? 'Stored credential unchanged — enter a replacement'
+                            : newProvider.auth_type === 'oauth' ? 'Bearer ...' : 'sk-...'}
                           value={newProvider.api_key}
                           onChange={(e) => setNewProvider({...newProvider, api_key: e.target.value})}
                           className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
                         />
+                        {hasStoredProviderCredential && !newProvider.api_key && (
+                          <p className="text-[9px] text-green-400">✓ A protected credential is stored. Leave this blank to keep it.</p>
+                        )}
+                        {hasStoredProviderCredential && newProvider.api_key && (
+                          <p className="text-[9px] text-shogun-gold">The stored credential will be replaced when you save.</p>
+                        )}
                       </div>
                     </>
                   )}
