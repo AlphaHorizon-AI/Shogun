@@ -4,5 +4,5 @@
   "build": 154,
   "channel": "stable",
   "released": "2026-07-27T06:30:00Z",
-  "changelog": "Fix hardened Gensui security regression testing and container CI startup."
+  "changelog": "Fix AgentFlow OpenRouter authentication, hardened Gensui regression testing, and container CI startup."
 }

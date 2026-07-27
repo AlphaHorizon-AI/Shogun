@@ -21,6 +21,28 @@ class _SessionContext:
         return False
 
 
+def test_provider_connection_resolves_protected_api_key(monkeypatch):
+    provider = SimpleNamespace(
+        config={"api_key": "enc:protected-value", "model": "test-model"},
+        base_url="https://openrouter.ai/api/v1",
+        provider_type="openrouter",
+        name="OpenRouter",
+    )
+    seen_configs: list[dict] = []
+
+    def resolve_api_key(config):
+        seen_configs.append(config)
+        return "decrypted-api-key"
+
+    monkeypatch.setattr(flow_engine, "provider_api_key", resolve_api_key)
+
+    _, model, _, headers = flow_engine._provider_connection(provider)
+
+    assert seen_configs == [provider.config]
+    assert model == "test-model"
+    assert headers["Authorization"] == "Bearer decrypted-api-key"
+
+
 @pytest.mark.asyncio
 async def test_samurai_falls_back_after_timeout(monkeypatch):
     calls: list[tuple[str, int]] = []

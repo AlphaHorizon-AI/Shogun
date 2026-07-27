@@ -36,6 +36,7 @@ from shogun.db.models.agent_flow_run import AgentFlowRun, AgentFlowRunEdge
 from shogun.db.models.model_definition import ModelDefinition
 from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_routing import ModelRoutingProfile
+from shogun.services.provider_credentials import provider_api_key
 
 log = logging.getLogger("shogun.flow_engine")
 
@@ -2097,7 +2098,7 @@ def _provider_connection(
         base_url = base_url.rstrip("/") + "/v1"
 
     # Build headers
-    api_key = provider.config.get("api_key") or provider.config.get("api-key")
+    api_key = provider_api_key(provider.config)
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
