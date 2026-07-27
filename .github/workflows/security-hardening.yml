@@ -64,7 +64,8 @@ jobs:
             tests/test_telemetry_ingestion.py \
             tests/test_red_team_hardening.py \
             tests/test_calendar_permissions.py \
-            tests/test_security_punch_list.py
+            tests/test_security_punch_list.py \
+            tests/test_cli_environment.py
       - name: Security regression tests
         # The repository-wide suite has unrelated pre-existing failures. Keep
         # this required gate scoped to the remediation's security regressions.
@@ -76,7 +77,8 @@ jobs:
             tests/test_telemetry_ingestion.py \
             tests/test_red_team_hardening.py \
             tests/test_calendar_permissions.py \
-            tests/test_security_punch_list.py
+            tests/test_security_punch_list.py \
+            tests/test_cli_environment.py
           python scripts/check-telemetry-privacy.py
 
   frontends:
