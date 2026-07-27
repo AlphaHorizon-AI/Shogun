@@ -2619,8 +2619,9 @@ async def execute_native_tool(
                 return json.dumps(result, default=str, ensure_ascii=False)
             except (FileFormatError, ValueError) as exc:
                 await db_session.rollback()
+                logger.warning("File tool request rejected: %s", exc)
                 return json.dumps({"status": "failed", "error_type": getattr(exc, "error_type", "invalid_request"),
-                                   "message": str(exc), "warnings": [], "artifacts": []})
+                                   "message": "The file operation could not be completed.", "warnings": [], "artifacts": []})
 
         if name in {"get_recent_images", "get_image_metadata", "describe_image", "inspect_image", "extract_image_text", "compare_images", "attach_image_to_stack"}:
             import uuid
@@ -2644,7 +2645,8 @@ async def execute_native_tool(
                     await db_session.commit()
                     return json.dumps({"status": "success", "result": analysis.result_text, "model": analysis.model_used})
                 except (ValueError, VisualIntakeError) as exc:
-                    return json.dumps({"status": "error", "message": str(exc)})
+                    logger.warning("Visual analysis request rejected: %s", exc)
+                    return json.dumps({"status": "error", "message": "The visual analysis request could not be completed."})
 
             try:
                 artifact_id = uuid.UUID(str(args.get("artifact_id", "")))
@@ -2661,7 +2663,8 @@ async def execute_native_tool(
                     await db_session.commit()
                     return json.dumps({"status": "success", "stack_artifact_id": str(linked.id)})
                 except (ValueError, VisualIntakeError) as exc:
-                    return json.dumps({"status": "error", "message": str(exc)})
+                    logger.warning("Visual stack request rejected: %s", exc)
+                    return json.dumps({"status": "error", "message": "The visual stack request could not be completed."})
 
             default_prompt = (
                 "Describe this image accurately, including visible text and important details."
@@ -2679,7 +2682,8 @@ async def execute_native_tool(
                     "model": analysis.model_used, "provider": analysis.provider_used,
                 })
             except VisualIntakeError as exc:
-                return json.dumps({"status": "error", "message": str(exc)})
+                logger.warning("Visual intake request rejected: %s", exc)
+                return json.dumps({"status": "error", "message": "The visual intake request could not be completed."})
 
         if name == "spawn_samurai":
             # ── Posture enforcement: kill switch + subagent limit ──
@@ -3404,9 +3408,10 @@ async def execute_native_tool(
                 await db_session.commit()
             except Exception as exc:
                 await db_session.rollback()
+                logger.exception("AgentFlow lifecycle synchronization failed")
                 return json.dumps({
                     "status": "error",
-                    "message": f"AgentFlow lifecycle change could not be synchronized: {exc}",
+                    "message": "AgentFlow lifecycle change could not be synchronized.",
                 })
             return json.dumps({
                 "status": "success",
@@ -3576,7 +3581,8 @@ async def execute_native_tool(
                 await db_session.commit()
             except (KeyError, ValueError, TypeError) as exc:
                 await db_session.rollback()
-                return json.dumps({"status": "error", "message": str(exc)})
+                logger.warning("AgentFlow patch request rejected: %s", exc)
+                return json.dumps({"status": "error", "message": "The AgentFlow patch request is invalid."})
             return json.dumps(
                 {
                     "status": "success",
@@ -4273,9 +4279,9 @@ async def execute_native_tool(
         else:
             return json.dumps({"status": "error", "message": f"Unknown tool: {name}"})
             
-    except Exception as e:
-        logger.error(f"Native skill execution failed: {e}", exc_info=True)
-        return json.dumps({"status": "error", "message": str(e)})
+    except Exception:
+        logger.exception("Native skill execution failed")
+        return json.dumps({"status": "error", "message": "Native skill execution failed. Check the Shogun logs."})
 
 
 # ── Office Tool Executor ─────────────────────────────────────────────
@@ -4323,9 +4329,9 @@ async def _execute_mcp_tool(name: str, args: dict[str, Any], db_session) -> str:
             "tool": result.tool,
             "response": result.response,
         })
-    except Exception as exc:
-        logger.error("MCP tool execution failed: %s", exc, exc_info=True)
-        return json.dumps({"status": "error", "message": str(exc)})
+    except Exception:
+        logger.exception("MCP tool execution failed")
+        return json.dumps({"status": "error", "message": "MCP tool execution failed. Check the Shogun logs."})
 
 
 async def _execute_office_tool(name: str, args: dict[str, Any]) -> str:
@@ -4840,12 +4846,12 @@ async def _execute_office_tool(name: str, args: dict[str, Any]) -> str:
             pass
         return json.dumps({
             "status": "error",
-            "message": str(exc),
-            "context": exc.context.to_dict() if exc.context else {},
+            "message": "The Office operation could not be completed.",
+            "context": {},
         })
     except Exception as exc:
         logger.error("Office tool unexpected error (%s): %s", name, exc, exc_info=True)
-        return json.dumps({"status": "error", "message": f"Unexpected error: {exc}"})
+        return json.dumps({"status": "error", "message": "The Office operation failed unexpectedly. Check the Shogun logs."})
 
 
 async def _log_office_event(
@@ -4940,8 +4946,9 @@ async def _execute_ide_tool(name: str, args: dict[str, Any]) -> str:
         else:
             return json.dumps({"status": "error", "message": f"Unknown IDE tool: {name}"})
         return json.dumps({"status": "success", "result": result}, default=str)
-    except Exception as exc:
-        return json.dumps({"status": "error", "message": str(exc.detail if hasattr(exc, "detail") else exc)})
+    except Exception:
+        logger.exception("IDE tool execution failed")
+        return json.dumps({"status": "error", "message": "IDE tool execution failed. Check the Shogun logs."})
 
 
 async def _execute_workspace_tool(name: str, args: dict[str, Any]) -> str:
@@ -4956,8 +4963,9 @@ async def _execute_workspace_tool(name: str, args: dict[str, Any]) -> str:
 
     try:
         workspace_root = await check_workspace_access()
-    except Exception as exc:
-        return json.dumps({"status": "error", "message": str(exc.detail if hasattr(exc, 'detail') else exc)})
+    except Exception:
+        logger.exception("Workspace access check failed")
+        return json.dumps({"status": "error", "message": "Workspace access was denied."})
 
     try:
         if name == "workspace_info":
@@ -5240,17 +5248,19 @@ async def _execute_workspace_tool(name: str, args: dict[str, Any]) -> str:
                     "message": f"Extracted {char_count} characters from {len(page_indices)}/{total_pages} pages of {rel_path}."
                     + (" (truncated to first 50 pages)" if truncated else ""),
                 })
-            except Exception as pdf_exc:
-                return json.dumps({"status": "error", "message": f"Failed to read PDF: {pdf_exc}"})
+            except Exception:
+                logger.exception("Workspace PDF read failed")
+                return json.dumps({"status": "error", "message": "Failed to read the PDF. Check the Shogun logs."})
 
         else:
             return json.dumps({"status": "error", "message": f"Unknown workspace tool: {name}"})
 
     except ValueError as exc:
-        return json.dumps({"status": "error", "message": str(exc)})
-    except Exception as exc:
-        logger.error(f"Workspace tool execution failed: {exc}", exc_info=True)
-        return json.dumps({"status": "error", "message": str(exc)})
+        logger.warning("Workspace tool request rejected: %s", exc)
+        return json.dumps({"status": "error", "message": "The workspace request is invalid."})
+    except Exception:
+        logger.exception("Workspace tool execution failed")
+        return json.dumps({"status": "error", "message": "Workspace tool execution failed. Check the Shogun logs."})
 
 
 async def _execute_telegram_list_groups() -> str:
@@ -5295,9 +5305,9 @@ async def _execute_telegram_list_groups() -> str:
             "total": len(groups),
             "message": f"Found {len(groups)} known group(s). Note: the bot only knows about groups where it has received at least one event (message or membership change).",
         })
-    except Exception as exc:
-        logger.error(f"telegram_list_groups failed: {exc}", exc_info=True)
-        return json.dumps({"status": "error", "message": str(exc)})
+    except Exception:
+        logger.exception("telegram_list_groups failed")
+        return json.dumps({"status": "error", "message": "Telegram group lookup failed. Check the Shogun logs."})
 
 
 async def _execute_active_skill_tool(name: str, args: dict[str, Any], db_session) -> str:
@@ -5354,7 +5364,8 @@ async def _execute_active_skill_tool(name: str, args: dict[str, Any], db_session
             await db_session.commit()
             return json.dumps({"status": "success", "active_skill_run_id": str(record.id), "outcome": record.outcome})
         except (ValueError, LookupError) as exc:
-            return json.dumps({"status": "error", "message": str(exc)})
+            logger.warning("Active skill outcome rejected: %s", exc)
+            return json.dumps({"status": "error", "message": "The active skill outcome request is invalid."})
     return json.dumps({"status": "error", "message": f"Unknown active skill tool: {name}"})
 
 
@@ -5383,9 +5394,9 @@ async def _execute_dojo_tool(name: str, args: dict[str, Any]) -> str:
             return await _dojo_get_transcript()
         else:
             return json.dumps({"status": "error", "message": f"Unknown dojo tool: {name}"})
-    except Exception as exc:
-        logger.error(f"Dojo tool execution failed: {exc}", exc_info=True)
-        return json.dumps({"status": "error", "message": str(exc)})
+    except Exception:
+        logger.exception("Dojo tool execution failed")
+        return json.dumps({"status": "error", "message": "Dojo tool execution failed. Check the Shogun logs."})
 
 
 async def _dojo_browse_skills(args: dict[str, Any]) -> str:
@@ -5443,11 +5454,11 @@ async def _dojo_browse_skills(args: dict[str, Any]) -> str:
             "status": "error",
             "message": "OpenClaw integration is not available.",
         })
-    except Exception as exc:
-        logger.error(f"dojo_browse_skills failed: {exc}", exc_info=True)
+    except Exception:
+        logger.exception("dojo_browse_skills failed")
         return json.dumps({
             "status": "error",
-            "message": f"Failed to browse OpenClaw catalog: {exc}",
+            "message": "Failed to browse the OpenClaw catalog. Check the Shogun logs.",
         })
 
 
@@ -5558,8 +5569,9 @@ async def _dojo_install_skill(args: dict[str, Any]) -> str:
                 "message": f"Successfully installed skill '{skill.name}' from OpenClaw College.",
             })
 
-    except Exception as exc:
-        return json.dumps({"status": "error", "message": f"Failed to install skill: {exc}"})
+    except Exception:
+        logger.exception("Skill installation failed")
+        return json.dumps({"status": "error", "message": "Failed to install the skill. Check the Shogun logs."})
 
 
 async def _dojo_list_installed() -> str:
@@ -5611,9 +5623,9 @@ async def _dojo_list_installed() -> str:
                 "message": f"{len(skills_data)} skill(s) currently installed.",
             })
 
-    except Exception as exc:
-        logger.error(f"dojo_list_installed failed: {exc}", exc_info=True)
-        return json.dumps({"status": "error", "message": str(exc)})
+    except Exception:
+        logger.exception("dojo_list_installed failed")
+        return json.dumps({"status": "error", "message": "Installed-skill lookup failed. Check the Shogun logs."})
 
 
 async def _dojo_get_primary_agent(db):
@@ -5763,9 +5775,9 @@ async def _dojo_take_exam(args: dict[str, Any]) -> str:
             "college_result": college_result,
             "message": f"Exam completed with score {score}%.",
         })
-    except Exception as exc:
-        logger.error(f"dojo_take_exam failed: {exc}", exc_info=True)
-        return json.dumps({"status": "error", "message": str(exc)})
+    except Exception:
+        logger.exception("dojo_take_exam failed")
+        return json.dumps({"status": "error", "message": "The Dojo exam failed. Check the Shogun logs."})
 
 
 async def _dojo_get_achievements() -> str:
@@ -5904,9 +5916,9 @@ async def _dojo_get_achievements() -> str:
             "exams_passed": exams_passed,
             "exams_total": len(test_results),
         })
-    except Exception as exc:
-        logger.error(f"dojo_get_achievements failed: {exc}", exc_info=True)
-        return json.dumps({"status": "error", "message": str(exc)})
+    except Exception:
+        logger.exception("dojo_get_achievements failed")
+        return json.dumps({"status": "error", "message": "Achievement lookup failed. Check the Shogun logs."})
 
 
 async def _dojo_enroll_specialization(args: dict[str, Any]) -> str:
@@ -5928,9 +5940,9 @@ async def _dojo_enroll_specialization(args: dict[str, Any]) -> str:
             ) as client:
                 result = await client.enroll_specialization(specialization_id, agent.openclaw_agent_id)
         return json.dumps({"status": "success", **result}, default=str)
-    except Exception as exc:
-        logger.error("dojo_enroll_specialization failed: %s", exc, exc_info=True)
-        return json.dumps({"status": "error", "message": str(exc)})
+    except Exception:
+        logger.exception("dojo_enroll_specialization failed")
+        return json.dumps({"status": "error", "message": "Specialization enrollment failed. Check the Shogun logs."})
 
 
 async def _dojo_evaluate_achievements() -> str:
@@ -5949,9 +5961,9 @@ async def _dojo_evaluate_achievements() -> str:
             ) as client:
                 result = await client.evaluate_achievements(agent.openclaw_agent_id)
         return json.dumps({"status": "success", **result}, default=str)
-    except Exception as exc:
-        logger.error("dojo_evaluate_achievements failed: %s", exc, exc_info=True)
-        return json.dumps({"status": "error", "message": str(exc)})
+    except Exception:
+        logger.exception("dojo_evaluate_achievements failed")
+        return json.dumps({"status": "error", "message": "Achievement evaluation failed. Check the Shogun logs."})
 
 
 async def _dojo_get_transcript() -> str:
@@ -5987,6 +5999,6 @@ async def _dojo_get_transcript() -> str:
             "transcript": transcript.get("transcript", []),
             "profile": transcript,
         })
-    except Exception as exc:
-        logger.error(f"dojo_get_transcript failed: {exc}", exc_info=True)
-        return json.dumps({"status": "error", "message": str(exc)})
+    except Exception:
+        logger.exception("dojo_get_transcript failed")
+        return json.dumps({"status": "error", "message": "Transcript lookup failed. Check the Shogun logs."})
