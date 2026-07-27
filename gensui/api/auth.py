@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import time
 import hmac
 import secrets
+import time
 import uuid
 from collections import deque
 
@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gensui.api.deps import get_db, get_current_admin
+from gensui.api.deps import get_current_admin, get_db
 from gensui.config import gensui_settings
 from gensui.services.auth_service import AuthService
 

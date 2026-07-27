@@ -17,10 +17,10 @@ def test_gensui_defaults_to_loopback_and_hides_production_schema(monkeypatch):
 
     assert GensuiSettings(_env_file=None).gensui_server_host == "127.0.0.1"
     monkeypatch.setattr(gensui_settings, "debug", False)
-    paths = {route.path for route in create_app().routes}
-    assert "/docs" not in paths
-    assert "/redoc" not in paths
-    assert "/openapi.json" not in paths
+    app = create_app()
+    assert app.docs_url is None
+    assert app.redoc_url is None
+    assert app.openapi_url is None
 
 
 def test_gensui_secret_file_is_generated_with_strong_material(tmp_path: Path):
@@ -38,6 +38,24 @@ def test_gensui_secret_file_is_generated_with_strong_material(tmp_path: Path):
     config.ensure_directories()
     config.validate_security()
     assert secret_file.exists()
+    assert len(config.jwt_secret) >= 64
+
+
+def test_gensui_default_secret_file_uses_configured_data_path(tmp_path: Path):
+    from gensui.config import GensuiSettings
+
+    config = GensuiSettings(
+        _env_file=None,
+        gensui_data_path=tmp_path / "data",
+        gensui_log_path=tmp_path / "logs",
+        gensui_jwt_secret=None,
+        gensui_admin_password="correct-horse-battery-staple",
+    )
+
+    config.ensure_directories()
+
+    assert config.jwt_secret_path == tmp_path / "data" / "secrets" / "jwt_secret"
+    assert config.jwt_secret_path.exists()
     assert len(config.jwt_secret) >= 64
 
 
