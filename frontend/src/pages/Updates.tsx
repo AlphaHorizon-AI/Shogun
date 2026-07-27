@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, RefreshCw, CheckCircle, AlertTriangle, ArrowUpCircle, Clock } from 'lucide-react';
+import { Download, RefreshCw, CheckCircle, AlertTriangle, ArrowUpCircle, Clock, Power } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
 interface UpdateStatus {
@@ -26,6 +26,7 @@ export const Updates = () => {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [installResult, setInstallResult] = useState<string | null>(null);
   const [githubToken, setGithubToken] = useState('');
   const [savingToken, setSavingToken] = useState(false);
@@ -96,6 +97,29 @@ export const Updates = () => {
       setInstallResult(`❌ Update failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
     setInstalling(false);
+  };
+
+  const restartShogun = async () => {
+    if (!confirm('Restart Shogun now? Active operations will stop, the Shogun browser will close, and Tenshu will reopen when startup completes.')) return;
+    setRestarting(true);
+    setInstallResult(null);
+    try {
+      const response = await fetch('/api/v1/updates/restart', { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+      setInstallResult(data.browser_will_reopen
+        ? 'Shogun is restarting. This browser will close and Tenshu will reopen automatically.'
+        : 'Shogun is restarting through its server supervisor. Reopen Tenshu when the server is ready.');
+      window.setTimeout(() => {
+        // Browsers permit scripts to close dedicated/app windows. If this is a
+        // user-created tab, the message remains visible while the launcher
+        // opens the replacement Tenshu window.
+        window.close();
+      }, 450);
+    } catch (error: unknown) {
+      setInstallResult(`Restart failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setRestarting(false);
+    }
   };
 
   useEffect(() => {
@@ -215,7 +239,7 @@ export const Updates = () => {
       {/* Install result */}
       {installResult && (
         <div className={`rounded-xl p-4 border text-sm ${
-          installResult.startsWith('✅') || installResult.startsWith('Update access')
+          installResult.startsWith('✅') || installResult.startsWith('Update access') || installResult.startsWith('Shogun is restarting')
             ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' 
             : 'bg-red-500/10 border-red-500/30 text-red-300'
         }`}>
@@ -244,6 +268,15 @@ export const Updates = () => {
             {installing ? t('updates_page.installing') : t('updates_page.install_update')}
           </button>
         )}
+
+        <button
+          onClick={restartShogun}
+          disabled={restarting || installing}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-500 transition-colors disabled:opacity-50"
+        >
+          <Power className={`w-4 h-4 ${restarting ? 'animate-pulse' : ''}`} />
+          {restarting ? 'Restarting Shogun…' : 'Restart Shogun'}
+        </button>
       </div>
 
       {/* Info */}

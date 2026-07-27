@@ -9,8 +9,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from shogun.api.infrastructure_auth import require_infrastructure_admin
 from shogun.services.update_checker import (
     check_for_updates,
     get_local_version_sync,
@@ -71,6 +72,17 @@ async def configure_update_credentials(body: dict):
     if result.get("error"):
         raise HTTPException(status_code=400, detail=result["error"])
     return {"success": True, "token_configured": True, "status": result}
+
+
+@router.post("/restart", status_code=202)
+async def restart_shogun(_actor: str = Depends(require_infrastructure_admin)):
+    """Gracefully stop Shogun and ask its launcher/supervisor to restart it."""
+    from shogun.services.restart_service import request_restart
+
+    try:
+        return request_restart()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/apply")

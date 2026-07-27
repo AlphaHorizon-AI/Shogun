@@ -1,8 +1,8 @@
 {
-  "version": "1.47.6",
+  "version": "1.47.7",
   "name": "Shogun OS",
-  "build": 157,
+  "build": 158,
   "channel": "stable",
-  "released": "2026-07-27T14:00:00Z",
-  "changelog": "Restore green security CI for read-only Shogun and Gensui containers and stabilize the Python lint gate."
+  "released": "2026-07-27T15:00:00Z",
+  "changelog": "Add a controlled Restart Shogun action to Updates with graceful shutdown and launcher or supervisor restart support."
 }

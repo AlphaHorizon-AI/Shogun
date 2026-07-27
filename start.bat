@@ -71,10 +71,21 @@ echo.
 
 :: The Python server opens the browser as soon as it is ready.
 set "SHOGUN_BROWSER_URL=http://localhost:8000"
+set "SHOGUN_MANAGED_BROWSER=true"
 
 :: Start the server (blocking; keeps the window open)
+set "SHOGUN_LAUNCHER_MANAGED=true"
+:run_shogun
 python -m shogun
 set "SHOGUN_EXIT_CODE=!ERRORLEVEL!"
+
+if exist ".states\restart-requested" (
+    del /q ".states\restart-requested" >nul 2>&1
+    echo.
+    echo   Restart requested. Starting Shogun again...
+    timeout /t 2 /nobreak >nul
+    goto run_shogun
+)
 
 :: If the server exits, keep the window open so the user can see errors
 echo.

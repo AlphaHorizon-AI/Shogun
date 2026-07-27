@@ -19,14 +19,20 @@ echo -e "${GOLD}  ⚔️  SHOGUN — Starting the Tenshu...${NC}"
 echo ""
 
 # Check venv
-if [ ! -d "venv" ]; then
+VENV_DIR=""
+if [ -d "venv" ]; then
+    VENV_DIR="venv"
+elif [ -d ".venv" ]; then
+    VENV_DIR=".venv"
+fi
+if [ -z "$VENV_DIR" ]; then
     echo -e "${RED}  ERROR: Virtual environment not found.${NC}"
     echo "  Please run install.sh first."
     exit 1
 fi
 
 # Activate venv
-source venv/bin/activate
+source "$VENV_DIR/bin/activate"
 
 # Detect Python
 PYTHON_CMD="python3"
@@ -66,5 +72,19 @@ echo ""
     echo "  Warning: Server did not respond in time. Open http://localhost:8000 manually."
 ) &
 
-# Start the server (blocking)
-$PYTHON_CMD -m shogun
+# Start the server (blocking). A UI restart request leaves a marker that makes
+# this launcher supervise a clean stop/start cycle.
+export SHOGUN_LAUNCHER_MANAGED=true
+while true; do
+    set +e
+    $PYTHON_CMD -m shogun
+    SHOGUN_EXIT_CODE=$?
+    set -e
+    if [ -f ".states/restart-requested" ]; then
+        rm -f ".states/restart-requested"
+        echo "  Restart requested. Starting Shogun again..."
+        sleep 2
+        continue
+    fi
+    exit "$SHOGUN_EXIT_CODE"
+done

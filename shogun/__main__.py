@@ -193,6 +193,42 @@ def _open_browser_when_ready(url: str, health_url: str, timeout_seconds: int = 1
         except Exception:
             pass
 
+    def open_managed_browser() -> bool:
+        if sys.platform != "win32" or os.environ.get("SHOGUN_MANAGED_BROWSER", "").casefold() not in {
+            "1", "true", "yes", "on",
+        }:
+            return False
+        import subprocess
+
+        candidates = [
+            shutil.which("msedge.exe"),
+            shutil.which("chrome.exe"),
+            str(Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Microsoft/Edge/Application/msedge.exe"),
+            str(Path(os.environ.get("PROGRAMFILES", "")) / "Google/Chrome/Application/chrome.exe"),
+            str(Path(os.environ.get("LOCALAPPDATA", "")) / "Google/Chrome/Application/chrome.exe"),
+        ]
+        browser = next((Path(item) for item in candidates if item and Path(item).is_file()), None)
+        if browser is None:
+            return False
+        profile = project_root / "data" / "tenshu-browser-profile"
+        profile.mkdir(parents=True, exist_ok=True)
+        process = subprocess.Popen(
+            [
+                str(browser),
+                f"--app={url}",
+                f"--user-data-dir={profile}",
+                "--no-first-run",
+                "--no-default-browser-check",
+            ],
+            cwd=str(project_root),
+            close_fds=True,
+        )
+        marker = project_root / ".states" / "tenshu-browser.pid"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(str(process.pid), encoding="ascii")
+        log(f"Opened dedicated Tenshu browser process {process.pid} via {browser.name}")
+        return True
+
     def worker() -> None:
         safe_url = url.split("#", 1)[0]
         log(f"Server-side browser opener waiting. Url={safe_url} HealthUrl={health_url}")
@@ -212,6 +248,8 @@ def _open_browser_when_ready(url: str, health_url: str, timeout_seconds: int = 1
             log("Timed out waiting for readiness; opening URL anyway.")
 
         try:
+            if open_managed_browser():
+                return
             opened = webbrowser.open(url, new=2)
             log(f"webbrowser.open returned {opened}")
             if not opened and hasattr(os, "startfile"):
