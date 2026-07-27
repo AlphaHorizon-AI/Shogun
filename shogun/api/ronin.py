@@ -721,8 +721,14 @@ async def get_screenshot(filename: str):
 
     from shogun.ronin.telemetry.screenshot_store import get_screenshots_dir
 
-    filepath = get_screenshots_dir() / filename
-    if not filepath.exists():
+    screenshots_dir = get_screenshots_dir().resolve()
+    filepath = (screenshots_dir / filename).resolve()
+    if (
+        Path(filename).name != filename
+        or filepath.parent != screenshots_dir
+        or filepath.suffix.casefold() != ".png"
+        or not filepath.is_file()
+    ):
         raise HTTPException(status_code=404, detail="Screenshot not found")
 
     return FileResponse(str(filepath), media_type="image/png")

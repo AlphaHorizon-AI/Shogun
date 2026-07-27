@@ -13,7 +13,7 @@
     "lint:security": "eslint src/lib/infrastructureAuth.ts src/lib/safeMarkdown.ts src/lib/safeMarkdown.test.ts",
     "test:i18n": "node scripts/check-setup-i18n.mjs",
     "test:template-i18n": "node scripts/check-template-i18n.mjs",
-    "test:security": "vitest run src/lib/safeMarkdown.test.ts",
+    "test:security": "vitest run src/lib/safeMarkdown.test.ts src/lib/safeObjectPath.test.ts",
     "audit:security": "node ../scripts/check-npm-audit.mjs .",
     "preview": "vite preview"
   },

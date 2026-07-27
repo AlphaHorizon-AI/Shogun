@@ -51,6 +51,7 @@ import {
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
+import { setSafeObjectPath } from '../lib/safeObjectPath';
 import { useTranslation } from '../i18n';
 import { MicrosoftTeamsAdapterTab } from './katana/MicrosoftTeamsAdapterTab';
 import { Mado } from './Mado';
@@ -410,13 +411,7 @@ export function Katana() {
 
   const updateOfficeConfig = (path: string, value: any) => {
     if (!officeConfig) return;
-    const keys = path.split('.');
-    const updated = JSON.parse(JSON.stringify(officeConfig));
-    let obj = updated;
-    for (let i = 0; i < keys.length - 1; i++) {
-      obj = obj[keys[i]];
-    }
-    obj[keys[keys.length - 1]] = value;
+    const updated = setSafeObjectPath(officeConfig, path, value);
     setOfficeConfig(updated);
     setOfficeUnsaved(true);
   };

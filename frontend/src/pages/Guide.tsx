@@ -170,25 +170,16 @@ export function Guide() {
     }
     printWindow.opener = null;
 
-    const inheritedStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-      .map((node) => {
-        if (node instanceof HTMLLinkElement) {
-          return `<link rel="stylesheet" href="${node.href}">`;
-        }
-        return node.outerHTML;
-      })
-      .join('\n');
     const title = content.querySelector('h3')?.textContent?.trim() || 'The Grand Reference';
-
-    printWindow.document.open();
-    printWindow.document.write(`<!doctype html>
-      <html lang="${language}">
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>${title}</title>
-          ${inheritedStyles}
-          <style>
+    const printDocument = printWindow.document;
+    printDocument.documentElement.lang = language;
+    printDocument.title = title;
+    printDocument.head.replaceChildren();
+    for (const node of document.querySelectorAll('link[rel="stylesheet"], style')) {
+      printDocument.head.append(node.cloneNode(true));
+    }
+    const printStyle = printDocument.createElement('style');
+    printStyle.textContent = `
             @page { size: A4; margin: 14mm; }
             html, body { background: white !important; color: #111827 !important; }
             body { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
@@ -199,13 +190,12 @@ export function Guide() {
             .grand-reference-print h3, .grand-reference-print h4 { break-after: avoid; }
             .grand-reference-print pre, .grand-reference-print code { white-space: pre-wrap; overflow-wrap: anywhere; }
             .print-hide { display: none !important; }
-          </style>
-        </head>
-        <body>
-          <main class="grand-reference-print">${content.innerHTML}</main>
-        </body>
-      </html>`);
-    printWindow.document.close();
+          `;
+    printDocument.head.append(printStyle);
+    const main = printDocument.createElement('main');
+    main.className = 'grand-reference-print';
+    main.append(content.cloneNode(true));
+    printDocument.body.replaceChildren(main);
 
     const printWhenReady = () => {
       printWindow.focus();

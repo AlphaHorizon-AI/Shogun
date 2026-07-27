@@ -1,8 +1,8 @@
 {
-  "version": "1.47.4",
+  "version": "1.47.5",
   "name": "Shogun OS",
-  "build": 155,
+  "build": 156,
   "channel": "stable",
-  "released": "2026-07-27T10:51:11Z",
-  "changelog": "Add explicit per-provider model selection and enforce connected, enabled model routing boundaries."
+  "released": "2026-07-27T13:00:00Z",
+  "changelog": "Resolve CodeQL findings across file handling, backup restore, error responses, regular expressions, and frontend rendering."
 }

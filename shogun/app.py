@@ -776,8 +776,9 @@ def create_app() -> FastAPI:
                 return None
             
             # Serve matching files (for icons, extra images outside assets)
-            target_file = frontend_path / full_path
-            if target_file.is_file():
+            frontend_root = frontend_path.resolve()
+            target_file = (frontend_root / full_path).resolve()
+            if frontend_root in target_file.parents and target_file.is_file():
                 return FileResponse(target_file)
             
             # Default to index.html for SPA routing

@@ -336,9 +336,10 @@ Explicit operator corrections are durable learning signals. Acknowledge them and
         except httpx.ConnectError:
             _failed = True
             yield f"data: {json.dumps({'type': 'error', 'content': f'Cannot connect to {provider.provider_type} at {base_url}. Is the server running?'})}\n\n"
-        except Exception as exc:
+        except Exception:
             _failed = True
-            yield f"data: {json.dumps({'type': 'error', 'content': f'Streaming error: {str(exc)[:200]}'})}\n\n"
+            logger.exception("Governed chat streaming failed")
+            yield f"data: {json.dumps({'type': 'error', 'content': 'Streaming failed. Check the Shogun logs.'})}\n\n"
 
         # ── Post-stream: store episodic memory ──
         _t_end = time.monotonic()

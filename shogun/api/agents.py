@@ -22,6 +22,7 @@ from shogun.services.workflow_operator import (
     workflow_intent_keywords,
 )
 from shogun.services.provider_credentials import provider_api_key
+from shogun.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +49,9 @@ def _chat_attachment_content(user_msg: str, attachments: list[dict] | None) -> s
         try:
             import base64
 
-            image_path = Path(path)
-            if not image_path.is_file():
+            artifact_root = settings.visual_artifacts_path.resolve()
+            image_path = Path(path).resolve()
+            if artifact_root not in image_path.parents or not image_path.is_file():
                 continue
 
             data = image_path.read_bytes()
@@ -289,8 +291,9 @@ async def upload_agent_avatar(
         await svc.update(agent_id, avatar_url=avatar_url)
         
         return ApiResponse(data={"avatar_url": avatar_url})
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload avatar: {str(e)}")
+    except Exception as exc:
+        logger.exception("Avatar upload failed")
+        raise HTTPException(status_code=500, detail="Failed to upload avatar") from exc
 
 
 @router.put("/{agent_id}/samurai-profile", response_model=ApiResponse)
@@ -1153,9 +1156,10 @@ If the user asks for memory, tools, files, commands, browsing, messages, schedul
         except httpx.ConnectError:
             _failed = True
             yield f"data: {json.dumps({'type': 'error', 'content': f'Cannot connect to {provider.provider_type} at {base_url}. Is the server running?'})}\n\n"
-        except Exception as exc:
+        except Exception:
             _failed = True
-            yield f"data: {json.dumps({'type': 'error', 'content': f'Streaming error: {str(exc)[:200]}'})}\n\n"
+            logger.exception("Fast chat streaming failed")
+            yield f"data: {json.dumps({'type': 'error', 'content': 'Streaming failed. Check the Shogun logs.'})}\n\n"
 
         # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Audit: completion or failure event ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
         _t_end = time.monotonic()
@@ -2315,8 +2319,9 @@ BEHAVIOUR:
                 yield f"data: {json.dumps({'type': 'error', 'content': f'ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Cannot connect to {base_url}. Is {provider.provider_type} running?'})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
-            except Exception as e:
-                yield f"data: {json.dumps({'type': 'error', 'content': f'ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Unexpected error: {str(e)[:200]}'})}\n\n"
+            except Exception:
+                logger.exception("Agent chat failed unexpectedly")
+                yield f"data: {json.dumps({'type': 'error', 'content': 'Unexpected model error. Check the Shogun logs.'})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
 

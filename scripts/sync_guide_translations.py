@@ -66,13 +66,15 @@ def extract_fragments(source: str) -> list[str]:
             fragments.add(value)
 
     # Visible strings used by the Guide's data-driven cards and tables.
-    for match in re.finditer(
-        r"\b(?:label|title|desc|description|purpose|term|def|name|subtitle|step|tip|risk|what|action)\s*:\s*(['\"])((?:\\.|(?!\1).)*)\1",
-        source,
+    fields = r"(?:label|title|desc|description|purpose|term|def|name|subtitle|step|tip|risk|what|action)"
+    for quote, pattern in (
+        ("'", rf"\b{fields}\s*:\s*'((?:\\.|[^'\\])*)'"),
+        ('"', rf'\b{fields}\s*:\s*"((?:\\.|[^"\\])*)"'),
     ):
-        value = " ".join(_decode_ts_string(match.group(2), match.group(1)).split())
-        if _looks_visible(value):
-            fragments.add(value)
+        for match in re.finditer(pattern, source):
+            value = " ".join(_decode_ts_string(match.group(1), quote).split())
+            if _looks_visible(value):
+                fragments.add(value)
 
     return sorted(fragments, key=lambda item: (item.lower(), item))
 

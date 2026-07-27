@@ -15,6 +15,7 @@ Does NOT back up:
 
 import json
 import logging
+import re
 import shutil
 import sqlite3
 import zipfile
@@ -24,6 +25,12 @@ from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger("shogun.backups")
+
+_BACKUP_NAME = re.compile(
+    r"^shogun_backup_\d{8}_\d{6}(?:_[A-Za-z0-9_-]{1,64})?\.zip$"
+)
+_MAX_RESTORE_FILES = 20_000
+_MAX_RESTORE_BYTES = 10 * 1024 * 1024 * 1024
 
 # ── Configuration file ───────────────────────────────────────────
 # Stored in configs/backup_settings.json
@@ -80,6 +87,49 @@ def save_settings(settings: dict) -> None:
     path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
 
 
+def _safe_label(label: Optional[str]) -> str:
+    if not label:
+        return ""
+    normalized = re.sub(r"[^A-Za-z0-9_-]+", "-", label.strip()).strip("-_")[:64]
+    return f"_{normalized}" if normalized else ""
+
+
+def _backup_path(filename: str, *, must_exist: bool = True) -> Path | None:
+    """Resolve a generated backup name without allowing directory traversal."""
+    if Path(filename).name != filename or not _BACKUP_NAME.fullmatch(filename):
+        return None
+    backup_dir = _get_backup_dir().resolve()
+    candidate = (backup_dir / filename).resolve()
+    if candidate.parent != backup_dir or (must_exist and not candidate.is_file()):
+        return None
+    return candidate
+
+
+def _restore_destination(root: Path, member: zipfile.ZipInfo) -> Path | None:
+    """Return a safe, supported restore destination for a ZIP member."""
+    name = member.filename.replace("\\", "/")
+    if member.is_dir() or name == "manifest.json":
+        return None
+    parts = Path(name).parts
+    if not parts or Path(name).is_absolute() or ".." in parts or ":" in parts[0]:
+        raise ValueError("Backup contains an unsafe path")
+    # Reject Unix symlinks; extracting them could escape the project root.
+    if (member.external_attr >> 16) & 0o170000 == 0o120000:
+        raise ValueError("Backup contains a symbolic link")
+    allowed = (
+        name in {"shogun.db", "version.json", ".env"}
+        or name.startswith("configs/")
+        or name.startswith("data/governance/")
+        or name.startswith("data/qdrant/")
+    )
+    if not allowed:
+        raise ValueError("Backup contains an unsupported file")
+    candidate = (root / Path(*parts)).resolve()
+    if candidate != root and root not in candidate.parents:
+        raise ValueError("Backup path escapes the installation directory")
+    return candidate
+
+
 def create_backup(label: Optional[str] = None) -> dict:
     """
     Create a backup ZIP of the Shogun installation.
@@ -90,7 +140,7 @@ def create_backup(label: Optional[str] = None) -> dict:
     backup_dir = _get_backup_dir()
     settings = load_settings()
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    label_suffix = f"_{label}" if label else ""
+    label_suffix = _safe_label(label)
     filename = f"shogun_backup_{timestamp}{label_suffix}.zip"
     backup_path = backup_dir / filename
     db_snapshot_path = backup_dir / f".{filename}.db-snapshot"
@@ -188,11 +238,11 @@ def create_backup(label: Optional[str] = None) -> dict:
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
-    except Exception as e:
-        logger.error("Backup failed: %s", e, exc_info=True)
+    except Exception:
+        logger.exception("Backup failed")
         return {
             "success": False,
-            "error": str(e),
+            "error": "Backup creation failed. Check the Shogun logs for details.",
         }
     finally:
         db_snapshot_path.unlink(missing_ok=True)
@@ -244,9 +294,8 @@ def list_backups() -> list[dict]:
 
 def delete_backup(filename: str) -> bool:
     """Delete a specific backup file."""
-    backup_dir = _get_backup_dir()
-    path = backup_dir / filename
-    if not path.exists() or not filename.startswith("shogun_backup_"):
+    path = _backup_path(filename)
+    if path is None:
         return False
     try:
         path.unlink()
@@ -261,22 +310,28 @@ def restore_backup(filename: str) -> dict:
 
     CAUTION: This overwrites current config and database files.
     """
-    backup_dir = _get_backup_dir()
-    path = backup_dir / filename
-
-    if not path.exists():
-        return {"success": False, "error": f"Backup not found: {filename}"}
+    path = _backup_path(filename)
+    if path is None:
+        return {"success": False, "error": "Backup not found or filename is invalid."}
 
     root = _get_project_root()
     restored = 0
 
     try:
+        root = root.resolve()
         with zipfile.ZipFile(path, "r") as zf:
-            for member in zf.namelist():
-                dest = root / member
+            members = zf.infolist()
+            if len(members) > _MAX_RESTORE_FILES:
+                raise ValueError("Backup contains too many files")
+            if sum(member.file_size for member in members) > _MAX_RESTORE_BYTES:
+                raise ValueError("Backup is too large to restore safely")
+            for member in members:
+                dest = _restore_destination(root, member)
+                if dest is None:
+                    continue
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(member) as src, open(dest, "wb") as dst:
-                    dst.write(src.read())
+                    shutil.copyfileobj(src, dst, length=1024 * 1024)
                     restored += 1
 
         logger.info("Restored backup %s (%d files)", filename, restored)
@@ -288,9 +343,9 @@ def restore_backup(filename: str) -> dict:
             "restart_required": True,
         }
 
-    except Exception as e:
-        logger.error("Restore failed: %s", e, exc_info=True)
-        return {"success": False, "error": str(e)}
+    except Exception:
+        logger.exception("Restore failed")
+        return {"success": False, "error": "Backup restore failed. Check the Shogun logs for details."}
 
 
 def _format_size(size_bytes: int) -> str:

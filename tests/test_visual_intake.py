@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+import uuid
 
 import pytest
 from PIL import Image
@@ -62,6 +63,19 @@ async def test_deleted_image_is_not_returned(visual_service):
     artifact = await visual_service.ingest(_png(), filename="screen.png")
     await visual_service.delete(artifact)
     assert await visual_service.get(artifact.id) is None
+
+
+@pytest.mark.asyncio
+async def test_attachment_resolution_rejects_client_paths(visual_service, tmp_path):
+    secret = tmp_path / "secret.txt"
+    secret.write_text("not an image", encoding="utf-8")
+
+    resolved = await visual_service.resolve_attachments([
+        {"path": str(secret), "mime_type": "image/png"},
+        {"artifact_id": str(uuid.uuid4()), "path": str(secret), "mime_type": "image/png"},
+    ])
+
+    assert resolved == []
 
 
 @pytest.mark.asyncio

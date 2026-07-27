@@ -19,6 +19,7 @@ import {
   Loader2,
   HardDrive,
 } from 'lucide-react';
+import { setSafeObjectPath } from '../lib/safeObjectPath';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -261,13 +262,7 @@ export function Office() {
 
   const updateConfig = (path: string, value: any) => {
     if (!config) return;
-    const keys = path.split('.');
-    const updated = JSON.parse(JSON.stringify(config));
-    let obj = updated;
-    for (let i = 0; i < keys.length - 1; i++) {
-      obj = obj[keys[i]];
-    }
-    obj[keys[keys.length - 1]] = value;
+    const updated = setSafeObjectPath(config, path, value);
     setConfig(updated);
     setUnsavedChanges(true);
   };

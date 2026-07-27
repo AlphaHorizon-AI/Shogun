@@ -290,8 +290,9 @@ async def pull_model_stream(
                                 pass
         except httpx.ConnectError:
             yield f'data: {{"status":"error","error":"Cannot connect to Ollama at {base_url}. Is it running?"}}\n\n'
-        except Exception as exc:
-            yield f'data: {{"status":"error","error":"{str(exc)}"}}\n\n'
+        except Exception:
+            _log.exception("Ollama model pull failed")
+            yield 'data: {"status":"error","error":"Model pull failed. Check the Shogun logs."}\n\n'
         finally:
             # ── Auto-register as provider after successful pull ──
             if _pull_succeeded:
@@ -418,11 +419,12 @@ async def get_local_models(
             data=[],
             meta={"error": f"Cannot connect to provider at {base_url}. Is it running?"}
         )
-    except Exception as exc:
+    except Exception:
+        _log.exception("Local model scan failed")
         return ApiResponse(
             success=False,
             data=[],
-            meta={"error": str(exc)}
+            meta={"error": "Local model scan failed. Check the Shogun logs."}
         )
 
 
@@ -531,10 +533,11 @@ async def search_ollama_models(
             success=False, data=[],
             meta={"error": "Cannot connect to ollama.com. Check your internet."}
         )
-    except Exception as exc:
+    except Exception:
+        _log.exception("Ollama registry search failed")
         return ApiResponse(
             success=False, data=[],
-            meta={"error": str(exc)[:300]}
+            meta={"error": "Ollama registry search failed. Check the Shogun logs."}
         )
 
     # ── Parse model entries from HTML ──
@@ -587,7 +590,8 @@ async def search_ollama_models(
     has_more = bool(re.search(r'aria-label="Next Page"', html)) or bool(re.search(r'Next\s*</a>', html))
     # Alternative: check for page links beyond current
     if not has_more:
-        has_more = bool(re.search(rf'[?&]p={p + 1}', html))
+        next_page = str(p + 1)
+        has_more = f"?p={next_page}" in html or f"&p={next_page}" in html
 
     _log.info("Ollama search q=%s p=%s: found %d models, has_more=%s", q, p, len(models), has_more)
 
@@ -633,8 +637,9 @@ async def delete_ollama_model(
                 return {"success": False, "message": f"Ollama returned {resp.status_code}: {err}"}
     except httpx.ConnectError:
         return {"success": False, "message": f"Cannot connect to Ollama at {base_url}. Is it running?"}
-    except Exception as exc:
-        return {"success": False, "message": str(exc)[:300]}
+    except Exception:
+        _log.exception("Ollama model deletion failed")
+        return {"success": False, "message": "Model deletion failed. Check the Shogun logs."}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -745,11 +750,12 @@ async def export_backup(
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest_file = dest_dir / filename
             dest_file.write_bytes(zip_bytes)
-        except Exception as exc:
+        except Exception:
+            _log.exception("Backup export failed")
             return ApiResponse(
                 success=False,
                 data={},
-                meta={"error": f"Failed to write to path: {exc}"},
+                meta={"error": "Failed to write the backup. Check the Shogun logs."},
             )
         return ApiResponse(
             success=True,
@@ -914,8 +920,9 @@ async def import_backup(
             if not isinstance(rows, list):
                 raise ValueError("table payload must be a JSON array")
             parsed_tables[table_name] = rows
-        except Exception as exc:
-            errors[table_name] = str(exc)
+        except Exception:
+            _log.exception("Could not parse backup table %s", table_name)
+            errors[table_name] = "Table data is invalid"
 
     async with _engine.connect() as connection:
         # Keep the whole clean restore on one connection with relationship
@@ -954,8 +961,9 @@ async def import_backup(
                             }
                             await connection.execute(statement, parameters)
                         restored_tables[table_name] = len(rows)
-                    except Exception as exc:
-                        errors[table_name] = str(exc)
+                    except Exception:
+                        _log.exception("Could not restore backup table %s", table_name)
+                        errors[table_name] = "Table restore failed"
         finally:
             await connection.execute(text("PRAGMA foreign_keys=ON"))
             await connection.commit()

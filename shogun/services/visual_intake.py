@@ -224,7 +224,8 @@ class VisualIntakeService:
         for item in attachments:
             raw_id = item.get("artifact_id") or item.get("artifactId")
             if not raw_id:
-                resolved.append(item)
+                # Never trust client-provided paths. Attachments must refer to a
+                # server-side artifact created by the visual intake service.
                 continue
             try:
                 artifact = await self.get(uuid.UUID(str(raw_id)))
