@@ -317,12 +317,11 @@ class ModelRegistryService:
                 model_names = [
                     configured.get("model_id"),
                     configured.get("model"),
-                    provider.name,
                 ]
             model_names = list(dict.fromkeys(
                 str(model_id).strip()
                 for model_id in model_names
-                if is_concrete_model_id(model_id, provider.provider_type)
+                if model_id and is_concrete_model_id(model_id, provider.provider_type)
             ))
             selected_models = set(model_names)
             provider_connected = provider.status == "connected"

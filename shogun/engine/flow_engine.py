@@ -611,6 +611,7 @@ async def _exec_stack_orchestrator(
             verification_required=bool(config.get("verification_required", True)),
             approval_policy=config.get("approval_policy", "inherited"),
             artifact_policy=config.get("artifact_policy", "retain_all"),
+            output_publication=config.get("output_publication", "summary_and_final"),
             failure_policy=config.get("failure_policy", "pause"),
             input_payload=run_input,
         )
@@ -635,6 +636,7 @@ async def _exec_stack_orchestrator(
                     "completed_steps": stack.completed_steps,
                     "failed_steps": stack.failed_steps,
                     "final_summary": stack.final_summary,
+                    "published_output": stack.published_output,
                     "requires_review": stack.status == "waiting_approval",
                 }
 

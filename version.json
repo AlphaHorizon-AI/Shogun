@@ -1,8 +1,8 @@
 {
-  "version": "1.47.10",
+  "version": "1.47.11",
   "name": "Shogun OS",
-  "build": 161,
+  "build": 162,
   "channel": "stable",
-  "released": "2026-07-27T17:15:00Z",
-  "changelog": "Preserve and correctly replace protected AI-provider credentials during Katana edits."
+  "released": "2026-07-28T05:33:55Z",
+  "changelog": "Align the Grand Reference with navigation and add clean Flow Stack handovers with configurable final output publication."
 }

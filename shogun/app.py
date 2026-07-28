@@ -223,6 +223,17 @@ async def lifespan(app: FastAPI):
                 "Protected credentials for %d model provider(s)", migrated_credentials
             )
 
+    from shogun.db.engine import async_session_factory
+    from shogun.services.provider_credentials import migrate_provider_credentials
+
+    async with async_session_factory() as credential_session:
+        migrated_credentials = await migrate_provider_credentials(credential_session)
+        if migrated_credentials:
+            await credential_session.commit()
+            logging.getLogger(__name__).info(
+                "Protected credentials for %d model provider(s)", migrated_credentials
+            )
+
     # ── Auto-migrate execution_events to NIS2/SOC2 schema ──────
     try:
         from shogun.db.engine import async_session_factory, engine
@@ -285,6 +296,17 @@ async def lifespan(app: FastAPI):
                         await conn.execute(text(f"ALTER TABLE agent_flow_runs ADD COLUMN {column} {definition}"))
                 if "root_run_id" not in run_columns:
                     await conn.execute(text("UPDATE agent_flow_runs SET root_run_id = id WHERE root_run_id = ''"))
+            if "stack_runs" in table_names:
+                stack_run_columns = set(await conn.run_sync(
+                    lambda c: [col["name"] for col in sa_inspect(c).get_columns("stack_runs")]
+                ))
+                stack_run_additions = {
+                    "output_publication": "VARCHAR(30) NOT NULL DEFAULT 'summary_and_final'",
+                    "published_output": "TEXT NOT NULL DEFAULT '{}'",
+                }
+                for column, definition in stack_run_additions.items():
+                    if column not in stack_run_columns:
+                        await conn.execute(text(f"ALTER TABLE stack_runs ADD COLUMN {column} {definition}"))
             if "skills" in table_names:
                 skill_columns = set(await conn.run_sync(
                     lambda c: [col["name"] for col in sa_inspect(c).get_columns("skills")]

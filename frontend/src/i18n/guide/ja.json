@@ -2200,5 +2200,16 @@
   "— you can search by meaning, not just keywords. When the AI responds to a query, it automatically retrieves the most relevant memories from this layer and includes them in context.": "— キーワードだけでなく意味からも検索できます。 AI がクエリに応答すると、この層から最も関連性の高い記憶が自動的に取得され、コンテキストに組み込まれます。",
   "— Your Torii security tier doesn't allow Mado. Go to": "— Torii のセキュリティ層では Mado が許可されていません。に行く",
   "“Shogun is unreachable”": "「将軍は連絡が取れない」",
-  "⚠ Unrestricted": "⚠ 無制限"
+  "⚠ Unrestricted": "⚠ 無制限",
+  "Maintenance — Backups, Privacy, Data & Updates": "メンテナンス — バックアップ、プライバシー、データ、更新",
+  "Browser sessions are managed automatically. When Shogun shuts down, all active Playwright browser instances are cleanly closed. The Katana → Mado Browser tab shows the current session status and lets you manually manage active browser contexts.": "ブラウザーセッションは自動的に管理されます。Shogun の終了時には、アクティブな Playwright ブラウザーインスタンスがすべて正常に閉じられます。Katana → Mado Browser タブには現在のセッション状態が表示され、アクティブなブラウザーコンテキストを手動で管理できます。",
+  "Navigate to Katana → Office.": "Katana → Office に移動します。",
+  "Privacy & Telemetry": "プライバシーとテレメトリ",
+  "Navigate to Privacy & Telemetry in the sidebar to review or control Shogun's optional, pseudonymous installation statistics. Telemetry is disabled by default and requires explicit consent. The page shows the exact fields that may be shared, everything that is never shared, and a preview of the next weekly heartbeat payload. You can send a test event, disable sharing, reveal the installation identifier, or delete your telemetry data. Server installations require administrator authorization.": "サイドバーの「プライバシーとテレメトリ」に移動すると、Shogun の任意の仮名化されたインストール統計を確認または制御できます。テレメトリは既定で無効であり、明示的な同意が必要です。このページには、共有される可能性がある正確なフィールド、決して共有されないすべての情報、次回の週次ハートビートペイロードのプレビューが表示されます。テストイベントの送信、共有の無効化、インストール識別子の表示、テレメトリデータの削除が可能です。サーバーインストールでは管理者の承認が必要です。",
+  "Samurai → Flow Stack": "Samurai → Flow Stack",
+  "Katana → Mado Browser": "Katana → Mado Browser",
+  "Internal Handovers": "内部引き継ぎ",
+  "Each completed Flow produces a structured internal result that is handed directly to the next Flow. Intermediate results remain available to checkpoints, verification, artifacts, audit logs, and recovery, but are not published in the operator-facing output unless the legacy all-steps option is selected.": "完了した各 Flow は構造化された内部結果を生成し、次の Flow に直接引き継ぎます。中間結果はチェックポイント、検証、成果物、監査ログ、復旧で引き続き利用できますが、従来の全ステップオプションを選択しない限り、オペレーター向け出力には公開されません。",
+  "Published Stack Output": "公開される Stack 出力",
+  "The Published Output setting controls the final visible package: Orchestrator summary plus the final Flow output, Orchestrator summary only, final Flow only, or all Flow outputs for legacy documentation workflows. The default is the Orchestrator summary plus the final Flow output.": "「公開出力」設定では、最終的に表示するパッケージを制御します。Orchestrator の要約と最終 Flow 出力、要約のみ、最終 Flow のみ、または従来の文書化ワークフロー向けの全 Flow 出力を選択できます。既定値は Orchestrator の要約と最終 Flow 出力です。"
 }

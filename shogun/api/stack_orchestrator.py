@@ -176,3 +176,17 @@ async def get_stack_summary(stack_run_id: uuid.UUID, db: AsyncSession = Depends(
     except ValueError as exc:
         raise _bad_request(exc) from exc
     return ApiResponse(data=stack.final_summary or {"status": stack.status, "objective": stack.objective})
+
+
+@router.get("/{stack_run_id}/output", response_model=ApiResponse)
+async def get_stack_published_output(stack_run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Return only the operator-facing package selected by the Stack output policy."""
+    service = StackOrchestratorService(db)
+    try:
+        stack, _ = await service.get(stack_run_id)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+    return ApiResponse(
+        data=stack.published_output
+        or {"status": stack.status, "message": "The Stack has not published its final output yet."}
+    )

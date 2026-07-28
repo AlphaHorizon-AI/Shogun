@@ -762,6 +762,7 @@ class StackOrchestratorService:
         stack = await self._get(stack_run_id)
         stack.status = status
         stack.final_summary = summary
+        stack.published_output = {"summary": summary}
         stack.completed_at = datetime.now(timezone.utc)
         stack.current_step_id = None
         await self.session.commit()
@@ -797,6 +798,7 @@ class StackOrchestratorService:
                         "verification_required": config["verification_required"],
                         "approval_policy": config["approval_policy"],
                         "artifact_policy": config["artifact_policy"],
+                        "output_publication": config.get("output_publication", "summary_and_final"),
                         "failure_policy": config["failure_policy"],
                     }
                 )
@@ -809,6 +811,14 @@ class StackOrchestratorService:
         elif body.mode == "template":
             flow = await self._instantiate_template(body.stack_template_id, body.objective)
 
+        saved_orchestrator_config = (
+            (flow.schedule_config or {}).get("stack_orchestrator", {}) if flow else {}
+        )
+        output_publication = (
+            body.output_publication
+            or saved_orchestrator_config.get("output_publication")
+            or "summary_and_final"
+        )
         needs_review = body.mode == "goal_driven" or posture == "tactical"
         stack = StackRun(
             stack_id=flow.id if flow else None,
@@ -825,6 +835,7 @@ class StackOrchestratorService:
             verification_required=body.verification_required,
             approval_policy=body.approval_policy,
             artifact_policy=body.artifact_policy,
+            output_publication=output_publication,
             failure_policy=body.failure_policy,
             success_criteria=body.success_criteria,
             allowed_tools=body.allowed_tools,
@@ -1291,6 +1302,7 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
     try:
         iterations = 0
         previous_output: dict[str, Any] = {}
+        previous_source_step_id: str | None = None
         async with async_session_factory() as session:
             latest = (
                 (
@@ -1307,6 +1319,7 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
             if latest:
                 last_output = (latest.state_json or {}).get("last_output", {})
                 previous_output = last_output.get("output", last_output) if isinstance(last_output, dict) else {}
+                previous_source_step_id = (latest.state_json or {}).get("current_step_id")
         while True:
             async with async_session_factory() as session:
                 stack = await session.get(StackRun, stack_run_id)
@@ -1504,6 +1517,13 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                     "stack_step_id": step.step_id,
                 }
                 input_payload = {"input": step.input_json, "objective": stack.objective, "context": context}
+                if previous_source_step_id:
+                    input_payload["handover"] = {
+                        "payload": step.input_json,
+                        "source_step_id": previous_source_step_id,
+                        "target_step_id": step.step_id,
+                        "visibility": "internal",
+                    }
 
             flow_run_id = await start_flow_run(
                 flow_id,
@@ -1589,13 +1609,21 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                     checkpoint = None
                     step.status = "completed"
                     step.completed_at = datetime.now(timezone.utc)
+                    all_steps = await StackStateService.steps(session, stack.id)
+                    is_final_step = not any(
+                        item.sequence > step.sequence
+                        and item.status in {"pending", "paused", "running", "retrying", "waiting_approval"}
+                        for item in all_steps
+                    )
                     step.output_json = {
                         "output": flow_run.output_payload or flow_run.result_summary or {},
                         "artifacts": [str(item.id) for item in artifacts],
                         "flow_run_id": str(flow_run.id),
+                        "publication": "final" if is_final_step else "handover_only",
                     }
                     previous_output = step.output_json["output"]
-                    StackStateService.refresh_lists(stack, await StackStateService.steps(session, stack.id))
+                    previous_source_step_id = step.step_id
+                    StackStateService.refresh_lists(stack, all_steps)
                     if stack.checkpoint_frequency in {"after_each_step", "after_each_subflow"}:
                         steps = await StackStateService.steps(session, stack.id)
                         checkpoint = await StackCheckpointService.create(session, stack, step, steps)
@@ -1605,8 +1633,19 @@ async def _run_stack(stack_run_id: uuid.UUID) -> None:
                         "stack.step.completed",
                         f"Stack step '{step.name}' completed",
                         stack.id,
-                        detail={"step_id": step.step_id, "flow_run_id": str(flow_run.id)},
+                        detail={
+                            "step_id": step.step_id,
+                            "flow_run_id": str(flow_run.id),
+                            "publication": step.output_json["publication"],
+                        },
                     )
+                    if not is_final_step:
+                        await _audit(
+                            "stack.step.handed_over",
+                            f"Stack step '{step.name}' handed its internal result to the next Flow",
+                            stack.id,
+                            detail={"step_id": step.step_id, "visibility": "internal"},
+                        )
                     continue
 
                 category = (
@@ -1693,6 +1732,35 @@ async def _wait_for_flow(flow_run_id: uuid.UUID, stack_run_id: uuid.UUID) -> Age
                 return run
 
 
+def build_published_stack_output(
+    stack: StackRun,
+    steps: list[StackStepRun],
+    summary_package: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the operator-facing package without exposing internal handovers by default."""
+    final_step = next((step for step in reversed(steps) if step.status == "completed"), None)
+    final_output = (final_step.output_json or {}).get("output", {}) if final_step else {}
+    if stack.output_publication == "summary_only":
+        return {"summary": summary_package}
+    if stack.output_publication == "final_only":
+        return {"final_output": final_output}
+    if stack.output_publication == "all_steps":
+        return {
+            "summary": summary_package,
+            "step_outputs": [
+                {
+                    "step_id": step.step_id,
+                    "name": step.name,
+                    "output": (step.output_json or {}).get("output", {}),
+                }
+                for step in steps
+                if step.status == "completed"
+            ],
+            "final_output": final_output,
+        }
+    return {"summary": summary_package, "final_output": final_output}
+
+
 async def _finalize(session: AsyncSession, stack: StackRun, steps: list[StackStepRun]) -> None:
     if stack.artifact_policy == "retain_final_only":
         final_step = next((step for step in reversed(steps) if step.status == "completed"), None)
@@ -1746,6 +1814,20 @@ async def _finalize(session: AsyncSession, stack: StackRun, steps: list[StackSte
         "pr_summary": f"Stack Orchestrator completed {len(stack.completed_steps)} governed steps.",
         "risk_notes": f"Executed under {stack.posture.upper()} posture with inherited tool permissions.",
     }
+    summary_package = {
+        "objective": stack.final_summary["objective"],
+        "status": stack.final_summary["final_status"],
+        "orchestrator_summary": (
+            f"Completed {len(stack.completed_steps)} of {len(steps)} Flow Stack steps"
+            f" with {len(failed)} failed and {len(required_unverified)} unverified."
+        ),
+        "steps_completed": stack.final_summary["steps_completed"],
+        "steps_failed": stack.final_summary["steps_failed"],
+        "artifacts_created": stack.final_summary["artifacts_created"],
+        "known_issues": stack.final_summary["known_issues"],
+        "verification_status": "passed" if not required_unverified else "failed",
+    }
+    stack.published_output = build_published_stack_output(stack, steps, summary_package)
     await _finalize_planning_skills(session, stack, "success" if stack.status == "completed" else "failed")
     await session.commit()
     await _audit(

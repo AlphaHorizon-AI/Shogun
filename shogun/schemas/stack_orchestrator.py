@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, model_validator
 from shogun.schemas.common import ShogunBase
 
 StackMode = Literal["template", "goal_driven", "selected_stack"]
+StackOutputPublication = Literal["summary_and_final", "summary_only", "final_only", "all_steps"]
 
 
 class StackOrchestratorCreate(BaseModel):
@@ -29,6 +30,7 @@ class StackOrchestratorCreate(BaseModel):
     verification_required: bool = True
     approval_policy: Literal["inherited", "step_based", "always_required_for_high_risk"] = "inherited"
     artifact_policy: Literal["retain_all", "retain_final_only", "retain_selected"] = "retain_all"
+    output_publication: StackOutputPublication | None = None
     failure_policy: Literal["pause", "retry", "continue_with_error", "fail_stack"] = "pause"
     input_payload: dict = Field(default_factory=dict)
 
@@ -99,6 +101,7 @@ class StackRunResponse(ShogunBase):
     verification_required: bool
     approval_policy: str
     artifact_policy: str
+    output_publication: str
     failure_policy: str
     success_criteria: list
     allowed_tools: list
@@ -108,6 +111,7 @@ class StackRunResponse(ShogunBase):
     approval_events: list
     model_usage: list
     final_summary: dict
+    published_output: dict
     metadata_json: dict
     started_at: datetime | None
     completed_at: datetime | None

@@ -2200,5 +2200,16 @@
   "— you can search by meaning, not just keywords. When the AI responds to a query, it automatically retrieves the most relevant memories from this layer and includes them in context.": "— 키워드뿐만 아니라 의미로도 검색할 수 있습니다. AI가 쿼리에 응답하면 이 레이어에서 가장 관련성이 높은 메모리를 자동으로 검색하여 컨텍스트에 포함시킵니다.",
   "— Your Torii security tier doesn't allow Mado. Go to": "— 귀하의 Torii 보안 계층은 Mado를 허용하지 않습니다. 이동",
   "“Shogun is unreachable”": "“쇼군은 접근할 수 없다”",
-  "⚠ Unrestricted": "⚠ 무제한"
+  "⚠ Unrestricted": "⚠ 무제한",
+  "Maintenance — Backups, Privacy, Data & Updates": "유지 관리 — 백업, 개인정보 보호, 데이터 및 업데이트",
+  "Browser sessions are managed automatically. When Shogun shuts down, all active Playwright browser instances are cleanly closed. The Katana → Mado Browser tab shows the current session status and lets you manually manage active browser contexts.": "브라우저 세션은 자동으로 관리됩니다. Shogun이 종료되면 활성 Playwright 브라우저 인스턴스가 모두 안전하게 닫힙니다. Katana → Mado Browser 탭에서 현재 세션 상태를 확인하고 활성 브라우저 컨텍스트를 수동으로 관리할 수 있습니다.",
+  "Navigate to Katana → Office.": "Katana → Office로 이동합니다.",
+  "Privacy & Telemetry": "개인정보 보호 및 텔레메트리",
+  "Navigate to Privacy & Telemetry in the sidebar to review or control Shogun's optional, pseudonymous installation statistics. Telemetry is disabled by default and requires explicit consent. The page shows the exact fields that may be shared, everything that is never shared, and a preview of the next weekly heartbeat payload. You can send a test event, disable sharing, reveal the installation identifier, or delete your telemetry data. Server installations require administrator authorization.": "사이드바의 개인정보 보호 및 텔레메트리로 이동하여 Shogun의 선택적 가명 설치 통계를 검토하거나 제어할 수 있습니다. 텔레메트리는 기본적으로 비활성화되어 있으며 명시적인 동의가 필요합니다. 이 페이지에는 공유될 수 있는 정확한 필드, 절대 공유되지 않는 모든 정보, 다음 주간 하트비트 페이로드의 미리 보기가 표시됩니다. 테스트 이벤트를 보내거나, 공유를 비활성화하거나, 설치 식별자를 표시하거나, 텔레메트리 데이터를 삭제할 수 있습니다. 서버 설치에는 관리자 권한이 필요합니다.",
+  "Samurai → Flow Stack": "Samurai → Flow Stack",
+  "Katana → Mado Browser": "Katana → Mado Browser",
+  "Internal Handovers": "내부 핸드오버",
+  "Each completed Flow produces a structured internal result that is handed directly to the next Flow. Intermediate results remain available to checkpoints, verification, artifacts, audit logs, and recovery, but are not published in the operator-facing output unless the legacy all-steps option is selected.": "완료된 각 Flow는 구조화된 내부 결과를 생성하여 다음 Flow에 직접 전달합니다. 중간 결과는 체크포인트, 검증, 아티팩트, 감사 로그 및 복구에 계속 사용할 수 있지만 레거시 전체 단계 옵션을 선택하지 않는 한 운영자용 출력에는 게시되지 않습니다.",
+  "Published Stack Output": "게시된 Stack 출력",
+  "The Published Output setting controls the final visible package: Orchestrator summary plus the final Flow output, Orchestrator summary only, final Flow only, or all Flow outputs for legacy documentation workflows. The default is the Orchestrator summary plus the final Flow output.": "게시된 출력 설정은 최종 표시 패키지를 제어합니다. Orchestrator 요약과 최종 Flow 출력, 요약만, 최종 Flow만 또는 레거시 문서화 워크플로를 위한 모든 Flow 출력을 선택할 수 있습니다. 기본값은 Orchestrator 요약과 최종 Flow 출력입니다."
 }

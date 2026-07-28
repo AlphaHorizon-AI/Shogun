@@ -2200,5 +2200,16 @@
   "— you can search by meaning, not just keywords. When the AI responds to a query, it automatically retrieves the most relevant memories from this layer and includes them in context.": "— 您可以按含义搜索，而不仅仅是关键字。当人工智能响应查询时，它会自动从该层检索最相关的记忆并将其包含在上下文中。",
   "— Your Torii security tier doesn't allow Mado. Go to": "— 您的鸟居安全层不允许使用 Mado。前往",
   "“Shogun is unreachable”": "“将军遥不可及”",
-  "⚠ Unrestricted": "⚠ 无限制"
+  "⚠ Unrestricted": "⚠ 无限制",
+  "Maintenance — Backups, Privacy, Data & Updates": "维护 — 备份、隐私、数据和更新",
+  "Browser sessions are managed automatically. When Shogun shuts down, all active Playwright browser instances are cleanly closed. The Katana → Mado Browser tab shows the current session status and lets you manually manage active browser contexts.": "浏览器会话会自动管理。Shogun 关闭时，所有活动的 Playwright 浏览器实例都会正常关闭。Katana → Mado Browser 选项卡会显示当前会话状态，并允许你手动管理活动的浏览器上下文。",
+  "Navigate to Katana → Office.": "前往 Katana → Office。",
+  "Privacy & Telemetry": "隐私与遥测",
+  "Navigate to Privacy & Telemetry in the sidebar to review or control Shogun's optional, pseudonymous installation statistics. Telemetry is disabled by default and requires explicit consent. The page shows the exact fields that may be shared, everything that is never shared, and a preview of the next weekly heartbeat payload. You can send a test event, disable sharing, reveal the installation identifier, or delete your telemetry data. Server installations require administrator authorization.": "前往侧边栏中的“隐私与遥测”，查看或控制 Shogun 可选的假名化安装统计信息。遥测默认禁用，且需要明确同意。该页面会显示可能共享的确切字段、绝不会共享的所有信息，以及下一次每周心跳负载的预览。你可以发送测试事件、禁用共享、显示安装标识符或删除遥测数据。服务器安装需要管理员授权。",
+  "Samurai → Flow Stack": "Samurai → Flow Stack",
+  "Katana → Mado Browser": "Katana → Mado Browser",
+  "Internal Handovers": "内部交接",
+  "Each completed Flow produces a structured internal result that is handed directly to the next Flow. Intermediate results remain available to checkpoints, verification, artifacts, audit logs, and recovery, but are not published in the operator-facing output unless the legacy all-steps option is selected.": "每个完成的 Flow 都会生成结构化的内部结果，并直接交给下一个 Flow。中间结果仍可用于检查点、验证、制品、审计日志和恢复，但除非选择旧版的全部步骤选项，否则不会发布到面向操作员的输出中。",
+  "Published Stack Output": "已发布的 Stack 输出",
+  "The Published Output setting controls the final visible package: Orchestrator summary plus the final Flow output, Orchestrator summary only, final Flow only, or all Flow outputs for legacy documentation workflows. The default is the Orchestrator summary plus the final Flow output.": "“已发布输出”设置控制最终可见内容：Orchestrator 摘要加最终 Flow 输出、仅摘要、仅最终 Flow，或用于旧版文档工作流的全部 Flow 输出。默认值是 Orchestrator 摘要加最终 Flow 输出。"
 }

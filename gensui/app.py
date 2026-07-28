@@ -19,6 +19,7 @@ log = logging.getLogger("gensui")
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown hooks."""
     # ── Startup ──────────────────────────────────────────────
+    gensui_settings.validate_security()
     gensui_settings.ensure_directories()
     gensui_settings.validate_security()
 

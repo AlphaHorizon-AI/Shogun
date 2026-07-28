@@ -181,7 +181,9 @@ interface StackRunData {
   pending_steps: string[];
   failed_steps: string[];
   approval_events: any[];
+  output_publication: string;
   final_summary: Record<string, any>;
+  published_output: Record<string, any>;
   created_at: string;
   steps: StackStepRunData[];
 }
@@ -2243,6 +2245,13 @@ Content-Type: application/json
               <div className="space-y-1.5"><label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Failure Policy</label><select value={config.failure_policy || 'pause'} onChange={(event) => updateConfig('failure_policy', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none"><option value="pause">Pause</option><option value="retry">Retry</option><option value="continue_with_error">Continue with error</option><option value="fail_stack">Fail stack</option></select></div>
               <div className="space-y-1.5"><label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Artifacts</label><select value={config.artifact_policy || 'retain_all'} onChange={(event) => updateConfig('artifact_policy', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none"><option value="retain_all">Retain all</option><option value="retain_final_only">Final only</option><option value="retain_selected">Selected</option></select></div>
             </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Published Output</label>
+              <select value={config.output_publication || 'summary_and_final'} onChange={(event) => updateConfig('output_publication', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#c084fc]/30 rounded-lg p-2 text-xs text-[#c8d0d8] outline-none">
+                <option value="summary_and_final">Orchestrator summary + final Flow</option><option value="summary_only">Orchestrator summary only</option><option value="final_only">Final Flow only</option><option value="all_steps">All Flow outputs (legacy)</option>
+              </select>
+              <p className="text-[8px] normal-case leading-relaxed text-[#7a8899]">Intermediate results remain internal handovers and are still retained for checkpoints, verification, and audit.</p>
+            </div>
           </>
         )}
 
@@ -3025,6 +3034,7 @@ export function AgentFlowCanvas({
         verification_required: true,
         approval_policy: 'inherited',
         artifact_policy: 'retain_all',
+        output_publication: 'summary_and_final',
         failure_policy: 'pause',
       } : {};
       const newNode: Node = {
@@ -3951,6 +3961,7 @@ export function StackOrchestratorConsole({ flows, onClose }: { flows: FlowListIt
   const [selectedStackId, setSelectedStackId] = useState('');
   const [templateId, setTemplateId] = useState('');
   const [modelProfile, setModelProfile] = useState('balanced');
+  const [outputPublication, setOutputPublication] = useState('summary_and_final');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -4002,6 +4013,7 @@ export function StackOrchestratorConsole({ flows, onClose }: { flows: FlowListIt
         verification_required: true,
         approval_policy: 'inherited',
         artifact_policy: 'retain_all',
+        output_publication: outputPublication,
         failure_policy: 'pause',
       });
       const run = response.data?.data;
@@ -4092,6 +4104,7 @@ export function StackOrchestratorConsole({ flows, onClose }: { flows: FlowListIt
                 {mode !== 'template' && <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">{mode === 'goal_driven' ? 'Attach after review' : 'Agent Stack'}</label><select value={selectedStackId} onChange={(event) => setSelectedStackId(event.target.value)} className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-2.5 text-xs text-[#c8d0d8]"><option value="">Select stack...</option>{flows.map((flow) => <option key={flow.id} value={flow.id}>{flow.name} · {flow.flow_type}</option>)}</select></div>}
                 {mode === 'template' && <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">Template ID</label><input value={templateId} onChange={(event) => setTemplateId(event.target.value)} placeholder="bug-fix-stack" className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-2.5 text-xs text-[#c8d0d8]" /></div>}
                 <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">Objective</label><textarea value={objective} onChange={(event) => setObjective(event.target.value)} rows={4} placeholder="What should this Agent Stack accomplish?" className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-3 text-xs text-[#c8d0d8] outline-none focus:border-[#c084fc]" /></div>
+                <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">Published Output</label><select value={outputPublication} onChange={(event) => setOutputPublication(event.target.value)} className="w-full rounded-lg border border-[#c084fc]/30 bg-[#050508] p-2.5 text-xs text-[#c8d0d8]"><option value="summary_and_final">Orchestrator summary + final Flow</option><option value="summary_only">Orchestrator summary only</option><option value="final_only">Final Flow only</option><option value="all_steps">All Flow outputs (legacy)</option></select><p className="text-[8px] leading-relaxed text-[#7a8899]">Every intermediate result is handed to the next Flow without being published.</p></div>
                 <button disabled={busy || !objective || (mode === 'selected_stack' && !selectedStackId) || (mode === 'template' && !templateId)} onClick={createRun} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#c084fc] px-4 py-3 text-xs font-bold text-[#090b15] disabled:opacity-40">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Network className="w-4 h-4" />}Create Runtime Plan</button>
               </div>
             ) : (
@@ -4105,7 +4118,7 @@ export function StackOrchestratorConsole({ flows, onClose }: { flows: FlowListIt
                   <section className="rounded-xl border border-[#1a2040] bg-[#0e1225] p-4"><h4 className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#c8d0d8]"><Network className="w-3.5 h-3.5 text-[#c084fc]" />Execution Tree</h4><div className="space-y-2">{selected.steps.map((step, index) => <div key={step.id} className="relative flex items-center gap-3 rounded-lg border border-[#1a2040] bg-[#090d1d] p-3"><div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold" style={{ borderColor: statusColor(step.status), color: statusColor(step.status) }}>{index + 1}</div><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><p className="truncate text-[10px] font-bold text-[#c8d0d8]">{step.name}</p><span className="text-[8px] font-bold uppercase" style={{ color: statusColor(step.status) }}>{step.status.replace('_', ' ')}</span></div><div className="mt-1 flex flex-wrap gap-3 text-[8px] text-[#7a8899]"><span>{step.model_used || 'model pending'}</span><span>{step.retry_count}/{step.max_retries} retries</span><span>verification: {step.verification_status}</span>{step.flow_run_id && <span>run {step.flow_run_id.slice(0, 8)}</span>}</div>{step.error_json?.message && <p className="mt-1 text-[8px] text-[#ef4444]">{step.error_json.message}</p>}</div></div>)}</div></section>
                   <div className="space-y-5"><section className="rounded-xl border border-[#1a2040] bg-[#0e1225] p-4"><h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-[#c8d0d8]">Checkpoints</h4><div className="max-h-56 space-y-2 overflow-y-auto">{checkpoints.map((checkpoint) => <div key={checkpoint.id} className="rounded-lg border border-[#1a2040] p-3"><div className="flex justify-between gap-2"><span className="text-[9px] font-bold text-[#c8d0d8]">{checkpoint.summary}</span><span className="text-[8px] text-[#7a8899]">{formatRunTimestamp(checkpoint.created_at)}</span></div><p className="mt-1 line-clamp-3 text-[8px] text-[#7a8899]">{checkpoint.context_summary}</p><p className="mt-1 text-[8px] text-[#c084fc]">{checkpoint.resume_instruction}</p></div>)}{checkpoints.length === 0 && <p className="text-[9px] text-[#7a8899]">No checkpoints yet.</p>}</div></section><section className="rounded-xl border border-[#1a2040] bg-[#0e1225] p-4"><h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-[#c8d0d8]">Evidence</h4><div className="grid grid-cols-2 gap-2"><div className="rounded-lg bg-[#090d1d] p-3"><p className="text-xl font-bold text-[#c084fc]">{artifacts.length}</p><span className="text-[8px] uppercase text-[#7a8899]">Artifacts</span></div><div className="rounded-lg bg-[#090d1d] p-3"><p className="text-xl font-bold text-[#22c55e]">{verifications.filter((item) => item.status === 'passed').length}/{verifications.length}</p><span className="text-[8px] uppercase text-[#7a8899]">Verified</span></div></div></section></div>
                 </div>
-                {Object.keys(selected.final_summary || {}).length > 0 && <section className="rounded-xl border border-[#22c55e]/25 bg-[#22c55e]/5 p-4"><h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-[#22c55e]">Final Stack Summary</h4><pre className="max-h-72 overflow-auto whitespace-pre-wrap text-[9px] leading-relaxed text-[#c8d0d8]">{JSON.stringify(selected.final_summary, null, 2)}</pre></section>}
+                {Object.keys(selected.published_output || {}).length > 0 && <section className="rounded-xl border border-[#22c55e]/25 bg-[#22c55e]/5 p-4"><div className="mb-3 flex items-center justify-between gap-3"><h4 className="text-[10px] font-bold uppercase tracking-widest text-[#22c55e]">Published Stack Output</h4><span className="rounded bg-[#22c55e]/10 px-2 py-1 text-[8px] uppercase text-[#22c55e]">{selected.output_publication.replaceAll('_', ' ')}</span></div><pre className="max-h-96 overflow-auto whitespace-pre-wrap text-[9px] leading-relaxed text-[#c8d0d8]">{JSON.stringify(selected.published_output, null, 2)}</pre></section>}
               </div>
             )}
           </div>

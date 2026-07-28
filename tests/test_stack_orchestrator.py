@@ -26,6 +26,7 @@ from shogun.services.stack_orchestrator import (
     StackCompactionService,
     StackOrchestratorService,
     StackVerificationService,
+    build_published_stack_output,
 )
 
 
@@ -150,6 +151,24 @@ async def test_selected_stack_creates_persistent_step_plan(stack_sessions):
 
 
 @pytest.mark.asyncio
+async def test_selected_stack_inherits_saved_output_publication(stack_sessions):
+    stack_id, _ = await _seed_stack(stack_sessions, child_count=1)
+    async with stack_sessions() as session:
+        flow = await session.get(AgentFlow, stack_id)
+        flow.schedule_config = {"stack_orchestrator": {"output_publication": "summary_only"}}
+        await session.commit()
+        run = await StackOrchestratorService(session).create(
+            StackOrchestratorCreate(
+                mode="selected_stack",
+                selected_stack_id=stack_id,
+                objective="Use the saved handover publication policy",
+            )
+        )
+
+    assert run.output_publication == "summary_only"
+
+
+@pytest.mark.asyncio
 async def test_template_mode_loads_long_running_program_controls(stack_sessions):
     async with stack_sessions() as session:
         service = StackOrchestratorService(session)
@@ -240,7 +259,46 @@ async def test_stack_execution_checkpoints_verifies_and_summarizes(stack_session
     assert len(verifications) == 2
     assert all(item.status == "passed" for item in verifications)
     assert current.final_summary["final_status"] == "completed"
+    assert current.output_publication == "summary_and_final"
+    assert set(current.published_output) == {"summary", "final_output"}
+    assert "step_outputs" not in current.published_output
+    assert steps[0].output_json["publication"] == "handover_only"
+    assert steps[-1].output_json["publication"] == "final"
+    assert steps[1].input_json == steps[0].output_json["output"]
     assert len(tree["children"]) == 2
+
+
+@pytest.mark.parametrize(
+    ("publication", "expected_keys"),
+    [
+        ("summary_only", {"summary"}),
+        ("final_only", {"final_output"}),
+        ("all_steps", {"summary", "step_outputs", "final_output"}),
+    ],
+)
+def test_stack_output_publication_controls_visible_package(publication, expected_keys):
+    stack = StackRun(
+        mode="selected_stack",
+        status="completed",
+        objective="Publish only the selected stack package",
+        posture="campaign",
+        output_publication=publication,
+    )
+    steps = [
+        StackStepRun(
+            stack_run_id=uuid.uuid4(), step_id=f"step_{index:03d}", sequence=index,
+            name=f"Flow {index}", status="completed",
+            output_json={"output": {"result": f"result {index}"}},
+        )
+        for index in (1, 2)
+    ]
+    package = build_published_stack_output(stack, steps, {"status": "completed"})
+
+    assert set(package) == expected_keys
+    if publication == "all_steps":
+        assert len(package["step_outputs"]) == 2
+    if "final_output" in package:
+        assert package["final_output"] == {"result": "result 2"}
 
 
 @pytest.mark.asyncio

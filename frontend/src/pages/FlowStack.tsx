@@ -199,6 +199,7 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
   const [checkpointFrequency, setCheckpointFrequency] = useState('after_each_subflow');
   const [approvalPolicy, setApprovalPolicy] = useState('step_based');
   const [artifactPolicy, setArtifactPolicy] = useState('retain_all');
+  const [outputPublication, setOutputPublication] = useState('summary_and_final');
   const [saving, setSaving] = useState(false);
   const [savedStackId, setSavedStackId] = useState('');
   const [stackStatus, setStackStatus] = useState<'draft' | 'active' | 'paused'>('draft');
@@ -302,6 +303,7 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
       setCheckpointFrequency(seed.orchestrator_config.checkpoint_frequency || 'after_each_subflow');
       setApprovalPolicy(seed.orchestrator_config.approval_policy || 'step_based');
       setArtifactPolicy(seed.orchestrator_config.artifact_policy || 'retain_all');
+      setOutputPublication(seed.orchestrator_config.output_publication || 'summary_and_final');
     }
     setNotice(`Opened “${seed.name}” in the Stack Builder. Click any AgentFlow block to inspect its internal nodes.`);
     window.setTimeout(() => reactFlow.fitView({ padding: 0.15 }), 0);
@@ -408,6 +410,7 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
           max_runtime_minutes: maxRuntime, max_iterations: maxIterations,
           max_retry_attempts_per_step: maxRetries, context_compaction: 'enabled',
           approval_policy: approvalPolicy, artifact_policy: artifactPolicy,
+          output_publication: outputPublication,
           timeout_seconds: Math.min(maxRuntime * 60, 86400),
         },
         save_as_template: saveAsTemplate,
@@ -499,6 +502,7 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
         <label className="block text-[9px] uppercase text-shogun-subdued">Checkpoints<select value={checkpointFrequency} onChange={(e) => setCheckpointFrequency(e.target.value)} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs"><option value="after_each_subflow">After every subflow</option><option value="after_each_step">After every step</option><option value="timed">Timed</option></select></label>
         <div className="grid grid-cols-2 gap-2"><label className="block text-[9px] uppercase text-shogun-subdued">Retries<input type="number" min={0} max={10} value={maxRetries} onChange={(e) => setMaxRetries(Number(e.target.value))} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs" /></label><label className="block text-[9px] uppercase text-shogun-subdued">Approval<select value={approvalPolicy} onChange={(e) => setApprovalPolicy(e.target.value)} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs"><option value="step_based">Step based</option><option value="inherited">Inherited</option><option value="always_required_for_high_risk">High risk</option></select></label></div>
         <label className="block text-[9px] uppercase text-shogun-subdued">Artifacts<select value={artifactPolicy} onChange={(e) => setArtifactPolicy(e.target.value)} className="mt-1 w-full bg-[#080b16] border border-shogun-border rounded p-2 text-xs"><option value="retain_all">Retain all</option><option value="retain_final_only">Final only</option><option value="retain_selected">Selected</option></select></label>
+        <label className="block text-[9px] uppercase text-shogun-subdued">Published output<select value={outputPublication} onChange={(e) => setOutputPublication(e.target.value)} className="mt-1 w-full bg-[#080b16] border border-purple-400/30 rounded p-2 text-xs"><option value="summary_and_final">Orchestrator summary + final Flow</option><option value="summary_only">Orchestrator summary only</option><option value="final_only">Final Flow only</option><option value="all_steps">All Flow outputs (legacy)</option></select><span className="mt-1 block normal-case leading-relaxed text-[8px] text-shogun-subdued">Intermediate results are always retained internally and handed to the next Flow. This setting only controls what is published at the end.</span></label>
         <div className="flex items-center justify-between text-[10px] text-shogun-subdued"><span>{nodes.length} flows</span><span>{edges.length} connections</span></div>
         <button disabled={!savedStackId || changingStatus} onClick={changeStackStatus} title={!savedStackId ? 'Save the Stack before activating it' : stackStatus === 'active' ? 'Deactivate this Stack' : 'Activate this Stack'} className={cn('w-full flex justify-center items-center gap-2 py-2 rounded text-xs font-bold border disabled:cursor-not-allowed disabled:opacity-40', stackStatus === 'active' ? 'border-green-400/40 bg-green-500/15 text-green-300' : 'border-shogun-border bg-[#080b16] text-shogun-subdued')}><Power className="w-3.5 h-3.5" />{changingStatus ? 'UPDATING...' : stackStatus === 'active' ? 'ACTIVE — CLICK TO DEACTIVATE' : savedStackId ? 'ACTIVATE STACK' : 'SAVE STACK TO ACTIVATE'}</button>
         <button onClick={() => { setNodes([]); setEdges([]); setSelectedNodeIds([]); setSelectedEdgeIds([]); }} className="w-full flex justify-center items-center gap-2 py-2 border border-red-500/25 text-red-400 rounded text-xs"><Trash2 className="w-3.5 h-3.5" /> CLEAR CANVAS</button>

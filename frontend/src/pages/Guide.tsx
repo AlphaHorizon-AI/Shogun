@@ -122,33 +122,33 @@ export function Guide() {
   const REFERENCE_SECTIONS = [
     { id: 'ref-tenshu', label: 'Tenshu', icon: Layout, color: 'text-shogun-blue' },
     { id: 'ref-server', label: 'Server Mode', icon: Package, color: 'text-emerald-400' },
-    { id: 'ref-comms', label: 'Comms', icon: MessageSquare, color: 'text-shogun-blue' },
     { id: 'ref-profile', label: 'Shogun Profile', icon: Cpu, color: 'text-shogun-gold' },
-    { id: 'ref-flowstack', label: 'Flow Stacking', icon: Layers, color: 'text-violet-400' },
     { id: 'ref-samurai', label: 'Samurai Network', icon: Users, color: 'text-shogun-gold' },
+    { id: 'ref-flowstack', label: 'Flow Stacking', icon: Layers, color: 'text-violet-400' },
+    { id: 'ref-comms', label: 'Comms', icon: MessageSquare, color: 'text-shogun-blue' },
+    { id: 'ref-workspace', label: 'Workspace', icon: FolderOpenIcon, color: 'text-amber-400' },
     { id: 'ref-katana', label: 'Katana', icon: Sword, color: 'text-shogun-blue' },
     { id: 'ref-telegram', label: 'Telegram Setup', icon: MessageSquare, color: 'text-sky-400' },
     { id: 'ref-teams', label: 'Teams Setup', icon: Users, color: 'text-indigo-400' },
-    { id: 'ref-archives', label: 'Archives', icon: Database, color: 'text-shogun-gold' },
-    { id: 'ref-dojo', label: 'Dojo', icon: Flame, color: 'text-shogun-gold' },
-    { id: 'ref-kaizen', label: 'Kaizen', icon: ShieldCheck, color: 'text-shogun-gold' },
-    { id: 'ref-bushido', label: 'Bushido', icon: RefreshCw, color: 'text-shogun-blue' },
+    { id: 'ref-model-router', label: 'Model Router', icon: RouteIcon, color: 'text-blue-400' },
+    { id: 'ref-visual-intake', label: 'Visual Intake', icon: Eye, color: 'text-cyan-400' },
+    { id: 'ref-active-skills', label: 'Active Skills', icon: Sparkles, color: 'text-amber-400' },
+    { id: 'ref-office', label: 'Office', icon: FileSpreadsheet, color: 'text-green-400' },
+    { id: 'ref-ide-mode', label: 'IDE Mode', icon: MonitorIcon, color: 'text-emerald-400' },
     { id: 'ref-mado', label: 'Mado', icon: AppWindow, color: 'text-cyan-400' },
     { id: 'ref-ronin', label: 'Ronin', icon: Crosshair, color: 'text-orange-400' },
-    { id: 'ref-office', label: 'Office', icon: FileSpreadsheet, color: 'text-green-400' },
-    { id: 'ref-workspace', label: 'Workspace', icon: FolderOpenIcon, color: 'text-amber-400' },
-    { id: 'ref-torii', label: 'Torii', icon: Lock, color: 'text-red-400' },
+    { id: 'ref-skillopt', label: 'SkillOpt', icon: BrainCircuit, color: 'text-fuchsia-400' },
     { id: 'ref-toolgate', label: 'ToolGate', icon: Shield, color: 'text-orange-400' },
+    { id: 'ref-torii', label: 'Torii', icon: Lock, color: 'text-red-400' },
+    { id: 'ref-kaizen', label: 'Kaizen', icon: ShieldCheck, color: 'text-shogun-gold' },
+    { id: 'ref-bushido', label: 'Bushido', icon: RefreshCw, color: 'text-shogun-blue' },
+    { id: 'ref-archives', label: 'Archives', icon: Database, color: 'text-shogun-gold' },
+    { id: 'ref-dojo', label: 'Dojo', icon: Flame, color: 'text-shogun-gold' },
+    { id: 'ref-logs', label: 'Logs', icon: Terminal, color: 'text-shogun-subdued' },
     { id: 'ref-nexus', label: 'Nexus', icon: Globe, color: 'text-indigo-400' },
     { id: 'ref-nexus-gateway', label: 'Nexus Gateway', icon: Link2, color: 'text-indigo-400' },
     { id: 'ref-gensui', label: 'Gensui', icon: ShieldAlert, color: 'text-indigo-400' },
-    { id: 'ref-logs', label: 'Logs', icon: Terminal, color: 'text-shogun-subdued' },
     { id: 'ref-maintenance', label: 'Maintenance', icon: HardDrive, color: 'text-shogun-gold' },
-    { id: 'ref-visual-intake', label: 'Visual Intake', icon: Eye, color: 'text-cyan-400' },
-    { id: 'ref-ide-mode', label: 'IDE Mode', icon: MonitorIcon, color: 'text-emerald-400' },
-    { id: 'ref-model-router', label: 'Model Router', icon: RouteIcon, color: 'text-blue-400' },
-    { id: 'ref-active-skills', label: 'Active Skills', icon: Sparkles, color: 'text-amber-400' },
-    { id: 'ref-skillopt', label: 'SkillOpt', icon: BrainCircuit, color: 'text-fuchsia-400' },
   ];
 
   const scrollToSection = useCallback((sectionId: string) => {
@@ -845,99 +845,6 @@ export function Guide() {
                 </div>
              </section>
 
-             {/* 2. COMMS (CHAT) */}
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             <section id="ref-comms" className="space-y-6 scroll-mt-6">
-                <div className="flex items-center gap-3 border-b-2 border-shogun-blue/40 pb-3">
-                   <MessageSquare className="w-6 h-6 text-shogun-blue" />
-                   <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">Comms — The Conversation</h4>
-                      <p className="text-xs text-shogun-subdued">Your direct line to the Shogun AI. Four tabs: Chat, Mail, Calendar, and Files.</p>
-                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><MessageSquare className="w-4 h-4 text-shogun-blue" /> Chat Window</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The main area showing your conversation. Your messages appear on the right (blue icon), and the Shogun's replies appear on the left (gold icon). While the AI is thinking, three bouncing dots are shown. Responses stream in token by token so you can watch the answer being written in real time.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Globe className="w-4 h-4 text-shogun-blue" /> Model & Search Tags</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Below each Shogun reply you will see a small tag. If the reply used a <strong>Web Search</strong> (via Perplexity), a blue "Web Search" badge appears. Otherwise, the name of the AI model used is shown (e.g., "gpt-4o").</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Search className="w-4 h-4 text-shogun-gold" /> Input Bar & Sending</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Type your message at the bottom and press <strong>Enter</strong> (or click the blue send arrow) to send. While the AI is responding, the input field is locked and shows "Transmitting directive..." to prevent double-sending.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Compass className="w-4 h-4 text-shogun-gold" /> Session History</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Below the input bar, click <strong>"View History"</strong> to open a right-hand drawer showing all your previous chat sessions. Each session shows a preview of the first message and the number of messages. Click <strong>"Restore"</strong> to reload an old conversation. Click <strong>"Clear All History"</strong> at the bottom to permanently erase all archived sessions.</p>
-                   </div>
-                   <div className="shogun-card space-y-2 md:col-span-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-red-400" /> Clear Button (Trash Icon)</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The trash icon in the top right <strong>archives</strong> the current session to history and starts a fresh conversation. Your old messages are not lost — they are kept in the History drawer and can be restored at any time.</p>
-                   </div>
-                </div>
-
-                {/* Mail & Calendar */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                   <div className="shogun-card space-y-2 border-l-2 border-sky-400/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Mail className="w-4 h-4 text-sky-400" /> Mail — Email Client</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">A full IMAP/SMTP email client built into Comms. Browse your inbox with sender, subject, date, and preview. Click any message to read the full content. <strong>Compose</strong> new emails with To, CC, BCC, subject, and body. Reply to existing messages with quoted context. Navigate between folders (Inbox, Sent, Drafts). Configure your email account in the system settings. The Shogun can also manage email via native skills: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">fetch_inbox</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">read_email</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">send_email</code>.</p>
-                   </div>
-                   <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><CalendarDays className="w-4 h-4 text-emerald-400" /> Calendar — Event Management</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">CalDAV calendar integration. View your upcoming events on a timeline with titles, times, locations, and descriptions. Create new events by specifying a title, start/end time, location, and optional description. Supports all-day events. Connect a CalDAV server in the system settings. The Shogun can query and create events via native skills: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">list_calendar_events</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">create_calendar_event</code>.</p>
-                   </div>
-                </div>
-
-                 {/* Files Tab (Workspace File Explorer) */}
-                 <div className="shogun-card space-y-3 border-l-2 border-amber-400/40 mt-4">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><FolderOpenIcon className="w-4 h-4 text-amber-400" /> Files — Workspace File Explorer</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">A full visual file manager for the Agent Workspace — the dedicated folder shared between the Shogun, all Samurai agents, and the user. The Files tab provides everything you need to browse, create, edit, upload, and delete files without leaving the Comms page.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5">
-                          <div className="text-xs font-bold text-amber-400">Tree Sidebar (Left)</div>
-                          <ul className="text-[11px] text-shogun-subdued space-y-1 ml-3 list-disc">
-                             <li>Expandable directory tree with file-type icons (code, spreadsheet, image, archive, text).</li>
-                             <li>File sizes shown in human-readable format (KB, MB).</li>
-                             <li>Real-time search filter to find files instantly.</li>
-                             <li>Workspace info footer: total files, directories, and disk usage.</li>
-                          </ul>
-                       </div>
-                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5">
-                          <div className="text-xs font-bold text-amber-400">Content Panel (Right)</div>
-                          <ul className="text-[11px] text-shogun-subdued space-y-1 ml-3 list-disc">
-                             <li>Click a file to view its contents in a monospace reader.</li>
-                             <li>Click <strong>Edit</strong> to modify any text file inline, then <strong>Save</strong> to write back to disk.</li>
-                             <li>Click a folder to see its contents as a clickable card grid with icons and sizes.</li>
-                             <li>Empty state shows workspace path and usage instructions.</li>
-                          </ul>
-                       </div>
-                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5">
-                          <div className="text-xs font-bold text-amber-400">Toolbar Actions</div>
-                          <ul className="text-[11px] text-shogun-subdued space-y-1 ml-3 list-disc">
-                             <li><strong>New File</strong> (file+ icon): Creates a file inside the selected folder or workspace root.</li>
-                             <li><strong>New Folder</strong> (folder+ icon): Creates a directory. Nested paths auto-created.</li>
-                             <li><strong>Upload</strong> (upload icon): Opens a file picker to upload one or more files.</li>
-                             <li><strong>Rename</strong> (edit icon): Renames the selected file or folder.</li>
-                             <li><strong>Delete</strong> (trash icon): Deletes with confirmation. Directories deleted recursively.</li>
-                             <li><strong>Refresh</strong> (refresh icon): Reloads the tree from disk.</li>
-                          </ul>
-                       </div>
-                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5">
-                          <div className="text-xs font-bold text-amber-400">Drag &amp; Drop Upload</div>
-                          <ul className="text-[11px] text-shogun-subdued space-y-1 ml-3 list-disc">
-                             <li>Drag files from your desktop or file manager and drop them anywhere on the File Explorer.</li>
-                             <li>A blue overlay appears showing where files will land.</li>
-                             <li>Files are uploaded into the currently selected folder, or workspace root if none is selected.</li>
-                             <li>Multiple files can be dropped at once. All file types are supported.</li>
-                             <li>Filenames are sanitized on the server. Path traversal is blocked.</li>
-                          </ul>
-                       </div>
-                    </div>
-                 </div>
-             </section>
-
              {/* ═══════════════════════════════════════════════════════════════ */}
              {/* 3. SHOGUN PROFILE */}
              {/* ═══════════════════════════════════════════════════════════════ */}
@@ -1047,6 +954,267 @@ export function Guide() {
                    </div>
                 </div>
              </section>
+
+              {/* ─── FLOW STACKING ─── */}
+              <section id="ref-flowstack" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-violet-400/40 pb-3">
+                    <Layers className="w-6 h-6 text-violet-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">Flow Stacking — Stack Orchestrator</h4>
+                       <p className="text-xs text-shogun-subdued">The governed runtime layer above Agent Flow — long-horizon execution with checkpoints, verification gates, retries, and artifact capture.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card space-y-3">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-violet-400" /> What Is Flow Stacking?</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">While individual <strong>Agent Flows</strong> handle single-pipeline execution, <strong>Flow Stacking</strong> chains multiple flows into long-horizon execution pipelines. The <strong>Stack Orchestrator</strong> manages the entire lifecycle: planning, checkpointing, verification, retries, and artifact collection. Navigate to <strong>Samurai → Flow Stack</strong> to access it.</p>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Play className="w-4 h-4 text-violet-400" /> Three Operating Modes</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Goal-Driven:</strong> Describe what you want — the planner selects and sequences flows automatically. <strong>Selected Stack:</strong> Pick a specific Flow Stack to execute. <strong>Template:</strong> Instantiate from a reusable template.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-violet-400" /> Verification Gates</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">After each step, independent quality checks run (deterministic + semantic model judging). If a step fails verification, the retry service categorizes the failure (permission, runtime, verification, tool/flow) and applies the configured retry policy.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-violet-400" /> Durable Checkpoints</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Context summaries and state snapshots are saved after each step. If a run is paused or interrupted, it can be resumed from the last checkpoint — no lost progress. Use <strong>Pause</strong> and <strong>Resume</strong> buttons in the Flow Stack dashboard.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Package className="w-4 h-4 text-violet-400" /> Artifact Capture</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Outputs from each phase (files, reports, analysis results) are automatically captured and cataloged. View all artifacts for a run from the <strong>Artifacts</strong> tab in the execution detail view.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-violet-400" /> Internal Handovers</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Each completed Flow produces a structured internal result that is handed directly to the next Flow. Intermediate results remain available to checkpoints, verification, artifacts, audit logs, and recovery, but are not published in the operator-facing output unless the legacy all-steps option is selected.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-violet-400" /> Published Stack Output</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">The Published Output setting controls the final visible package: Orchestrator summary plus the final Flow output, Orchestrator summary only, final Flow only, or all Flow outputs for legacy documentation workflows. The default is the Orchestrator summary plus the final Flow output.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card space-y-2">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-violet-400" /> Governed Permissions</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">Flow Stacking is gated by six ToolGate capability boundaries: <code className="text-violet-400">agentflow_create</code>, <code className="text-violet-400">agentflow_execute</code>, <code className="text-violet-400">agentflow_autonomous</code>, <code className="text-violet-400">flowstack_create</code>, <code className="text-violet-400">flowstack_execute</code>, and <code className="text-violet-400">flowstack_autonomous</code>. The built-in policies require <strong>Tactical</strong> tier or above; a custom policy inherits a base tier and may narrow those permissions. Select the policy in <strong>Torii</strong>, then use <strong>ToolGate</strong> to understand its boundaries and whether execution is allowed, confirmed, or blocked.</p>
+                 </div>
+
+                 <div className="shogun-card space-y-2">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Search className="w-4 h-4 text-violet-400" /> Agent Inspection &amp; Editing</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">Shogun discovers stacks with <code className="text-violet-400">list_agent_flows</code> and reads their complete phases, subflow mappings, nodes, edges, orchestrator configuration, and lifecycle state with <code className="text-violet-400">get_flow_stack</code>. It can then use <code className="text-violet-400">create_flow_stack</code>, <code className="text-violet-400">edit_flow_stack</code>, or <code className="text-violet-400">delete_flow_stack</code> under the active posture and Flow Stack permissions.</p>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">For a standard Agent Flow, Shogun uses <code className="text-violet-400">get_agent_flow</code> and prefers <code className="text-violet-400">patch_agent_flow</code> for targeted graph changes that preserve untouched nodes and edges. A direct operator instruction to edit a flow authorizes that targeted patch for the current turn; Shogun still has to inspect first, remain at Tactical posture or above, and obey the separate create, activate, execute, template, and delete permissions.</p>
+                 </div>
+              </section>
+
+             {/* 2. COMMS (CHAT) */}
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             <section id="ref-comms" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-shogun-blue/40 pb-3">
+                   <MessageSquare className="w-6 h-6 text-shogun-blue" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Comms — The Conversation</h4>
+                      <p className="text-xs text-shogun-subdued">Your direct line to the Shogun AI. Four tabs: Chat, Mail, Calendar, and Files.</p>
+                   </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><MessageSquare className="w-4 h-4 text-shogun-blue" /> Chat Window</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The main area showing your conversation. Your messages appear on the right (blue icon), and the Shogun's replies appear on the left (gold icon). While the AI is thinking, three bouncing dots are shown. Responses stream in token by token so you can watch the answer being written in real time.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Globe className="w-4 h-4 text-shogun-blue" /> Model & Search Tags</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Below each Shogun reply you will see a small tag. If the reply used a <strong>Web Search</strong> (via Perplexity), a blue "Web Search" badge appears. Otherwise, the name of the AI model used is shown (e.g., "gpt-4o").</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Search className="w-4 h-4 text-shogun-gold" /> Input Bar & Sending</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Type your message at the bottom and press <strong>Enter</strong> (or click the blue send arrow) to send. While the AI is responding, the input field is locked and shows "Transmitting directive..." to prevent double-sending.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Compass className="w-4 h-4 text-shogun-gold" /> Session History</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Below the input bar, click <strong>"View History"</strong> to open a right-hand drawer showing all your previous chat sessions. Each session shows a preview of the first message and the number of messages. Click <strong>"Restore"</strong> to reload an old conversation. Click <strong>"Clear All History"</strong> at the bottom to permanently erase all archived sessions.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 md:col-span-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-red-400" /> Clear Button (Trash Icon)</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The trash icon in the top right <strong>archives</strong> the current session to history and starts a fresh conversation. Your old messages are not lost — they are kept in the History drawer and can be restored at any time.</p>
+                   </div>
+                </div>
+
+                {/* Mail & Calendar */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                   <div className="shogun-card space-y-2 border-l-2 border-sky-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Mail className="w-4 h-4 text-sky-400" /> Mail — Email Client</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">A full IMAP/SMTP email client built into Comms. Browse your inbox with sender, subject, date, and preview. Click any message to read the full content. <strong>Compose</strong> new emails with To, CC, BCC, subject, and body. Reply to existing messages with quoted context. Navigate between folders (Inbox, Sent, Drafts). Configure your email account in the system settings. The Shogun can also manage email via native skills: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">fetch_inbox</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">read_email</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">send_email</code>.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><CalendarDays className="w-4 h-4 text-emerald-400" /> Calendar — Event Management</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">CalDAV calendar integration. View your upcoming events on a timeline with titles, times, locations, and descriptions. Create new events by specifying a title, start/end time, location, and optional description. Supports all-day events. Connect a CalDAV server in the system settings. The Shogun can query and create events via native skills: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">list_calendar_events</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">create_calendar_event</code>.</p>
+                   </div>
+                </div>
+
+                 {/* Files Tab (Workspace File Explorer) */}
+                 <div className="shogun-card space-y-3 border-l-2 border-amber-400/40 mt-4">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><FolderOpenIcon className="w-4 h-4 text-amber-400" /> Files — Workspace File Explorer</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">A full visual file manager for the Agent Workspace — the dedicated folder shared between the Shogun, all Samurai agents, and the user. The Files tab provides everything you need to browse, create, edit, upload, and delete files without leaving the Comms page.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5">
+                          <div className="text-xs font-bold text-amber-400">Tree Sidebar (Left)</div>
+                          <ul className="text-[11px] text-shogun-subdued space-y-1 ml-3 list-disc">
+                             <li>Expandable directory tree with file-type icons (code, spreadsheet, image, archive, text).</li>
+                             <li>File sizes shown in human-readable format (KB, MB).</li>
+                             <li>Real-time search filter to find files instantly.</li>
+                             <li>Workspace info footer: total files, directories, and disk usage.</li>
+                          </ul>
+                       </div>
+                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5">
+                          <div className="text-xs font-bold text-amber-400">Content Panel (Right)</div>
+                          <ul className="text-[11px] text-shogun-subdued space-y-1 ml-3 list-disc">
+                             <li>Click a file to view its contents in a monospace reader.</li>
+                             <li>Click <strong>Edit</strong> to modify any text file inline, then <strong>Save</strong> to write back to disk.</li>
+                             <li>Click a folder to see its contents as a clickable card grid with icons and sizes.</li>
+                             <li>Empty state shows workspace path and usage instructions.</li>
+                          </ul>
+                       </div>
+                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5">
+                          <div className="text-xs font-bold text-amber-400">Toolbar Actions</div>
+                          <ul className="text-[11px] text-shogun-subdued space-y-1 ml-3 list-disc">
+                             <li><strong>New File</strong> (file+ icon): Creates a file inside the selected folder or workspace root.</li>
+                             <li><strong>New Folder</strong> (folder+ icon): Creates a directory. Nested paths auto-created.</li>
+                             <li><strong>Upload</strong> (upload icon): Opens a file picker to upload one or more files.</li>
+                             <li><strong>Rename</strong> (edit icon): Renames the selected file or folder.</li>
+                             <li><strong>Delete</strong> (trash icon): Deletes with confirmation. Directories deleted recursively.</li>
+                             <li><strong>Refresh</strong> (refresh icon): Reloads the tree from disk.</li>
+                          </ul>
+                       </div>
+                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5">
+                          <div className="text-xs font-bold text-amber-400">Drag &amp; Drop Upload</div>
+                          <ul className="text-[11px] text-shogun-subdued space-y-1 ml-3 list-disc">
+                             <li>Drag files from your desktop or file manager and drop them anywhere on the File Explorer.</li>
+                             <li>A blue overlay appears showing where files will land.</li>
+                             <li>Files are uploaded into the currently selected folder, or workspace root if none is selected.</li>
+                             <li>Multiple files can be dropped at once. All file types are supported.</li>
+                             <li>Filenames are sanitized on the server. Path traversal is blocked.</li>
+                          </ul>
+                       </div>
+                    </div>
+                 </div>
+             </section>
+
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             {/* WORKSPACE (FILE EXPLORER) */}
+             {/* ═══════════════════════════════════════════════════════════════ */}
+              <section id="ref-workspace" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-amber-400/40 pb-3">
+                    <FolderOpenIcon className="w-6 h-6 text-amber-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">Workspace &mdash; Agent File System</h4>
+                       <p className="text-xs text-shogun-subdued">A dedicated folder where the Shogun and all Samurai agents have persistent read/write access.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card space-y-3">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-400" /> Overview</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">{"The Workspace is a single, dedicated directory where the Shogun and all Samurai agents can read, write, and manage files. It serves as the agent\u2019s persistent \u201Cdesk\u201D \u2014 a safe location to store outputs, share data between agents, and create working documents. Availability and access mode follow the active policy's filesystem and workspace boundaries in ToolGate; the built-in Shrine policy disables it."}</p>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">{"Default location: data/workspace/ inside the Shogun project directory. The path is configurable via environment variable WORKSPACE_PATH."}</p>
+                 </div>
+
+                 <div className="shogun-card bg-amber-500/10 border-amber-500/30 border-l-4 border-l-amber-500 space-y-3">
+                    <h5 className="text-sm font-bold text-amber-400 flex items-center gap-2"><CheckCircle2 className="w-5 h-5" /> Getting Started</h5>
+                    <ol className="text-xs text-shogun-subdued space-y-2 ml-4 list-decimal">
+                       <li>{"Navigate to Comms (sidebar) and click the Files tab."}</li>
+                       <li>{"The File Explorer shows the workspace tree on the left and a content viewer/editor on the right."}</li>
+                       <li>{"Use the toolbar buttons to create new files, new folders, rename, or delete items."}</li>
+                       <li>{"Click any file to view its content. Click Edit to modify it inline, then Save."}</li>
+                       <li>{"In Mission Mode chat, ask the Shogun to use workspace tools \u2014 it can read, write, list, and manage files directly."}</li>
+                       <li>{"The workspace folder is automatically created on first startup at data/workspace/."}</li>
+                    </ol>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><FolderOpenIcon className="w-4 h-4 text-amber-400" /> File Explorer (Comms &rarr; Files Tab)</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">{"The File Explorer is a tab inside the Comms page, alongside Chat, Mail, and Calendar. It provides a visual interface for managing workspace files:"}</p>
+                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
+                          <li><strong>Tree sidebar:</strong> Expandable directory tree with file-type icons (code, spreadsheet, image, archive, text), size labels, and real-time search filter.</li>
+                          <li><strong>Content viewer:</strong> Displays file contents with monospace formatting. Shows file path, extension, and size in the header bar.</li>
+                          <li><strong>Inline editor:</strong> Click Edit to modify any text file directly in the browser. Click Save to write changes back to disk.</li>
+                          <li><strong>Create File:</strong> Click the file+ icon in the toolbar. Enter a filename. The file is created inside the currently selected folder (or workspace root).</li>
+                          <li><strong>Create Folder:</strong> Click the folder+ icon. Enter a folder name. Nested paths are created automatically.</li>
+                          <li><strong>Rename:</strong> Select an item, click the edit icon. Enter the new name and confirm.</li>
+                          <li><strong>Delete:</strong> Select an item, click the trash icon. A confirmation dialog appears. Directories are deleted recursively including all contents.</li>
+                          <li><strong>Grid view:</strong> When a directory is selected, its contents are displayed as a clickable card grid with icons and sizes.</li>
+                          <li><strong>Info footer:</strong> Shows the full workspace path, total file count, directory count, and disk usage in MB.</li>
+                          <li><strong>Drag &amp; drop upload:</strong> Drag files from your desktop onto the File Explorer to upload them. A blue overlay indicates the drop target. Multiple files supported simultaneously.</li>
+                          <li><strong>Upload button:</strong> Click the upload icon in the toolbar to open a native file picker for selecting files to upload into the current folder.</li>
+                       </ul>
+                    </div>
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Terminal className="w-4 h-4 text-amber-400" /> 6 Agent Native Tools</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">{"In Mission Mode, the Shogun and all Samurai agents have 6 workspace tools injected as native functions. The agent sees the workspace path in its system prompt and can use these tools autonomously:"}</p>
+                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
+                          <li><strong>workspace_info</strong> <span className="text-green-400">(low risk)</span> \u2014 Returns workspace path, whether access is enabled, total files, total directories, and total size in MB.</li>
+                          <li><strong>workspace_list</strong> <span className="text-green-400">(low risk)</span> \u2014 Lists files and directories at a given relative path. Returns name, type, size (for files), and child count (for dirs).</li>
+                          <li><strong>workspace_read</strong> <span className="text-green-400">(low risk)</span> \u2014 Reads a text file\u2019s content (capped at 5 MB). Returns content, size, and path. Binary files return an error.</li>
+                          <li><strong>workspace_write</strong> <span className="text-yellow-400">(medium risk)</span> \u2014 Creates or overwrites a text file. Parent directories are auto-created. Returns action (created/overwritten) and size.</li>
+                          <li><strong>workspace_mkdir</strong> <span className="text-green-400">(low risk)</span> \u2014 Creates a subdirectory with parents. Returns action (created/already_exists).</li>
+                          <li><strong>workspace_delete</strong> <span className="text-red-400">(high risk)</span> \u2014 Deletes a single file. Cannot delete directories (safety constraint via agent tools; the UI can delete dirs).</li>
+                       </ul>
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-amber-400" /> Path Validation &amp; Security</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">{"All workspace operations \u2014 both the File Explorer UI and agent native tools \u2014 enforce strict path validation at every level:"}</p>
+                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
+                          <li><strong>Boundary enforcement:</strong> Every path is resolved to its absolute form and checked that it remains inside the workspace root. Any escape attempt is blocked.</li>
+                          <li><strong>Traversal blocking:</strong> Paths containing <code className="bg-shogun-card px-1 rounded">..</code> are rejected immediately, before any filesystem operation.</li>
+                          <li><strong>Absolute path blocking:</strong> Only relative paths (from workspace root) are accepted. Paths starting with <code className="bg-shogun-card px-1 rounded">/</code> or <code className="bg-shogun-card px-1 rounded">\</code> are rejected.</li>
+                          <li><strong>UNC path blocking:</strong> Network paths are rejected to prevent lateral movement.</li>
+                          <li><strong>Size guard:</strong> File reads are capped at 5 MB (agent tools) or 10 MB (File Explorer UI) to prevent memory exhaustion.</li>
+                          <li><strong>Root protection:</strong> The workspace root directory itself cannot be deleted.</li>
+                       </ul>
+                    </div>
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-amber-400" /> Security Posture Matrix</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">{"The workspace is a binary gate: either fully available or completely locked."}</p>
+                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
+                          <li><strong>SHRINE:</strong> \u274C Workspace completely disabled. No read, no write, no listing. All 6 tools return errors. File Explorer shows an error state with retry button.</li>
+                          <li><strong>GUARDED:</strong> \u2705 Full read/write access. All 6 agent tools available. File Explorer fully functional.</li>
+                          <li><strong>TACTICAL:</strong> \u2705 Full read/write access. All 6 agent tools available.</li>
+                          <li><strong>CAMPAIGN:</strong> \u2705 Full read/write access. All 6 agent tools available.</li>
+                          <li><strong>RONIN:</strong> \u2705 Full read/write access. All 6 agent tools available.</li>
+                       </ul>
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Link2 className="w-4 h-4 text-amber-400" /> Office App Mode Alignment</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">{"The Workspace and Office App Mode share the same folder concept. The four \u201CApproved Folders\u201D in the Katana\u2019s Office tab (input, output, templates, temp) can be left empty to auto-map to the workspace root directory. This means Office file operations and agent workspace tools operate in the same directory by default. Configure custom paths in the Katana \u2192 Office tab if you need separate boundaries for Office automation."}</p>
+                    </div>
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Globe className="w-4 h-4 text-amber-400" /> REST API Endpoints</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">{"The File Explorer UI uses a dedicated REST API under /api/v1/workspace/. These endpoints are also available for external integrations and custom tooling:"}</p>
+                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
+                          <li><code className="bg-shogun-card px-1 rounded">GET /api/v1/workspace/info</code> \u2014 Metadata, path, and disk usage</li>
+                          <li><code className="bg-shogun-card px-1 rounded">GET /api/v1/workspace/tree</code> \u2014 Full recursive directory tree (JSON)</li>
+                          <li><code className="bg-shogun-card px-1 rounded">GET /api/v1/workspace/read?path=</code> \u2014 Read file content as text</li>
+                          <li><code className="bg-shogun-card px-1 rounded">POST /api/v1/workspace/write</code> \u2014 Create or update file (JSON body: path, content)</li>
+                          <li><code className="bg-shogun-card px-1 rounded">POST /api/v1/workspace/mkdir</code> \u2014 Create directory (JSON body: path)</li>
+                          <li><code className="bg-shogun-card px-1 rounded">DELETE /api/v1/workspace/delete?path=</code> \u2014 Delete file or directory</li>
+                          <li><code className="bg-shogun-card px-1 rounded">POST /api/v1/workspace/rename</code> \u2014 Rename/move (JSON body: old_path, new_path)</li>
+                       </ul>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card space-y-2">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" /> System Prompt Integration</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">{"When workspace is enabled, the Shogun\u2019s system prompt includes the workspace path and available tools in two places: the ACTIVE SECURITY POSTURE block (\u201CWorkspace: ENABLED \u2014 /path/to/workspace\u201D) and the YOUR CAPABILITIES block (listing all 6 tools by name). This ensures the agent knows where to save files and which tools it can call. At SHRINE, the prompt shows \u201CWorkspace: DISABLED (SHRINE posture)\u201D."}</p>
+                 </div>
+              </section>
 
              {/* ═══════════════════════════════════════════════════════════════ */}
              {/* 5. KATANA (THE FORGE) */}
@@ -1370,151 +1538,243 @@ npm start`}</pre>
                 </div>
              </section>
 
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             {/* 6. ARCHIVES (MEMORY) */}
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             <section id="ref-archives" className="space-y-6 scroll-mt-6">
-                <div className="flex items-center gap-3 border-b-2 border-shogun-gold/40 pb-3">
-                   <Database className="w-6 h-6 text-shogun-gold" />
-                   <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">Archives — The Memory Vault</h4>
-                      <p className="text-xs text-shogun-subdued">Everything the Shogun has ever learned, remembered, or been told.</p>
-                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Search className="w-4 h-4 text-shogun-gold" /> Semantic Search Bar</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Type a question or topic and the system finds matching memories using AI-powered "meaning" search — not just keyword matching. For example, searching "customer complaints" can also return memories about "user feedback" or "product issues." Results are ranked by relevance.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-shogun-gold" /> Memory Types</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Memories are categorized into types:</p>
-                      <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
-                         <li><strong>Semantic:</strong> Facts and knowledge (e.g., "The capital of France is Paris").</li>
-                         <li><strong>Episodic:</strong> Experiences and events (e.g., "User asked about pricing on April 15").</li>
-                         <li><strong>Procedural:</strong> How-to instructions and workflows.</li>
-                         <li><strong>Persona:</strong> Durable identity, relationship, and communication context.</li>
-                         <li><strong>Skills:</strong> Canonical achieved-skill content synchronized from the Dojo.</li>
-                         <li><strong>Programming:</strong> Reusable coding solutions with evidence, validation, files, languages, and sources.</li>
-                      </ul>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Star className="w-4 h-4 text-shogun-gold" /> Salience Score</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Each memory has relevance and importance signals that influence retrieval. Frequently reused memories can be reinforced, while decay policies control retention: <strong>fast</strong>, <strong>medium</strong>, <strong>slow</strong>, <strong>sticky</strong>, or <strong>pinned</strong>. Pin critical memories to keep them at maximum priority.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-shogun-gold" /> Inscribe Memory (+ Button)</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Click the "+" button to manually add a new memory. You choose the <strong>type</strong> (semantic, episodic, etc.), write the <strong>content</strong>, and optionally set the <strong>salience</strong>. This is useful for injecting facts, rules, or context that the AI should always know about.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-gold" /> Browse, Filter &amp; Lifecycle</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Filter by memory type, decay policy, or agent, then sort chronologically or by salience/importance. Each card exposes its content, provenance, scores, dates, and tags. Normal memories move to the archive instead of being hard-deleted; Programming memories use an explicit permanent-delete action.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-shogun-gold" /> Import &amp; Export</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Import Memories</strong> accepts OpenClaw exports, Shogun exports, and generic Markdown from files, ZIP archives, or folders. It parses input as inert data, validates a preview, reports duplicates/conflicts, supports embedding retries and rollback, and blocks ZIP path traversal.</p>
-                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Export Memory</strong> creates an OpenClaw-compatible Markdown bundle. Scope and filter by agent, project, memory type, date, and minimum importance; optionally include archived, private, sticky, analysis, raw, or secret-bearing content. Sensitive exports require confirmation and remain available in export history.</p>
-                   </div>
-                   <div className="shogun-card space-y-2 md:col-span-2 border-l-2 border-shogun-gold/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><BrainCircuit className="w-4 h-4 text-shogun-gold" /> Self-Reinforced Learning</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">In Mission Mode, Shogun is instructed to proactively retain durable guidance when you explicitly correct it, tool use reveals verified information likely to help future work, or you confirm a reusable decision, preference, or idea. It must avoid transient, speculative, duplicated, sensitive, or task-local material and record source and confidence where applicable.</p>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Two cases also have dedicated automatic capture: explicit operator corrections become durable semantic memories, and completed Mado web research becomes a sourced procedural memory. Existing matches are reused or reinforced instead of blindly duplicated. Governed Chat mechanically captures explicit corrections but cannot browse or use Mission tools.</p>
-                   </div>
-                </div>
-             </section>
+              {/* ─── MODEL ROUTER ─── */}
+              <section id="ref-model-router" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-blue-400/40 pb-3">
+                    <RouteIcon className="w-6 h-6 text-blue-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">Model Router — Intelligent Model Selection</h4>
+                       <p className="text-xs text-shogun-subdued">Provider-agnostic, task-aware model selection with routing profiles, registry, and usage telemetry.</p>
+                    </div>
+                 </div>
 
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             {/* 7. DOJO (TRAINING HALL) */}
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             <section id="ref-dojo" className="space-y-6 scroll-mt-6">
-                <div className="flex items-center gap-3 border-b-2 border-shogun-gold/40 pb-3">
-                   <Flame className="w-6 h-6 text-shogun-gold" />
-                   <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">Dojo — The Training Hall</h4>
-                      <p className="text-xs text-shogun-subdued">Browse, study, and certify your agents on 4,000+ skills. Has 4 tabs.</p>
-                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Search className="w-4 h-4 text-shogun-gold" /> Catalog Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The default tab. Shows every available skill from the OpenClaw College database. Each skill shows its <strong>name</strong>, <strong>risk tier</strong> (Low, Medium, High, Critical), and faculty category. A sidebar shows faculty categories in a collapsible tree — click a category to filter skills. Use the search bar to find specific skills by name. Click any skill to see its full training literature.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Package className="w-4 h-4 text-shogun-gold" /> Bundles Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Skills grouped into themed bundles (e.g., "Web Security Fundamentals," "Data Analysis Pack"). Each bundle card shows the bundle name, number of skills included, average difficulty, and a description. Click a bundle to expand it and see all the skills it contains.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-shogun-gold" /> Specializations Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Higher-level groupings that combine multiple bundles into a career-path style progression. Think of these as "majors" — completing a specialization means your agent is deeply trained in an entire domain.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-shogun-gold" /> Achieved Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Shows all the certifications your agents have already passed. Each entry shows the skill name, exam score, pass/fail status, and date achieved. Achieved skills are synchronized into the Archives <strong>Skills</strong> memory layer so their canonical instructions can participate in runtime retrieval.</p>
-                   </div>
-                   <div className="shogun-card space-y-2 md:col-span-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-shogun-gold" /> Skill Detail & Exams</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">When you click a skill, its detail pane shows canonical training content, source material, and risk tier plus a <strong>Take Exam</strong> action. Canonical skill content is structured as an operational instruction foundation: purpose, use conditions, inputs, workflow, decision rules, outputs, safety constraints, failure handling, examples, and success criteria. Exams contain 30–50 multiple-choice questions; passing certifies the agent and records the achievement.</p>
-                   </div>
-                </div>
-             </section>
+                 <div className="shogun-card space-y-3">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Compass className="w-4 h-4 text-blue-400" /> How It Works</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">Instead of hardcoding which model handles each request, the Model Router evaluates the <strong>task type</strong>, <strong>complexity</strong>, and your <strong>active routing profile</strong> to select the optimal model automatically. Navigate to <strong>Katana → Model Routing</strong> to configure profiles and view the model registry.</p>
+                 </div>
 
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             {/* 8. KAIZEN (GOVERNANCE) */}
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             <section id="ref-kaizen" className="space-y-6 scroll-mt-6">
-                <div className="flex items-center gap-3 border-b-2 border-shogun-blue/40 pb-3">
-                   <ShieldCheck className="w-6 h-6 text-shogun-gold" />
-                   <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">Kaizen — The Constitutional Layer</h4>
-                      <p className="text-xs text-shogun-subdued">Define the fundamental laws and ethical boundaries for all agents. Has 2 tabs.</p>
-                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-shogun-gold" /> Constitution Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">A full-screen YAML code editor where you write the "Constitution" — the AI's core laws. The system validates the YAML in real time (green dot = correct syntax, red = error with details). On the right sidebar, <strong>Active Principles</strong> are extracted from the YAML and shown as colored cards: red (Critical), orange (High), gold (Balanced), blue (Medium), green (Low). Click <strong>"Publish Edicts"</strong> to save your changes — a new revision is created automatically.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-shogun-gold" /> The Mandate Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">A Markdown editor for writing the Shogun's "Mission Statement." This is a free-form document defining objectives and operating principles. Use the <strong>Edit/Preview</strong> toggle to switch between writing mode and rendered mode. Key sections of this document are automatically injected into the AI's system prompt on every interaction, so if you write "Always respond in Danish" here, the AI will obey.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><RefreshCw className="w-4 h-4 text-shogun-gold" /> Revision History</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">On the right sidebar (both tabs). Shows a timeline of every saved version of the Constitution or Mandate. Each entry shows the version number, change summary, and date. The most recent version is highlighted.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-shogun-gold" /> Download Audit Log</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">At the bottom of the sidebar. Downloads a JSON file containing the full audit history of all governance changes. Useful for compliance or reviewing what rules were changed and when.</p>
-                   </div>
-                </div>
-             </section>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-blue-400" /> 5 Routing Profiles</div>
+                       <div className="bg-shogun-bg rounded-lg p-3 space-y-2">
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-green-400 bg-green-400/10 px-2 py-0.5 rounded">ULTRA ECONOMY</span><span className="text-xs text-shogun-subdued">Strongly prefers local models, minimizes API calls.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">ECONOMY</span><span className="text-xs text-shogun-subdued">Low-cost daily work, escalates only for complex tasks.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded">BALANCED</span><span className="text-xs text-shogun-subdued">Recommended balance of quality and cost. Default profile.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded">HIGH CAPABILITY</span><span className="text-xs text-shogun-subdued">Uses stronger models earlier in the complexity curve.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded">PREMIUM</span><span className="text-xs text-shogun-subdued">Maximum quality, always picks the best available model.</span></div>
+                       </div>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-blue-400" /> Task Classification</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every request is classified into one of 20+ task types across 5 complexity tiers:</p>
+                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5 text-xs text-shogun-subdued">
+                          <p><strong className="text-green-400">Simple:</strong> simple_chat, classification, extraction, memory_write</p>
+                          <p><strong className="text-emerald-400">Moderate:</strong> summarization, browser_task, skill_selection</p>
+                          <p><strong className="text-blue-400">Complex:</strong> planning, coding_plan, coding_edit, stack_planning</p>
+                          <p><strong className="text-amber-400">Critical:</strong> complex_reasoning, test_failure_analysis, self_verification</p>
+                          <p><strong className="text-cyan-400">Vision:</strong> visual_understanding, screenshot_analysis, photo_understanding</p>
+                       </div>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-blue-400" /> Model Registry</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every model available to Shogun is registered with its provider, capabilities, quality/cost/latency tiers, context window, and role tags. Test connections directly from the registry. Add cloud providers or local Ollama models.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-blue-400" /> Decision & Usage Logs</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every routing decision is persisted: which task type, complexity score, selected model, fallback model, and reason. Usage telemetry tracks input/output tokens, cost estimates, and latency. View summaries and per-stack breakdowns.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-cyan-400" /> OpenClaw College Ecosystem Intelligence</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">In <strong>Updates</strong>, anonymous ecosystem benchmark sharing is enabled by default. The operator can opt out at any time. When enabled, Shogun sends only model/provider, coarse task type, success, bucketed tokens/latency/cost, local-versus-cloud, country code, Shogun version, and a weekly rotating anonymous installation hash.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Never transmitted:</strong> prompts, outputs, files, error contents, agent names, credentials, or exact IP addresses. College publishes rankings only after at least 20 events from five anonymous installations and retains raw telemetry for 31 days.</p>
+                    </div>
+                 </div>
+              </section>
 
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             {/* 9. BUSHIDO (REFLECTION ENGINE) */}
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             <section id="ref-bushido" className="space-y-6 scroll-mt-6">
-                <div className="flex items-center gap-3 border-b-2 border-shogun-blue/40 pb-3">
-                   <RefreshCw className="w-6 h-6 text-shogun-blue" />
-                   <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">Bushido — The Reflection Engine</h4>
-                      <p className="text-xs text-shogun-subdued">Automated self-improvement cycles where the AI analyzes its own performance.</p>
-                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-blue" /> Calibration Controls</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Three dials that control the Shogun's self-improvement behavior: <strong>Reflection Frequency</strong> (how often the system thinks about its own performance), <strong>Consolidation Threshold</strong> (when to compress old memories), and <strong>Exploration Budget</strong> (how willing the system is to try new approaches). Each has a slider and a plain-English description.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-shogun-blue" /> Insight Stream</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">A live feed of AI-generated suggestions. The system autonomously analyzes its own behavior and posts insights like "Model X is 2x faster for code tasks" or "Memory #412 hasn't been used in 30 days — consider archiving." Each insight has a severity badge and a timestamp.</p>
-                   </div>
-                   <div className="shogun-card space-y-2 md:col-span-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><RefreshCw className="w-4 h-4 text-shogun-blue" /> Reflection Trigger</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">A button to manually trigger a reflection cycle. The system will analyze recent interactions, evaluate model performance, check memory health, and produce a set of actionable insights. Results appear in the Insight Stream.</p>
-                   </div>
-                </div>
-             </section>
+              {/* ─── VISUAL INTAKE ─── */}
+              <section id="ref-visual-intake" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-cyan-400/40 pb-3">
+                    <Eye className="w-6 h-6 text-cyan-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">Visual Intake — Image Analysis</h4>
+                       <p className="text-xs text-shogun-subdued">Secure, source-neutral image upload, processing, and AI-powered vision analysis with full governance.</p>
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Camera className="w-4 h-4 text-cyan-400" /> Upload & Process</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Upload images from chat, Telegram, email, or browser. Shogun normalizes them to WebP, generates 640×640 thumbnails, strips all EXIF metadata (GPS, camera info, timestamps) for privacy, and deduplicates via SHA-256 hashing. Supported formats: JPEG, PNG, WebP, static GIF (max 20 MB).</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-cyan-400" /> AI Vision</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Describe:</strong> Generate natural language descriptions. <strong>Inspect:</strong> Deep inspection with custom prompts — ask specific questions about content. <strong>OCR:</strong> Extract text from screenshots, documents, and photos. <strong>Compare:</strong> Side-by-side comparison of two images with AI analysis.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-cyan-400" /> 7 Permission Flags</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><code className="text-cyan-400">allow_image_intake</code> (on), <code className="text-cyan-400">allow_local_vision</code> (on), <code className="text-cyan-400">allow_cloud_vision</code> (off — privacy-sensitive), <code className="text-cyan-400">allow_ocr</code> (on), <code className="text-cyan-400">allow_attach_to_stack</code> (on), <code className="text-cyan-400">allow_auto_memory</code> (off — privacy-sensitive), and <code className="text-cyan-400">allow_delete</code> (on). These are policy-scoped capability boundaries in <strong>ToolGate</strong>; there is no separate Visual Intake permission tab in Katana.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Link2 className="w-4 h-4 text-cyan-400" /> Stack Integration</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Pin important images to prevent retention expiry (default: 30 days). Attach images as artifacts to Stack Orchestrator runs for evidence trails. Images can be linked to chat sessions and messages for context tracking.</p>
+                    </div>
+                 </div>
+              </section>
+
+              {/* ─── ACTIVE SKILLS & TRAJECTORY ─── */}
+              <section id="ref-active-skills" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-amber-400/40 pb-3">
+                    <Sparkles className="w-6 h-6 text-amber-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">Active Skills & Trajectory Capture</h4>
+                       <p className="text-xs text-shogun-subdued">Runtime skill retrieval from the Dojo — automatic selection, context injection, outcome tracking, and improvement candidates.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card space-y-3">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Flame className="w-4 h-4 text-amber-400" /> How Active Skills Work</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">When a Shogun agent processes a request, the Active Skill system automatically <strong>retrieves</strong> relevant skills from the Dojo, <strong>gates</strong> them against the active ToolGate capability boundaries and exam requirements, <strong>injects</strong> skill content into the LLM context (advisory or context_block mode), and <strong>tracks</strong> the outcome (success, partial, failed, not_used, blocked). Torii selects the governing tier or custom policy; ToolGate applies its runtime rules. Skills are live during execution — not just catalog entries.</p>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2 border-l-2 border-amber-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-amber-400" /> Configuration</div>
+                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5 text-xs text-shogun-subdued">
+                          <p><code className="text-amber-400">active_skill_max_per_run</code>: 5 — max skills per execution run</p>
+                          <p><code className="text-amber-400">active_skill_max_per_step</code>: 3 — max skills per step</p>
+                          <p><code className="text-amber-400">active_skill_max_total_context_tokens</code>: 2,500 — token budget</p>
+                          <p><code className="text-amber-400">active_skill_require_exam_pass</code>: true — only use passed skills</p>
+                          <p><code className="text-amber-400">active_skill_preserve_during_compaction</code>: true — keep during context compaction</p>
+                       </div>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-amber-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-amber-400" /> Trajectory Capture</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every skill invocation generates a structured evidence trail: <strong>Candidate Retrievals</strong> (which skills were considered), <strong>Episodes</strong> (full lifecycle), <strong>Trajectories</strong> (outcome scoring), <strong>Tool Links</strong> (tools called during usage), <strong>Verification Links</strong> (how outcomes were verified), <strong>Outcome Scores</strong> (deterministic scoring), and <strong>Improvement Candidates</strong> (suggested fixes). All data is secret-redacted automatically.</p>
+                    </div>
+                 </div>
+              </section>
+
+
+              {/* OFFICE APP MODE */}
+              <section id="ref-office" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-green-400/40 pb-3">
+                    <FileSpreadsheet className="w-6 h-6 text-green-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">Office App Mode</h4>
+                       <p className="text-xs text-shogun-subdued">Controlled Microsoft Office automation &mdash; Excel, Word, PowerPoint, Outlook.</p>
+                    </div>
+                 </div>
+                 <div className="shogun-card space-y-3">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-green-400" /> Overview</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">{"Office App Mode (codename Katana) lets the AI agent read, modify, and create Excel workbooks, Word documents, PowerPoint presentations, and Outlook emails \u2014 all within strict security boundaries. It uses a hybrid architecture: pure Python libraries handle most operations cross-platform. COM automation is only used for PDF export, formula calculation, and Outlook."}</p>
+                 </div>
+                 <div className="shogun-card bg-green-500/10 border-green-500/30 border-l-4 border-l-green-500 space-y-3">
+                    <h5 className="text-sm font-bold text-green-400 flex items-center gap-2"><CheckCircle2 className="w-5 h-5" /> Getting Started</h5>
+                    <ol className="text-xs text-shogun-subdued space-y-2 ml-4 list-decimal">
+                          <li>{"Navigate to Katana → Office."}</li>
+                       <li>{"Enable Office App Mode with the master toggle."}</li>
+                       <li>{"Configure all four folders \u2014 input, output, templates, and temp."}</li>
+                       <li>{"Toggle individual apps \u2014 enable only what you need."}</li>
+                       <li>{"Save your configuration."}</li>
+                       <li>{"The 27 Office tools are now available to the agent in chat."}</li>
+                    </ol>
+                 </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-green-400" /> Approved Folders</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">{"Every file operation is validated against four folder boundaries (input, output, templates, temp). Files outside are rejected. Path traversal, UNC paths, and .lnk shortcuts are blocked."}</p>
+                    </div>
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-green-400" /> Output Versioning</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">{"The agent never overwrites originals. Every save creates a timestamped copy (e.g. report_20260630_094500.xlsx). Old outputs are cleaned after the retention period (default: 30 days)."}</p>
+                    </div>
+                 </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 text-green-400" /> Excel (8 tools)</div>
+                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc"><li>Open workbook</li><li>Read range / all cells</li><li>Write range</li><li>List sheets</li><li>Save as (versioned)</li><li>Export PDF (COM)</li><li>Recalculate (COM)</li><li>Get metadata</li></ul>
+                    </div>
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-blue-400" /> Word (6 tools)</div>
+                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc"><li>Open document</li><li>Replace placeholders</li><li>Insert table</li><li>Save as (versioned)</li><li>Export PDF (COM)</li><li>Get metadata</li></ul>
+                    </div>
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-orange-400" /> PowerPoint (7 tools)</div>
+                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc"><li>Open presentation</li><li>Replace placeholders</li><li>Insert table</li><li>Insert image</li><li>Save as (versioned)</li><li>Export PDF (COM)</li><li>Get metadata</li></ul>
+                    </div>
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Mail className="w-4 h-4 text-cyan-400" /> Outlook (4 tools)</div>
+                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc"><li>Create draft</li><li>Attach file</li><li>Save + review</li><li>Send (high-risk)</li></ul>
+                    </div>
+                 </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Mail className="w-4 h-4 text-cyan-400" /> Outlook Modes</div>
+                       <div className="bg-shogun-bg rounded-lg p-3 space-y-2">
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-green-400 bg-green-400/10 px-2 py-0.5 rounded">DRAFT ONLY</span><span className="text-xs text-shogun-subdued">Create and save drafts. Never sends.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded">CONFIRMED SEND</span><span className="text-xs text-shogun-subdued">Can send with human approval.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded">APPROVED RECIPIENTS</span><span className="text-xs text-shogun-subdued">Auto-send to allowlisted domains.</span></div>
+                       </div>
+                    </div>
+                    <div className="shogun-card space-y-2">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-green-400" /> Security Per Posture</div>
+                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
+                          <li><strong>SHRINE:</strong> Office completely disabled.</li>
+                          <li><strong>GUARDED:</strong> Read, write, save-as. No overwrite, no macros, no send.</li>
+                          <li><strong>TACTICAL:</strong> + Delete (approval). + Send (approval).</li>
+                          <li><strong>CAMPAIGN:</strong> + Delete (allowed). + Send (approval).</li>
+                          <li><strong>RONIN:</strong> + Overwrite originals. Send still requires approval.</li>
+                       </ul>
+                    </div>
+                 </div>
+                 <div className="shogun-card space-y-2">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-green-400" /> Audit Trail</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">{"Every Office operation emits an office.* event into the dual-write audit chain. Events include application, action, file paths, duration, and status. View them on the Logs page filtered by category: office."}</p>
+                 </div>
+              </section>
+
+              {/* ─── IDE MODE ─── */}
+              <section id="ref-ide-mode" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-emerald-400/40 pb-3">
+                    <MonitorIcon className="w-6 h-6 text-emerald-400" />
+                    <div>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">IDE Mode — VS Code Integration</h4>
+                       <p className="text-xs text-shogun-subdued">Connect your VS Code editor via a governed WebSocket bridge for AI-assisted development.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card bg-amber-500/10 border-amber-500/30 border-l-4 border-l-amber-500">
+                    <h5 className="text-sm font-bold text-amber-400 flex items-center gap-2 mb-3">
+                       <ShieldAlert className="w-5 h-5" />
+                       Requires Campaign or Ronin Posture
+                    </h5>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">IDE Mode is exposed by Katana only when the active policy is based on Campaign or Ronin and its ToolGate capability boundary enables <code className="text-amber-400">ide_enabled</code>. The WebSocket bridge only accepts connections from localhost (<code className="text-amber-400">127.0.0.1</code> / <code className="text-amber-400">::1</code>) — remote connections are rejected.</p>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-emerald-400" /> File Operations</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Read, create, list, search, and apply patches to files within approved workspaces. Every write creates an automatic SHA-256 snapshot for rollback. <strong>Protected files</strong> (<code className="text-emerald-400">.env</code>, <code className="text-emerald-400">*.pem</code>, <code className="text-emerald-400">*.key</code>, <code className="text-emerald-400">id_rsa*</code>, <code className="text-emerald-400">credentials*</code>) are always blocked.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Terminal className="w-4 h-4 text-emerald-400" /> Terminal & Git</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Run approved commands (allowlisted per posture: <code className="text-emerald-400">pytest</code>, <code className="text-emerald-400">python</code>, <code className="text-emerald-400">npm</code>, <code className="text-emerald-400">ruff</code>, <code className="text-emerald-400">mypy</code>, <code className="text-emerald-400">tsc</code>, <code className="text-emerald-400">cargo</code>, <code className="text-emerald-400">go</code>). Git operations: status, diff, branch, create-branch, commit. <strong>Push is disabled by default</strong>; git mutations require Ronin + explicit approval.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Key className="w-4 h-4 text-emerald-400" /> Pairing System</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Pairing uses one-time <code className="text-emerald-400">SHG-</code> prefixed tokens with SHA-256 digest comparison and 10-minute expiry. Generate a token in the Katana IDE tab, enter it in VS Code, and the bridge connects. Revoke all pairings instantly from the dashboard.</p>
+                    </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Zap className="w-4 h-4 text-emerald-400" /> Workspace Boundaries</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">All file operations are restricted to approved workspace paths. Path traversal is blocked. Symlinks that escape boundaries are rejected. Denied directories: <code className="text-emerald-400">.ssh</code>, <code className="text-emerald-400">.aws</code>, <code className="text-emerald-400">.azure</code>, <code className="text-emerald-400">.gnupg</code>, <code className="text-emerald-400">.kube</code>. Emergency <strong>Kill Switch</strong> endpoint terminates all IDE connections instantly.</p>
+                    </div>
+                 </div>
+
+                 <div className="shogun-card space-y-2">
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-emerald-400" /> VS Code Extension</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">Install the <strong>shogun-ide-bridge</strong> extension from <code className="text-emerald-400">bridge/vscode/</code>. Configure <code className="text-emerald-400">shogun.bridgeUrl</code> (default: <code className="text-emerald-400">ws://127.0.0.1:8000/api/v1/ide/bridge</code>). Commands: <strong>Shogun: Connect</strong>, <strong>Shogun: Disconnect</strong>, <strong>Shogun: Open Dashboard</strong>.</p>
+                 </div>
+              </section>
 
              {/* ═══════════════════════════════════════════════════════════════ */}
              {/* MADO (BROWSER AUTOMATION) */}
@@ -1542,7 +1802,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-cyan-400" /> Session Management</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Browser sessions are managed automatically. When Shogun shuts down, all active Playwright browser instances are cleanly closed. The Mado page in the sidebar shows the current session status and lets you manually manage active browser contexts.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Browser sessions are managed automatically. When Shogun shuts down, all active Playwright browser instances are cleanly closed. The Katana → Mado Browser tab shows the current session status and lets you manually manage active browser contexts.</p>
                    </div>
                    <div className="shogun-card space-y-2 md:col-span-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-cyan-400" /> One Permission Authority</div>
@@ -1559,7 +1819,7 @@ npm start`}</pre>
                       <div className="font-bold text-shogun-text flex items-center gap-2"><span className="text-cyan-400 font-mono text-sm">01</span> First-Time Setup — Install Chromium</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Before Mado can work, you need the browser engine. This is a <strong>one-time setup</strong>:</p>
                       <ol className="text-xs text-shogun-subdued space-y-1 ml-4 list-decimal">
-                         <li>Navigate to <strong>Mado</strong> in the sidebar.</li>
+                         <li>Navigate to <strong>Katana → Mado Browser</strong>.</li>
                          <li>If Chromium is not installed, you'll see a <strong>"Install Chromium"</strong> button in the top-right corner.</li>
                          <li>Click it. The system will download and install Playwright + Chromium (1–2 minutes depending on connection).</li>
                          <li>Once complete, the badge changes to a green <strong>"Chromium Ready"</strong> indicator with the version number.</li>
@@ -1875,236 +2135,32 @@ npm start`}</pre>
                  </div>
               </section>
 
-
-              {/* OFFICE APP MODE */}
-              <section id="ref-office" className="space-y-6 scroll-mt-6">
-                 <div className="flex items-center gap-3 border-b-2 border-green-400/40 pb-3">
-                    <FileSpreadsheet className="w-6 h-6 text-green-400" />
+              {/* ─── SKILLOPT ─── */}
+              <section id="ref-skillopt" className="space-y-6 scroll-mt-6">
+                 <div className="flex items-center gap-3 border-b-2 border-fuchsia-400/40 pb-3">
+                    <BrainCircuit className="w-6 h-6 text-fuchsia-400" />
                     <div>
-                       <h4 className="text-xl font-bold uppercase tracking-widest">Office App Mode</h4>
-                       <p className="text-xs text-shogun-subdued">Controlled Microsoft Office automation &mdash; Excel, Word, PowerPoint, Outlook.</p>
-                    </div>
-                 </div>
-                 <div className="shogun-card space-y-3">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-green-400" /> Overview</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">{"Office App Mode (codename Katana) lets the AI agent read, modify, and create Excel workbooks, Word documents, PowerPoint presentations, and Outlook emails \u2014 all within strict security boundaries. It uses a hybrid architecture: pure Python libraries handle most operations cross-platform. COM automation is only used for PDF export, formula calculation, and Outlook."}</p>
-                 </div>
-                 <div className="shogun-card bg-green-500/10 border-green-500/30 border-l-4 border-l-green-500 space-y-3">
-                    <h5 className="text-sm font-bold text-green-400 flex items-center gap-2"><CheckCircle2 className="w-5 h-5" /> Getting Started</h5>
-                    <ol className="text-xs text-shogun-subdued space-y-2 ml-4 list-decimal">
-                       <li>{"Navigate to Sidebar \u2192 Office (under Capabilities)."}</li>
-                       <li>{"Enable Office App Mode with the master toggle."}</li>
-                       <li>{"Configure all four folders \u2014 input, output, templates, and temp."}</li>
-                       <li>{"Toggle individual apps \u2014 enable only what you need."}</li>
-                       <li>{"Save your configuration."}</li>
-                       <li>{"The 27 Office tools are now available to the agent in chat."}</li>
-                    </ol>
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-green-400" /> Approved Folders</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">{"Every file operation is validated against four folder boundaries (input, output, templates, temp). Files outside are rejected. Path traversal, UNC paths, and .lnk shortcuts are blocked."}</p>
-                    </div>
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-green-400" /> Output Versioning</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">{"The agent never overwrites originals. Every save creates a timestamped copy (e.g. report_20260630_094500.xlsx). Old outputs are cleaned after the retention period (default: 30 days)."}</p>
-                    </div>
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 text-green-400" /> Excel (8 tools)</div>
-                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc"><li>Open workbook</li><li>Read range / all cells</li><li>Write range</li><li>List sheets</li><li>Save as (versioned)</li><li>Export PDF (COM)</li><li>Recalculate (COM)</li><li>Get metadata</li></ul>
-                    </div>
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-blue-400" /> Word (6 tools)</div>
-                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc"><li>Open document</li><li>Replace placeholders</li><li>Insert table</li><li>Save as (versioned)</li><li>Export PDF (COM)</li><li>Get metadata</li></ul>
-                    </div>
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-orange-400" /> PowerPoint (7 tools)</div>
-                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc"><li>Open presentation</li><li>Replace placeholders</li><li>Insert table</li><li>Insert image</li><li>Save as (versioned)</li><li>Export PDF (COM)</li><li>Get metadata</li></ul>
-                    </div>
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Mail className="w-4 h-4 text-cyan-400" /> Outlook (4 tools)</div>
-                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc"><li>Create draft</li><li>Attach file</li><li>Save + review</li><li>Send (high-risk)</li></ul>
-                    </div>
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Mail className="w-4 h-4 text-cyan-400" /> Outlook Modes</div>
-                       <div className="bg-shogun-bg rounded-lg p-3 space-y-2">
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-green-400 bg-green-400/10 px-2 py-0.5 rounded">DRAFT ONLY</span><span className="text-xs text-shogun-subdued">Create and save drafts. Never sends.</span></div>
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded">CONFIRMED SEND</span><span className="text-xs text-shogun-subdued">Can send with human approval.</span></div>
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded">APPROVED RECIPIENTS</span><span className="text-xs text-shogun-subdued">Auto-send to allowlisted domains.</span></div>
-                       </div>
-                    </div>
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-green-400" /> Security Per Posture</div>
-                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
-                          <li><strong>SHRINE:</strong> Office completely disabled.</li>
-                          <li><strong>GUARDED:</strong> Read, write, save-as. No overwrite, no macros, no send.</li>
-                          <li><strong>TACTICAL:</strong> + Delete (approval). + Send (approval).</li>
-                          <li><strong>CAMPAIGN:</strong> + Delete (allowed). + Send (approval).</li>
-                          <li><strong>RONIN:</strong> + Overwrite originals. Send still requires approval.</li>
-                       </ul>
-                    </div>
-                 </div>
-                 <div className="shogun-card space-y-2">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-green-400" /> Audit Trail</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">{"Every Office operation emits an office.* event into the dual-write audit chain. Events include application, action, file paths, duration, and status. View them on the Logs page filtered by category: office."}</p>
-                 </div>
-              </section>
-
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             {/* WORKSPACE (FILE EXPLORER) */}
-             {/* ═══════════════════════════════════════════════════════════════ */}
-              <section id="ref-workspace" className="space-y-6 scroll-mt-6">
-                 <div className="flex items-center gap-3 border-b-2 border-amber-400/40 pb-3">
-                    <FolderOpenIcon className="w-6 h-6 text-amber-400" />
-                    <div>
-                       <h4 className="text-xl font-bold uppercase tracking-widest">Workspace &mdash; Agent File System</h4>
-                       <p className="text-xs text-shogun-subdued">A dedicated folder where the Shogun and all Samurai agents have persistent read/write access.</p>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">SkillOpt — Automated Skill Optimization</h4>
+                       <p className="text-xs text-shogun-subdued">Data-driven skill improvement pipeline — version management, training runs, candidate generation, validation, and promotion.</p>
                     </div>
                  </div>
 
                  <div className="shogun-card space-y-3">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-400" /> Overview</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">{"The Workspace is a single, dedicated directory where the Shogun and all Samurai agents can read, write, and manage files. It serves as the agent\u2019s persistent \u201Cdesk\u201D \u2014 a safe location to store outputs, share data between agents, and create working documents. Availability and access mode follow the active policy's filesystem and workspace boundaries in ToolGate; the built-in Shrine policy disables it."}</p>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">{"Default location: data/workspace/ inside the Shogun project directory. The path is configurable via environment variable WORKSPACE_PATH."}</p>
-                 </div>
-
-                 <div className="shogun-card bg-amber-500/10 border-amber-500/30 border-l-4 border-l-amber-500 space-y-3">
-                    <h5 className="text-sm font-bold text-amber-400 flex items-center gap-2"><CheckCircle2 className="w-5 h-5" /> Getting Started</h5>
-                    <ol className="text-xs text-shogun-subdued space-y-2 ml-4 list-decimal">
-                       <li>{"Navigate to Comms (sidebar) and click the Files tab."}</li>
-                       <li>{"The File Explorer shows the workspace tree on the left and a content viewer/editor on the right."}</li>
-                       <li>{"Use the toolbar buttons to create new files, new folders, rename, or delete items."}</li>
-                       <li>{"Click any file to view its content. Click Edit to modify it inline, then Save."}</li>
-                       <li>{"In Mission Mode chat, ask the Shogun to use workspace tools \u2014 it can read, write, list, and manage files directly."}</li>
-                       <li>{"The workspace folder is automatically created on first startup at data/workspace/."}</li>
-                    </ol>
+                    <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-fuchsia-400" /> The Optimization Pipeline</div>
+                    <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Usage Events</strong> are captured from Active Skill runs. A <strong>Training Run</strong> uses these to generate optimized <strong>Candidates</strong>. Each candidate is <strong>Validated</strong> against held-out tasks with safety checks and scoring. Successful candidates are <strong>Promoted</strong> to become the new active version; failing ones are <strong>Rejected</strong> with a reason.</p>
                  </div>
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><FolderOpenIcon className="w-4 h-4 text-amber-400" /> File Explorer (Comms &rarr; Files Tab)</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">{"The File Explorer is a tab inside the Comms page, alongside Chat, Mail, and Calendar. It provides a visual interface for managing workspace files:"}</p>
-                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
-                          <li><strong>Tree sidebar:</strong> Expandable directory tree with file-type icons (code, spreadsheet, image, archive, text), size labels, and real-time search filter.</li>
-                          <li><strong>Content viewer:</strong> Displays file contents with monospace formatting. Shows file path, extension, and size in the header bar.</li>
-                          <li><strong>Inline editor:</strong> Click Edit to modify any text file directly in the browser. Click Save to write changes back to disk.</li>
-                          <li><strong>Create File:</strong> Click the file+ icon in the toolbar. Enter a filename. The file is created inside the currently selected folder (or workspace root).</li>
-                          <li><strong>Create Folder:</strong> Click the folder+ icon. Enter a folder name. Nested paths are created automatically.</li>
-                          <li><strong>Rename:</strong> Select an item, click the edit icon. Enter the new name and confirm.</li>
-                          <li><strong>Delete:</strong> Select an item, click the trash icon. A confirmation dialog appears. Directories are deleted recursively including all contents.</li>
-                          <li><strong>Grid view:</strong> When a directory is selected, its contents are displayed as a clickable card grid with icons and sizes.</li>
-                          <li><strong>Info footer:</strong> Shows the full workspace path, total file count, directory count, and disk usage in MB.</li>
-                          <li><strong>Drag &amp; drop upload:</strong> Drag files from your desktop onto the File Explorer to upload them. A blue overlay indicates the drop target. Multiple files supported simultaneously.</li>
-                          <li><strong>Upload button:</strong> Click the upload icon in the toolbar to open a native file picker for selecting files to upload into the current folder.</li>
-                       </ul>
+                    <div className="shogun-card space-y-2 border-l-2 border-fuchsia-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-fuchsia-400" /> Version Management</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every skill change creates an immutable version: version number, content hash, validation score, and status (<code className="text-fuchsia-400">candidate</code> → <code className="text-fuchsia-400">active</code> → <code className="text-fuchsia-400">retired</code>). Browse all versions for any skill from the SkillOpt tab in <strong>Katana</strong>. Compare candidate vs baseline content with the interactive diff viewer.</p>
                     </div>
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Terminal className="w-4 h-4 text-amber-400" /> 6 Agent Native Tools</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">{"In Mission Mode, the Shogun and all Samurai agents have 6 workspace tools injected as native functions. The agent sees the workspace path in its system prompt and can use these tools autonomously:"}</p>
-                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
-                          <li><strong>workspace_info</strong> <span className="text-green-400">(low risk)</span> \u2014 Returns workspace path, whether access is enabled, total files, total directories, and total size in MB.</li>
-                          <li><strong>workspace_list</strong> <span className="text-green-400">(low risk)</span> \u2014 Lists files and directories at a given relative path. Returns name, type, size (for files), and child count (for dirs).</li>
-                          <li><strong>workspace_read</strong> <span className="text-green-400">(low risk)</span> \u2014 Reads a text file\u2019s content (capped at 5 MB). Returns content, size, and path. Binary files return an error.</li>
-                          <li><strong>workspace_write</strong> <span className="text-yellow-400">(medium risk)</span> \u2014 Creates or overwrites a text file. Parent directories are auto-created. Returns action (created/overwritten) and size.</li>
-                          <li><strong>workspace_mkdir</strong> <span className="text-green-400">(low risk)</span> \u2014 Creates a subdirectory with parents. Returns action (created/already_exists).</li>
-                          <li><strong>workspace_delete</strong> <span className="text-red-400">(high risk)</span> \u2014 Deletes a single file. Cannot delete directories (safety constraint via agent tools; the UI can delete dirs).</li>
-                       </ul>
+                    <div className="shogun-card space-y-2 border-l-2 border-fuchsia-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-fuchsia-400" /> Katana Dashboard</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">The SkillOpt tab in <strong>Katana</strong> provides real-time tracking of optimization runs, interactive diff viewer for candidates vs baseline, one-click promote/reject controls, and metrics for average improvement scores. Start training runs, view all skill versions, and monitor usage events.</p>
                     </div>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-amber-400" /> Path Validation &amp; Security</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">{"All workspace operations \u2014 both the File Explorer UI and agent native tools \u2014 enforce strict path validation at every level:"}</p>
-                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
-                          <li><strong>Boundary enforcement:</strong> Every path is resolved to its absolute form and checked that it remains inside the workspace root. Any escape attempt is blocked.</li>
-                          <li><strong>Traversal blocking:</strong> Paths containing <code className="bg-shogun-card px-1 rounded">..</code> are rejected immediately, before any filesystem operation.</li>
-                          <li><strong>Absolute path blocking:</strong> Only relative paths (from workspace root) are accepted. Paths starting with <code className="bg-shogun-card px-1 rounded">/</code> or <code className="bg-shogun-card px-1 rounded">\</code> are rejected.</li>
-                          <li><strong>UNC path blocking:</strong> Network paths are rejected to prevent lateral movement.</li>
-                          <li><strong>Size guard:</strong> File reads are capped at 5 MB (agent tools) or 10 MB (File Explorer UI) to prevent memory exhaustion.</li>
-                          <li><strong>Root protection:</strong> The workspace root directory itself cannot be deleted.</li>
-                       </ul>
-                    </div>
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-amber-400" /> Security Posture Matrix</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">{"The workspace is a binary gate: either fully available or completely locked."}</p>
-                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
-                          <li><strong>SHRINE:</strong> \u274C Workspace completely disabled. No read, no write, no listing. All 6 tools return errors. File Explorer shows an error state with retry button.</li>
-                          <li><strong>GUARDED:</strong> \u2705 Full read/write access. All 6 agent tools available. File Explorer fully functional.</li>
-                          <li><strong>TACTICAL:</strong> \u2705 Full read/write access. All 6 agent tools available.</li>
-                          <li><strong>CAMPAIGN:</strong> \u2705 Full read/write access. All 6 agent tools available.</li>
-                          <li><strong>RONIN:</strong> \u2705 Full read/write access. All 6 agent tools available.</li>
-                       </ul>
-                    </div>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Link2 className="w-4 h-4 text-amber-400" /> Office App Mode Alignment</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">{"The Workspace and Office App Mode share the same folder concept. The four \u201CApproved Folders\u201D in the Katana\u2019s Office tab (input, output, templates, temp) can be left empty to auto-map to the workspace root directory. This means Office file operations and agent workspace tools operate in the same directory by default. Configure custom paths in the Katana \u2192 Office tab if you need separate boundaries for Office automation."}</p>
-                    </div>
-                    <div className="shogun-card space-y-2">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Globe className="w-4 h-4 text-amber-400" /> REST API Endpoints</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">{"The File Explorer UI uses a dedicated REST API under /api/v1/workspace/. These endpoints are also available for external integrations and custom tooling:"}</p>
-                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
-                          <li><code className="bg-shogun-card px-1 rounded">GET /api/v1/workspace/info</code> \u2014 Metadata, path, and disk usage</li>
-                          <li><code className="bg-shogun-card px-1 rounded">GET /api/v1/workspace/tree</code> \u2014 Full recursive directory tree (JSON)</li>
-                          <li><code className="bg-shogun-card px-1 rounded">GET /api/v1/workspace/read?path=</code> \u2014 Read file content as text</li>
-                          <li><code className="bg-shogun-card px-1 rounded">POST /api/v1/workspace/write</code> \u2014 Create or update file (JSON body: path, content)</li>
-                          <li><code className="bg-shogun-card px-1 rounded">POST /api/v1/workspace/mkdir</code> \u2014 Create directory (JSON body: path)</li>
-                          <li><code className="bg-shogun-card px-1 rounded">DELETE /api/v1/workspace/delete?path=</code> \u2014 Delete file or directory</li>
-                          <li><code className="bg-shogun-card px-1 rounded">POST /api/v1/workspace/rename</code> \u2014 Rename/move (JSON body: old_path, new_path)</li>
-                       </ul>
-                    </div>
-                 </div>
-
-                 <div className="shogun-card space-y-2">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" /> System Prompt Integration</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">{"When workspace is enabled, the Shogun\u2019s system prompt includes the workspace path and available tools in two places: the ACTIVE SECURITY POSTURE block (\u201CWorkspace: ENABLED \u2014 /path/to/workspace\u201D) and the YOUR CAPABILITIES block (listing all 6 tools by name). This ensures the agent knows where to save files and which tools it can call. At SHRINE, the prompt shows \u201CWorkspace: DISABLED (SHRINE posture)\u201D."}</p>
                  </div>
               </section>
-
-             {/* 10. TORII (SECURITY) */}
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             <section id="ref-torii" className="space-y-6 scroll-mt-6">
-                <div className="flex items-center gap-3 border-b-2 border-red-400/40 pb-3">
-                   <Lock className="w-6 h-6 text-red-400" />
-                   <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">Torii — Security Portal</h4>
-                      <p className="text-xs text-shogun-subdued">Select the active built-in tier or custom posture. Custom postures are created, edited, and deleted in ToolGate, then become available here immediately.</p>
-                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-red-400" /> Security Posture (Left Column)</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Five clickable tiers, from safest to most dangerous:</p>
-                      <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
-                         <li><strong>SHRINE (MAX):</strong> Zero-trust. Local only. No external tools. Maximum safety.</li>
-                         <li><strong>GUARDED:</strong> Restricted network. Only approved tools. Everything needs human approval.</li>
-                         <li><strong>TACTICAL (DEFAULT):</strong> Balanced autonomy. The AI has scoped file access and can use approved tools on its own.</li>
-                         <li><strong>CAMPAIGN:</strong> High autonomy. Broad internet access. Agents can auto-spawn without asking.</li>
-                         <li><strong>RONIN (UNSAFE):</strong> Unrestricted. Only use in completely isolated test environments.</li>
-                      </ul>
-                      <p className="text-xs text-shogun-subdued leading-relaxed mt-2">Click a built-in tier or custom posture to activate it. Built-in tiers are protected presets. Use <strong>Manage custom postures in ToolGate</strong> to create or maintain reusable postures, then return here to choose which one is active.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-red-400" /> Unified Posture Selector</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Built-in tiers and every custom posture from ToolGate appear in the same selection grid. The active marker reflects the policy actually enforced at runtime. Selecting a built-in tier clears any previous custom assignment; selecting a custom posture activates that policy together with its inherited base tier.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-red-400" /> Current Constraints</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The constraints panel summarizes the effective filesystem, network, shell, skills, delegation, communications, browser, and desktop limits. For a custom posture these values come from its base tier and ToolGate capability boundaries—not from whichever posture happened to be selected previously.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-red-500" /> Harakiri Button</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The red button in the top right of the Torii page. Same as the one on the Dashboard — activates the global kill switch. Requires two-step confirmation. Once active, all agents are frozen and the posture locks to SHRINE. Press "Reset Harakiri" to restore normal operation.</p>
-                   </div>
-                </div>
-             </section>
 
              {/* ═══════════════════════════════════════════════════════════════ */}
              {/* TOOLGATE (RUNTIME PERMISSIONS) */}
@@ -2145,6 +2201,259 @@ npm start`}</pre>
                    <div className="shogun-card space-y-2 md:col-span-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><SlidersHorizontal className="w-4 h-4 text-orange-400" /> Advanced Content Controls</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Turn on <strong>Advanced mode</strong> to flag specific words or phrases inside nested tool arguments. Each rule can match a phrase anywhere or as a whole word, be case-sensitive or case-insensitive, apply to every tool or one selected tool, and return <strong>CONFIRM</strong> or <strong>BLOCK</strong>. Advanced rules are scoped to the active tier or custom policy and can only tighten the final verdict. When Gensui manages the instance, the same rules are edited centrally and remain enforced from the cached policy during temporary outages.</p>
+                   </div>
+                </div>
+             </section>
+
+             {/* 10. TORII (SECURITY) */}
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             <section id="ref-torii" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-red-400/40 pb-3">
+                   <Lock className="w-6 h-6 text-red-400" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Torii — Security Portal</h4>
+                      <p className="text-xs text-shogun-subdued">Select the active built-in tier or custom posture. Custom postures are created, edited, and deleted in ToolGate, then become available here immediately.</p>
+                   </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-red-400" /> Security Posture (Left Column)</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Five clickable tiers, from safest to most dangerous:</p>
+                      <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
+                         <li><strong>SHRINE (MAX):</strong> Zero-trust. Local only. No external tools. Maximum safety.</li>
+                         <li><strong>GUARDED:</strong> Restricted network. Only approved tools. Everything needs human approval.</li>
+                         <li><strong>TACTICAL (DEFAULT):</strong> Balanced autonomy. The AI has scoped file access and can use approved tools on its own.</li>
+                         <li><strong>CAMPAIGN:</strong> High autonomy. Broad internet access. Agents can auto-spawn without asking.</li>
+                         <li><strong>RONIN (UNSAFE):</strong> Unrestricted. Only use in completely isolated test environments.</li>
+                      </ul>
+                      <p className="text-xs text-shogun-subdued leading-relaxed mt-2">Click a built-in tier or custom posture to activate it. Built-in tiers are protected presets. Use <strong>Manage custom postures in ToolGate</strong> to create or maintain reusable postures, then return here to choose which one is active.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-red-400" /> Unified Posture Selector</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Built-in tiers and every custom posture from ToolGate appear in the same selection grid. The active marker reflects the policy actually enforced at runtime. Selecting a built-in tier clears any previous custom assignment; selecting a custom posture activates that policy together with its inherited base tier.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-red-400" /> Current Constraints</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The constraints panel summarizes the effective filesystem, network, shell, skills, delegation, communications, browser, and desktop limits. For a custom posture these values come from its base tier and ToolGate capability boundaries—not from whichever posture happened to be selected previously.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-red-500" /> Harakiri Button</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The red button in the top right of the Torii page. Same as the one on the Dashboard — activates the global kill switch. Requires two-step confirmation. Once active, all agents are frozen and the posture locks to SHRINE. Press "Reset Harakiri" to restore normal operation.</p>
+                   </div>
+                </div>
+             </section>
+
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             {/* 8. KAIZEN (GOVERNANCE) */}
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             <section id="ref-kaizen" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-shogun-blue/40 pb-3">
+                   <ShieldCheck className="w-6 h-6 text-shogun-gold" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Kaizen — The Constitutional Layer</h4>
+                      <p className="text-xs text-shogun-subdued">Define the fundamental laws and ethical boundaries for all agents. Has 2 tabs.</p>
+                   </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-shogun-gold" /> Constitution Tab</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">A full-screen YAML code editor where you write the "Constitution" — the AI's core laws. The system validates the YAML in real time (green dot = correct syntax, red = error with details). On the right sidebar, <strong>Active Principles</strong> are extracted from the YAML and shown as colored cards: red (Critical), orange (High), gold (Balanced), blue (Medium), green (Low). Click <strong>"Publish Edicts"</strong> to save your changes — a new revision is created automatically.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-shogun-gold" /> The Mandate Tab</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">A Markdown editor for writing the Shogun's "Mission Statement." This is a free-form document defining objectives and operating principles. Use the <strong>Edit/Preview</strong> toggle to switch between writing mode and rendered mode. Key sections of this document are automatically injected into the AI's system prompt on every interaction, so if you write "Always respond in Danish" here, the AI will obey.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><RefreshCw className="w-4 h-4 text-shogun-gold" /> Revision History</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">On the right sidebar (both tabs). Shows a timeline of every saved version of the Constitution or Mandate. Each entry shows the version number, change summary, and date. The most recent version is highlighted.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-shogun-gold" /> Download Audit Log</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">At the bottom of the sidebar. Downloads a JSON file containing the full audit history of all governance changes. Useful for compliance or reviewing what rules were changed and when.</p>
+                   </div>
+                </div>
+             </section>
+
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             {/* 9. BUSHIDO (REFLECTION ENGINE) */}
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             <section id="ref-bushido" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-shogun-blue/40 pb-3">
+                   <RefreshCw className="w-6 h-6 text-shogun-blue" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Bushido — The Reflection Engine</h4>
+                      <p className="text-xs text-shogun-subdued">Automated self-improvement cycles where the AI analyzes its own performance.</p>
+                   </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-blue" /> Calibration Controls</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Three dials that control the Shogun's self-improvement behavior: <strong>Reflection Frequency</strong> (how often the system thinks about its own performance), <strong>Consolidation Threshold</strong> (when to compress old memories), and <strong>Exploration Budget</strong> (how willing the system is to try new approaches). Each has a slider and a plain-English description.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-shogun-blue" /> Insight Stream</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">A live feed of AI-generated suggestions. The system autonomously analyzes its own behavior and posts insights like "Model X is 2x faster for code tasks" or "Memory #412 hasn't been used in 30 days — consider archiving." Each insight has a severity badge and a timestamp.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 md:col-span-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><RefreshCw className="w-4 h-4 text-shogun-blue" /> Reflection Trigger</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">A button to manually trigger a reflection cycle. The system will analyze recent interactions, evaluate model performance, check memory health, and produce a set of actionable insights. Results appear in the Insight Stream.</p>
+                   </div>
+                </div>
+             </section>
+
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             {/* 6. ARCHIVES (MEMORY) */}
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             <section id="ref-archives" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-shogun-gold/40 pb-3">
+                   <Database className="w-6 h-6 text-shogun-gold" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Archives — The Memory Vault</h4>
+                      <p className="text-xs text-shogun-subdued">Everything the Shogun has ever learned, remembered, or been told.</p>
+                   </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Search className="w-4 h-4 text-shogun-gold" /> Semantic Search Bar</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Type a question or topic and the system finds matching memories using AI-powered "meaning" search — not just keyword matching. For example, searching "customer complaints" can also return memories about "user feedback" or "product issues." Results are ranked by relevance.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-shogun-gold" /> Memory Types</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Memories are categorized into types:</p>
+                      <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
+                         <li><strong>Semantic:</strong> Facts and knowledge (e.g., "The capital of France is Paris").</li>
+                         <li><strong>Episodic:</strong> Experiences and events (e.g., "User asked about pricing on April 15").</li>
+                         <li><strong>Procedural:</strong> How-to instructions and workflows.</li>
+                         <li><strong>Persona:</strong> Durable identity, relationship, and communication context.</li>
+                         <li><strong>Skills:</strong> Canonical achieved-skill content synchronized from the Dojo.</li>
+                         <li><strong>Programming:</strong> Reusable coding solutions with evidence, validation, files, languages, and sources.</li>
+                      </ul>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Star className="w-4 h-4 text-shogun-gold" /> Salience Score</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Each memory has relevance and importance signals that influence retrieval. Frequently reused memories can be reinforced, while decay policies control retention: <strong>fast</strong>, <strong>medium</strong>, <strong>slow</strong>, <strong>sticky</strong>, or <strong>pinned</strong>. Pin critical memories to keep them at maximum priority.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-shogun-gold" /> Inscribe Memory (+ Button)</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Click the "+" button to manually add a new memory. You choose the <strong>type</strong> (semantic, episodic, etc.), write the <strong>content</strong>, and optionally set the <strong>salience</strong>. This is useful for injecting facts, rules, or context that the AI should always know about.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-gold" /> Browse, Filter &amp; Lifecycle</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Filter by memory type, decay policy, or agent, then sort chronologically or by salience/importance. Each card exposes its content, provenance, scores, dates, and tags. Normal memories move to the archive instead of being hard-deleted; Programming memories use an explicit permanent-delete action.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-shogun-gold" /> Import &amp; Export</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Import Memories</strong> accepts OpenClaw exports, Shogun exports, and generic Markdown from files, ZIP archives, or folders. It parses input as inert data, validates a preview, reports duplicates/conflicts, supports embedding retries and rollback, and blocks ZIP path traversal.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Export Memory</strong> creates an OpenClaw-compatible Markdown bundle. Scope and filter by agent, project, memory type, date, and minimum importance; optionally include archived, private, sticky, analysis, raw, or secret-bearing content. Sensitive exports require confirmation and remain available in export history.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 md:col-span-2 border-l-2 border-shogun-gold/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><BrainCircuit className="w-4 h-4 text-shogun-gold" /> Self-Reinforced Learning</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">In Mission Mode, Shogun is instructed to proactively retain durable guidance when you explicitly correct it, tool use reveals verified information likely to help future work, or you confirm a reusable decision, preference, or idea. It must avoid transient, speculative, duplicated, sensitive, or task-local material and record source and confidence where applicable.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Two cases also have dedicated automatic capture: explicit operator corrections become durable semantic memories, and completed Mado web research becomes a sourced procedural memory. Existing matches are reused or reinforced instead of blindly duplicated. Governed Chat mechanically captures explicit corrections but cannot browse or use Mission tools.</p>
+                   </div>
+                </div>
+             </section>
+
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             {/* 7. DOJO (TRAINING HALL) */}
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             <section id="ref-dojo" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-shogun-gold/40 pb-3">
+                   <Flame className="w-6 h-6 text-shogun-gold" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Dojo — The Training Hall</h4>
+                      <p className="text-xs text-shogun-subdued">Browse, study, and certify your agents on 4,000+ skills. Has 4 tabs.</p>
+                   </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Search className="w-4 h-4 text-shogun-gold" /> Catalog Tab</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The default tab. Shows every available skill from the OpenClaw College database. Each skill shows its <strong>name</strong>, <strong>risk tier</strong> (Low, Medium, High, Critical), and faculty category. A sidebar shows faculty categories in a collapsible tree — click a category to filter skills. Use the search bar to find specific skills by name. Click any skill to see its full training literature.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Package className="w-4 h-4 text-shogun-gold" /> Bundles Tab</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Skills grouped into themed bundles (e.g., "Web Security Fundamentals," "Data Analysis Pack"). Each bundle card shows the bundle name, number of skills included, average difficulty, and a description. Click a bundle to expand it and see all the skills it contains.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-shogun-gold" /> Specializations Tab</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Higher-level groupings that combine multiple bundles into a career-path style progression. Think of these as "majors" — completing a specialization means your agent is deeply trained in an entire domain.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-shogun-gold" /> Achieved Tab</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Shows all the certifications your agents have already passed. Each entry shows the skill name, exam score, pass/fail status, and date achieved. Achieved skills are synchronized into the Archives <strong>Skills</strong> memory layer so their canonical instructions can participate in runtime retrieval.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 md:col-span-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-shogun-gold" /> Skill Detail & Exams</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">When you click a skill, its detail pane shows canonical training content, source material, and risk tier plus a <strong>Take Exam</strong> action. Canonical skill content is structured as an operational instruction foundation: purpose, use conditions, inputs, workflow, decision rules, outputs, safety constraints, failure handling, examples, and success criteria. Exams contain 30–50 multiple-choice questions; passing certifies the agent and records the achievement.</p>
+                   </div>
+                </div>
+             </section>
+
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             {/* 12. LOGS (AUDIT TRAIL) */}
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             <section id="ref-logs" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-shogun-subdued/40 pb-3">
+                   <Terminal className="w-6 h-6 text-shogun-subdued" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Logs — The Compliance Dashboard</h4>
+                      <p className="text-xs text-shogun-subdued">NIS2, SOC2, and EU AI Act-compliant event logging with full trace reconstruction and tamper-proof audit chain.</p>
+                   </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-2 md:col-span-2 border-l-2 border-shogun-blue/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-shogun-blue" /> Dual-Layer Architecture</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Every event is written to <strong>two independent stores</strong>: (1) an <strong>operational SQLite log</strong> (fast, searchable, 90-day retention) for day-to-day monitoring, and (2) a <strong>tamper-resistant HMAC-chained audit database</strong> (append-only, 7-year retention) for regulatory evidence. If anyone modifies or deletes an entry in the audit chain, the cryptographic hash chain breaks — and the dashboard flags it immediately.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-subdued" /> Event Stream</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The main panel shows every event in chronological order. Each row displays: <strong>timestamp</strong>, <strong>category icon</strong>, <strong>severity badge</strong> (info/warn/error/critical), <strong>result status</strong> (green check for success, red X for denied), the <strong>action description</strong>, <strong>event type tag</strong> (e.g., DECISION.CONTEXT), the <strong>model used</strong>, <strong>tool invoked</strong>, and <strong>trace ID link</strong>. Click any event to expand its detail panel. Toggle between <strong>Live</strong> (auto-refresh every 5 seconds) and <strong>Paused</strong> modes.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Filter className="w-4 h-4 text-shogun-subdued" /> Category Tabs</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Eleven filterable categories across the top, each with a real-time event count badge:</p>
+                      <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
+                         <li><strong>Decision:</strong> AI decision provenance — context assembled, influences tracked (EU AI Act). Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">decision.context</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">decision.influences</code>.</li>
+                         <li><strong>Oversight:</strong> Human review — AI responses delivered for implicit oversight, emergency shutdowns. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">oversight.response_delivered</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">oversight.emergency_shutdown</code>.</li>
+                         <li><strong>Risk:</strong> Security tier warnings, denied tools, high-autonomy alerts. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">risk.tools_denied</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">risk.high_autonomy_mode</code>.</li>
+                         <li><strong>Model:</strong> Model selection, LLM responses, API errors, fallback activations. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">model.selected</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">model.response</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">model.error</code>.</li>
+                         <li><strong>Policy:</strong> ToolGate evaluations under the Torii-selected policy — effective allow, confirm, or block decisions, their policy source, and any matching advanced content rule. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">policy.evaluated</code>.</li>
+                         <li><strong>Memory:</strong> Memory recall, search queries, write operations with retrieval provenance. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">memory.search</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">memory.write</code>.</li>
+                         <li><strong>Tools:</strong> Tool/skill executions, arguments, and results. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">tool.executed</code>.</li>
+                         <li><strong>Auth:</strong> Session tracking, security posture changes, API credential lifecycle, kill switch activations. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">auth.session</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">auth.posture_changed</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">auth.credential_added</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">auth.kill_switch_activated</code>.</li>
+                         <li><strong>Incident:</strong> Critical security events — model API failures, kill switch emergency actions, audit chain integrity violations. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">incident.model_api_error</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">incident.kill_switch</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">incident.chain_broken</code>.</li>
+                         <li><strong>System:</strong> Server lifecycle (startup/shutdown), governance configuration changes (Constitution/Mandate), backup and restore provenance. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">system.startup</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">system.shutdown</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">system.config_changed</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">system.backup_created</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">system.backup_restored</code>.</li>
+                      </ul>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Link2 className="w-4 h-4 text-shogun-blue" /> Trace Reconstruction</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Every chat turn generates a <strong>trace_id</strong> (e.g., <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">trc_d5ae40fb</code>) that links all events in that workflow — from policy evaluation through memory recall, model selection, tool execution, and decision provenance. Click any trace ID link to open the <strong>Trace Reconstruction modal</strong>, which displays every event in the chain as a numbered timeline. This allows full <strong>workflow reconstruction</strong> for incident investigation.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileKey className="w-4 h-4 text-shogun-gold" /> Event Detail Panel</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Click any event to expand a detail panel showing the full NIS2/SOC2 + EU AI Act record:</p>
+                      <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
+                         <li><strong>WHO/WHAT/WHEN:</strong> User ID, agent, event type, timestamp.</li>
+                         <li><strong>MODEL/PROVIDER:</strong> Which AI model and cloud provider handled the request.</li>
+                         <li><strong>POLICY:</strong> Security policy reference, decision (allowed/denied), and reason.</li>
+                         <li><strong>RISK/TRACE:</strong> Risk score and correlated trace ID.</li>
+                         <li><strong>AI Confidence bar:</strong> Color-coded indicator (green ≥ 70%, yellow 40–70%, red &lt; 40%).</li>
+                         <li><strong>Framework badges:</strong> Shows which compliance frameworks apply (SOC2, NIS2, EU_AI_ACT).</li>
+                         <li><strong>Governance flags:</strong> Human oversight required, evidence completeness, risk level.</li>
+                         <li><strong>Detail payload:</strong> Full structured JSON of all event metadata.</li>
+                      </ul>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-green-500" /> Audit Chain Integrity</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The top-right corner shows a real-time <strong>Chain Intact</strong> indicator (green) or <strong>Chain Broken</strong> alert (red, pulsing). This verifies the HMAC-SHA256 hash chain across all immutable audit records. If the chain is intact, no records have been tampered with. The status bar at the bottom also shows "AUDIT: INTACT" or "BROKEN."</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-shogun-gold" /> Compliance Export</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Click the download icon to export the <strong>immutable audit log</strong> as a JSON file. This export pulls from the tamper-proof chain (not the operational log), making it suitable for regulatory auditors, compliance reviews, and incident investigations. The export includes all event metadata, governance flags, and chain hashes.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Trash2 className="w-4 h-4 text-red-400" /> Clear Operational Logs</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Click the trash icon to clear the <strong>operational log only</strong>. The immutable audit chain is <strong>never affected</strong> by this action — it is append-only and cannot be cleared. A confirmation dialog warns you before deletion. The clearing event itself is recorded in the immutable audit chain as evidence.</p>
                    </div>
                 </div>
              </section>
@@ -2328,81 +2637,12 @@ npm start`}</pre>
                 </div>
              </section>
 
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             {/* 12. LOGS (AUDIT TRAIL) */}
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             <section id="ref-logs" className="space-y-6 scroll-mt-6">
-                <div className="flex items-center gap-3 border-b-2 border-shogun-subdued/40 pb-3">
-                   <Terminal className="w-6 h-6 text-shogun-subdued" />
-                   <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">Logs — The Compliance Dashboard</h4>
-                      <p className="text-xs text-shogun-subdued">NIS2, SOC2, and EU AI Act-compliant event logging with full trace reconstruction and tamper-proof audit chain.</p>
-                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div className="shogun-card space-y-2 md:col-span-2 border-l-2 border-shogun-blue/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-shogun-blue" /> Dual-Layer Architecture</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Every event is written to <strong>two independent stores</strong>: (1) an <strong>operational SQLite log</strong> (fast, searchable, 90-day retention) for day-to-day monitoring, and (2) a <strong>tamper-resistant HMAC-chained audit database</strong> (append-only, 7-year retention) for regulatory evidence. If anyone modifies or deletes an entry in the audit chain, the cryptographic hash chain breaks — and the dashboard flags it immediately.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-subdued" /> Event Stream</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The main panel shows every event in chronological order. Each row displays: <strong>timestamp</strong>, <strong>category icon</strong>, <strong>severity badge</strong> (info/warn/error/critical), <strong>result status</strong> (green check for success, red X for denied), the <strong>action description</strong>, <strong>event type tag</strong> (e.g., DECISION.CONTEXT), the <strong>model used</strong>, <strong>tool invoked</strong>, and <strong>trace ID link</strong>. Click any event to expand its detail panel. Toggle between <strong>Live</strong> (auto-refresh every 5 seconds) and <strong>Paused</strong> modes.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Filter className="w-4 h-4 text-shogun-subdued" /> Category Tabs</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Eleven filterable categories across the top, each with a real-time event count badge:</p>
-                      <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
-                         <li><strong>Decision:</strong> AI decision provenance — context assembled, influences tracked (EU AI Act). Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">decision.context</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">decision.influences</code>.</li>
-                         <li><strong>Oversight:</strong> Human review — AI responses delivered for implicit oversight, emergency shutdowns. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">oversight.response_delivered</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">oversight.emergency_shutdown</code>.</li>
-                         <li><strong>Risk:</strong> Security tier warnings, denied tools, high-autonomy alerts. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">risk.tools_denied</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">risk.high_autonomy_mode</code>.</li>
-                         <li><strong>Model:</strong> Model selection, LLM responses, API errors, fallback activations. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">model.selected</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">model.response</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">model.error</code>.</li>
-                         <li><strong>Policy:</strong> ToolGate evaluations under the Torii-selected policy — effective allow, confirm, or block decisions, their policy source, and any matching advanced content rule. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">policy.evaluated</code>.</li>
-                         <li><strong>Memory:</strong> Memory recall, search queries, write operations with retrieval provenance. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">memory.search</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">memory.write</code>.</li>
-                         <li><strong>Tools:</strong> Tool/skill executions, arguments, and results. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">tool.executed</code>.</li>
-                         <li><strong>Auth:</strong> Session tracking, security posture changes, API credential lifecycle, kill switch activations. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">auth.session</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">auth.posture_changed</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">auth.credential_added</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">auth.kill_switch_activated</code>.</li>
-                         <li><strong>Incident:</strong> Critical security events — model API failures, kill switch emergency actions, audit chain integrity violations. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">incident.model_api_error</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">incident.kill_switch</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">incident.chain_broken</code>.</li>
-                         <li><strong>System:</strong> Server lifecycle (startup/shutdown), governance configuration changes (Constitution/Mandate), backup and restore provenance. Events: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">system.startup</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">system.shutdown</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">system.config_changed</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">system.backup_created</code>, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">system.backup_restored</code>.</li>
-                      </ul>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Link2 className="w-4 h-4 text-shogun-blue" /> Trace Reconstruction</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Every chat turn generates a <strong>trace_id</strong> (e.g., <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">trc_d5ae40fb</code>) that links all events in that workflow — from policy evaluation through memory recall, model selection, tool execution, and decision provenance. Click any trace ID link to open the <strong>Trace Reconstruction modal</strong>, which displays every event in the chain as a numbered timeline. This allows full <strong>workflow reconstruction</strong> for incident investigation.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileKey className="w-4 h-4 text-shogun-gold" /> Event Detail Panel</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Click any event to expand a detail panel showing the full NIS2/SOC2 + EU AI Act record:</p>
-                      <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
-                         <li><strong>WHO/WHAT/WHEN:</strong> User ID, agent, event type, timestamp.</li>
-                         <li><strong>MODEL/PROVIDER:</strong> Which AI model and cloud provider handled the request.</li>
-                         <li><strong>POLICY:</strong> Security policy reference, decision (allowed/denied), and reason.</li>
-                         <li><strong>RISK/TRACE:</strong> Risk score and correlated trace ID.</li>
-                         <li><strong>AI Confidence bar:</strong> Color-coded indicator (green ≥ 70%, yellow 40–70%, red &lt; 40%).</li>
-                         <li><strong>Framework badges:</strong> Shows which compliance frameworks apply (SOC2, NIS2, EU_AI_ACT).</li>
-                         <li><strong>Governance flags:</strong> Human oversight required, evidence completeness, risk level.</li>
-                         <li><strong>Detail payload:</strong> Full structured JSON of all event metadata.</li>
-                      </ul>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-green-500" /> Audit Chain Integrity</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The top-right corner shows a real-time <strong>Chain Intact</strong> indicator (green) or <strong>Chain Broken</strong> alert (red, pulsing). This verifies the HMAC-SHA256 hash chain across all immutable audit records. If the chain is intact, no records have been tampered with. The status bar at the bottom also shows "AUDIT: INTACT" or "BROKEN."</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-shogun-gold" /> Compliance Export</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Click the download icon to export the <strong>immutable audit log</strong> as a JSON file. This export pulls from the tamper-proof chain (not the operational log), making it suitable for regulatory auditors, compliance reviews, and incident investigations. The export includes all event metadata, governance flags, and chain hashes.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Trash2 className="w-4 h-4 text-red-400" /> Clear Operational Logs</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Click the trash icon to clear the <strong>operational log only</strong>. The immutable audit chain is <strong>never affected</strong> by this action — it is append-only and cannot be cleared. A confirmation dialog warns you before deletion. The clearing event itself is recorded in the immutable audit chain as evidence.</p>
-                   </div>
-                </div>
-             </section>
-
-             {/* 13. MAINTENANCE — BACKUPS, DATA & UPDATES */}
+             {/* MAINTENANCE — BACKUPS, PRIVACY, DATA & UPDATES */}
              <section id="ref-maintenance" className="space-y-6 scroll-mt-6">
                 <div className="flex items-center gap-3 border-b-2 border-shogun-subdued/40 pb-3">
                    <HardDrive className="w-6 h-6 text-shogun-subdued" />
                    <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">Maintenance — Backups, Data & Updates</h4>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Maintenance — Backups, Privacy, Data & Updates</h4>
                       <p className="text-xs text-shogun-subdued">Found under the <strong>Maintenance</strong> section at the bottom of the sidebar.</p>
                    </div>
                 </div>
@@ -2420,244 +2660,16 @@ npm start`}</pre>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Navigate to <strong>Updates</strong> in the sidebar. The automatic checker reads the repository's <code>version.json</code> manifest, compares its numeric build with the installed build, and caches the result for 6 hours. <strong>Check for Updates</strong> forces a fresh check; an available release displays an <strong>UPDATE</strong> badge in the sidebar.</p>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Click <strong>Install Update</strong> to download the current <code>main</code> branch, replace application code, and rebuild the frontend while preserving your database, configurations, environment, and virtual environment. Restart Shogun when installation completes. Private repositories can use a locally encrypted GitHub token configured on the Updates page.</p>
                    </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-violet-400" /> Privacy &amp; Telemetry</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Navigate to Privacy &amp; Telemetry in the sidebar to review or control Shogun's optional, pseudonymous installation statistics. Telemetry is disabled by default and requires explicit consent. The page shows the exact fields that may be shared, everything that is never shared, and a preview of the next weekly heartbeat payload. You can send a test event, disable sharing, reveal the installation identifier, or delete your telemetry data. Server installations require administrator authorization.</p>
+                   </div>
                    <div className="shogun-card space-y-2 border-l-2 border-amber-500/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-amber-400" /> Restore & Recovery</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Every backup in the list has a <strong>Restore</strong> button. Clicking it overwrites your current database and config files with the backup's contents. A restart is required afterwards. Use this to roll back after a bad config change, recover from corruption, or migrate to a new machine.</p>
                    </div>
                 </div>
              </section>
-
-              {/* ─── FLOW STACKING ─── */}
-              <section id="ref-flowstack" className="space-y-6 scroll-mt-6">
-                 <div className="flex items-center gap-3 border-b-2 border-violet-400/40 pb-3">
-                    <Layers className="w-6 h-6 text-violet-400" />
-                    <div>
-                       <h4 className="text-xl font-bold uppercase tracking-widest">Flow Stacking — Stack Orchestrator</h4>
-                       <p className="text-xs text-shogun-subdued">The governed runtime layer above Agent Flow — long-horizon execution with checkpoints, verification gates, retries, and artifact capture.</p>
-                    </div>
-                 </div>
-
-                 <div className="shogun-card space-y-3">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-violet-400" /> What Is Flow Stacking?</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">While individual <strong>Agent Flows</strong> handle single-pipeline execution, <strong>Flow Stacking</strong> chains multiple flows into long-horizon execution pipelines. The <strong>Stack Orchestrator</strong> manages the entire lifecycle: planning, checkpointing, verification, retries, and artifact collection. Navigate to <strong>Flow Stack</strong> in the sidebar to access it.</p>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Play className="w-4 h-4 text-violet-400" /> Three Operating Modes</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Goal-Driven:</strong> Describe what you want — the planner selects and sequences flows automatically. <strong>Selected Stack:</strong> Pick a specific Flow Stack to execute. <strong>Template:</strong> Instantiate from a reusable template.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-violet-400" /> Verification Gates</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">After each step, independent quality checks run (deterministic + semantic model judging). If a step fails verification, the retry service categorizes the failure (permission, runtime, verification, tool/flow) and applies the configured retry policy.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-violet-400" /> Durable Checkpoints</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Context summaries and state snapshots are saved after each step. If a run is paused or interrupted, it can be resumed from the last checkpoint — no lost progress. Use <strong>Pause</strong> and <strong>Resume</strong> buttons in the Flow Stack dashboard.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Package className="w-4 h-4 text-violet-400" /> Artifact Capture</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Outputs from each phase (files, reports, analysis results) are automatically captured and cataloged. View all artifacts for a run from the <strong>Artifacts</strong> tab in the execution detail view.</p>
-                    </div>
-                 </div>
-
-                 <div className="shogun-card space-y-2">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-violet-400" /> Governed Permissions</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">Flow Stacking is gated by six ToolGate capability boundaries: <code className="text-violet-400">agentflow_create</code>, <code className="text-violet-400">agentflow_execute</code>, <code className="text-violet-400">agentflow_autonomous</code>, <code className="text-violet-400">flowstack_create</code>, <code className="text-violet-400">flowstack_execute</code>, and <code className="text-violet-400">flowstack_autonomous</code>. The built-in policies require <strong>Tactical</strong> tier or above; a custom policy inherits a base tier and may narrow those permissions. Select the policy in <strong>Torii</strong>, then use <strong>ToolGate</strong> to understand its boundaries and whether execution is allowed, confirmed, or blocked.</p>
-                 </div>
-
-                 <div className="shogun-card space-y-2">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><Search className="w-4 h-4 text-violet-400" /> Agent Inspection &amp; Editing</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">Shogun discovers stacks with <code className="text-violet-400">list_agent_flows</code> and reads their complete phases, subflow mappings, nodes, edges, orchestrator configuration, and lifecycle state with <code className="text-violet-400">get_flow_stack</code>. It can then use <code className="text-violet-400">create_flow_stack</code>, <code className="text-violet-400">edit_flow_stack</code>, or <code className="text-violet-400">delete_flow_stack</code> under the active posture and Flow Stack permissions.</p>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">For a standard Agent Flow, Shogun uses <code className="text-violet-400">get_agent_flow</code> and prefers <code className="text-violet-400">patch_agent_flow</code> for targeted graph changes that preserve untouched nodes and edges. A direct operator instruction to edit a flow authorizes that targeted patch for the current turn; Shogun still has to inspect first, remain at Tactical posture or above, and obey the separate create, activate, execute, template, and delete permissions.</p>
-                 </div>
-              </section>
-
-              {/* ─── VISUAL INTAKE ─── */}
-              <section id="ref-visual-intake" className="space-y-6 scroll-mt-6">
-                 <div className="flex items-center gap-3 border-b-2 border-cyan-400/40 pb-3">
-                    <Eye className="w-6 h-6 text-cyan-400" />
-                    <div>
-                       <h4 className="text-xl font-bold uppercase tracking-widest">Visual Intake — Image Analysis</h4>
-                       <p className="text-xs text-shogun-subdued">Secure, source-neutral image upload, processing, and AI-powered vision analysis with full governance.</p>
-                    </div>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Camera className="w-4 h-4 text-cyan-400" /> Upload & Process</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Upload images from chat, Telegram, email, or browser. Shogun normalizes them to WebP, generates 640×640 thumbnails, strips all EXIF metadata (GPS, camera info, timestamps) for privacy, and deduplicates via SHA-256 hashing. Supported formats: JPEG, PNG, WebP, static GIF (max 20 MB).</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-cyan-400" /> AI Vision</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Describe:</strong> Generate natural language descriptions. <strong>Inspect:</strong> Deep inspection with custom prompts — ask specific questions about content. <strong>OCR:</strong> Extract text from screenshots, documents, and photos. <strong>Compare:</strong> Side-by-side comparison of two images with AI analysis.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-cyan-400" /> 7 Permission Flags</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed"><code className="text-cyan-400">allow_image_intake</code> (on), <code className="text-cyan-400">allow_local_vision</code> (on), <code className="text-cyan-400">allow_cloud_vision</code> (off — privacy-sensitive), <code className="text-cyan-400">allow_ocr</code> (on), <code className="text-cyan-400">allow_attach_to_stack</code> (on), <code className="text-cyan-400">allow_auto_memory</code> (off — privacy-sensitive), and <code className="text-cyan-400">allow_delete</code> (on). These are policy-scoped capability boundaries in <strong>ToolGate</strong>; there is no separate Visual Intake permission tab in Katana.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Link2 className="w-4 h-4 text-cyan-400" /> Stack Integration</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Pin important images to prevent retention expiry (default: 30 days). Attach images as artifacts to Stack Orchestrator runs for evidence trails. Images can be linked to chat sessions and messages for context tracking.</p>
-                    </div>
-                 </div>
-              </section>
-
-              {/* ─── IDE MODE ─── */}
-              <section id="ref-ide-mode" className="space-y-6 scroll-mt-6">
-                 <div className="flex items-center gap-3 border-b-2 border-emerald-400/40 pb-3">
-                    <MonitorIcon className="w-6 h-6 text-emerald-400" />
-                    <div>
-                       <h4 className="text-xl font-bold uppercase tracking-widest">IDE Mode — VS Code Integration</h4>
-                       <p className="text-xs text-shogun-subdued">Connect your VS Code editor via a governed WebSocket bridge for AI-assisted development.</p>
-                    </div>
-                 </div>
-
-                 <div className="shogun-card bg-amber-500/10 border-amber-500/30 border-l-4 border-l-amber-500">
-                    <h5 className="text-sm font-bold text-amber-400 flex items-center gap-2 mb-3">
-                       <ShieldAlert className="w-5 h-5" />
-                       Requires Campaign or Ronin Posture
-                    </h5>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">IDE Mode is exposed by Katana only when the active policy is based on Campaign or Ronin and its ToolGate capability boundary enables <code className="text-amber-400">ide_enabled</code>. The WebSocket bridge only accepts connections from localhost (<code className="text-amber-400">127.0.0.1</code> / <code className="text-amber-400">::1</code>) — remote connections are rejected.</p>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-emerald-400" /> File Operations</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Read, create, list, search, and apply patches to files within approved workspaces. Every write creates an automatic SHA-256 snapshot for rollback. <strong>Protected files</strong> (<code className="text-emerald-400">.env</code>, <code className="text-emerald-400">*.pem</code>, <code className="text-emerald-400">*.key</code>, <code className="text-emerald-400">id_rsa*</code>, <code className="text-emerald-400">credentials*</code>) are always blocked.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Terminal className="w-4 h-4 text-emerald-400" /> Terminal & Git</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Run approved commands (allowlisted per posture: <code className="text-emerald-400">pytest</code>, <code className="text-emerald-400">python</code>, <code className="text-emerald-400">npm</code>, <code className="text-emerald-400">ruff</code>, <code className="text-emerald-400">mypy</code>, <code className="text-emerald-400">tsc</code>, <code className="text-emerald-400">cargo</code>, <code className="text-emerald-400">go</code>). Git operations: status, diff, branch, create-branch, commit. <strong>Push is disabled by default</strong>; git mutations require Ronin + explicit approval.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Key className="w-4 h-4 text-emerald-400" /> Pairing System</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Pairing uses one-time <code className="text-emerald-400">SHG-</code> prefixed tokens with SHA-256 digest comparison and 10-minute expiry. Generate a token in the Katana IDE tab, enter it in VS Code, and the bridge connects. Revoke all pairings instantly from the dashboard.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Zap className="w-4 h-4 text-emerald-400" /> Workspace Boundaries</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">All file operations are restricted to approved workspace paths. Path traversal is blocked. Symlinks that escape boundaries are rejected. Denied directories: <code className="text-emerald-400">.ssh</code>, <code className="text-emerald-400">.aws</code>, <code className="text-emerald-400">.azure</code>, <code className="text-emerald-400">.gnupg</code>, <code className="text-emerald-400">.kube</code>. Emergency <strong>Kill Switch</strong> endpoint terminates all IDE connections instantly.</p>
-                    </div>
-                 </div>
-
-                 <div className="shogun-card space-y-2">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-emerald-400" /> VS Code Extension</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">Install the <strong>shogun-ide-bridge</strong> extension from <code className="text-emerald-400">bridge/vscode/</code>. Configure <code className="text-emerald-400">shogun.bridgeUrl</code> (default: <code className="text-emerald-400">ws://127.0.0.1:8000/api/v1/ide/bridge</code>). Commands: <strong>Shogun: Connect</strong>, <strong>Shogun: Disconnect</strong>, <strong>Shogun: Open Dashboard</strong>.</p>
-                 </div>
-              </section>
-
-              {/* ─── MODEL ROUTER ─── */}
-              <section id="ref-model-router" className="space-y-6 scroll-mt-6">
-                 <div className="flex items-center gap-3 border-b-2 border-blue-400/40 pb-3">
-                    <RouteIcon className="w-6 h-6 text-blue-400" />
-                    <div>
-                       <h4 className="text-xl font-bold uppercase tracking-widest">Model Router — Intelligent Model Selection</h4>
-                       <p className="text-xs text-shogun-subdued">Provider-agnostic, task-aware model selection with routing profiles, registry, and usage telemetry.</p>
-                    </div>
-                 </div>
-
-                 <div className="shogun-card space-y-3">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><Compass className="w-4 h-4 text-blue-400" /> How It Works</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">Instead of hardcoding which model handles each request, the Model Router evaluates the <strong>task type</strong>, <strong>complexity</strong>, and your <strong>active routing profile</strong> to select the optimal model automatically. Navigate to <strong>Katana → Model Routing</strong> to configure profiles and view the model registry.</p>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-blue-400" /> 5 Routing Profiles</div>
-                       <div className="bg-shogun-bg rounded-lg p-3 space-y-2">
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-green-400 bg-green-400/10 px-2 py-0.5 rounded">ULTRA ECONOMY</span><span className="text-xs text-shogun-subdued">Strongly prefers local models, minimizes API calls.</span></div>
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">ECONOMY</span><span className="text-xs text-shogun-subdued">Low-cost daily work, escalates only for complex tasks.</span></div>
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded">BALANCED</span><span className="text-xs text-shogun-subdued">Recommended balance of quality and cost. Default profile.</span></div>
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded">HIGH CAPABILITY</span><span className="text-xs text-shogun-subdued">Uses stronger models earlier in the complexity curve.</span></div>
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded">PREMIUM</span><span className="text-xs text-shogun-subdued">Maximum quality, always picks the best available model.</span></div>
-                       </div>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-blue-400" /> Task Classification</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Every request is classified into one of 20+ task types across 5 complexity tiers:</p>
-                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5 text-xs text-shogun-subdued">
-                          <p><strong className="text-green-400">Simple:</strong> simple_chat, classification, extraction, memory_write</p>
-                          <p><strong className="text-emerald-400">Moderate:</strong> summarization, browser_task, skill_selection</p>
-                          <p><strong className="text-blue-400">Complex:</strong> planning, coding_plan, coding_edit, stack_planning</p>
-                          <p><strong className="text-amber-400">Critical:</strong> complex_reasoning, test_failure_analysis, self_verification</p>
-                          <p><strong className="text-cyan-400">Vision:</strong> visual_understanding, screenshot_analysis, photo_understanding</p>
-                       </div>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-blue-400" /> Model Registry</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Every model available to Shogun is registered with its provider, capabilities, quality/cost/latency tiers, context window, and role tags. Test connections directly from the registry. Add cloud providers or local Ollama models.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-blue-400" /> Decision & Usage Logs</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Every routing decision is persisted: which task type, complexity score, selected model, fallback model, and reason. Usage telemetry tracks input/output tokens, cost estimates, and latency. View summaries and per-stack breakdowns.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-cyan-400" /> OpenClaw College Ecosystem Intelligence</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">In <strong>Updates</strong>, anonymous ecosystem benchmark sharing is enabled by default. The operator can opt out at any time. When enabled, Shogun sends only model/provider, coarse task type, success, bucketed tokens/latency/cost, local-versus-cloud, country code, Shogun version, and a weekly rotating anonymous installation hash.</p>
-                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Never transmitted:</strong> prompts, outputs, files, error contents, agent names, credentials, or exact IP addresses. College publishes rankings only after at least 20 events from five anonymous installations and retains raw telemetry for 31 days.</p>
-                    </div>
-                 </div>
-              </section>
-
-              {/* ─── ACTIVE SKILLS & TRAJECTORY ─── */}
-              <section id="ref-active-skills" className="space-y-6 scroll-mt-6">
-                 <div className="flex items-center gap-3 border-b-2 border-amber-400/40 pb-3">
-                    <Sparkles className="w-6 h-6 text-amber-400" />
-                    <div>
-                       <h4 className="text-xl font-bold uppercase tracking-widest">Active Skills & Trajectory Capture</h4>
-                       <p className="text-xs text-shogun-subdued">Runtime skill retrieval from the Dojo — automatic selection, context injection, outcome tracking, and improvement candidates.</p>
-                    </div>
-                 </div>
-
-                 <div className="shogun-card space-y-3">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><Flame className="w-4 h-4 text-amber-400" /> How Active Skills Work</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">When a Shogun agent processes a request, the Active Skill system automatically <strong>retrieves</strong> relevant skills from the Dojo, <strong>gates</strong> them against the active ToolGate capability boundaries and exam requirements, <strong>injects</strong> skill content into the LLM context (advisory or context_block mode), and <strong>tracks</strong> the outcome (success, partial, failed, not_used, blocked). Torii selects the governing tier or custom policy; ToolGate applies its runtime rules. Skills are live during execution — not just catalog entries.</p>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2 border-l-2 border-amber-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-amber-400" /> Configuration</div>
-                       <div className="bg-shogun-bg rounded-lg p-3 space-y-1.5 text-xs text-shogun-subdued">
-                          <p><code className="text-amber-400">active_skill_max_per_run</code>: 5 — max skills per execution run</p>
-                          <p><code className="text-amber-400">active_skill_max_per_step</code>: 3 — max skills per step</p>
-                          <p><code className="text-amber-400">active_skill_max_total_context_tokens</code>: 2,500 — token budget</p>
-                          <p><code className="text-amber-400">active_skill_require_exam_pass</code>: true — only use passed skills</p>
-                          <p><code className="text-amber-400">active_skill_preserve_during_compaction</code>: true — keep during context compaction</p>
-                       </div>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-amber-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-amber-400" /> Trajectory Capture</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Every skill invocation generates a structured evidence trail: <strong>Candidate Retrievals</strong> (which skills were considered), <strong>Episodes</strong> (full lifecycle), <strong>Trajectories</strong> (outcome scoring), <strong>Tool Links</strong> (tools called during usage), <strong>Verification Links</strong> (how outcomes were verified), <strong>Outcome Scores</strong> (deterministic scoring), and <strong>Improvement Candidates</strong> (suggested fixes). All data is secret-redacted automatically.</p>
-                    </div>
-                 </div>
-              </section>
-
-              {/* ─── SKILLOPT ─── */}
-              <section id="ref-skillopt" className="space-y-6 scroll-mt-6">
-                 <div className="flex items-center gap-3 border-b-2 border-fuchsia-400/40 pb-3">
-                    <BrainCircuit className="w-6 h-6 text-fuchsia-400" />
-                    <div>
-                       <h4 className="text-xl font-bold uppercase tracking-widest">SkillOpt — Automated Skill Optimization</h4>
-                       <p className="text-xs text-shogun-subdued">Data-driven skill improvement pipeline — version management, training runs, candidate generation, validation, and promotion.</p>
-                    </div>
-                 </div>
-
-                 <div className="shogun-card space-y-3">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-fuchsia-400" /> The Optimization Pipeline</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Usage Events</strong> are captured from Active Skill runs. A <strong>Training Run</strong> uses these to generate optimized <strong>Candidates</strong>. Each candidate is <strong>Validated</strong> against held-out tasks with safety checks and scoring. Successful candidates are <strong>Promoted</strong> to become the new active version; failing ones are <strong>Rejected</strong> with a reason.</p>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2 border-l-2 border-fuchsia-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-fuchsia-400" /> Version Management</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Every skill change creates an immutable version: version number, content hash, validation score, and status (<code className="text-fuchsia-400">candidate</code> → <code className="text-fuchsia-400">active</code> → <code className="text-fuchsia-400">retired</code>). Browse all versions for any skill from the SkillOpt tab in <strong>Katana</strong>. Compare candidate vs baseline content with the interactive diff viewer.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-fuchsia-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-fuchsia-400" /> Katana Dashboard</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">The SkillOpt tab in <strong>Katana</strong> provides real-time tracking of optimization runs, interactive diff viewer for candidates vs baseline, one-click promote/reject controls, and metrics for average improvement scores. Start training runs, view all skill versions, and monitor usage events.</p>
-                    </div>
-                 </div>
-              </section>
 
 
 
