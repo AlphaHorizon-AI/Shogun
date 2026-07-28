@@ -1089,23 +1089,41 @@ async def _exec_samurai(
     if not task_description:
         raise ValueError("Samurai node has no task description")
 
-    unsupported_tools = _samurai_native_tool_references(task_description, config)
-    if unsupported_tools:
-        node_names = {
-            "fetch_inbox": "Email Read",
-            "list_calendar_events": "Calendar Read",
-        }
-        replacements = ", ".join(node_names[name] for name in unsupported_tools)
-        raise ValueError(
-            "Samurai nodes cannot execute native tools directly. "
-            f"Move {', '.join(unsupported_tools)} into upstream {replacements} node(s), "
-            "then let the Samurai compile their predecessor outputs."
-        )
+    # Preserve the original one-node workflow contract for the two governed,
+    # read-only personal-data tools. The flow runtime executes them through the
+    # same posture and ToolGate checks as dedicated Email/Calendar Read nodes,
+    # then gives their structured results to the Samurai for synthesis.
+    native_read_context: dict[str, Any] = {}
+    for tool_name in _samurai_native_tool_references(task_description, config):
+        if tool_name == "fetch_inbox":
+            native_read_context[tool_name] = await _exec_email_read(
+                {
+                    "folder": config.get("email_folder", "INBOX"),
+                    "page": config.get("email_page", 1),
+                    "per_page": config.get("email_per_page", 10),
+                    "unread_only": config.get("email_unread_only", False),
+                }
+            )
+        elif tool_name == "list_calendar_events":
+            native_read_context[tool_name] = await _exec_calendar_read(
+                {
+                    "start_date": config.get("calendar_start_date"),
+                    "end_date": config.get("calendar_end_date"),
+                    "days_ahead": config.get("calendar_days_ahead", 1),
+                }
+            )
 
     # Build the prompt
     user_message = task_description
     if context_str:
         user_message = f"{task_description}\n\n--- CONTEXT FROM PREVIOUS STEPS ---\n{context_str}"
+    if native_read_context:
+        user_message += (
+            "\n\n--- GOVERNED NATIVE READ RESULTS ---\n"
+            + json.dumps(native_read_context, default=str, ensure_ascii=False)
+            + "\nUse these results to complete the task. Do not claim that the reads failed or request "
+            "another tool call; the tools have already been executed by the flow runtime."
+        )
     if expected_output:
         user_message += f"\n\n--- EXPECTED OUTPUT FORMAT ---\n{expected_output}"
 
@@ -1162,7 +1180,7 @@ _SAMURAI_NATIVE_READ_TOOLS = ("fetch_inbox", "list_calendar_events")
 
 
 def _samurai_native_tool_references(task_description: str, config: dict[str, Any]) -> list[str]:
-    """Identify native read tools a prompt incorrectly expects a Samurai to execute."""
+    """Identify governed native reads requested by a backward-compatible Samurai node."""
     declared = {
         str(name)
         for name in [*(config.get("required_tools") or []), *(config.get("allowed_tools") or [])]

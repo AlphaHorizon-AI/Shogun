@@ -935,7 +935,7 @@ export function Guide() {
                             <li><strong>Stack Orchestrator:</strong> Supervises a long-running Flow Stack.</li>
                             <li><strong>Output:</strong> Collects and presents the final result, with optional memory infusion.</li>
                          </ul>
-                         <p className="text-xs text-shogun-subdued leading-relaxed mt-2"><strong>Samurai nodes are synthesis-only:</strong> they receive predecessor outputs and do not inherit Shogun's native tools. Put Email Read and Calendar Read nodes before the Samurai, then ask it to compile their structured outputs. Invalid direct tool requests are rejected when the flow is saved and again at runtime.</p>
+                         <p className="text-xs text-shogun-subdued leading-relaxed mt-2"><strong>Samurai governed reads:</strong> Samurai nodes can request fetch_inbox and list_calendar_events directly. The flow runtime executes those read-only tools under the active security posture and ToolGate policy, then hands the structured results to the Samurai for compilation. Dedicated Email Read and Calendar Read nodes remain available when you prefer an explicit multi-node pipeline.</p>
                       </div>
                       <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
                          <div className="font-bold text-shogun-text flex items-center gap-2"><GitBranch className="w-4 h-4 text-violet-400" /> Canvas, Execution & AI Creation</div>

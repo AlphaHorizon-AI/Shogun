@@ -2215,6 +2215,8 @@
   ,"A visual drag-and-drop canvas for designing multi-step AI pipelines. Build workflows by chaining 15 node types, including governed native reads and the memory-aware Coding node:": "用于设计多步骤 AI 流水线的可视化拖放画布。通过连接 15 种节点类型来构建工作流，其中包括受治理的原生读取节点和具备记忆感知能力的 Coding 节点："
   ,"Email Read / Calendar Read:": "读取邮件 / 读取日历："
   ,"Fetches governed, structured inbox summaries or calendar events for successor nodes.": "为后续节点获取受治理的结构化收件箱摘要或日历事件。"
+  ,"Samurai governed reads:": "Samurai 受控读取："
+  ,"Samurai nodes can request fetch_inbox and list_calendar_events directly. The flow runtime executes those read-only tools under the active security posture and ToolGate policy, then hands the structured results to the Samurai for compilation. Dedicated Email Read and Calendar Read nodes remain available when you prefer an explicit multi-node pipeline.": "Samurai 节点可以直接请求 fetch_inbox 和 list_calendar_events。Flow 运行时会依据当前安全配置和 ToolGate 策略执行这些只读工具，然后将结构化结果交给 Samurai 汇总。如果您希望使用明确的多节点流水线，仍可使用专用的“读取邮件”和“读取日历”节点。"
   ,"Samurai nodes are synthesis-only:": "Samurai 节点仅用于综合："
   ,"they receive predecessor outputs and do not inherit Shogun's native tools. Put Email Read and Calendar Read nodes before the Samurai, then ask it to compile their structured outputs. Invalid direct tool requests are rejected when the flow is saved and again at runtime.": "它们接收前置节点的输出，但不会继承 Shogun 的原生工具。请将读取邮件和读取日历节点放在 Samurai 之前，再让它汇总这些结构化输出。无效的直接工具请求会在保存流程和运行时被拒绝。"
   ,"Failure logs: When a node fails, click its red status icon to open the exact audit event in Logs. The event detail shows the flow run, node identity, error type, and complete error message.": "失败日志：节点失败时，点击其红色状态图标，可在 Logs 中打开准确的审计事件。事件详情会显示 Flow 运行、节点标识、错误类型和完整错误信息。"

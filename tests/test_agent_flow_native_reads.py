@@ -7,7 +7,6 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from shogun.api.agent_flow import _validate_agentflow_tool_contract
 from shogun.engine import flow_engine
 from shogun.schemas.agent_flow import AgentFlowNodeCreate
 from shogun.services import native_skills, posture_guard, tool_gate
@@ -136,26 +135,48 @@ async def test_unattended_native_read_does_not_bypass_confirmation(monkeypatch):
         await flow_engine._exec_email_read({})
 
 
-def test_samurai_tool_request_is_rejected_when_graph_is_saved():
-    with pytest.raises(ValueError, match="Email Read"):
-        _validate_agentflow_tool_contract(
-            [
-                {
-                    "node_type": "samurai",
-                    "label": "Compile Brief",
-                    "config": {"task_description": "Call fetch_inbox and summarize the messages."},
-                }
-            ]
-        )
-
-
 @pytest.mark.asyncio
-async def test_samurai_runtime_rejects_native_tool_request_with_actionable_replacement():
-    with pytest.raises(ValueError, match="Calendar Read"):
-        await flow_engine._exec_samurai(
-            {"task_description": "Use list_calendar_events for today."},
-            "",
-        )
+async def test_samurai_runtime_prefetches_governed_native_reads(monkeypatch):
+    calls: list[tuple[str, dict]] = []
+
+    async def email_read(config):
+        calls.append(("fetch_inbox", config))
+        return {"status": "success", "messages": [{"subject": "Morning"}]}
+
+    async def calendar_read(config):
+        calls.append(("list_calendar_events", config))
+        return {"status": "success", "events": [{"summary": "Standup"}]}
+
+    async def resolve_chain(*_args, **_kwargs):
+        return [object()], {"route": "test"}
+
+    captured: dict = {}
+
+    async def call_chain(messages, *_args, **_kwargs):
+        captured["messages"] = messages
+        return "Compiled brief"
+
+    monkeypatch.setattr(flow_engine, "_exec_email_read", email_read)
+    monkeypatch.setattr(flow_engine, "_exec_calendar_read", calendar_read)
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_chain)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain", call_chain)
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+
+    result = await flow_engine._exec_samurai(
+        {
+            "task_description": "Use fetch_inbox and list_calendar_events for today.",
+            "email_unread_only": True,
+        },
+        "trigger context",
+    )
+
+    assert result == "Compiled brief"
+    assert [name for name, _config in calls] == ["fetch_inbox", "list_calendar_events"]
+    assert calls[0][1]["unread_only"] is True
+    prompt = captured["messages"][1]["content"]
+    assert "GOVERNED NATIVE READ RESULTS" in prompt
+    assert "Morning" in prompt
+    assert "Standup" in prompt
 
 
 def test_native_read_node_configs_are_normalized_and_bounded():

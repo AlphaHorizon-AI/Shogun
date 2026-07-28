@@ -1182,7 +1182,7 @@ function NodeInspector({
     ...(Array.isArray(config.required_tools) ? config.required_tools : []),
     ...(Array.isArray(config.allowed_tools) ? config.allowed_tools : []),
   ].join(' ');
-  const unsupportedSamuraiTools = ['fetch_inbox', 'list_calendar_events'].filter((tool) =>
+  const governedSamuraiReadTools = ['fetch_inbox', 'list_calendar_events'].filter((tool) =>
     new RegExp(`\\b${tool}\\b`, 'i').test(samuraiToolContract),
   );
   const memoryInfusion = (config.memory_infusion || {}) as OutputMemoryInfusionConfig;
@@ -1297,11 +1297,11 @@ function NodeInspector({
               />
             </div>
 
-            {unsupportedSamuraiTools.length > 0 && (
-              <div className="rounded-lg border border-[#ef4444]/30 bg-[#ef4444]/10 p-2.5">
-                <p className="text-[9px] font-bold text-[#ef4444]">Native tools are not available inside Samurai nodes.</p>
-                <p className="mt-1 text-[8px] leading-relaxed text-[#fca5a5]">
-                  Add Email Read / Calendar Read nodes upstream, then ask this Samurai to compile their predecessor outputs.
+            {governedSamuraiReadTools.length > 0 && (
+              <div className="rounded-lg border border-[#22c55e]/30 bg-[#22c55e]/10 p-2.5">
+                <p className="text-[9px] font-bold text-[#22c55e]">Governed read access enabled.</p>
+                <p className="mt-1 text-[8px] leading-relaxed text-[#86efac]">
+                  The flow runtime will fetch the requested email/calendar data under ToolGate policy and pass it to this Samurai for compilation.
                 </p>
               </div>
             )}
