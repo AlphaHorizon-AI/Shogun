@@ -98,6 +98,37 @@ class CodingNodeConfig(BaseModel):
         return self
 
 
+class EmailReadNodeConfig(BaseModel):
+    """Governed configuration for reading message summaries from a mail folder."""
+
+    folder: str = Field(default="INBOX", min_length=1, max_length=200)
+    page: int = Field(default=1, ge=1, le=1000)
+    per_page: int = Field(default=10, ge=1, le=50)
+    unread_only: bool = True
+
+
+class CalendarReadNodeConfig(BaseModel):
+    """Governed configuration for reading a bounded calendar window."""
+
+    days_ahead: int = Field(default=1, ge=1, le=31)
+    start_date: str | None = None
+    end_date: str | None = None
+
+    @model_validator(mode="after")
+    def validate_explicit_range(self):
+        if bool(self.start_date) != bool(self.end_date):
+            raise ValueError("calendar_read requires both start_date and end_date when using an explicit range")
+        if self.start_date and self.end_date:
+            try:
+                start = datetime.fromisoformat(self.start_date)
+                end = datetime.fromisoformat(self.end_date)
+            except ValueError as exc:
+                raise ValueError("calendar_read dates must use ISO date/time format") from exc
+            if end <= start:
+                raise ValueError("calendar_read end_date must be after start_date")
+        return self
+
+
 class AgentFlowNodeCreate(BaseModel):
     """Payload for creating a single node."""
 
@@ -115,6 +146,10 @@ class AgentFlowNodeCreate(BaseModel):
             self.config = {**self.config, "memory_infusion": normalized.model_dump()}
         if self.node_type == "coding":
             self.config = CodingNodeConfig.model_validate(self.config).model_dump()
+        if self.node_type == "email_read":
+            self.config = EmailReadNodeConfig.model_validate(self.config).model_dump()
+        if self.node_type == "calendar_read":
+            self.config = CalendarReadNodeConfig.model_validate(self.config).model_dump()
         return self
 
 
@@ -393,4 +428,3 @@ class FlowStackComposeRequest(BaseModel):
 class FlowStackTemplateInstantiate(BaseModel):
     template_id: str
     name: str | None = None
-

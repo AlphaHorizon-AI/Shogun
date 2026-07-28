@@ -29,6 +29,7 @@ router = APIRouter(prefix="/logs", tags=["Logs"])
 
 @router.get("", response_model=ApiResponse)
 async def list_logs(
+    event_id: str | None = Query(None, description="Exact event ID"),
     severity: str | None = None,
     event_type: str | None = None,
     category: str | None = Query(None, description="Comma-separated: auth,memory,tool,model,policy,incident"),
@@ -45,6 +46,8 @@ async def list_logs(
     query = select(ExecutionEvent)
     filters = []
 
+    if event_id:
+        filters.append(ExecutionEvent.event_id == event_id)
     if severity:
         filters.append(func.lower(ExecutionEvent.severity) == severity.lower())
     if event_type:
@@ -118,7 +121,7 @@ async def reconstruct_trace(
     svc: AuditService = Depends(get_audit_service),
 ):
     """Reconstruct a full event chain by trace_id.
-    
+
     Returns all events linked to a workflow in chronological order.
     This is the core NIS2 incident reconstruction capability.
     """
@@ -146,7 +149,7 @@ async def reconstruct_trace(
 @router.get("/audit/verify", response_model=ApiResponse)
 async def verify_audit_chain():
     """Verify the immutable audit chain integrity.
-    
+
     Walks the entire HMAC chain and reports any breaks.
     SOC2 auditors will use this to confirm tamper resistance.
     """
@@ -183,7 +186,7 @@ async def export_audit_log(
     limit: int = 10000,
 ):
     """Export immutable audit records for compliance review.
-    
+
     Downloads from the tamper-resistant audit chain, not the
     operational log. Includes HMAC hashes for verification.
     """
@@ -229,7 +232,7 @@ async def export_audit_log(
 @router.delete("", response_model=ApiResponse)
 async def clear_logs(svc: AuditService = Depends(get_audit_service)):
     """Clear OPERATIONAL logs only. The immutable audit chain is never deleted.
-    
+
     This distinction is critical for NIS2/SOC2 compliance:
     operational logs can be rotated, but audit evidence is permanent.
     """

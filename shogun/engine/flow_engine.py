@@ -21,7 +21,7 @@ import time
 import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -333,7 +333,14 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                 node = node_map[node_id]
                 if isinstance(result, Exception):
                     node_outputs[node_id] = None
-                    await _update_node_state(run_id, node_id, "failed", error=str(result))
+                    failure_event_id = await _record_node_failure_event(run_id, node, result)
+                    await _update_node_state(
+                        run_id,
+                        node_id,
+                        "failed",
+                        error=str(result),
+                        failure_event_id=failure_event_id,
+                    )
                     # Check failure action
                     config = node.config or {}
                     failure_action = config.get("failure_action") or {
@@ -489,6 +496,10 @@ async def _execute_single_node(
             result = await _exec_input(config, context_str, run_input or {})
         elif node_type == "samurai":
             result = await _exec_samurai(config, execution_context_str, governance_context or {})
+        elif node_type == "email_read":
+            result = await _exec_email_read(config)
+        elif node_type == "calendar_read":
+            result = await _exec_calendar_read(config)
         elif node_type == "coding":
             result = await _exec_coding(config, execution_context_str, governance_context or {})
         elif node_type == "shogun_approval":
@@ -1078,6 +1089,19 @@ async def _exec_samurai(
     if not task_description:
         raise ValueError("Samurai node has no task description")
 
+    unsupported_tools = _samurai_native_tool_references(task_description, config)
+    if unsupported_tools:
+        node_names = {
+            "fetch_inbox": "Email Read",
+            "list_calendar_events": "Calendar Read",
+        }
+        replacements = ", ".join(node_names[name] for name in unsupported_tools)
+        raise ValueError(
+            "Samurai nodes cannot execute native tools directly. "
+            f"Move {', '.join(unsupported_tools)} into upstream {replacements} node(s), "
+            "then let the Samurai compile their predecessor outputs."
+        )
+
     # Build the prompt
     user_message = task_description
     if context_str:
@@ -1132,6 +1156,102 @@ async def _exec_samurai(
         context="AgentFlow Samurai node",
         routing_context=_routing,
     )
+
+
+_SAMURAI_NATIVE_READ_TOOLS = ("fetch_inbox", "list_calendar_events")
+
+
+def _samurai_native_tool_references(task_description: str, config: dict[str, Any]) -> list[str]:
+    """Identify native read tools a prompt incorrectly expects a Samurai to execute."""
+    declared = {
+        str(name)
+        for name in [*(config.get("required_tools") or []), *(config.get("allowed_tools") or [])]
+    }
+    prompt = str(task_description or "")
+    return [
+        name
+        for name in _SAMURAI_NATIVE_READ_TOOLS
+        if name in declared or re.search(rf"\b{re.escape(name)}\b", prompt, re.IGNORECASE)
+    ]
+
+
+async def _exec_email_read(config: dict[str, Any]) -> dict[str, Any]:
+    args = {
+        "folder": str(config.get("folder") or "INBOX"),
+        "page": max(1, int(config.get("page") or 1)),
+        "per_page": max(1, min(int(config.get("per_page") or 10), 50)),
+    }
+    result = await _exec_governed_native_read("fetch_inbox", args)
+    if config.get("unread_only", True):
+        messages = [message for message in result.get("messages", []) if not message.get("is_read", False)]
+        result = {**result, "messages": messages, "returned": len(messages), "unread_only": True}
+    return result
+
+
+async def _exec_calendar_read(config: dict[str, Any]) -> dict[str, Any]:
+    start_date = config.get("start_date")
+    end_date = config.get("end_date")
+    if not start_date or not end_date:
+        start = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=max(1, min(int(config.get("days_ahead") or 1), 31)))
+        start_date = start.isoformat()
+        end_date = end.isoformat()
+    return await _exec_governed_native_read(
+        "list_calendar_events",
+        {"start_date": str(start_date), "end_date": str(end_date)},
+    )
+
+
+async def _exec_governed_native_read(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Execute one explicitly supported read tool under current posture and ToolGate policy."""
+    from shogun.services.campaign_presets import get_preset
+    from shogun.services.native_skills import NATIVE_TOOLS, execute_native_tool
+    from shogun.services.posture_guard import filter_tools_by_posture, get_posture_tool_filter
+    from shogun.services.tool_gate import GateAction, check_tool_access, get_toolgate_scope
+
+    definition = next(
+        (item for item in NATIVE_TOOLS if item.get("function", {}).get("name") == tool_name),
+        None,
+    )
+    if definition is None:
+        raise ValueError(f"AgentFlow native read tool '{tool_name}' is not registered.")
+
+    posture = await get_posture_tool_filter()
+    if posture.get("kill_switch_active"):
+        raise PermissionError("AgentFlow native reads are blocked while the security kill switch is active.")
+    allowed, _denied = filter_tools_by_posture([definition], posture)
+    if not allowed:
+        raise PermissionError(f"Security posture does not allow AgentFlow tool '{tool_name}'.")
+
+    scope = get_toolgate_scope(posture)
+    tier = scope["base_tier"]
+    mode = "ronin_desktop" if tier == "ronin" else "campaign" if tier == "campaign" else "standard"
+    preset_key = posture.get("active_campaign_preset")
+    decision = await check_tool_access(
+        mode,
+        tool_name,
+        args,
+        get_preset(preset_key) if preset_key else None,
+        local_scope=scope["key"],
+    )
+    if decision.action == GateAction.CONFIRM:
+        raise PermissionError(
+            f"AgentFlow tool '{tool_name}' requires confirmation and cannot run unattended: {decision.reason}"
+        )
+    if decision.action == GateAction.BLOCK:
+        raise PermissionError(f"AgentFlow tool '{tool_name}' was blocked by ToolGate: {decision.reason}")
+
+    async with async_session_factory() as session:
+        raw_result = await execute_native_tool(tool_name, args, session)
+    try:
+        result = json.loads(raw_result)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"AgentFlow tool '{tool_name}' returned invalid structured output.") from exc
+    if not isinstance(result, dict):
+        raise ValueError(f"AgentFlow tool '{tool_name}' returned a non-object result.")
+    if str(result.get("status", "success")).lower() in {"error", "failed"}:
+        raise ValueError(str(result.get("message") or result.get("error") or f"{tool_name} failed"))
+    return result
 
 
 async def _exec_coding(
@@ -2639,6 +2759,7 @@ async def _update_node_state(
     status: str,
     output: Any = None,
     error: str | None = None,
+    failure_event_id: str | None = None,
 ) -> None:
     """Update a single node's execution state in the run record."""
     async with async_session_factory() as session:
@@ -2664,6 +2785,8 @@ async def _update_node_state(
             node_state["output"] = str(output)
         if error:
             node_state["error"] = error[:2000]
+        if failure_event_id:
+            node_state["failure_event_id"] = failure_event_id
 
         states[node_id] = node_state
         run.node_states = states
@@ -2671,6 +2794,37 @@ async def _update_node_state(
 
         flag_modified(run, "node_states")
         await session.commit()
+
+
+async def _record_node_failure_event(
+    run_id: uuid.UUID,
+    node: AgentFlowNode,
+    error: Exception,
+) -> str | None:
+    """Write a deep-linkable audit event for an AgentFlow node failure."""
+    try:
+        from shogun.services.event_logger import EventLogger
+
+        return await EventLogger.emit_incident_event(
+            "agent_flow.node.failed",
+            f"AgentFlow node '{node.label}' failed",
+            result="error",
+            severity="error",
+            risk_score="medium",
+            trace_id=str(run_id),
+            detail={
+                "flow_id": str(node.flow_id),
+                "flow_run_id": str(run_id),
+                "node_id": str(node.id),
+                "node_label": node.label,
+                "node_type": node.node_type,
+                "error_type": type(error).__name__,
+                "error": str(error),
+            },
+        )
+    except Exception:
+        log.exception("Failed to write audit event for AgentFlow node %s", node.id)
+        return None
 
 
 async def _fail_run(

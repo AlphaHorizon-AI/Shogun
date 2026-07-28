@@ -5,6 +5,7 @@ import {
   Zap, Link2, CheckCircle2, XCircle, X, Scale, Eye, AlertOctagon
 } from "lucide-react";
 import axios from 'axios';
+import { useSearchParams } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
 
@@ -90,6 +91,11 @@ function getResultIcon(result: string) {
 
 export function Logs() {
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+  const targetEventId = searchParams.get('event_id');
+  const targetTraceId = searchParams.get('trace_id');
+  const targetNodeId = searchParams.get('node_id');
+  const targetEventType = searchParams.get('event_type');
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -111,17 +117,31 @@ export function Logs() {
   const fetchLogs = useCallback(async () => {
     try {
       const params: Record<string, string> = { limit: '300' };
-      if (minSeverity !== 'all') params.severity = minSeverity;
-      if (activeCategory !== 'all') params.category = activeCategory;
+      if (targetEventId) {
+        params.event_id = targetEventId;
+      } else {
+        if (minSeverity !== 'all') params.severity = minSeverity;
+        if (activeCategory !== 'all') params.category = activeCategory;
+        if (targetTraceId) params.trace_id = targetTraceId;
+        if (targetEventType) params.event_type = targetEventType;
+      }
       const res = await axios.get('/api/v1/logs', { params });
       const data: LogEntry[] = res.data.data || [];
       setLogs([...data].reverse());
+      const linkedEvent = data.find((entry) =>
+        (targetEventId && entry.event_id === targetEventId)
+        || (targetNodeId && entry.detail?.node_id === targetNodeId)
+      );
+      if (linkedEvent) {
+        setSelectedEvent(linkedEvent);
+        setAutoRefresh(false);
+      }
     } catch (error) {
       console.error('Error fetching logs:', error);
     } finally {
       setLoading(false);
     }
-  }, [minSeverity, activeCategory]);
+  }, [minSeverity, activeCategory, targetEventId, targetTraceId, targetNodeId, targetEventType]);
 
   // Fetch category counts
   const fetchCategories = useCallback(async () => {
@@ -148,7 +168,7 @@ export function Logs() {
     } catch { /* silent */ }
   }, []);
 
-  useEffect(() => { setLoading(true); fetchLogs(); fetchCategories(); fetchAuditStatus(); }, [minSeverity, activeCategory]);
+  useEffect(() => { setLoading(true); fetchLogs(); fetchCategories(); fetchAuditStatus(); }, [fetchLogs, fetchCategories, fetchAuditStatus]);
 
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -169,7 +189,9 @@ export function Logs() {
       log.event_type?.toLowerCase().includes(term) ||
       log.tool_name?.toLowerCase().includes(term) ||
       log.model_used?.toLowerCase().includes(term) ||
-      log.trace_id?.toLowerCase().includes(term)
+      log.trace_id?.toLowerCase().includes(term) ||
+      log.event_id?.toLowerCase().includes(term) ||
+      JSON.stringify(log.detail || {}).toLowerCase().includes(term)
     );
   });
 

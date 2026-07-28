@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from pathlib import Path as _Path
 
@@ -33,6 +34,36 @@ from shogun.schemas.common import ApiResponse
 from shogun.services.agent_flow_service import AgentFlowService
 
 router = APIRouter(prefix="/agent-flows", tags=["Agent Flows"])
+
+_SAMURAI_NATIVE_READ_NODES = {
+    "fetch_inbox": "Email Read",
+    "list_calendar_events": "Calendar Read",
+}
+
+
+def _validate_agentflow_tool_contract(nodes: list[dict]) -> None:
+    """Reject Samurai prompts that request tools the Samurai executor cannot receive."""
+    for node in nodes:
+        if node.get("node_type") != "samurai":
+            continue
+        config = node.get("config") or {}
+        task = str(config.get("task_description") or "")
+        declared = {
+            str(name)
+            for name in [*(config.get("required_tools") or []), *(config.get("allowed_tools") or [])]
+        }
+        requested = [
+            name
+            for name in _SAMURAI_NATIVE_READ_NODES
+            if name in declared or re.search(rf"\b{re.escape(name)}\b", task, re.IGNORECASE)
+        ]
+        if requested:
+            replacements = ", ".join(_SAMURAI_NATIVE_READ_NODES[name] for name in requested)
+            label = str(node.get("label") or "Untitled Samurai")
+            raise ValueError(
+                f"Samurai node '{label}' requests native tool(s) {', '.join(requested)}, but Samurai nodes "
+                f"are synthesis-only. Add upstream {replacements} node(s) and compile their outputs instead."
+            )
 
 
 # ── List all flows ───────────────────────────────────────────
@@ -909,6 +940,7 @@ async def save_graph(
     """Atomically save the full canvas graph (all nodes and edges)."""
     proposed = [n.model_dump() for n in body.nodes]
     try:
+        _validate_agentflow_tool_contract(proposed)
         await _validate_subflow_graph(svc.session, flow_id, proposed)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

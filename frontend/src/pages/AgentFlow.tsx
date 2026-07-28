@@ -74,6 +74,7 @@ import {
   Code2,
 } from 'lucide-react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { logSamuraiDiagnostic } from '../lib/samuraiDiagnostics';
 import { useTemplateCatalog } from '../i18n/templateCatalog';
@@ -220,6 +221,8 @@ function formatRunTimestamp(value?: string | null): string {
 
 const NODE_PALETTE = [
   { type: 'samurai',         label: 'Samurai',          icon: Users,     color: '#d4a017', desc: 'Task worker / sub-agent' },
+  { type: 'email_read',      label: 'Email Read',       icon: Mail,      color: '#f472b6', desc: 'Fetch governed inbox summaries' },
+  { type: 'calendar_read',   label: 'Calendar Read',    icon: Calendar,  color: '#818cf8', desc: 'Fetch governed calendar events' },
   { type: 'coding',          label: 'Coding',           icon: Code2,     color: '#14b8a6', desc: 'Governed IDE and programming memory' },
   { type: 'shogun_approval', label: 'Shogun Approval',  icon: Shield,    color: '#4a8cc7', desc: 'Approval gate' },
   { type: 'logic',           label: 'Logic / Decision', icon: GitBranch, color: '#a78bfa', desc: 'Branching logic' },
@@ -241,6 +244,8 @@ const NODE_PALETTE = [
 
 const nodeColors: Record<string, string> = {
   samurai: '#d4a017',
+  email_read: '#f472b6',
+  calendar_read: '#818cf8',
   coding: '#14b8a6',
   shogun_approval: '#4a8cc7',
   logic: '#a78bfa',
@@ -257,6 +262,8 @@ const nodeColors: Record<string, string> = {
 
 const nodeIcons: Record<string, React.ElementType> = {
   samurai: Users,
+  email_read: Mail,
+  calendar_read: Calendar,
   coding: Code2,
   shogun_approval: Shield,
   logic: GitBranch,
@@ -313,6 +320,7 @@ function ExecutionTreeNode({ node }: { node: any }) {
 }
 
 function FlowNode({ id, data, selected, type }: { id: string; data: Record<string, any>; selected: boolean; type: string }) {
+  const navigate = useNavigate();
   const color = nodeColors[type] || '#d4a017';
   const Icon = nodeIcons[type] || Users;
   const config: Record<string, any> = data.config || {};
@@ -322,6 +330,21 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
   const executionOutput = authoritativeState?.output ?? data.execution_output ?? '';
   const executionRunId = resultContext?.runId || data.execution_run_id || null;
   const isRunning = executionStatus === 'running';
+  const openFailureLog = (event: React.SyntheticEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const params = new URLSearchParams({
+      event_type: 'agent_flow.node.failed',
+      node_id: id,
+    });
+    if (authoritativeState?.failure_event_id) {
+      params.set('event_id', authoritativeState.failure_event_id);
+    }
+    if (executionRunId) {
+      params.set('trace_id', executionRunId);
+    }
+    navigate(`/logs?${params.toString()}`);
+  };
 
   return (
     <div
@@ -439,6 +462,28 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             {!config.task_description && !config.routing_profile_name && (
               <p className="text-[9px] text-[#7a8899]/50 italic">Configure task...</p>
             )}
+          </>
+        )}
+        {type === 'email_read' && (
+          <>
+            <div className="flex items-center gap-1">
+              <Mail className="w-2.5 h-2.5 text-[#f472b6]/70" />
+              <span className="text-[8px] font-bold text-[#f472b6]/80 uppercase">
+                {config.unread_only !== false ? 'Unread' : 'Recent'} · {config.folder || 'INBOX'}
+              </span>
+            </div>
+            <p className="text-[9px] text-[#7a8899]">Up to {config.per_page || 10} message summaries</p>
+          </>
+        )}
+        {type === 'calendar_read' && (
+          <>
+            <div className="flex items-center gap-1">
+              <Calendar className="w-2.5 h-2.5 text-[#818cf8]/70" />
+              <span className="text-[8px] font-bold text-[#818cf8]/80 uppercase">
+                {config.start_date && config.end_date ? 'Explicit range' : `${config.days_ahead || 1} day window`}
+              </span>
+            </div>
+            <p className="text-[9px] text-[#7a8899]">Structured event summaries</p>
           </>
         )}
         {type === 'shogun_approval' && (
@@ -672,9 +717,20 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             </div>
           )}
           {executionStatus === 'failed' && (
-            <div className="w-5 h-5 rounded-full bg-[#ef4444] flex items-center justify-center shadow-[0_0_8px_rgba(239,68,68,0.4)]">
+            <button
+              type="button"
+              title="Open exact failure log"
+              aria-label={`Open failure log for ${data.label || 'node'}`}
+              className="nodrag nopan w-5 h-5 rounded-full bg-[#ef4444] hover:bg-[#dc2626] flex items-center justify-center shadow-[0_0_8px_rgba(239,68,68,0.4)] focus:outline-none focus:ring-2 focus:ring-white/70"
+              onPointerDown={(event) => event.stopPropagation()}
+              onPointerUp={openFailureLog}
+              onClick={(event) => {
+                // Keyboard activation has no preceding pointer event.
+                if (event.detail === 0) openFailureLog(event);
+              }}
+            >
               <XCircle className="w-3 h-3 text-white" />
-            </div>
+            </button>
           )}
           {executionStatus === 'skipped' && (
             <div className="w-5 h-5 rounded-full bg-[#7a8899] flex items-center justify-center">
@@ -690,6 +746,8 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
 // Register custom node types
 const nodeTypes: NodeTypes = {
   samurai: FlowNode,
+  email_read: FlowNode,
+  calendar_read: FlowNode,
   coding: FlowNode,
   shogun_approval: FlowNode,
   logic: FlowNode,
@@ -1119,6 +1177,14 @@ function NodeInspector({
   const color = nodeColors[nodeType] || '#d4a017';
   const Icon = nodeIcons[nodeType] || Users;
   const config: Record<string, any> = (node.data as Record<string, any>)?.config || {};
+  const samuraiToolContract = [
+    config.task_description,
+    ...(Array.isArray(config.required_tools) ? config.required_tools : []),
+    ...(Array.isArray(config.allowed_tools) ? config.allowed_tools : []),
+  ].join(' ');
+  const unsupportedSamuraiTools = ['fetch_inbox', 'list_calendar_events'].filter((tool) =>
+    new RegExp(`\\b${tool}\\b`, 'i').test(samuraiToolContract),
+  );
   const memoryInfusion = (config.memory_infusion || {}) as OutputMemoryInfusionConfig;
   const [subflowValidation, setSubflowValidation] = useState<{valid: boolean; warnings: string[]; errors: string[]} | null>(null);
   const [validatingSubflow, setValidatingSubflow] = useState(false);
@@ -1230,6 +1296,15 @@ function NodeInspector({
                 placeholder="Describe what this Samurai should do..."
               />
             </div>
+
+            {unsupportedSamuraiTools.length > 0 && (
+              <div className="rounded-lg border border-[#ef4444]/30 bg-[#ef4444]/10 p-2.5">
+                <p className="text-[9px] font-bold text-[#ef4444]">Native tools are not available inside Samurai nodes.</p>
+                <p className="mt-1 text-[8px] leading-relaxed text-[#fca5a5]">
+                  Add Email Read / Calendar Read nodes upstream, then ask this Samurai to compile their predecessor outputs.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Expected Output</label>
@@ -2462,6 +2537,68 @@ Content-Type: application/json
           </>
         )}
 
+        {/* Email Read fields */}
+        {nodeType === 'email_read' && (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Mail Folder</label>
+              <input
+                type="text"
+                value={config.folder || 'INBOX'}
+                onChange={(e) => updateConfig('folder', e.target.value)}
+                className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#f472b6] transition-colors outline-none"
+                placeholder="INBOX"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Page</label>
+                <input type="number" min={1} value={config.page || 1} onChange={(e) => updateConfig('page', Number(e.target.value))} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#f472b6] outline-none" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Messages</label>
+                <input type="number" min={1} max={50} value={config.per_page || 10} onChange={(e) => updateConfig('per_page', Number(e.target.value))} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#f472b6] outline-none" />
+              </div>
+            </div>
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-[#1a2040] bg-[#0a0e1a] p-2.5">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-[#c8d0d8]">Unread only</span>
+              <input type="checkbox" checked={config.unread_only !== false} onChange={(e) => updateConfig('unread_only', e.target.checked)} className="accent-[#f472b6]" />
+            </label>
+            <div className="rounded-lg border border-[#f472b6]/20 bg-[#f472b6]/5 p-2.5 text-[8px] text-[#f472b6]/80">
+              Read-only and governed by Torii posture plus ToolGate. Outputs structured message summaries to successor nodes.
+            </div>
+          </>
+        )}
+
+        {/* Calendar Read fields */}
+        {nodeType === 'calendar_read' && (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Dynamic Window (days)</label>
+              <input
+                type="number"
+                min={1}
+                max={31}
+                value={config.days_ahead || 1}
+                onChange={(e) => updateConfig('days_ahead', Number(e.target.value))}
+                className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#818cf8] outline-none"
+              />
+              <p className="text-[8px] text-[#7a8899]">One day means today. Leave the explicit range empty for scheduled flows.</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Explicit Start (optional)</label>
+              <input type="datetime-local" value={config.start_date || ''} onChange={(e) => updateConfig('start_date', e.target.value || null)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#818cf8] outline-none" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Explicit End (optional)</label>
+              <input type="datetime-local" value={config.end_date || ''} onChange={(e) => updateConfig('end_date', e.target.value || null)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#818cf8] outline-none" />
+            </div>
+            <div className="rounded-lg border border-[#818cf8]/20 bg-[#818cf8]/5 p-2.5 text-[8px] text-[#818cf8]/80">
+              Read-only and governed by Torii posture plus ToolGate. Outputs structured event summaries to successor nodes.
+            </div>
+          </>
+        )}
+
         {/* Email Send fields */}
         {nodeType === 'email_send' && (
           <>
@@ -3036,6 +3173,15 @@ export function AgentFlowCanvas({
         artifact_policy: 'retain_all',
         output_publication: 'summary_and_final',
         failure_policy: 'pause',
+      } : nodeType === 'email_read' ? {
+        folder: 'INBOX',
+        page: 1,
+        per_page: 10,
+        unread_only: true,
+      } : nodeType === 'calendar_read' ? {
+        days_ahead: 1,
+        start_date: null,
+        end_date: null,
       } : {};
       const newNode: Node = {
         id: crypto.randomUUID(),

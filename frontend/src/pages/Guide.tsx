@@ -921,24 +921,27 @@ export function Guide() {
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
                          <div className="font-bold text-shogun-text flex items-center gap-2"><Workflow className="w-4 h-4 text-violet-400" /> Agent Flow — Workflow Builder</div>
-                         <p className="text-xs text-shogun-subdued leading-relaxed">A visual drag-and-drop canvas for designing multi-step AI pipelines. Build workflows by chaining 13 node types, including the governed, memory-aware Coding node:</p>
+                         <p className="text-xs text-shogun-subdued leading-relaxed">A visual drag-and-drop canvas for designing multi-step AI pipelines. Build workflows by chaining 15 node types, including governed native reads and the memory-aware Coding node:</p>
                          <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
                             <li><strong>Input:</strong> The entry point — accepts user text, data, or triggers.</li>
                             <li><strong>Samurai:</strong> Delegates a task to a specific sub-agent.</li>
                             <li><strong>Shogun Approval:</strong> Pauses the flow for human confirmation.</li>
                             <li><strong>Logic:</strong> A conditional gate — routes based on a condition.</li>
                             <li><strong>Mado Browser:</strong> Automates a web browsing action.</li>
+                            <li><strong>Email Read / Calendar Read:</strong> Fetches governed, structured inbox summaries or calendar events for successor nodes.</li>
                             <li><strong>Email Send / Telegram &amp; Teams:</strong> Delivers results through configured channels.</li>
                             <li><strong>Workspace / Office:</strong> Performs governed file operations or works with Office documents.</li>
                             <li><strong>Subflow:</strong> Runs a reusable child Agent Flow.</li>
                             <li><strong>Stack Orchestrator:</strong> Supervises a long-running Flow Stack.</li>
                             <li><strong>Output:</strong> Collects and presents the final result, with optional memory infusion.</li>
                          </ul>
+                         <p className="text-xs text-shogun-subdued leading-relaxed mt-2"><strong>Samurai nodes are synthesis-only:</strong> they receive predecessor outputs and do not inherit Shogun's native tools. Put Email Read and Calendar Read nodes before the Samurai, then ask it to compile their structured outputs. Invalid direct tool requests are rejected when the flow is saved and again at runtime.</p>
                       </div>
                       <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
                          <div className="font-bold text-shogun-text flex items-center gap-2"><GitBranch className="w-4 h-4 text-violet-400" /> Canvas, Execution & AI Creation</div>
                          <p className="text-xs text-shogun-subdued leading-relaxed">Position nodes freely on the visual canvas and draw directed edges between them. Edges define execution order — data flows from source to target. The canvas supports pan, zoom, and node reordering. Workflows are saved to the database.</p>
                          <p className="text-xs text-shogun-subdued leading-relaxed mt-2">Click <strong>Execute</strong> to run a workflow. Nodes process in topological order, passing outputs as inputs to the next. Shogun Approval nodes pause until you confirm.</p>
+                         <p className="text-xs text-shogun-subdued leading-relaxed mt-2"><strong>Failure logs:</strong> When a node fails, click its red status icon to open the exact audit event in Logs. The event detail shows the flow run, node identity, error type, and complete error message.</p>
                          <p className="text-xs text-shogun-subdued leading-relaxed mt-2">Shogun can manage workflows natively: <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">list_agent_flows</code> discovers flows and stacks, <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">get_agent_flow</code> reads a complete graph, and <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">patch_agent_flow</code> safely changes selected nodes or edges. It can also create, replace, and delete flows. The agent is instructed to inspect a flow before editing it.</p>
                       </div>
                       <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">

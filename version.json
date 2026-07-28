@@ -1,8 +1,8 @@
 {
-  "version": "1.47.11",
+  "version": "1.47.13",
   "name": "Shogun OS",
-  "build": 162,
+  "build": 164,
   "channel": "stable",
-  "released": "2026-07-28T05:33:55Z",
-  "changelog": "Align the Grand Reference with navigation and add clean Flow Stack handovers with configurable final output publication."
+  "released": "2026-07-28T06:17:35Z",
+  "changelog": "Deep-link failed AgentFlow nodes to exact audit events with complete error details."
 }
