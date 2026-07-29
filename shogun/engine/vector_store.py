@@ -178,6 +178,14 @@ class VectorStore:
         self.client.upsert(collection_name=COLLECTION_NAME, points=points)
         return len(points)
 
+    def set_payload(self, memory_id: str, payload: dict[str, Any]) -> None:
+        """Attach metadata to an existing point without re-embedding it."""
+        self.client.set_payload(
+            collection_name=COLLECTION_NAME,
+            payload=payload,
+            points=[memory_id],
+        )
+
     # ── Search ───────────────────────────────────────────────────
 
     def search(

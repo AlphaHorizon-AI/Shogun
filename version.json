@@ -1,8 +1,8 @@
 {
-  "version": "1.47.15",
+  "version": "1.47.16",
   "name": "Shogun OS",
-  "build": 166,
+  "build": 167,
   "channel": "stable",
-  "released": "2026-07-29T04:06:44Z",
-  "changelog": "Add backward-compatible scoped cascade memory retrieval with Telegram and Teams isolation diagnostics."
+  "released": "2026-07-29T04:33:44Z",
+  "changelog": "Add the backward-compatible Kiroku MemoryGraph foundation with safe legacy backfill, conflict resolution, and controlled dual-write rollout."
 }

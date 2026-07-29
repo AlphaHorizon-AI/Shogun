@@ -142,6 +142,8 @@ class MemoryService(BaseService[MemoryRecord]):
                     "conversation_id": record.conversation_id,
                     "topic_id": record.topic_id,
                     "policy_version": record.policy_version,
+                    "graph_node_id": str(record.id),
+                    "graph_status": "active" if settings.memory_graph_write_mode == "dual" else "pending",
                 },
             )
             # Store the Qdrant point ID on the record
@@ -149,6 +151,17 @@ class MemoryService(BaseService[MemoryRecord]):
             await self.session.flush()
         except Exception as e:
             logger.warning("Failed to upsert memory %s to Qdrant: %s", record.id, e)
+
+        if settings.memory_graph_write_mode == "dual":
+            try:
+                # A savepoint keeps memory creation healthy if the optional
+                # graph layer is temporarily unavailable.
+                async with self.session.begin_nested():
+                    from shogun.services.memory_graph_service import MemoryGraphService
+
+                    await MemoryGraphService(self.session).ensure_memory_node(record)
+            except Exception as e:
+                logger.warning("Failed to link memory %s into MemoryGraph: %s", record.id, e)
 
         return record
 
@@ -397,6 +410,16 @@ class MemoryService(BaseService[MemoryRecord]):
                 store.delete_point(str(memory_id))
             except Exception as e:
                 logger.warning("Failed to delete point %s from Qdrant: %s", memory_id, e)
+            if settings.memory_graph_write_mode == "dual":
+                try:
+                    async with self.session.begin_nested():
+                        from shogun.services.memory_graph_service import MemoryGraphService
+
+                        await MemoryGraphService(self.session).ensure_memory_node(
+                            record, update_vector=False
+                        )
+                except Exception as e:
+                    logger.warning("Failed to deprecate MemoryGraph node %s: %s", memory_id, e)
         return record
 
     # ── Reindex ─────────────────────────────────────────────────
@@ -443,6 +466,8 @@ class MemoryService(BaseService[MemoryRecord]):
                     "conversation_id": r.conversation_id,
                     "topic_id": r.topic_id,
                     "policy_version": r.policy_version,
+                    "graph_node_id": str(r.id),
+                    "graph_status": "active" if settings.memory_graph_write_mode == "dual" else "pending",
                 },
             })
 

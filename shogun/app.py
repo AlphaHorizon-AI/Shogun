@@ -666,6 +666,7 @@ def create_app() -> FastAPI:
     from shogun.api.channels import router as channels_router
     from shogun.api.logs import router as logs_router
     from shogun.api.memory import router as memory_router
+    from shogun.api.memory_graph import router as memory_graph_router
     from shogun.api.dojo import router as dojo_router
     from shogun.api.samurai_roles import router as samurai_roles_router
     from shogun.api.kaizen import router as kaizen_router
@@ -707,6 +708,7 @@ def create_app() -> FastAPI:
     app.include_router(channels_router, prefix=prefix)
     app.include_router(logs_router, prefix=prefix)
     app.include_router(memory_router, prefix=prefix)
+    app.include_router(memory_graph_router, prefix=prefix)
     app.include_router(dojo_router, prefix=prefix)
     app.include_router(samurai_roles_router, prefix=prefix)
     app.include_router(kaizen_router, prefix=prefix)

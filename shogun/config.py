@@ -136,6 +136,8 @@ class Settings(BaseSettings):
     memory_cascade_stage_limit: int = 8
     memory_cascade_min_results: int = 5
     memory_cascade_diagnostics_enabled: bool = True
+    # Phase 2 rollout stays off until the graph migration/backfill is verified.
+    memory_graph_write_mode: Literal["off", "manual", "dual"] = "off"
     visual_max_upload_mb: int = 20
     visual_retention_days: int = 30
     file_format_handling_enabled: bool = True
