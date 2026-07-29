@@ -11,6 +11,7 @@ from shogun.api.deps import get_memory_service
 from shogun.schemas.common import ApiResponse, DecayClass
 from shogun.schemas.memory import (
     CascadeRetrievalRunResponse,
+    MemoryContextPackResponse,
     MemoryExportJobResponse,
     MemoryExportPreview,
     MemoryExportRequest,
@@ -311,6 +312,16 @@ async def search_memory(
             meta={"query": body.query, "count": 0, "error": str(e)},
         )
 
+    context_pack_response = None
+    if diagnostic and body.include_context_pack and diagnostic.plan_json.get("context_pack_id"):
+        from shogun.services.memory_context_pack_service import MemoryContextPackService
+
+        pack = await MemoryContextPackService(svc.session).get(
+            uuid.UUID(diagnostic.plan_json["context_pack_id"])
+        )
+        if pack:
+            context_pack_response = MemoryContextPackResponse.model_validate(pack)
+
     return ApiResponse(
         data=results,
         meta={
@@ -323,8 +334,38 @@ async def search_memory(
                 if diagnostic and body.include_diagnostics
                 else None
             ),
+            "context_pack": context_pack_response,
         },
     )
+
+
+@router.get("/context-packs/{pack_id}", response_model=ApiResponse[MemoryContextPackResponse])
+async def get_context_pack(
+    pack_id: uuid.UUID,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    from shogun.services.memory_context_pack_service import MemoryContextPackService
+
+    pack = await MemoryContextPackService(svc.session).get(pack_id)
+    if pack is None:
+        raise HTTPException(status_code=404, detail="Memory context pack not found")
+    return ApiResponse(data=MemoryContextPackResponse.model_validate(pack))
+
+
+@router.get(
+    "/context-packs/by-correlation/{correlation_id}",
+    response_model=ApiResponse[MemoryContextPackResponse],
+)
+async def get_context_pack_by_correlation(
+    correlation_id: str,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    from shogun.services.memory_context_pack_service import MemoryContextPackService
+
+    pack = await MemoryContextPackService(svc.session).by_correlation(correlation_id)
+    if pack is None:
+        raise HTTPException(status_code=404, detail="Memory context pack not found")
+    return ApiResponse(data=MemoryContextPackResponse.model_validate(pack))
 
 
 @router.get("/retrieval-diagnostics", response_model=ApiResponse)

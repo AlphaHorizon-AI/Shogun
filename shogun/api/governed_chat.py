@@ -191,6 +191,7 @@ async def _shogun_governed_chat(
 
     # ── 5. Retrieve memories (semantic search + pinned) ──
     memory_context_block = ""
+    kiroku_context_block = ""
     memory_count = 0
     recalled_memory_ids: list[uuid.UUID] = []
     try:
@@ -211,6 +212,18 @@ async def _shogun_governed_chat(
                 scope=active_scope,
                 limit=5,
             )
+            if (
+                _retrieval_diagnostic
+                and settings.memory_graph_retrieval_mode == "active"
+                and _retrieval_diagnostic.plan_json.get("context_pack_id")
+            ):
+                from shogun.services.memory_context_pack_service import MemoryContextPackService
+
+                pack = await MemoryContextPackService(mem_db).get(
+                    uuid.UUID(_retrieval_diagnostic.plan_json["context_pack_id"])
+                )
+                if pack:
+                    kiroku_context_block = MemoryContextPackService.render_prompt_block(pack)
 
             # Pinned memories (always included)
             pinned = await mem_svc.get_pinned(
@@ -246,7 +259,11 @@ async def _shogun_governed_chat(
             if recalled_memory_ids:
                 await mem_db.commit()
             if memory_entries:
-                memory_context_block = "\n\n[MEMORY CONTEXT — recalled from Archives]\n" + "\n".join(memory_entries)
+                if kiroku_context_block:
+                    pinned_entries = [entry for entry in memory_entries if entry.startswith("[PINNED]")]
+                    memory_context_block = "\n\n" + "\n".join([*pinned_entries, kiroku_context_block])
+                else:
+                    memory_context_block = "\n\n[MEMORY CONTEXT — recalled from Archives]\n" + "\n".join(memory_entries)
 
     except Exception as exc:
         logger.warning("Governed Chat: memory retrieval failed: %s", exc)

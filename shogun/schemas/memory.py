@@ -79,6 +79,7 @@ class MemorySearchRequest(ShogunBase):
     scope: MemoryScopeEnvelope | None = None
     retrieval_mode: MemoryRetrievalMode | None = None
     include_diagnostics: bool = False
+    include_context_pack: bool = False
     # Allow caller to override reranking weights per query
     weight_overrides: dict[str, float] | None = None
 
@@ -244,6 +245,23 @@ class CascadeRetrievalRunResponse(ShogunBase):
     duration_ms: int | None = None
     created_at: datetime
     completed_at: datetime | None = None
+
+
+class MemoryContextPackResponse(ShogunBase):
+    id: uuid.UUID
+    correlation_id: str
+    agent_id: uuid.UUID | None = None
+    status: str
+    scope_json: dict = Field(default_factory=dict)
+    content_json: dict = Field(default_factory=dict)
+    included_memory_ids: list = Field(default_factory=list)
+    graph_expanded_memory_ids: list = Field(default_factory=list)
+    excluded_json: list = Field(default_factory=list)
+    warnings_json: list = Field(default_factory=list)
+    policy_notes: list = Field(default_factory=list)
+    token_estimate: int = 0
+    created_at: datetime
+    expires_at: datetime | None = None
 
 
 # ── Reinforcement Events ─────────────────────────────────────

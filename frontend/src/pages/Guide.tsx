@@ -2354,6 +2354,34 @@ npm start`}</pre>
                       <p className="text-xs text-shogun-subdued leading-relaxed">In Mission Mode, Shogun is instructed to proactively retain durable guidance when you explicitly correct it, tool use reveals verified information likely to help future work, or you confirm a reusable decision, preference, or idea. It must avoid transient, speculative, duplicated, sensitive, or task-local material and record source and confidence where applicable.</p>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Two cases also have dedicated automatic capture: explicit operator corrections become durable semantic memories, and completed Mado web research becomes a sourced procedural memory. Existing matches are reused or reinforced instead of blindly duplicated. Governed Chat mechanically captures explicit corrections but cannot browse or use Mission tools.</p>
                    </div>
+                   <div className="shogun-card space-y-4 md:col-span-2 border-l-2 border-shogun-blue/50">
+                      <div>
+                         <div className="font-bold text-shogun-text flex items-center gap-2"><Network className="w-4 h-4 text-shogun-blue" /> How the New Memory System Works</div>
+                         <p className="mt-2 text-xs text-shogun-subdued leading-relaxed">Shogun now uses three cooperating layers. Your existing Archive memories stay in place; the graph adds connections and safer retrieval around them.</p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                         <div className="rounded border border-shogun-border bg-shogun-bg/40 p-3 space-y-1">
+                            <div className="text-xs font-bold text-shogun-gold">Phase 1 — Scoped Recall</div>
+                            <p className="text-xs text-shogun-subdued leading-relaxed">First, Shogun limits the search to memories the current user and agent are allowed to access within the relevant team, workspace, project, workflow, conversation, and topic.</p>
+                         </div>
+                         <div className="rounded border border-shogun-border bg-shogun-bg/40 p-3 space-y-1">
+                            <div className="text-xs font-bold text-shogun-gold">Phase 2 — MemoryGraph</div>
+                            <p className="text-xs text-shogun-subdued leading-relaxed">Next, Kiroku connects related memories to the people, agents, projects, workflows, conversations, and topics they belong to. It can also track when one memory supersedes or conflicts with another.</p>
+                         </div>
+                         <div className="rounded border border-shogun-border bg-shogun-bg/40 p-3 space-y-1">
+                            <div className="text-xs font-bold text-shogun-gold">Phase 3 — Governed Retrieval</div>
+                            <p className="text-xs text-shogun-subdued leading-relaxed">Finally, Shogun starts with the best meaning-based matches, follows only approved graph connections, removes stale or conflicting material, applies Gensui and ToolGate policy checks, and builds a small, auditable context pack for the answer.</p>
+                         </div>
+                      </div>
+                      <div className="rounded border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-1">
+                         <div className="text-xs font-bold text-emerald-400 flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> Safe Migration</div>
+                         <p className="text-xs text-shogun-subdued leading-relaxed">No existing Archive memory is replaced or discarded. The graph is built alongside the current memory store and can run in shadow mode before it becomes active. Graph relationships never override access rules, and cross-agent memory sharing stays off unless an operator explicitly enables it.</p>
+                      </div>
+                      <div className="rounded border border-shogun-border bg-shogun-bg/40 p-3 space-y-1">
+                         <div className="text-xs font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-shogun-blue" /> Recommended Rollout</div>
+                         <p className="text-xs text-shogun-subdued leading-relaxed">Upgrade the database first, backfill the graph from existing memories, enable dual writing, observe graph retrieval in shadow mode, and switch it to active only after the results have been verified. This makes the migration gradual and reversible.</p>
+                      </div>
+                   </div>
                 </div>
              </section>
 

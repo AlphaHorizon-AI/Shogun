@@ -41,6 +41,7 @@ from shogun.db.models.execution_event import ExecutionEvent
 from shogun.db.models.memory_record import MemoryRecord, MemoryProvenanceLink
 from shogun.db.models.memory_retrieval import MemoryRetrievalRun
 from shogun.db.models.memory_graph import MemoryGraphConflict, MemoryGraphEdge, MemoryGraphNode
+from shogun.db.models.memory_context_pack import MemoryContextPack
 from shogun.db.models.memory_export import MemoryExportItem, MemoryExportJob
 from shogun.db.models.memory_import import MemoryImportBatch, MemoryImportItem
 from shogun.db.models.file_artifact import FileArtifact
@@ -119,6 +120,7 @@ __all__ = [
     "MemoryGraphNode",
     "MemoryGraphEdge",
     "MemoryGraphConflict",
+    "MemoryContextPack",
     "MemoryExportJob",
     "MemoryExportItem",
     "MemoryImportBatch",

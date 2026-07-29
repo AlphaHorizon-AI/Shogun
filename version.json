@@ -1,8 +1,8 @@
 {
-  "version": "1.47.16",
+  "version": "1.47.17",
   "name": "Shogun OS",
-  "build": 167,
+  "build": 168,
   "channel": "stable",
-  "released": "2026-07-29T04:33:44Z",
-  "changelog": "Add the backward-compatible Kiroku MemoryGraph foundation with safe legacy backfill, conflict resolution, and controlled dual-write rollout."
+  "released": "2026-07-29T06:43:32Z",
+  "changelog": "Complete governed graph-powered cascade retrieval with auditable context packs and a fully translated memory guide."
 }

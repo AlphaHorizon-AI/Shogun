@@ -138,6 +138,18 @@ class Settings(BaseSettings):
     memory_cascade_diagnostics_enabled: bool = True
     # Phase 2 rollout stays off until the graph migration/backfill is verified.
     memory_graph_write_mode: Literal["off", "manual", "dual"] = "off"
+    memory_graph_retrieval_mode: Literal["off", "shadow", "active"] = "off"
+    memory_graph_max_depth: int = 2
+    memory_graph_max_expansion_results: int = 20
+    memory_graph_min_edge_weight: float = 0.2
+    memory_graph_shared_agent_reads_enabled: bool = False
+    memory_graph_allowed_relationships: str = (
+        "belongs_to,stored_in_topic,part_of_workflow,related_to,supports,"
+        "depends_on,derived_from,mentions,supersedes"
+    )
+    memory_context_pack_max_tokens: int = 2000
+    memory_context_pack_retention_minutes: int = 60
+    memory_graph_stale_relevance_threshold: float = 0.05
     visual_max_upload_mb: int = 20
     visual_retention_days: int = 30
     file_format_handling_enabled: bool = True
