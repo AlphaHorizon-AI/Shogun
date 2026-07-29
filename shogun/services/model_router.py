@@ -87,6 +87,13 @@ DEFAULT_PROFILES = {
     },
 }
 
+AUTOMATIC_PROFILE_KEYS = frozenset(key for key in DEFAULT_PROFILES if key != "custom")
+
+
+def is_automatic_profile_name(name: str | None) -> bool:
+    """Return whether a profile is one of the protected heuristic presets."""
+    return _slug(str(name or "")) in AUTOMATIC_PROFILE_KEYS
+
 SIMPLE_TYPES = {"simple_chat", "classification", "extraction", "memory_write", "memory_retrieval"}
 MODERATE_TYPES = {"summarization", "productivity_task", "browser_task", "skill_selection", "context_compaction"}
 COMPLEX_TYPES = {"planning", "coding_plan", "coding_edit", "stack_planning", "stack_step_execution"}
@@ -127,6 +134,33 @@ def is_concrete_model_id(model_id: str | None, provider_type: str = "") -> bool:
         return False
     generic = {re.sub(r"[^a-z0-9]+", "", value) for value in GENERIC_PROVIDER_MODEL_IDS}
     return normalized not in generic and normalized != provider_label
+
+
+def legacy_provider_name_model_id(name: str | None, provider_type: str) -> str | None:
+    """Recover model IDs stored as provider names by older Katana versions.
+
+    Local rows historically used tags such as ``qwen3:8b``. Cloud rows used
+    IDs such as ``openai/gpt-oss-120b`` or ``gemini-3.5-flash``. Require a
+    provider-specific model shape so a human label such as ``Primary OpenAI``
+    is never promoted into the routing registry.
+    """
+    candidate = str(name or "").strip()
+    if not is_concrete_model_id(candidate, provider_type):
+        return None
+    lowered = candidate.lower()
+    if provider_type in {"ollama", "lmstudio", "local"}:
+        return candidate
+    if provider_type == "openrouter" and "/" in candidate:
+        return candidate
+    if provider_type == "google" and lowered.startswith(("gemini-", "models/gemini-")):
+        return candidate
+    if provider_type == "anthropic" and lowered.startswith("claude-"):
+        return candidate
+    if provider_type == "openai" and lowered.startswith(("gpt-", "chatgpt-", "o1", "o3", "o4")):
+        return candidate
+    if provider_type == "custom" and any(separator in candidate for separator in ("/", ":")):
+        return candidate
+    return None
 
 
 def _slug(value: str) -> str:
@@ -318,6 +352,15 @@ class ModelRegistryService:
                     configured.get("model_id"),
                     configured.get("model"),
                 ]
+            # Older Katana versions created one provider row per selected model
+            # and stored its concrete ID in the provider name. Repair both
+            # local and cloud installations into the unified registry.
+            if not any(model_names) and not has_explicit_selection:
+                legacy_model_id = legacy_provider_name_model_id(
+                    provider.name, provider.provider_type
+                )
+                if legacy_model_id:
+                    model_names = [legacy_model_id]
             model_names = list(dict.fromkeys(
                 str(model_id).strip()
                 for model_id in model_names
@@ -556,6 +599,15 @@ class ModelRoutingService:
             for item in candidates
             if item.provider_id and item.provider_id in providers and providers[item.provider_id].status == "connected"
         ]
+        context_capacity_exhausted = False
+        if request.context_size_estimate and task_type not in VISION_TYPES:
+            before_context_filter = len(candidates)
+            candidates = [
+                item
+                for item in candidates
+                if request.context_size_estimate <= max(1, item.context_window - item.max_output_tokens)
+            ]
+            context_capacity_exhausted = before_context_filter > 0 and not candidates
         if request.local_only:
             candidates = [item for item in candidates if item.local]
         candidates = [
@@ -581,6 +633,11 @@ class ModelRoutingService:
                 detail={"required_capabilities": sorted(requirements), "task_type": task_type},
                 db_session=self.session,
             )
+            if context_capacity_exhausted:
+                raise NoEligibleModelError(
+                    f"No enabled model has enough context capacity for approximately "
+                    f"{request.context_size_estimate} input tokens plus its configured output reserve."
+                )
             raise NoEligibleModelError(f"No eligible model found for this task. Required capabilities: {required}.")
         profile_config = {
             **DEFAULT_PROFILES.get(profile_key, DEFAULT_PROFILES["balanced"]),
@@ -618,6 +675,8 @@ class ModelRoutingService:
             "selected_registry_id": selected.id,
             "selected_model": selected.model_id,
             "selected_provider": selected.provider,
+            "selected_context_window": selected.context_window,
+            "selected_max_output_tokens": selected.max_output_tokens,
             "fallback_model": fallbacks[0].model_id if fallbacks else None,
             "fallback_provider": fallbacks[0].provider if fallbacks else None,
             "reason": reason,
@@ -810,10 +869,49 @@ class ModelUsageLogger:
                 )
             )
         ).one()
+        grouped = (
+            await self.session.execute(
+                select(
+                    ModelUsageEvent.model_id,
+                    ModelUsageEvent.provider,
+                    func.count(ModelUsageEvent.id),
+                    func.sum(ModelUsageEvent.input_tokens),
+                    func.sum(ModelUsageEvent.output_tokens),
+                    func.avg(ModelUsageEvent.input_tokens),
+                    func.max(ModelUsageEvent.input_tokens),
+                    func.avg(ModelUsageEvent.latency_ms),
+                )
+                .group_by(ModelUsageEvent.model_id, ModelUsageEvent.provider)
+                .order_by(func.max(ModelUsageEvent.created_at).desc())
+            )
+        ).all()
+        registry = list((await self.session.execute(select(ModelRegistryEntry))).scalars().all())
+        windows = {(item.provider, item.model_id): item.context_window for item in registry}
+        by_model = {}
+        for model_id, provider, events, input_tokens, output_tokens, avg_input, peak_input, avg_latency in grouped:
+            context_window = windows.get((provider, model_id), 0)
+            by_model[f"{provider}:{model_id}"] = {
+                "model_id": model_id,
+                "provider": provider,
+                "events": events or 0,
+                "input_tokens": input_tokens or 0,
+                "output_tokens": output_tokens or 0,
+                "average_input_tokens": int(avg_input or 0),
+                "peak_input_tokens": peak_input or 0,
+                "context_window": context_window,
+                "average_context_percent": (
+                    round((float(avg_input or 0) / context_window) * 100, 1) if context_window else 0
+                ),
+                "peak_context_percent": (
+                    round((float(peak_input or 0) / context_window) * 100, 1) if context_window else 0
+                ),
+                "average_latency_ms": int(avg_latency or 0),
+            }
         return {
             "events": row[0] or 0,
             "input_tokens": row[1] or 0,
             "output_tokens": row[2] or 0,
             "estimated_cost": float(row[3] or 0),
             "average_latency_ms": int(row[4] or 0),
+            "by_model": by_model,
         }

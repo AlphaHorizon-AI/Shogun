@@ -64,6 +64,10 @@ class ModelRoutingProfileService(BaseService[ModelRoutingProfile]):
         return result.scalars().first()
 
     async def create(self, **kwargs) -> ModelRoutingProfile:
+        from shogun.services.model_router import is_automatic_profile_name
+
+        if is_automatic_profile_name(kwargs.get("name")):
+            raise ValueError("Built-in routing profile names are reserved and read-only")
         if kwargs.get("is_default"):
             await self.session.execute(
                 sa_update(ModelRoutingProfile).values(is_default=False)
@@ -71,6 +75,15 @@ class ModelRoutingProfileService(BaseService[ModelRoutingProfile]):
         return await super().create(**kwargs)
 
     async def update(self, record_id: uuid.UUID, **kwargs) -> ModelRoutingProfile | None:
+        from shogun.services.model_router import is_automatic_profile_name
+
+        current = await self.get_by_id(record_id)
+        if current is None:
+            return None
+        if is_automatic_profile_name(current.name):
+            raise ValueError("Built-in routing profiles are read-only")
+        if "name" in kwargs and is_automatic_profile_name(kwargs.get("name")):
+            raise ValueError("Built-in routing profile names are reserved")
         if kwargs.get("is_default"):
             await self.session.execute(
                 sa_update(ModelRoutingProfile)
@@ -78,3 +91,13 @@ class ModelRoutingProfileService(BaseService[ModelRoutingProfile]):
                 .values(is_default=False)
             )
         return await super().update(record_id, **kwargs)
+
+    async def delete(self, record_id: uuid.UUID) -> bool:
+        from shogun.services.model_router import is_automatic_profile_name
+
+        current = await self.get_by_id(record_id)
+        if current is None:
+            return False
+        if is_automatic_profile_name(current.name):
+            raise ValueError("Built-in routing profiles cannot be deleted")
+        return await super().delete(record_id)

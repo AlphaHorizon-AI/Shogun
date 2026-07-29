@@ -1,25 +1,111 @@
+import html as html_lib
+import re
 import uuid
 from typing import Any
-from shogun.engine.vector_store import get_vector_store
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from shogun.config import settings, PROJECT_ROOT
-from shogun.schemas.common import ApiResponse
 from shogun.api.deps import (
-    get_agent_service, 
-    get_mission_service, 
-    get_security_service
+    get_agent_service,
+    get_mission_service,
+    get_security_service,
 )
+from shogun.config import PROJECT_ROOT, settings
+from shogun.db.models.agent import Agent
+from shogun.db.models.mission import Mission
+from shogun.engine.vector_store import get_vector_store
+from shogun.schemas.common import ApiResponse
 from shogun.services.agent_service import AgentService
 from shogun.services.mission_service import MissionService
 from shogun.services.security_service import SecurityService
-from shogun.db.models.agent import Agent
-from shogun.db.models.mission import Mission
 
 router = APIRouter(prefix="/system", tags=["System"])
+
+
+def _plain_html_text(value: str) -> str:
+    """Return compact human-readable text from a small HTML fragment."""
+    return " ".join(html_lib.unescape(re.sub(r"<[^>]+>", " ", value)).split())
+
+
+def _parse_ollama_search_html(html: str, page: int) -> tuple[list[dict[str, Any]], bool]:
+    """Parse both the current and legacy ollama.com model-search markup."""
+    models: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    capabilities = {"vision", "tools", "thinking", "embedding", "cloud", "audio"}
+    anchor_pattern = re.compile(
+        r'<a\b[^>]*href=["\']/library/([^"\'/?#]+)["\'][^>]*>(.*?)</a>\s*</li>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    for match in anchor_pattern.finditer(html):
+        name = html_lib.unescape(match.group(1)).strip()
+        if not name or name in seen:
+            continue
+        block = match.group(2)
+        seen.add(name)
+        desc_match = re.search(r'<p\b[^>]*break-words[^>]*>(.*?)</p>', block, re.IGNORECASE | re.DOTALL)
+        span_texts = [
+            _plain_html_text(value)
+            for value in re.findall(r'<span\b[^>]*>(.*?)</span>', block, re.IGNORECASE | re.DOTALL)
+        ]
+        pulls_match = re.search(
+            r'<span\b[^>]*>\s*([^<]+?)\s*</span>\s*<span\b[^>]*>[^<]*Pulls?',
+            block, re.IGNORECASE | re.DOTALL,
+        )
+        tags_match = re.search(
+            r'<span\b[^>]*>\s*(\d+)\s*</span>\s*<span\b[^>]*>[^<]*Tags?',
+            block, re.IGNORECASE | re.DOTALL,
+        )
+        updated_match = re.search(
+            r'(?:Updated(?:&nbsp;|\s)*</span>\s*)?<span\b[^>]*>\s*([^<]+?\s+ago)\s*</span>',
+            block, re.IGNORECASE | re.DOTALL,
+        )
+        sizes = [
+            value for value in span_texts
+            if re.fullmatch(r"(?:\d+(?:\.\d+)?|e\d+)b", value.lower())
+        ]
+        models.append({
+            "id": name,
+            "name": name,
+            "description": _plain_html_text(desc_match.group(1)) if desc_match else "",
+            "sizes": list(dict.fromkeys(sizes)),
+            "capabilities": list(dict.fromkeys(
+                value.lower() for value in span_texts if value.lower() in capabilities
+            )),
+            "pulls": _plain_html_text(pulls_match.group(1)) if pulls_match else "0",
+            "tag_count": int(tags_match.group(1)) if tags_match else 0,
+            "updated": _plain_html_text(updated_match.group(1)) if updated_match else "",
+        })
+
+    if not models:
+        for block in re.split(r'<li\s+x-test-model', html)[1:]:
+            name_match = re.search(r'x-test-search-response-title[^>]*>([^<]+)<', block)
+            name = _plain_html_text(name_match.group(1)) if name_match else ""
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            desc_match = re.search(r'break-words[^>]*>([^<]+)<', block)
+            pulls_match = re.search(r'x-test-pull-count[^>]*>([^<]+)<', block)
+            tags_match = re.search(r'x-test-tag-count[^>]*>([^<]+)<', block)
+            updated_match = re.search(r'x-test-updated[^>]*>([^<]+)<', block)
+            models.append({
+                "id": name,
+                "name": name,
+                "description": _plain_html_text(desc_match.group(1)) if desc_match else "",
+                "sizes": [_plain_html_text(value) for value in re.findall(r'x-test-size[^>]*>([^<]+)<', block)],
+                "capabilities": [
+                    _plain_html_text(value)
+                    for value in re.findall(r'x-test-capability[^>]*>([^<]+)<', block)
+                ],
+                "pulls": _plain_html_text(pulls_match.group(1)) if pulls_match else "0",
+                "tag_count": int(tags_match.group(1).strip()) if tags_match else 0,
+                "updated": _plain_html_text(updated_match.group(1)) if updated_match else "",
+            })
+
+    has_more = bool(re.search(rf'/search\?[^"\']*page={page + 1}(?:[^\d]|$)', html, re.IGNORECASE))
+    has_more = has_more or bool(re.search(r'aria-label=["\']Next Page["\']', html, re.IGNORECASE))
+    return models, has_more
 
 
 def _local_model_destination(base_url: str, path: str):
@@ -220,6 +306,8 @@ async def scan_local_models(
     for registry_root in [
         base / "manifests" / "registry.ollama.ai" / "library",
         base / "manifests" / "registry.ollama.ai" / "models",
+        base / "models" / "manifests" / "registry.ollama.ai" / "library",
+        base / "models" / "manifests" / "registry.ollama.ai" / "models",
     ]:
         if registry_root.exists():
             for model_dir in sorted(registry_root.iterdir()):
@@ -349,7 +437,7 @@ async def _auto_register_ollama_provider(model_name: str, base_url: str):
             """),
             {
                 "id": new_id, "name": model_name, "slug": slug,
-                "base_url": base_url, "config": _json.dumps({}), "now": now,
+                "base_url": base_url, "config": _json.dumps({"models": [model_name]}), "now": now,
             },
         )
         await session.commit()
@@ -469,7 +557,7 @@ async def _sync_ollama_providers(ollama_models: list[str], base_url: str):
                     )
                 """),
                 {"id": new_id, "name": model_name, "slug": slug,
-                 "base_url": base_url, "config": _json.dumps({}), "now": now},
+                 "base_url": base_url, "config": _json.dumps({"models": [model_name]}), "now": now},
             )
             _log.info("Auto-registered Ollama model '%s' (synced from CLI)", model_name)
 
@@ -501,7 +589,6 @@ async def search_ollama_models(
     Returns parsed model data including name, description, sizes,
     capabilities, pull counts, and tags — proxied to avoid CORS.
     """
-    import re
     import httpx
     import logging
 
@@ -511,7 +598,7 @@ async def search_ollama_models(
     if q.strip():
         params["q"] = q.strip()
     if p > 1:
-        params["p"] = str(p)
+        params["page"] = str(p)
     if c.strip():
         params["c"] = c.strip()
 
@@ -541,57 +628,7 @@ async def search_ollama_models(
         )
 
     # ── Parse model entries from HTML ──
-    # Each model is in a <li x-test-model> block with an <a href="/library/{name}">
-    models: list[dict] = []
-
-    # Split by model list items
-    model_blocks = re.split(r'<li\s+x-test-model', html)
-
-    for block in model_blocks[1:]:  # skip the first chunk (before first model)
-        model: dict = {}
-
-        # Name: <span x-test-search-response-title>gemma4</span>
-        name_match = re.search(r'x-test-search-response-title[^>]*>([^<]+)<', block)
-        model["name"] = name_match.group(1).strip() if name_match else "unknown"
-
-        # Description: <p class="...break-words...">description text</p>
-        desc_match = re.search(r'break-words[^>]*>([^<]+)<', block)
-        model["description"] = desc_match.group(1).strip() if desc_match else ""
-
-        # Sizes: <span x-test-size ...>e4b</span>
-        sizes = re.findall(r'x-test-size[^>]*>([^<]+)<', block)
-        model["sizes"] = [s.strip() for s in sizes]
-
-        # Capabilities: <span x-test-capability ...>vision</span>
-        caps = re.findall(r'x-test-capability[^>]*>([^<]+)<', block)
-        # Also check for cloud badge
-        if 'cloud' in block.lower() and re.search(r'text-cyan-\d+[^>]*>cloud<', block):
-            caps.append("cloud")
-        model["capabilities"] = [c.strip() for c in caps]
-
-        # Pulls: <span x-test-pull-count>11.3M</span>
-        pulls_match = re.search(r'x-test-pull-count[^>]*>([^<]+)<', block)
-        model["pulls"] = pulls_match.group(1).strip() if pulls_match else "0"
-
-        # Tags count: <span x-test-tag-count>34</span>
-        tags_match = re.search(r'x-test-tag-count[^>]*>([^<]+)<', block)
-        model["tag_count"] = int(tags_match.group(1).strip()) if tags_match else 0
-
-        # Updated: <span x-test-updated>1 week ago</span>
-        updated_match = re.search(r'x-test-updated[^>]*>([^<]+)<', block)
-        model["updated"] = updated_match.group(1).strip() if updated_match else ""
-
-        # Default pull ID: use the model name (user can specify tags)
-        model["id"] = model["name"]
-
-        models.append(model)
-
-    # Check for pagination: if there's a "Next" link or more pages
-    has_more = bool(re.search(r'aria-label="Next Page"', html)) or bool(re.search(r'Next\s*</a>', html))
-    # Alternative: check for page links beyond current
-    if not has_more:
-        next_page = str(p + 1)
-        has_more = f"?p={next_page}" in html or f"&p={next_page}" in html
+    models, has_more = _parse_ollama_search_html(html, p)
 
     _log.info("Ollama search q=%s p=%s: found %d models, has_more=%s", q, p, len(models), has_more)
 

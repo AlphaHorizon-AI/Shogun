@@ -152,7 +152,10 @@ async def create_routing_profile(
 ):
     data = body.model_dump()
     data["rules"] = [r.model_dump() if hasattr(r, "model_dump") else r for r in data.get("rules", [])]
-    record = await svc.create(**data)
+    try:
+        record = await svc.create(**data)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return ApiResponse(data=ModelRoutingProfileResponse.model_validate(record))
 
 
@@ -165,7 +168,10 @@ async def update_routing_profile(
     update_data = body.model_dump(exclude_unset=True)
     if "rules" in update_data and update_data["rules"] is not None:
         update_data["rules"] = [r.model_dump() if hasattr(r, "model_dump") else r for r in update_data["rules"]]
-    record = await svc.update(profile_id, **update_data)
+    try:
+        record = await svc.update(profile_id, **update_data)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not record:
         raise HTTPException(status_code=404, detail="Routing profile not found")
     return ApiResponse(data=ModelRoutingProfileResponse.model_validate(record))
@@ -176,7 +182,10 @@ async def delete_routing_profile(
     profile_id: uuid.UUID,
     svc: ModelRoutingProfileService = Depends(get_model_routing_service),
 ):
-    deleted = await svc.delete(profile_id)
+    try:
+        deleted = await svc.delete(profile_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Routing profile not found")
     return ApiResponse(data={"deleted": True})

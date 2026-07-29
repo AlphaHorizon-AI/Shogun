@@ -413,7 +413,12 @@ async def mark_skill_achieved_and_sync(
     agent_id: str | uuid.UUID,
     openclaw_skill_id: str,
 ) -> bool:
-    """Mark an installed College skill passed and immediately refresh Archives."""
+    """Persist a College pass, then refresh Archives on a best-effort basis.
+
+    The College result is already durable when this function runs.  A vector
+    store or Archives synchronization failure must therefore not roll back the
+    local pass or make the exam endpoint report that the College attempt failed.
+    """
     result = await session.execute(
         select(Skill)
         .join(SkillInstallation, SkillInstallation.skill_id == Skill.id)
@@ -426,5 +431,14 @@ async def mark_skill_achieved_and_sync(
     if not skill:
         return False
     skill.exam_status = "passed"
-    await sync_skills_to_memory(session, agent_id)
+    await session.commit()
+    try:
+        await sync_skills_to_memory(session, agent_id)
+    except Exception as exc:
+        await session.rollback()
+        log.warning(
+            "College skill %s was marked passed, but Archives sync failed: %s",
+            openclaw_skill_id,
+            exc,
+        )
     return True

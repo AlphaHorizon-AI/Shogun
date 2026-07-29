@@ -88,7 +88,10 @@ async def update_profile(profile_id: uuid.UUID, body: ModelRoutingProfileUpdate,
     data = body.model_dump(exclude_unset=True)
     if "rules" in data and data["rules"] is not None:
         data["rules"] = [item.model_dump() if hasattr(item, "model_dump") else item for item in data["rules"]]
-    record = await service.update(profile_id, **data)
+    try:
+        record = await service.update(profile_id, **data)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
     if not record:
         raise HTTPException(404, "Routing profile not found.")
     await db.commit()

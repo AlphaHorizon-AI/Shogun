@@ -25,7 +25,9 @@ from shogun.services.model_router import (
     TaskClassifierService,
     infer_tiers,
     is_concrete_model_id,
+    legacy_provider_name_model_id,
 )
+from shogun.services.model_service import ModelRoutingProfileService
 
 
 @pytest.fixture
@@ -104,6 +106,55 @@ async def test_registry_sync_uses_explicit_models_even_when_definitions_exist(ro
 
 
 @pytest.mark.asyncio
+async def test_registry_sync_recovers_legacy_ollama_provider_model_name(routing_session):
+    provider = ModelProvider(
+        provider_type="ollama",
+        name="qwen3:8b",
+        slug="legacy-qwen3-8b",
+        base_url="http://127.0.0.1:11434",
+        is_local=True,
+        status="connected",
+        config={},
+    )
+    routing_session.add(provider)
+    await routing_session.flush()
+
+    entries = await ModelRegistryService(routing_session).list()
+
+    assert len(entries) == 1
+    assert entries[0].model_id == "qwen3:8b"
+    assert entries[0].enabled is True
+    assert entries[0].capabilities["chat"] is True
+
+
+@pytest.mark.asyncio
+async def test_registry_sync_recovers_legacy_cloud_provider_model_name(routing_session):
+    providers = [
+        ("openrouter", "z-ai/glm-5.2"),
+        ("google", "gemini-3.5-flash"),
+        ("openai", "gpt-5-mini"),
+        ("anthropic", "claude-sonnet-4-5"),
+    ]
+    for provider_type, model_id in providers:
+        routing_session.add(ModelProvider(
+            provider_type=provider_type,
+            name=model_id,
+            slug=f"legacy-{provider_type}",
+            base_url="https://example.test/v1",
+            status="connected",
+            config={},
+        ))
+    await routing_session.flush()
+
+    entries = await ModelRegistryService(routing_session).list()
+
+    assert {(item.provider, item.model_id, item.enabled) for item in entries} == {
+        (provider_type, model_id, True) for provider_type, model_id in providers
+    }
+    assert legacy_provider_name_model_id("Primary OpenAI", "openai") is None
+
+
+@pytest.mark.asyncio
 async def test_registry_sync_treats_an_empty_model_list_as_explicit(routing_session):
     entry = await _model(routing_session, "vendor/old-model", quality=3, cost=2)
     provider = await routing_session.get(ModelProvider, entry.provider_id)
@@ -151,6 +202,36 @@ async def test_routing_excludes_disabled_models_and_disconnected_providers(routi
 
 
 @pytest.mark.asyncio
+async def test_routing_honors_context_and_output_limits(routing_session):
+    small = await _model(
+        routing_session,
+        "small-context",
+        quality=5,
+        cost=1,
+        capabilities={"chat": True, "long_context": True},
+    )
+    small.context_window = 8_192
+    small.max_output_tokens = 4_096
+    large = await _model(
+        routing_session,
+        "large-context",
+        quality=3,
+        cost=2,
+        capabilities={"chat": True, "long_context": True},
+    )
+    large.context_window = 65_536
+    large.max_output_tokens = 8_192
+
+    result = await ModelRoutingService(routing_session).route(
+        ModelRouteRequest(prompt="Analyze this", context_size_estimate=12_000)
+    )
+
+    assert result.selected.id == large.id
+    assert result.payload["selected_context_window"] == 65_536
+    assert result.payload["selected_max_output_tokens"] == 8_192
+
+
+@pytest.mark.asyncio
 async def test_default_profiles_include_custom_with_balanced_active(routing_session):
     service = ModelRoutingService(routing_session)
     profiles = await service.ensure_defaults()
@@ -158,6 +239,24 @@ async def test_default_profiles_include_custom_with_balanced_active(routing_sess
         "Ultra Economy", "Economy", "Balanced", "High Capability", "Premium", "Custom"
     }
     assert (await service.active_profile()).name == "Balanced"
+
+
+@pytest.mark.asyncio
+async def test_automatic_profiles_are_read_only_but_multiple_custom_profiles_are_allowed(routing_session):
+    profiles = await ModelRoutingService(routing_session).ensure_defaults()
+    balanced = next(item for item in profiles if item.name == "Balanced")
+    service = ModelRoutingProfileService(routing_session)
+
+    with pytest.raises(ValueError, match="read-only"):
+        await service.update(balanced.id, rules=[])
+    with pytest.raises(ValueError, match="cannot be deleted"):
+        await service.delete(balanced.id)
+    with pytest.raises(ValueError, match="reserved"):
+        await service.create(name="Premium", rules=[])
+
+    finance = await service.create(name="Finance", rules=[])
+    engineering = await service.create(name="Engineering", rules=[])
+    assert finance.id != engineering.id
 
 
 @pytest.mark.asyncio
@@ -434,6 +533,9 @@ async def test_escalation_excludes_failed_model_and_usage_is_logged(routing_sess
     assert usage.routing_decision_id == result.decision.id
     summary = await ModelUsageLogger(routing_session).summary()
     assert summary["input_tokens"] == 100 and summary["events"] == 1
+    model_summary = summary["by_model"][f"{strong.provider}:{strong.model_id}"]
+    assert model_summary["peak_input_tokens"] == 100
+    assert model_summary["average_context_percent"] == 0.1
 
 
 @pytest.mark.asyncio

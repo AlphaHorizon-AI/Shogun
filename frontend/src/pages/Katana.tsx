@@ -508,10 +508,12 @@ export function Katana() {
   const [ollamaPage, setOllamaPage]               = useState(1);
   const [ollamaHasMore, setOllamaHasMore]         = useState(false);
   const [ollamaLoadingMore, setOllamaLoadingMore] = useState(false);
+  const [ollamaSearchError, setOllamaSearchError] = useState('');
 
   const searchOllamaModels = async (query: string, page: number, append: boolean = false) => {
     if (page === 1) setOllamaLoading(true);
     else setOllamaLoadingMore(true);
+    setOllamaSearchError('');
     try {
       const params: Record<string, string> = {};
       if (query.trim()) params.q = query.trim();
@@ -523,9 +525,13 @@ export function Katana() {
         setOllamaResults(prev => append ? [...prev, ...data.models] : data.models);
         setOllamaHasMore(data.has_more);
         setOllamaPage(data.page);
+      } else {
+        if (!append) setOllamaResults([]);
+        setOllamaSearchError(res.data?.meta?.error || 'Ollama model search is unavailable.');
       }
-    } catch {
+    } catch (error: any) {
       if (!append) setOllamaResults([]);
+      setOllamaSearchError(error?.response?.data?.detail || 'Could not reach the Ollama model catalog.');
     } finally {
       setOllamaLoading(false);
       setOllamaLoadingMore(false);
@@ -899,9 +905,17 @@ export function Katana() {
         setLocalModels(res.data.data || []);
       } else {
         setLocalModels([]);
+        setStatusMessage({
+          type: 'error',
+          text: res.data?.meta?.error || `Could not connect to ${providerType} at ${baseUrl}.`,
+        });
       }
-    } catch {
+    } catch (error: any) {
       setLocalModels([]);
+      setStatusMessage({
+        type: 'error',
+        text: error?.response?.data?.detail || `Could not scan ${providerType}. Check that it is running and the base URL is correct.`,
+      });
     }
   };
 
@@ -953,14 +967,16 @@ export function Katana() {
         params: { path: rawPath },
       });
       const found: string[] = res.data?.data || [];
-      if (found.length > 0) {
+      if (res.data?.success === false) {
+        setStatusMessage({ type: 'error', text: res.data?.meta?.error || 'The model directory could not be accessed.' });
+      } else if (found.length > 0) {
         setLocalModels(found);
         setStatusMessage({ type: 'success', text: `Found ${found.length} model${found.length !== 1 ? 's' : ''} in directory.` });
       } else {
         setStatusMessage({ type: 'error', text: 'No models found at that path. Check the directory and try again.' });
       }
-    } catch {
-      setStatusMessage({ type: 'error', text: 'Could not scan directory. Ensure the backend can access the path.' });
+    } catch (error: any) {
+      setStatusMessage({ type: 'error', text: error?.response?.data?.detail || 'Could not scan directory. Ensure the backend can access the path.' });
     } finally {
       setScanningModels(false);
       setTimeout(() => setStatusMessage(null), 4000);
@@ -1987,6 +2003,11 @@ export function Katana() {
                               <div className="flex items-center justify-center py-8 text-shogun-subdued/50">
                                 <RefreshCw className="w-4 h-4 animate-spin mr-2" />
                                 <span className="text-[10px]">Searching ollama.com...</span>
+                              </div>
+                            ) : ollamaSearchError ? (
+                              <div className="flex flex-col items-center justify-center py-8 text-red-400/70 text-center">
+                                <span className="text-[10px]">{ollamaSearchError}</span>
+                                <button type="button" onClick={() => searchOllamaModels(ollamaQuery, 1, false)} className="text-[9px] mt-2 text-cyan-400 hover:text-cyan-300">Retry search</button>
                               </div>
                             ) : ollamaResults.length === 0 ? (
                               <div className="flex flex-col items-center justify-center py-8 text-shogun-subdued/50">
@@ -3069,7 +3090,7 @@ export function Katana() {
               onEditProfiles={() => setShowRoutingProfileEditor(value => !value)}
             />
 
-            {showRoutingProfileEditor && <div className="space-y-6 animate-in slide-in-from-top-2 duration-200">
+            {false && showRoutingProfileEditor && <div className="space-y-6 animate-in slide-in-from-top-2 duration-200">
             {/* ── Header ──────────────────────────────────────── */}
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">

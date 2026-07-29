@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
@@ -150,6 +151,41 @@ async def test_sync_migrates_legacy_records_and_includes_every_installed_skill(s
 
     repeat = await sync_skills_to_memory(session, agent_id)
     assert repeat == {"added": 0, "updated": 0, "archived": 0, "errors": 0, "total": 3}
+
+
+@pytest.mark.asyncio
+async def test_college_pass_survives_archives_sync_failure(skill_sync_context, monkeypatch):
+    session, _ = skill_sync_context
+    agent = Agent(agent_type="shogun", name="Primary", slug="primary-pass", status="active")
+    skill = Skill(
+        name="Exam Skill",
+        slug="exam-skill",
+        version="1.0.0",
+        status="installed",
+        exam_status="untested",
+    )
+    session.add_all([agent, skill])
+    await session.flush()
+    session.add(
+        SkillInstallation(
+            skill_id=skill.id,
+            openclaw_skill_id="college-exam-skill",
+            status="installed",
+            installed_version="1.0.0",
+            installed_at=datetime.now(timezone.utc),
+        )
+    )
+    await session.commit()
+    monkeypatch.setattr(
+        "shogun.services.skill_memory_sync.sync_skills_to_memory",
+        AsyncMock(side_effect=RuntimeError("vector store unavailable")),
+    )
+
+    assert await mark_skill_achieved_and_sync(
+        session, agent.id, "college-exam-skill"
+    ) is True
+    await session.refresh(skill)
+    assert skill.exam_status == "passed"
 
 
 @pytest.mark.asyncio

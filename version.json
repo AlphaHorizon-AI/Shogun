@@ -1,8 +1,8 @@
 {
-  "version": "1.47.17",
+  "version": "1.47.18",
   "name": "Shogun OS",
-  "build": 168,
+  "build": 169,
   "channel": "stable",
-  "released": "2026-07-29T06:43:32Z",
-  "changelog": "Complete governed graph-powered cascade retrieval with auditable context packs and a fully translated memory guide."
+  "released": "2026-07-29T21:59:05Z",
+  "changelog": "Repair Ollama discovery, OpenClaw exams, AgentFlow model execution, and governed Katana routing with cloud-model visibility and context controls."
 }

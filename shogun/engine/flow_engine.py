@@ -1156,6 +1156,7 @@ async def _exec_samurai(
             step_id=(governance_context or {}).get("stack_step_id"),
             retry_count=retry_count,
             risk_level=config.get("risk_level", "low"),
+            context_size_estimate=max(1, len(user_message) // 4),
         )
 
     if not model_chain:
@@ -1172,6 +1173,7 @@ async def _exec_samurai(
         timeout=timeout,
         retry_count=retry_count,
         context="AgentFlow Samurai node",
+        max_tokens=_routing.get("selected_max_output_tokens") if _routing else None,
         routing_context=_routing,
     )
 

@@ -9,7 +9,7 @@ type Profile = {
 type RegistryModel = {
   id: string; model_id: string; display_name: string; provider: string; connection_type: string; enabled: boolean;
   capabilities: Record<string, boolean>; quality_tier: number; cost_tier: number; latency_tier: number;
-  context_window: number; local: boolean; role_tags: string[];
+  context_window: number; max_output_tokens: number; local: boolean; role_tags: string[];
 };
 type Decision = {
   selected_model: string; selected_provider: string; fallback_model?: string; reason: string;
@@ -71,7 +71,7 @@ type ModelRoutingPanelProps = {
 export default function ModelRoutingPanel({ isEditingProfiles = false, onEditProfiles }: ModelRoutingPanelProps) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [models, setModels] = useState<RegistryModel[]>([]);
-  const [usage, setUsage] = useState<Record<string, number>>({});
+  const [usage, setUsage] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
@@ -224,23 +224,28 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
     <div className="shogun-card border-purple-500/30 bg-purple-500/5">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
         <div><h3 className="font-bold flex items-center gap-2"><Route className="w-5 h-5 text-purple-400" /> Model Routing Profiles</h3>
-          <p className="text-xs text-shogun-subdued mt-1">Cheapest sufficient model, with governed escalation and hard capability filters.</p></div>
+          <p className="text-xs text-shogun-subdued mt-1">Built-in profiles choose models automatically from capability, cost, speed, and task requirements. Custom profiles use your exact model order.</p></div>
         <div className="flex items-center gap-2">
           <div className="px-3 py-2 rounded-lg border border-purple-400/30 bg-purple-400/10 text-xs"><span className="text-shogun-subdued">Active </span><strong className="text-purple-300">{activeProfile?.name || 'Balanced'}</strong></div>
           {onEditProfiles && <button onClick={onEditProfiles} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-colors ${isEditingProfiles ? 'border-purple-400 bg-purple-400/15 text-purple-300' : 'border-shogun-border text-shogun-subdued hover:border-purple-400/40 hover:text-purple-300'}`}>
-            <Edit2 className="w-3.5 h-3.5" /> {isEditingProfiles ? 'Close editor' : 'Edit profiles'}
+            <Edit2 className="w-3.5 h-3.5" /> {isEditingProfiles ? 'Close custom editor' : 'Manage custom profiles'}
           </button>}
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-2">
-        {profiles.map(item =>
-          <button key={item.id} onClick={() => setActive(item)} disabled={busy === item.id}
+        {profiles.map(item => {
+          const automatic = AUTOMATIC_PROFILE_NAMES.has(item.name);
+          return <button key={item.id} onClick={() => setActive(item)} disabled={busy === item.id}
             className={`text-left p-3 rounded-lg border transition-all ${item.is_default ? 'border-purple-400 bg-purple-400/15' : 'border-shogun-border hover:border-purple-400/40'}`}>
             <div className="text-xs font-bold flex items-center gap-1.5">{item.is_default && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />}{item.name}</div>
             <p className="text-[9px] text-shogun-subdued mt-1 line-clamp-2">{item.description}</p>
-          </button>)}
+            <span className={`mt-2 inline-block text-[8px] font-bold uppercase tracking-wider ${automatic ? 'text-cyan-300' : 'text-purple-300'}`}>
+              {automatic ? 'Automatic · read-only' : 'Custom · operator-defined'}
+            </span>
+          </button>;
+        })}
       </div>
-      <div className="mt-5 pt-5 border-t border-purple-400/20">
+      {isEditingProfiles && <div className="mt-5 pt-5 border-t border-purple-400/20">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
           <div><h4 className="text-sm font-bold">Named custom routing profiles</h4>
             <p className="text-[10px] text-shogun-subdued mt-1">Create focused profiles such as Finance or Engineering. Each profile keeps its own strict primary and fallback model order.</p></div>
@@ -302,7 +307,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
           </div>
         </div>
         </> : <p className="text-[10px] text-shogun-subdued py-4">Create a named profile to configure its model order.</p>}
-      </div>
+      </div>}
     </div>
 
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -328,6 +333,42 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
                 </label>;
               })}
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+              <label className="text-[9px] uppercase text-shogun-subdued">Context window (tokens)
+                <input type="number" min="1024" step="1024" defaultValue={item.context_window}
+                  onBlur={event => {
+                    const value = Number(event.currentTarget.value);
+                    if (value >= 1024 && value !== item.context_window) patchModel(item, { context_window: value });
+                    else event.currentTarget.value = String(item.context_window);
+                  }}
+                  className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-1.5 text-xs normal-case font-mono" />
+              </label>
+              <label className="text-[9px] uppercase text-shogun-subdued">Maximum output (tokens)
+                <input type="number" min="128" step="128" defaultValue={item.max_output_tokens}
+                  onBlur={event => {
+                    const value = Number(event.currentTarget.value);
+                    if (value >= 128 && value !== item.max_output_tokens) patchModel(item, { max_output_tokens: value });
+                    else event.currentTarget.value = String(item.max_output_tokens);
+                  }}
+                  className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-1.5 text-xs normal-case font-mono" />
+              </label>
+            </div>
+            {usage.by_model?.[`${item.provider}:${item.model_id}`] && (() => {
+              const modelUsage = usage.by_model[`${item.provider}:${item.model_id}`];
+              const peakPercent = Math.min(100, Number(modelUsage.peak_context_percent || 0));
+              return <div className="mb-3 rounded-lg border border-shogun-border bg-[#050508] p-2.5">
+                <div className="flex flex-wrap justify-between gap-2 text-[9px] text-shogun-subdued">
+                  <span><strong className="text-shogun-text">{modelUsage.events}</strong> requests</span>
+                  <span><strong className="text-shogun-text">{Number(modelUsage.input_tokens).toLocaleString()}</strong> input tokens</span>
+                  <span><strong className="text-shogun-text">{Number(modelUsage.output_tokens).toLocaleString()}</strong> output tokens</span>
+                  <span>Peak context <strong className="text-cyan-300">{modelUsage.peak_context_percent}%</strong></span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-shogun-border/60" title={`Peak ${modelUsage.peak_input_tokens} of ${item.context_window} tokens; average ${modelUsage.average_context_percent}%`}>
+                  <div className={`h-full rounded-full ${peakPercent >= 90 ? 'bg-red-400' : peakPercent >= 70 ? 'bg-yellow-400' : 'bg-cyan-400'}`} style={{ width: `${peakPercent}%` }} />
+                </div>
+                <p className="mt-1 text-[8px] text-shogun-subdued/70">Estimated context use: {modelUsage.average_context_percent}% average · {Number(modelUsage.peak_input_tokens).toLocaleString()} tokens peak</p>
+              </div>;
+            })()}
             <p className="text-[8px] uppercase tracking-wider text-shogun-subdued mb-1.5">Supported task capabilities — click to enable or disable</p>
             <div className="flex flex-wrap gap-1.5">{CAPS.map(cap => <button key={cap} onClick={() => patchModel(item, { capabilities: { ...item.capabilities, [cap]: !item.capabilities?.[cap] } })}
               className={`text-[8px] uppercase px-2 py-1 rounded border ${item.capabilities?.[cap] ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-300' : 'border-shogun-border text-shogun-subdued'}`}>{CAP_LABELS[cap]}</button>)}</div>
@@ -349,7 +390,8 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
         </div>
         <div className="shogun-card"><h4 className="font-bold flex items-center gap-2 mb-3"><Activity className="w-4 h-4 text-green-400" /> Usage</h4><div className="grid grid-cols-2 gap-2 text-center">
           <Metric icon={<Zap className="w-3 h-3" />} label="Events" value={usage.events || 0} /><Metric icon={<Gauge className="w-3 h-3" />} label="Avg latency" value={`${usage.average_latency_ms || 0} ms`} />
-          <Metric label="Input tokens" value={usage.input_tokens || 0} /><Metric label="Output tokens" value={usage.output_tokens || 0} /></div></div>
+          <Metric label="Input tokens" value={Number(usage.input_tokens || 0).toLocaleString()} /><Metric label="Output tokens" value={Number(usage.output_tokens || 0).toLocaleString()} /></div>
+          <p className="mt-3 text-[8px] text-shogun-subdued/70">Token counts and context utilization are estimated when a provider does not return native usage metadata.</p></div>
       </div>
     </div>
     {message && <div className="text-xs border border-shogun-border rounded-lg px-3 py-2" onClick={() => setMessage('')}>{message}</div>}

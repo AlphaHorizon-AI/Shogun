@@ -1067,6 +1067,7 @@ async def _resolve_primary_model(agent: Any, db: AsyncSession) -> str:
     if not agent.model_routing_profile_id:
         return "unknown"
     try:
+        from shogun.db.models.model_router import ModelRegistryEntry
         from shogun.db.models.model_routing import ModelRoutingProfile
         result = await db.execute(
             select(ModelRoutingProfile).where(ModelRoutingProfile.id == agent.model_routing_profile_id)
@@ -1076,6 +1077,22 @@ async def _resolve_primary_model(agent: Any, db: AsyncSession) -> str:
             for rule in profile.rules:
                 if isinstance(rule, dict) and rule.get("model"):
                     return rule["model"]
+                if not isinstance(rule, dict) or not rule.get("primary_model_id"):
+                    continue
+                preferred = str(rule["primary_model_id"])
+                registry_result = await db.execute(
+                    select(ModelRegistryEntry).where(ModelRegistryEntry.enabled.is_(True))
+                )
+                entries = list(registry_result.scalars().all())
+                for entry in entries:
+                    identifiers = {
+                        str(entry.id),
+                        str(entry.provider_id),
+                        entry.model_id,
+                        f"{entry.provider_id}::{entry.model_id}",
+                    }
+                    if preferred in identifiers:
+                        return entry.model_id
         return "unknown"
     except Exception:
         return "unknown"
@@ -1189,7 +1206,12 @@ async def auto_take_exam(
         total = exam_attempt["total"]
         correct = exam_attempt["correct"]
         score = exam_attempt["score"]
+        # Record the configured model for the provider that answered this
+        # attempt. Routing profiles now store registry/provider identifiers
+        # rather than the obsolete ``model`` field used by older installs.
         model_id = await _resolve_primary_model(agent, db)
+        if model_id == "unknown":
+            model_id = exam_attempt["provider_name"]
         log_artifact = (
             f"Model-scored exam by {agent.name} ({agent.openclaw_agent_id})\n"
             f"Model: {model_id}\n"
