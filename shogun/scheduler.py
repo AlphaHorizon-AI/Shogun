@@ -520,6 +520,16 @@ async def start_scheduler() -> None:
         coalesce=True,
         misfire_grace_time=60,
     )
+    from shogun.services.reminder_service import process_due_reminders
+    sched.add_job(
+        process_due_reminders,
+        trigger=IntervalTrigger(minutes=1),
+        id="bushido_reminder_due_scanner",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=60,
+    )
     log.info("Bushido scheduler started.")
 
 

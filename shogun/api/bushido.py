@@ -6,12 +6,14 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.api.deps import (
     get_agent_service,
     get_bushido_job_service,
     get_bushido_recommendation_service,
     get_bushido_schedule_service,
+    get_db,
 )
 from shogun.schemas.bushido import (
     BushidoJobResponse,
@@ -20,6 +22,12 @@ from shogun.schemas.bushido import (
     BushidoScheduleCreate,
     BushidoScheduleResponse,
     BushidoScheduleUpdate,
+    ReminderCreate,
+    ReminderParseRequest,
+    ReminderResponse,
+    ReminderRunResponse,
+    ReminderSnoozeRequest,
+    ReminderUpdate,
 )
 from shogun.schemas.common import ApiResponse
 from shogun.services.agent_service import AgentService
@@ -28,6 +36,7 @@ from shogun.services.bushido_service import (
     BushidoRecommendationService,
     BushidoScheduleService,
 )
+from shogun.services.reminder_service import ReminderService, parse_reminder_text
 
 router = APIRouter(prefix="/bushido", tags=["Bushido"])
 
@@ -316,6 +325,98 @@ async def reject_recommendation(
 
 
 # ── Schedules ────────────────────────────────────────────────
+
+
+@router.get("/reminders", response_model=ApiResponse)
+async def list_reminders(
+    status: str | None = None,
+    user_id: str | None = None,
+    tenant_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    records = await ReminderService(db).list(status=status, user_id=user_id, tenant_id=tenant_id)
+    return ApiResponse(
+        data=[ReminderResponse.model_validate(record) for record in records],
+        meta={"total": len(records)},
+    )
+
+
+@router.post("/reminders", response_model=ApiResponse, status_code=201)
+async def create_reminder(body: ReminderCreate, db: AsyncSession = Depends(get_db)):
+    record = await ReminderService(db).create(**body.model_dump())
+    return ApiResponse(data=ReminderResponse.model_validate(record))
+
+
+@router.post("/reminders/parse", response_model=ApiResponse)
+async def parse_reminder(body: ReminderParseRequest):
+    try:
+        parsed = ReminderCreate.model_validate(parse_reminder_text(body.text, body.timezone))
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return ApiResponse(data=parsed.model_dump(mode="json"))
+
+
+@router.get("/reminders/{task_id}", response_model=ApiResponse)
+async def get_reminder(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    record = await ReminderService(db).get(task_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    return ApiResponse(data=ReminderResponse.model_validate(record))
+
+
+@router.patch("/reminders/{task_id}", response_model=ApiResponse)
+async def update_reminder(task_id: uuid.UUID, body: ReminderUpdate, db: AsyncSession = Depends(get_db)):
+    record = await ReminderService(db).update(task_id, **body.model_dump(exclude_unset=True))
+    if not record:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    return ApiResponse(data=ReminderResponse.model_validate(record))
+
+
+async def _reminder_action(task_id: uuid.UUID, action: str, db: AsyncSession, minutes: int | None = None):
+    try:
+        record = await ReminderService(db).transition(task_id, action, snooze_minutes=minutes)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not record:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    return ApiResponse(data=ReminderResponse.model_validate(record))
+
+
+@router.post("/reminders/{task_id}/pause", response_model=ApiResponse)
+async def pause_reminder(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    return await _reminder_action(task_id, "pause", db)
+
+
+@router.post("/reminders/{task_id}/resume", response_model=ApiResponse)
+async def resume_reminder(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    return await _reminder_action(task_id, "resume", db)
+
+
+@router.post("/reminders/{task_id}/snooze", response_model=ApiResponse)
+async def snooze_reminder(task_id: uuid.UUID, body: ReminderSnoozeRequest, db: AsyncSession = Depends(get_db)):
+    return await _reminder_action(task_id, "snooze", db, body.minutes)
+
+
+@router.post("/reminders/{task_id}/cancel", response_model=ApiResponse)
+async def cancel_reminder(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    return await _reminder_action(task_id, "cancel", db)
+
+
+@router.post("/reminders/{task_id}/complete", response_model=ApiResponse)
+async def complete_reminder(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    return await _reminder_action(task_id, "complete", db)
+
+
+@router.get("/reminders/{task_id}/runs", response_model=ApiResponse)
+async def list_reminder_runs(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    service = ReminderService(db)
+    if not await service.get(task_id):
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    records = await service.runs(task_id)
+    return ApiResponse(
+        data=[ReminderRunResponse.model_validate(record) for record in records],
+        meta={"total": len(records)},
+    )
 
 
 @router.get("/schedules", response_model=ApiResponse)

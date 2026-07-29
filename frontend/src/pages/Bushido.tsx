@@ -16,7 +16,15 @@ import {
   AlertCircle,
   RotateCcw,
   Save,
-  Clock
+  Clock,
+  Bell,
+  Plus,
+  Pause,
+  Play,
+  Check,
+  X,
+  TimerReset,
+  Workflow
 } from "lucide-react";
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
@@ -49,6 +57,29 @@ interface Recommendation {
   created_at: string;
 }
 
+interface Reminder {
+  id: string;
+  title: string;
+  description?: string;
+  schedule_type: string;
+  schedule_time?: string;
+  interval_minutes?: number;
+  timezone: string;
+  status: string;
+  delivery_channel: string;
+  next_run_at?: string;
+  occurrence_count: number;
+}
+
+interface FlowSchedule {
+  id: string;
+  name: string;
+  frequency: string;
+  schedule_time?: string;
+  next_run_at?: string;
+  scheduler_registered: boolean;
+}
+
 const DEFAULT_CALIBRATION: Calibration = {
   reflection_intensity: 70,
   consolidation_rate: 45,
@@ -72,6 +103,15 @@ export function Bushido() {
   const [saving, setSaving] = useState(false);
   const [reflecting, setReflecting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [flowSchedules, setFlowSchedules] = useState<FlowSchedule[]>([]);
+  const [boardView, setBoardView] = useState<'reminders' | 'flows'>('reminders');
+  const [showReminderForm, setShowReminderForm] = useState(false);
+  const [reminderSaving, setReminderSaving] = useState(false);
+  const [reminderForm, setReminderForm] = useState({
+    title: '', description: '', schedule_type: 'one_time', run_at: '', schedule_time: '09:00',
+    interval_minutes: 60, delivery_channel: 'web',
+  });
 
   // ── Load stats ─────────────────────────────────────
   const loadStats = useCallback(async () => {
@@ -99,12 +139,24 @@ export function Bushido() {
     } catch { /* silent */ }
   }, []);
 
+  const loadReminderBoard = useCallback(async () => {
+    try {
+      const [reminderRes, scheduleRes] = await Promise.all([
+        axios.get(`${API}/reminders`),
+        axios.get(`${API}/schedules`),
+      ]);
+      setReminders(reminderRes.data.data || []);
+      setFlowSchedules((scheduleRes.data.data || []).filter((item: { source?: string }) => item.source === 'agent_flow'));
+    } catch { /* dashboard remains usable while the board reconnects */ }
+  }, []);
+
   // ── Initial load ──────────────────────────────────
   useEffect(() => {
     loadStats();
     loadCalibration();
     loadInsights();
-  }, [loadStats, loadCalibration, loadInsights]);
+    loadReminderBoard();
+  }, [loadStats, loadCalibration, loadInsights, loadReminderBoard]);
 
   // ── Auto-refresh stats every 15s ──────────────────
   useEffect(() => {
@@ -168,6 +220,50 @@ export function Bushido() {
   const updateCalibration = (key: keyof Calibration, value: number) => {
     setCalibration(prev => ({ ...prev, [key]: value }));
     setCalibrationDirty(true);
+  };
+
+  const handleCreateReminder = async () => {
+    setReminderSaving(true);
+    try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const payload: Record<string, unknown> = {
+        title: reminderForm.title,
+        description: reminderForm.description || null,
+        schedule_type: reminderForm.schedule_type,
+        timezone,
+        delivery_channel: reminderForm.delivery_channel,
+      };
+      if (reminderForm.schedule_type === 'one_time') payload.run_at = new Date(reminderForm.run_at).toISOString();
+      if (['daily', 'weekdays', 'weekly'].includes(reminderForm.schedule_type)) payload.schedule_time = reminderForm.schedule_time;
+      if (reminderForm.schedule_type === 'weekly') payload.schedule_days = [new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
+      if (reminderForm.schedule_type === 'interval') payload.interval_minutes = reminderForm.interval_minutes;
+      await axios.post(`${API}/reminders`, payload);
+      setReminderForm(prev => ({ ...prev, title: '', description: '', run_at: '' }));
+      setShowReminderForm(false);
+      setStatusMsg({ type: 'success', text: 'Reminder scheduled.' });
+      await loadReminderBoard();
+    } catch (error) {
+      const message = axios.isAxiosError(error) ? error.response?.data?.detail : null;
+      setStatusMsg({ type: 'error', text: typeof message === 'string' ? message : 'Could not schedule reminder.' });
+    } finally {
+      setReminderSaving(false);
+      setTimeout(() => setStatusMsg(null), 4000);
+    }
+  };
+
+  const handleReminderAction = async (id: string, action: 'pause' | 'resume' | 'snooze' | 'cancel' | 'complete') => {
+    try {
+      await axios.post(`${API}/reminders/${id}/${action}`, action === 'snooze' ? { minutes: 10 } : undefined);
+      await loadReminderBoard();
+    } catch {
+      setStatusMsg({ type: 'error', text: `Could not ${action} reminder.` });
+      setTimeout(() => setStatusMsg(null), 4000);
+    }
+  };
+
+  const formatSchedule = (reminder: Reminder) => {
+    if (reminder.next_run_at) return new Date(reminder.next_run_at).toLocaleString();
+    return reminder.status.charAt(0).toUpperCase() + reminder.status.slice(1);
   };
 
   // ── Derived values ────────────────────────────────
@@ -236,6 +332,88 @@ export function Bushido() {
           <span className="text-sm font-bold uppercase tracking-widest">{statusMsg.text}</span>
         </div>
       )}
+
+      {/* Reminder Board */}
+      <section className="shogun-card space-y-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold flex items-center gap-2 text-shogun-text">
+              <Bell className="w-5 h-5 text-shogun-gold" /> Reminder Board
+            </h3>
+            <p className="text-[10px] text-shogun-subdued mt-1 uppercase tracking-widest">
+              Durable L0 reminders owned by Bushido
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-black/20 border border-shogun-border rounded-lg flex">
+              <button onClick={() => setBoardView('reminders')} className={cn(
+                "px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors",
+                boardView === 'reminders' ? "bg-shogun-blue text-white" : "text-shogun-subdued hover:text-shogun-text"
+              )}>Reminders ({reminders.length})</button>
+              <button onClick={() => setBoardView('flows')} className={cn(
+                "px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors",
+                boardView === 'flows' ? "bg-shogun-blue text-white" : "text-shogun-subdued hover:text-shogun-text"
+              )}>AgentFlows ({flowSchedules.length})</button>
+            </div>
+            {boardView === 'reminders' && (
+              <button onClick={() => setShowReminderForm(value => !value)} className="flex items-center gap-2 px-3 py-2 bg-shogun-gold/10 border border-shogun-gold/30 rounded-lg text-shogun-gold text-[10px] font-bold uppercase tracking-wider hover:bg-shogun-gold/20 transition-colors">
+                <Plus className="w-3.5 h-3.5" /> New reminder
+              </button>
+            )}
+          </div>
+        </div>
+
+        {showReminderForm && boardView === 'reminders' && (
+          <div className="p-4 rounded-xl border border-shogun-blue/30 bg-shogun-blue/5 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input value={reminderForm.title} onChange={event => setReminderForm(prev => ({ ...prev, title: event.target.value }))} placeholder="What should I remind you about?" className="md:col-span-2 bg-black/20 border border-shogun-border rounded-lg px-3 py-2 text-sm text-shogun-text outline-none focus:border-shogun-blue" />
+              <textarea value={reminderForm.description} onChange={event => setReminderForm(prev => ({ ...prev, description: event.target.value }))} placeholder="Optional details" rows={2} className="md:col-span-2 bg-black/20 border border-shogun-border rounded-lg px-3 py-2 text-sm text-shogun-text outline-none focus:border-shogun-blue resize-none" />
+              <select value={reminderForm.schedule_type} onChange={event => setReminderForm(prev => ({ ...prev, schedule_type: event.target.value }))} className="bg-shogun-card border border-shogun-border rounded-lg px-3 py-2 text-xs text-shogun-text">
+                <option value="one_time">One time</option><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="interval">Interval</option>
+              </select>
+              {reminderForm.schedule_type === 'one_time' && <input type="datetime-local" value={reminderForm.run_at} onChange={event => setReminderForm(prev => ({ ...prev, run_at: event.target.value }))} className="bg-shogun-card border border-shogun-border rounded-lg px-3 py-2 text-xs text-shogun-text" />}
+              {['daily', 'weekdays', 'weekly'].includes(reminderForm.schedule_type) && <input type="time" value={reminderForm.schedule_time} onChange={event => setReminderForm(prev => ({ ...prev, schedule_time: event.target.value }))} className="bg-shogun-card border border-shogun-border rounded-lg px-3 py-2 text-xs text-shogun-text" />}
+              {reminderForm.schedule_type === 'interval' && <div className="flex items-center gap-2"><span className="text-[10px] uppercase text-shogun-subdued">Every</span><input type="number" min={1} value={reminderForm.interval_minutes} onChange={event => setReminderForm(prev => ({ ...prev, interval_minutes: Number(event.target.value) }))} className="w-full bg-shogun-card border border-shogun-border rounded-lg px-3 py-2 text-xs text-shogun-text" /><span className="text-[10px] uppercase text-shogun-subdued">minutes</span></div>}
+              <select value={reminderForm.delivery_channel} onChange={event => setReminderForm(prev => ({ ...prev, delivery_channel: event.target.value }))} className="bg-shogun-card border border-shogun-border rounded-lg px-3 py-2 text-xs text-shogun-text">
+                <option value="web">In-app</option><option value="telegram">Telegram</option><option value="teams">Teams</option><option value="both">All channels</option>
+              </select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowReminderForm(false)} className="px-4 py-2 text-[10px] uppercase font-bold text-shogun-subdued">Cancel</button>
+              <button onClick={handleCreateReminder} disabled={reminderSaving || !reminderForm.title.trim() || (reminderForm.schedule_type === 'one_time' && !reminderForm.run_at)} className="px-4 py-2 rounded-lg bg-shogun-blue text-white text-[10px] uppercase font-bold disabled:opacity-40">{reminderSaving ? 'Scheduling...' : 'Schedule reminder'}</button>
+            </div>
+          </div>
+        )}
+
+        {boardView === 'reminders' ? (
+          <div className="space-y-2">
+            {reminders.length === 0 && <div className="py-8 text-center text-xs text-shogun-subdued border border-dashed border-shogun-border rounded-xl">No reminders yet. Schedule one to get started.</div>}
+            {reminders.map(reminder => (
+              <div key={reminder.id} className="flex flex-col md:flex-row md:items-center gap-3 p-3 rounded-xl border border-shogun-border bg-black/10">
+                <div className={cn("w-2 h-2 rounded-full shrink-0", reminder.status === 'active' ? 'bg-green-500' : reminder.status === 'snoozed' ? 'bg-shogun-gold' : 'bg-shogun-subdued')} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-bold text-shogun-text truncate">{reminder.title}</div>
+                  <div className="text-[10px] text-shogun-subdued mt-1 flex flex-wrap gap-x-3 gap-y-1 uppercase tracking-wide">
+                    <span>{reminder.schedule_type.replace('_', ' ')}</span><span>{formatSchedule(reminder)}</span><span>{reminder.delivery_channel}</span><span>{reminder.occurrence_count} delivered</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {['active', 'snoozed'].includes(reminder.status) && <button title="Snooze 10 minutes" onClick={() => handleReminderAction(reminder.id, 'snooze')} className="p-2 text-shogun-subdued hover:text-shogun-gold"><TimerReset className="w-4 h-4" /></button>}
+                  {['active', 'snoozed'].includes(reminder.status) ? <button title="Pause" onClick={() => handleReminderAction(reminder.id, 'pause')} className="p-2 text-shogun-subdued hover:text-shogun-blue"><Pause className="w-4 h-4" /></button> : reminder.status === 'paused' && <button title="Resume" onClick={() => handleReminderAction(reminder.id, 'resume')} className="p-2 text-shogun-subdued hover:text-green-500"><Play className="w-4 h-4" /></button>}
+                  {!['completed', 'cancelled'].includes(reminder.status) && <button title="Complete" onClick={() => handleReminderAction(reminder.id, 'complete')} className="p-2 text-shogun-subdued hover:text-green-500"><Check className="w-4 h-4" /></button>}
+                  {!['completed', 'cancelled'].includes(reminder.status) && <button title="Cancel" onClick={() => handleReminderAction(reminder.id, 'cancel')} className="p-2 text-shogun-subdued hover:text-red-400"><X className="w-4 h-4" /></button>}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-[10px] text-shogun-subdued">Scheduled AgentFlows are shown here for visibility and remain managed by AgentFlow.</p>
+            {flowSchedules.length === 0 && <div className="py-8 text-center text-xs text-shogun-subdued border border-dashed border-shogun-border rounded-xl">No scheduled AgentFlows.</div>}
+            {flowSchedules.map(flow => <div key={flow.id} className="flex items-center gap-3 p-3 rounded-xl border border-shogun-border bg-black/10"><Workflow className="w-4 h-4 text-shogun-blue" /><div className="flex-1"><div className="text-sm font-bold text-shogun-text">{flow.name}</div><div className="text-[10px] text-shogun-subdued uppercase mt-1">{flow.frequency} {flow.schedule_time ? `at ${flow.schedule_time}` : ''} · {flow.next_run_at ? new Date(flow.next_run_at).toLocaleString() : 'No next run'}</div></div><span className={cn("text-[9px] font-bold uppercase px-2 py-1 rounded border", flow.scheduler_registered ? 'text-green-400 border-green-500/20 bg-green-500/10' : 'text-orange-400 border-orange-500/20 bg-orange-500/10')}>{flow.scheduler_registered ? 'Registered' : 'Not registered'}</span></div>)}
+          </div>
+        )}
+      </section>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

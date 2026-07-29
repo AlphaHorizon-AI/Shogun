@@ -35,7 +35,13 @@ from shogun.db.models.skillopt import (
 from shogun.db.models.skill_test import SkillTest
 from shogun.db.models.skill_metrics import SkillMetrics
 from shogun.db.models.skill_publication import SkillPublication
-from shogun.db.models.bushido import BushidoJob, BushidoRecommendation, BushidoSchedule
+from shogun.db.models.bushido import (
+    BushidoJob,
+    BushidoRecommendation,
+    BushidoSchedule,
+    ReminderRun,
+    ReminderTask,
+)
 from shogun.db.models.mission import Mission
 from shogun.db.models.execution_event import ExecutionEvent
 from shogun.db.models.memory_record import MemoryRecord, MemoryProvenanceLink
@@ -112,6 +118,8 @@ __all__ = [
     "BushidoJob",
     "BushidoRecommendation",
     "BushidoSchedule",
+    "ReminderTask",
+    "ReminderRun",
     "Mission",
     "ExecutionEvent",
     "MemoryRecord",

@@ -186,3 +186,133 @@ class BushidoScheduleResponse(ShogunBase):
     next_run_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class ReminderCreate(ShogunBase):
+    """Create a durable L0 reminder."""
+
+    title: str = Field(min_length=1, max_length=500)
+    description: str | None = Field(default=None, max_length=8000)
+    tenant_id: str = Field(default="local", min_length=1, max_length=255)
+    user_id: str = Field(default="local_user", min_length=1, max_length=255)
+    agent_id: uuid.UUID | None = None
+    conversation_provider: str = Field(default="web", pattern="^(web|telegram|teams)$")
+    conversation_id: str | None = Field(default=None, max_length=255)
+    topic_id: str | None = Field(default=None, max_length=255)
+    priority: int = Field(default=50, ge=0, le=100)
+    schedule_type: str = Field(default="one_time", pattern="^(one_time|daily|weekdays|weekly|interval)$")
+    timezone: str = Field(default="UTC", min_length=1, max_length=100)
+    schedule_time: str | None = None
+    schedule_days: list[int] | None = None
+    interval_minutes: int | None = Field(default=None, ge=1, le=525600)
+    run_at: datetime | None = None
+    end_at: datetime | None = None
+    max_occurrences: int | None = Field(default=None, ge=1)
+    delivery_channel: str = Field(default="web", pattern="^(web|telegram|teams|both)$")
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("title")
+    @classmethod
+    def strip_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Reminder title is required")
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value: str) -> str:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError:
+            raise ValueError("Unknown IANA timezone") from None
+        return value
+
+    @field_validator("schedule_time")
+    @classmethod
+    def valid_reminder_time(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            hour, minute = (int(part) for part in value.split(":"))
+        except (ValueError, AttributeError):
+            raise ValueError("Schedule time must use HH:MM format") from None
+        if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+            raise ValueError("Schedule time must be valid")
+        return f"{hour:02d}:{minute:02d}"
+
+    @model_validator(mode="after")
+    def valid_reminder_schedule(self):
+        now = datetime.now(self.run_at.tzinfo) if self.run_at and self.run_at.tzinfo else datetime.now()
+        if self.schedule_type == "one_time" and (not self.run_at or self.run_at <= now):
+            raise ValueError("One-time reminders require a future run_at")
+        if self.schedule_type in {"daily", "weekdays", "weekly"} and not self.schedule_time:
+            raise ValueError("Recurring calendar reminders require schedule_time")
+        if self.schedule_type == "weekly":
+            if not self.schedule_days or any(day < 0 or day > 6 for day in self.schedule_days):
+                raise ValueError("Weekly reminders require schedule_days using Monday=0 through Sunday=6")
+        if self.schedule_type == "interval" and not self.interval_minutes:
+            raise ValueError("Interval reminders require interval_minutes")
+        return self
+
+
+class ReminderUpdate(ShogunBase):
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    description: str | None = Field(default=None, max_length=8000)
+    priority: int | None = Field(default=None, ge=0, le=100)
+    delivery_channel: str | None = Field(default=None, pattern="^(web|telegram|teams|both)$")
+    metadata_json: dict[str, Any] | None = None
+
+
+class ReminderResponse(ShogunBase):
+    id: uuid.UUID
+    tenant_id: str
+    user_id: str
+    agent_id: uuid.UUID | None
+    conversation_provider: str
+    conversation_id: str | None
+    topic_id: str | None
+    title: str
+    description: str | None
+    priority: int
+    schedule_type: str
+    timezone: str
+    schedule_time: str | None
+    schedule_days: list[int] | None
+    interval_minutes: int | None
+    run_at: datetime | None
+    end_at: datetime | None
+    max_occurrences: int | None
+    status: str
+    delivery_channel: str
+    next_run_at: datetime | None
+    last_run_at: datetime | None
+    snoozed_until: datetime | None
+    occurrence_count: int
+    metadata_json: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReminderRunResponse(ShogunBase):
+    id: uuid.UUID
+    task_id: uuid.UUID
+    scheduled_for: datetime
+    started_at: datetime
+    completed_at: datetime | None
+    status: str
+    occurrence_number: int
+    delivery_result: dict[str, Any]
+    error: str | None
+    correlation_id: str
+    created_at: datetime
+
+
+class ReminderSnoozeRequest(ShogunBase):
+    minutes: int = Field(ge=1, le=10080)
+
+
+class ReminderParseRequest(ShogunBase):
+    text: str = Field(min_length=1, max_length=1000)
+    timezone: str = Field(default="UTC", min_length=1, max_length=100)

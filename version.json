@@ -1,8 +1,8 @@
 {
-  "version": "1.47.18",
+  "version": "1.47.19",
   "name": "Shogun OS",
-  "build": 169,
+  "build": 170,
   "channel": "stable",
-  "released": "2026-07-29T21:59:05Z",
-  "changelog": "Repair Ollama discovery, OpenClaw exams, AgentFlow model execution, and governed Katana routing with cloud-model visibility and context controls."
+  "released": "2026-07-29T22:17:27Z",
+  "changelog": "Add the Bushido Reminder Board with durable one-time and recurring reminders, channel delivery, lifecycle controls, run history, and AgentFlow schedule visibility."
 }

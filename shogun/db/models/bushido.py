@@ -5,10 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, ForeignKey
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shogun.db.base import AuditMixin, Base, GUID, JSONType, UUIDMixin
+from shogun.db.base import GUID, AuditMixin, Base, JSONType, UUIDMixin
 
 
 class BushidoJob(Base, UUIDMixin, AuditMixin):
@@ -69,3 +69,56 @@ class BushidoSchedule(Base, UUIDMixin, AuditMixin):
     is_preset: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ReminderTask(Base, UUIDMixin, AuditMixin):
+    """Durable, user-scoped L0 reminder owned by Bushido."""
+
+    __tablename__ = "agent_scheduled_tasks"
+
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, default="local")
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, default="local_user")
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("agents.id"), nullable=True)
+    conversation_provider: Mapped[str] = mapped_column(String(50), nullable=False, default="web")
+    conversation_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    topic_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    schedule_type: Mapped[str] = mapped_column(String(30), nullable=False, default="one_time")
+    timezone: Mapped[str] = mapped_column(String(100), nullable=False, default="UTC")
+    schedule_time: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    schedule_days: Mapped[list | None] = mapped_column(JSONType(), nullable=True)
+    interval_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    max_occurrences: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+    delivery_channel: Mapped[str] = mapped_column(String(30), nullable=False, default="web")
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lock_owner: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    lock_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=dict)
+
+
+class ReminderRun(Base, UUIDMixin, AuditMixin):
+    """Immutable execution record for a reminder occurrence."""
+
+    __tablename__ = "agent_scheduled_task_runs"
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("agent_scheduled_tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="running")
+    occurrence_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    delivery_result: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    correlation_id: Mapped[str] = mapped_column(String(100), nullable=False)
