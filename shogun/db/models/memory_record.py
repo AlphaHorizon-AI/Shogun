@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from shogun.db.base import GUID, AuditMixin, Base, JSONType, UUIDMixin
@@ -13,6 +13,11 @@ from shogun.db.base import GUID, AuditMixin, Base, JSONType, UUIDMixin
 
 class MemoryRecord(Base, UUIDMixin, AuditMixin):
     __tablename__ = "memory_records"
+    __table_args__ = (
+        Index("ix_memory_records_tenant_agent", "tenant_id", "agent_id"),
+        Index("ix_memory_records_topic_scope", "tenant_id", "conversation_id", "topic_id"),
+        Index("ix_memory_records_project_scope", "tenant_id", "workspace_id", "project_id"),
+    )
 
     qdrant_point_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     memory_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -50,6 +55,21 @@ class MemoryRecord(Base, UUIDMixin, AuditMixin):
     import_batch_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     tags: Mapped[list] = mapped_column(JSONType(), nullable=False, default=list)
+
+    # Phase 1: governed scope envelope. Existing memories are backfilled as
+    # local, agent-private records and remain available through legacy reads.
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, default="local")
+    user_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    team_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    workspace_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    workflow_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    conversation_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    conversation_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    topic_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sensitivity: Mapped[str] = mapped_column(String(30), nullable=False, default="internal")
+    scope_status: Mapped[str] = mapped_column(String(30), nullable=False, default="agent_private")
+    policy_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
 class MemoryProvenanceLink(Base, UUIDMixin):

@@ -131,6 +131,11 @@ class Settings(BaseSettings):
     memory_sticky_allowed_types: str = "persona,semantic,procedural,skills"
     memory_max_sticky_memories_in_context: int = 20
     memory_max_sticky_context_tokens: int = 2000
+    memory_retrieval_mode: Literal["legacy", "shadow", "cascade"] = "legacy"
+    memory_cascade_max_stages: int = 6
+    memory_cascade_stage_limit: int = 8
+    memory_cascade_min_results: int = 5
+    memory_cascade_diagnostics_enabled: bool = True
     visual_max_upload_mb: int = 20
     visual_retention_days: int = 30
     file_format_handling_enabled: bool = True

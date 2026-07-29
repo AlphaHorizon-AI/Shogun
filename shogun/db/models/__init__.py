@@ -39,6 +39,7 @@ from shogun.db.models.bushido import BushidoJob, BushidoRecommendation, BushidoS
 from shogun.db.models.mission import Mission
 from shogun.db.models.execution_event import ExecutionEvent
 from shogun.db.models.memory_record import MemoryRecord, MemoryProvenanceLink
+from shogun.db.models.memory_retrieval import MemoryRetrievalRun
 from shogun.db.models.memory_export import MemoryExportItem, MemoryExportJob
 from shogun.db.models.memory_import import MemoryImportBatch, MemoryImportItem
 from shogun.db.models.file_artifact import FileArtifact
@@ -113,6 +114,7 @@ __all__ = [
     "ExecutionEvent",
     "MemoryRecord",
     "MemoryProvenanceLink",
+    "MemoryRetrievalRun",
     "MemoryExportJob",
     "MemoryExportItem",
     "MemoryImportBatch",

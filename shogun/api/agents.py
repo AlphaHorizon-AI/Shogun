@@ -1559,13 +1559,18 @@ async def _shogun_chat_internal(
         recalled_memories_text = ""
         try:
             from shogun.services.memory_service import MemoryService
+            from shogun.services.cascade_retrieval import CascadeRetrievalService
+            from shogun.services.memory_scope import resolve_active_memory_scope
+            from shogun.config import settings
             async for db in get_db():
                 mem_svc = MemoryService(db)
 
                 # 1. Semantic search for user-query-relevant memories
-                relevant = await mem_svc.search(
+                active_scope = resolve_active_memory_scope()
+                relevant, _retrieval_diagnostic = await CascadeRetrievalService(db).run(
                     query=user_msg,
                     agent_id=agent.id,
+                    scope=active_scope,
                     limit=5,
                 )
 
@@ -1576,7 +1581,10 @@ async def _shogun_chat_internal(
                         and _PINNED_CACHE["data"] is not None):
                     pinned = _PINNED_CACHE["data"]
                 else:
-                    pinned = await mem_svc.get_pinned(agent_id=agent.id)
+                    pinned = await mem_svc.get_pinned(
+                        agent_id=agent.id,
+                        scope=active_scope if settings.memory_retrieval_mode == "cascade" else None,
+                    )
                     _PINNED_CACHE["data"] = pinned
                     _PINNED_CACHE["ts"] = time.monotonic()
                     _PINNED_CACHE["agent_id"] = _agent_str

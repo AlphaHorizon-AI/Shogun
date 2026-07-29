@@ -16,7 +16,6 @@ Usage:
 from __future__ import annotations
 
 import logging
-import uuid
 from typing import Any
 
 from qdrant_client import QdrantClient
@@ -24,6 +23,7 @@ from qdrant_client.http.models import (
     Distance,
     FieldCondition,
     Filter,
+    HasIdCondition,
     MatchValue,
     PointStruct,
     Range,
@@ -188,6 +188,7 @@ class VectorStore:
         agent_id: str | None = None,
         min_importance: float | None = None,
         pinned_only: bool = False,
+        allowed_memory_ids: list[str] | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         """Semantic search with optional payload filters.
@@ -199,10 +200,16 @@ class VectorStore:
         # Build Qdrant filter conditions
         conditions = []
         if memory_types:
-            for mt in memory_types:
-                conditions.append(
-                    FieldCondition(key="memory_type", match=MatchValue(value=mt))
+            # Alternative memory types form one nested OR condition. Other
+            # authorization and metadata conditions remain mandatory.
+            conditions.append(
+                Filter(
+                    should=[
+                        FieldCondition(key="memory_type", match=MatchValue(value=mt))
+                        for mt in memory_types
+                    ]
                 )
+            )
         if agent_id:
             conditions.append(
                 FieldCondition(key="agent_id", match=MatchValue(value=agent_id))
@@ -215,10 +222,12 @@ class VectorStore:
             conditions.append(
                 FieldCondition(key="is_pinned", match=MatchValue(value=True))
             )
+        if allowed_memory_ids is not None:
+            if not allowed_memory_ids:
+                return []
+            conditions.append(HasIdCondition(has_id=allowed_memory_ids))
 
-        qdrant_filter = Filter(should=conditions) if memory_types and len(memory_types) > 1 else (
-            Filter(must=conditions) if conditions else None
-        )
+        qdrant_filter = Filter(must=conditions) if conditions else None
 
         # Use the newer query_points API
         response = self.client.query_points(

@@ -18,6 +18,34 @@ from pydantic import AliasChoices, Field, computed_field, model_validator
 
 from shogun.schemas.common import DecayClass, MemoryType, ShogunBase, SnapshotType
 
+MemorySensitivity = Literal["public", "internal", "confidential", "restricted"]
+MemoryRetrievalMode = Literal["legacy", "shadow", "cascade"]
+
+
+class MemoryScopeEnvelope(ShogunBase):
+    """Canonical authorization and retrieval scope for Phase 1 memory."""
+
+    tenant_id: str = Field(default="local", min_length=1, max_length=255)
+    user_id: str | None = Field(default=None, max_length=255)
+    team_id: str | None = Field(default=None, max_length=255)
+    workspace_id: str | None = Field(default=None, max_length=255)
+    project_id: str | None = Field(default=None, max_length=255)
+    workflow_id: str | None = Field(default=None, max_length=255)
+    conversation_provider: Literal["web", "telegram", "microsoft_teams", "api", "agent"] | None = None
+    conversation_id: str | None = Field(default=None, max_length=255)
+    topic_id: str | None = Field(default=None, max_length=255)
+    sensitivity_ceiling: MemorySensitivity = "internal"
+    policy_version: str | None = Field(default=None, max_length=100)
+    include_legacy_agent_memory: bool = True
+
+    @model_validator(mode="after")
+    def validate_conversation_scope(self):
+        if self.topic_id and not self.conversation_id:
+            raise ValueError("conversation_id is required when topic_id is supplied")
+        if self.conversation_id and not self.conversation_provider:
+            raise ValueError("conversation_provider is required when conversation_id is supplied")
+        return self
+
 # ── Memory Search ────────────────────────────────────────────
 
 
@@ -48,6 +76,9 @@ class MemorySearchRequest(ShogunBase):
     agent_id: uuid.UUID | None = None
     limit: int = Field(default=10, ge=1, le=100)
     filters: MemorySearchFilters | None = None
+    scope: MemoryScopeEnvelope | None = None
+    retrieval_mode: MemoryRetrievalMode | None = None
+    include_diagnostics: bool = False
     # Allow caller to override reranking weights per query
     weight_overrides: dict[str, float] | None = None
 
@@ -122,6 +153,8 @@ class MemoryRecordCreate(ShogunBase):
     )
     is_pinned: bool = False
     tags: list[str] = Field(default_factory=list)
+    scope: MemoryScopeEnvelope | None = None
+    sensitivity: MemorySensitivity = "internal"
 
 
 class MemoryRecordUpdate(ShogunBase):
@@ -175,6 +208,18 @@ class MemoryRecordResponse(ShogunBase):
     import_batch_id: str | None = None
     content_hash: str | None = None
     tags: list[str] = Field(default_factory=list)
+    tenant_id: str = "local"
+    user_id: str | None = None
+    team_id: str | None = None
+    workspace_id: str | None = None
+    project_id: str | None = None
+    workflow_id: str | None = None
+    conversation_provider: str | None = None
+    conversation_id: str | None = None
+    topic_id: str | None = None
+    sensitivity: MemorySensitivity = "internal"
+    scope_status: str = "agent_private"
+    policy_version: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -183,6 +228,22 @@ class MemoryRecordResponse(ShogunBase):
     def decay_type(self) -> DecayClass:
         """API-compatible name for the persisted decay class."""
         return self.decay_class
+
+
+class CascadeRetrievalRunResponse(ShogunBase):
+    id: uuid.UUID
+    correlation_id: str
+    mode: MemoryRetrievalMode
+    status: str
+    agent_id: uuid.UUID | None = None
+    scope_json: dict = Field(default_factory=dict)
+    plan_json: dict = Field(default_factory=dict)
+    stages_json: list = Field(default_factory=list)
+    result_memory_ids: list = Field(default_factory=list)
+    excluded_json: list = Field(default_factory=list)
+    duration_ms: int | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
 
 
 # ── Reinforcement Events ─────────────────────────────────────

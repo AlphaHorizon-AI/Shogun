@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from shogun.api.deps import get_memory_service
 from shogun.schemas.common import ApiResponse, DecayClass
 from shogun.schemas.memory import (
+    CascadeRetrievalRunResponse,
     MemoryExportJobResponse,
     MemoryExportPreview,
     MemoryExportRequest,
@@ -21,6 +22,7 @@ from shogun.schemas.memory import (
     MemoryReinforcementRequest,
     MemorySearchRequest,
 )
+from shogun.services.cascade_retrieval import CascadeRetrievalService
 from shogun.services.memory_export_service import MemoryExportService, job_response
 from shogun.services.memory_import_service import MemoryImportService, batch_response
 from shogun.services.memory_service import MemoryService
@@ -290,9 +292,11 @@ async def search_memory(
     import traceback
     logger = logging.getLogger(__name__)
     try:
-        results = await svc.search(
+        results, diagnostic = await CascadeRetrievalService(svc.session).run(
             query=body.query,
             agent_id=body.agent_id,
+            scope=body.scope,
+            mode=body.retrieval_mode,
             memory_types=[t.value for t in body.memory_types] if body.memory_types else None,
             min_importance=body.filters.min_importance if body.filters else None,
             pinned_only=body.filters.pinned_only if body.filters else False,
@@ -309,8 +313,50 @@ async def search_memory(
 
     return ApiResponse(
         data=results,
-        meta={"query": body.query, "count": len(results)},
+        meta={
+            "query": body.query,
+            "count": len(results),
+            "retrieval_mode": diagnostic.mode if diagnostic else (body.retrieval_mode or "legacy"),
+            "correlation_id": diagnostic.correlation_id if diagnostic and body.include_diagnostics else None,
+            "diagnostics": (
+                CascadeRetrievalRunResponse.model_validate(diagnostic)
+                if diagnostic and body.include_diagnostics
+                else None
+            ),
+        },
     )
+
+
+@router.get("/retrieval-diagnostics", response_model=ApiResponse)
+async def list_retrieval_diagnostics(
+    limit: int = Query(50, ge=1, le=200),
+    svc: MemoryService = Depends(get_memory_service),
+):
+    from sqlalchemy import select
+
+    from shogun.db.models.memory_retrieval import MemoryRetrievalRun
+
+    rows = await svc.session.scalars(
+        select(MemoryRetrievalRun).order_by(MemoryRetrievalRun.created_at.desc()).limit(limit)
+    )
+    return ApiResponse(data=[CascadeRetrievalRunResponse.model_validate(row) for row in rows])
+
+
+@router.get("/retrieval-diagnostics/{correlation_id}", response_model=ApiResponse)
+async def get_retrieval_diagnostics(
+    correlation_id: str,
+    svc: MemoryService = Depends(get_memory_service),
+):
+    from sqlalchemy import select
+
+    from shogun.db.models.memory_retrieval import MemoryRetrievalRun
+
+    row = await svc.session.scalar(
+        select(MemoryRetrievalRun).where(MemoryRetrievalRun.correlation_id == correlation_id)
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Memory retrieval diagnostics not found")
+    return ApiResponse(data=CascadeRetrievalRunResponse.model_validate(row))
 
 
 # ── Order 16: Portable Markdown export ─────────────────────────────────────

@@ -195,20 +195,28 @@ async def _shogun_governed_chat(
     recalled_memory_ids: list[uuid.UUID] = []
     try:
         from shogun.services.memory_service import MemoryService
+        from shogun.services.cascade_retrieval import CascadeRetrievalService
+        from shogun.services.memory_scope import resolve_active_memory_scope
+        from shogun.config import settings
         from shogun.db.engine import async_session_factory
 
         async with async_session_factory() as mem_db:
             mem_svc = MemoryService(mem_db)
 
             # Semantic search: find top-5 relevant memories
-            search_results = await mem_svc.search(
+            active_scope = resolve_active_memory_scope()
+            search_results, _retrieval_diagnostic = await CascadeRetrievalService(mem_db).run(
                 query=user_msg,
                 agent_id=agent.id,
+                scope=active_scope,
                 limit=5,
             )
 
             # Pinned memories (always included)
-            pinned = await mem_svc.get_pinned(agent_id=agent.id)
+            pinned = await mem_svc.get_pinned(
+                agent_id=agent.id,
+                scope=active_scope if settings.memory_retrieval_mode == "cascade" else None,
+            )
 
             # Combine and deduplicate
             seen_ids = set()

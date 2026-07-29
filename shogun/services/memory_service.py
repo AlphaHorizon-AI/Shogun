@@ -27,8 +27,15 @@ from shogun.engine.memory_salience import (
     rerank_candidates,
 )
 from shogun.engine.vector_store import get_vector_store
+from shogun.schemas.memory import MemoryScopeEnvelope
 from shogun.services.base_service import BaseService
 from shogun.services.memory_governance import validate_decay_type
+from shogun.services.memory_scope import (
+    authorization_predicates,
+    authorized_memory_ids,
+    coerce_scope,
+    resolve_active_memory_scope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +71,27 @@ class MemoryService(BaseService[MemoryRecord]):
         decay_class: str = "medium",
         is_pinned: bool = False,
         tags: list[str] | None = None,
+        scope: MemoryScopeEnvelope | dict[str, Any] | None = None,
+        sensitivity: str = "internal",
         **kwargs: Any,
     ) -> MemoryRecord:
         """Create a memory with dual-write to SQLite + Qdrant."""
         validated_decay = validate_decay_type(decay_class)
         decay_class = validated_decay or "medium"
+        memory_scope = resolve_active_memory_scope(scope)
+        scope_data = memory_scope.model_dump(exclude={"sensitivity_ceiling", "include_legacy_agent_memory"})
+        classified = any(
+            scope_data.get(field)
+            for field in (
+                "user_id",
+                "team_id",
+                "workspace_id",
+                "project_id",
+                "workflow_id",
+                "conversation_id",
+                "topic_id",
+            )
+        )
         # 1. SQLite insert
         record = await self.create(
             memory_type=memory_type,
@@ -82,6 +105,9 @@ class MemoryService(BaseService[MemoryRecord]):
             decay_class=decay_class,
             is_pinned=is_pinned,
             tags=tags or [],
+            sensitivity=sensitivity,
+            scope_status="classified" if classified else "agent_private",
+            **scope_data,
             **kwargs,
         )
 
@@ -104,6 +130,18 @@ class MemoryService(BaseService[MemoryRecord]):
                     "decay_class": decay_class,
                     "is_pinned": is_pinned,
                     "tags": tags or [],
+                    "sensitivity": sensitivity,
+                    "scope_status": record.scope_status,
+                    "tenant_id": record.tenant_id,
+                    "user_id": record.user_id,
+                    "team_id": record.team_id,
+                    "workspace_id": record.workspace_id,
+                    "project_id": record.project_id,
+                    "workflow_id": record.workflow_id,
+                    "conversation_provider": record.conversation_provider,
+                    "conversation_id": record.conversation_id,
+                    "topic_id": record.topic_id,
+                    "policy_version": record.policy_version,
                 },
             )
             # Store the Qdrant point ID on the record
@@ -127,13 +165,30 @@ class MemoryService(BaseService[MemoryRecord]):
         decay_class: str | None = None,
         limit: int = 20,
         weight_overrides: dict[str, float] | None = None,
+        scope: MemoryScopeEnvelope | dict[str, Any] | None = None,
+        required_scope_field: str | None = None,
     ) -> list[dict[str, Any]]:
         """Hybrid semantic search: Qdrant vector retrieval + salience reranking.
 
         Returns scored, ranked memory results with full metadata.
         """
         decay_class = validate_decay_type(decay_class)
+        memory_scope = coerce_scope(scope)
         store = get_vector_store()
+
+        allowed_ids = None
+        if memory_scope is not None:
+            allowed_ids = await authorized_memory_ids(
+                self.session,
+                scope=memory_scope,
+                agent_id=agent_id,
+                required_scope_field=required_scope_field,
+                memory_types=memory_types,
+                min_importance=min_importance,
+                pinned_only=pinned_only,
+            )
+            if not allowed_ids:
+                return []
 
         # 1. Vector search in Qdrant (runs in thread pool to avoid blocking event loop)
         qdrant_hits = await asyncio.to_thread(
@@ -143,6 +198,7 @@ class MemoryService(BaseService[MemoryRecord]):
             agent_id=str(agent_id) if agent_id else None,
             min_importance=min_importance,
             pinned_only=pinned_only,
+            allowed_memory_ids=allowed_ids,
             limit=limit * 2,  # over-fetch for better reranking
         )
 
@@ -152,12 +208,18 @@ class MemoryService(BaseService[MemoryRecord]):
         similarity_map = {h["memory_id"]: h["score"] for h in qdrant_hits}
         records: dict[str, MemoryRecord] = {}
         if hit_ids:
-            result = await self.session.execute(
-                select(MemoryRecord).where(
-                    MemoryRecord.id.in_(hit_ids),
-                    MemoryRecord.is_archived.is_(False),
+            predicates = [MemoryRecord.id.in_(hit_ids), MemoryRecord.is_archived.is_(False)]
+            if agent_id is not None:
+                predicates.append(MemoryRecord.agent_id == agent_id)
+            if memory_scope is not None:
+                predicates.extend(
+                    authorization_predicates(
+                        scope=memory_scope,
+                        agent_id=agent_id,
+                        required_scope_field=required_scope_field,
+                    )
                 )
-            )
+            result = await self.session.execute(select(MemoryRecord).where(*predicates))
             records = {str(r.id): r for r in result.scalars().all()}
 
         sticky_considered = 0
@@ -168,6 +230,14 @@ class MemoryService(BaseService[MemoryRecord]):
                 MemoryRecord.decay_class == "sticky",
                 MemoryRecord.is_archived.is_(False),
             )
+            if memory_scope is not None:
+                sticky_query = sticky_query.where(
+                    *authorization_predicates(
+                        scope=memory_scope,
+                        agent_id=agent_id,
+                        required_scope_field=required_scope_field,
+                    )
+                )
             if memory_types:
                 sticky_query = sticky_query.where(MemoryRecord.memory_type.in_(memory_types))
             if min_importance is not None:
@@ -273,6 +343,19 @@ class MemoryService(BaseService[MemoryRecord]):
                 "updated_at": record.updated_at.isoformat() if record and record.updated_at else None,
                 "last_accessed_at": record.last_accessed_at.isoformat() if record and record.last_accessed_at else None,
                 "last_confirmed_at": c.last_confirmed_at.isoformat() if c.last_confirmed_at else None,
+                "scope": {
+                    "tenant_id": record.tenant_id if record else None,
+                    "user_id": record.user_id if record else None,
+                    "team_id": record.team_id if record else None,
+                    "workspace_id": record.workspace_id if record else None,
+                    "project_id": record.project_id if record else None,
+                    "workflow_id": record.workflow_id if record else None,
+                    "conversation_provider": record.conversation_provider if record else None,
+                    "conversation_id": record.conversation_id if record else None,
+                    "topic_id": record.topic_id if record else None,
+                },
+                "sensitivity": record.sensitivity if record else "internal",
+                "scope_status": record.scope_status if record else "agent_private",
             })
         if sticky_considered:
             sticky_injected = sum(item["decay_class"] == "sticky" for item in results_out)
@@ -348,6 +431,18 @@ class MemoryService(BaseService[MemoryRecord]):
                     "decay_class": r.decay_class,
                     "is_pinned": r.is_pinned,
                     "tags": r.tags or [],
+                    "sensitivity": r.sensitivity,
+                    "scope_status": r.scope_status,
+                    "tenant_id": r.tenant_id,
+                    "user_id": r.user_id,
+                    "team_id": r.team_id,
+                    "workspace_id": r.workspace_id,
+                    "project_id": r.project_id,
+                    "workflow_id": r.workflow_id,
+                    "conversation_provider": r.conversation_provider,
+                    "conversation_id": r.conversation_id,
+                    "topic_id": r.topic_id,
+                    "policy_version": r.policy_version,
                 },
             })
 
@@ -511,13 +606,21 @@ class MemoryService(BaseService[MemoryRecord]):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def get_pinned(self, agent_id: uuid.UUID) -> list[MemoryRecord]:
+    async def get_pinned(
+        self,
+        agent_id: uuid.UUID,
+        scope: MemoryScopeEnvelope | dict[str, Any] | None = None,
+    ) -> list[MemoryRecord]:
         """Get all pinned memories for an agent."""
+        predicates = [
+            MemoryRecord.agent_id == agent_id,
+            MemoryRecord.is_pinned.is_(True),
+            MemoryRecord.is_archived.is_(False),
+        ]
+        memory_scope = coerce_scope(scope)
+        if memory_scope is not None:
+            predicates.extend(authorization_predicates(scope=memory_scope, agent_id=agent_id))
         result = await self.session.execute(
-            select(MemoryRecord).where(
-                MemoryRecord.agent_id == agent_id,
-                MemoryRecord.is_pinned.is_(True),
-                MemoryRecord.is_archived.is_(False),
-            )
+            select(MemoryRecord).where(*predicates)
         )
         return list(result.scalars().all())

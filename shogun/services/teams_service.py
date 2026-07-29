@@ -397,6 +397,7 @@ class TeamsService:
         if command == "ask":
             from shogun.api.governed_chat import _shogun_governed_chat
             from shogun.services.agent_service import AgentService
+            from shogun.services.memory_routing_context import memory_routing_scope
             from shogun.services.team_identity import member_context_text, resolve_channel_member
 
             member = await resolve_channel_member(
@@ -421,30 +422,44 @@ class TeamsService:
                     else {}
                 ),
             }
-            response_stream = await _shogun_governed_chat(
-                user_msg=message,
-                history=[],
-                svc=AgentService(self.db),
-                classification=classification,
-            )
-            reply = ""
-            buffer = ""
-            generator = getattr(response_stream, "body_iterator", response_stream)
-            async for chunk in generator:
-                buffer += chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
-                while "\n\n" in buffer:
-                    event, buffer = buffer.split("\n\n", 1)
-                    for line in event.splitlines():
-                        if not line.startswith("data: ") or line[6:].strip() == "[DONE]":
-                            continue
-                        try:
-                            data = json.loads(line[6:])
-                        except json.JSONDecodeError:
-                            continue
-                        if data.get("type") == "token":
-                            reply += str(data.get("content") or "")
-                        elif data.get("type") == "error" and not reply:
-                            reply = str(data.get("content") or "Unable to answer right now.")
+            conversation_id = envelope.conversation_reference_id or envelope.chat_id or envelope.channel_id
+            with memory_routing_scope(
+                {
+                    "tenant_id": envelope.tenant_id,
+                    "user_id": (
+                        f"microsoft_teams:{envelope.user.teams_user_id}"
+                        if envelope.conversation_type not in {"channel", "team"}
+                        else None
+                    ),
+                    "team_id": envelope.team_id,
+                    "conversation_provider": "microsoft_teams",
+                    "conversation_id": conversation_id,
+                }
+            ):
+                response_stream = await _shogun_governed_chat(
+                    user_msg=message,
+                    history=[],
+                    svc=AgentService(self.db),
+                    classification=classification,
+                )
+                reply = ""
+                buffer = ""
+                generator = getattr(response_stream, "body_iterator", response_stream)
+                async for chunk in generator:
+                    buffer += chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
+                    while "\n\n" in buffer:
+                        event, buffer = buffer.split("\n\n", 1)
+                        for line in event.splitlines():
+                            if not line.startswith("data: ") or line[6:].strip() == "[DONE]":
+                                continue
+                            try:
+                                data = json.loads(line[6:])
+                            except json.JSONDecodeError:
+                                continue
+                            if data.get("type") == "token":
+                                reply += str(data.get("content") or "")
+                            elif data.get("type") == "error" and not reply:
+                                reply = str(data.get("content") or "Unable to answer right now.")
             return self._response(envelope, reply.strip() or "I could not generate a response.")
         if command == "approvals":
             rows = (
