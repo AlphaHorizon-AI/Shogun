@@ -59,6 +59,58 @@ class ChildFlowExecutionOptions:
     max_retries: int = 0
 
 
+class ModelCallError(RuntimeError):
+    """Actionable terminal error for an exhausted routed model chain."""
+
+    def __init__(
+        self,
+        *,
+        context: str,
+        provider: str,
+        model: str,
+        timeout: int,
+        cause: Exception,
+        input_characters: int,
+    ) -> None:
+        timed_out = isinstance(cause, (httpx.TimeoutException, asyncio.TimeoutError))
+        cause_message = str(cause).strip()
+        if timed_out:
+            message = f"{context} timed out after {timeout}s using {provider}/{model}"
+        else:
+            message = f"{context} failed using {provider}/{model}: {cause_message or type(cause).__name__}"
+        super().__init__(message)
+        self.provider = provider
+        self.model = model
+        self.timeout_seconds = timeout
+        self.cause_type = type(cause).__name__
+        self.input_characters = input_characters
+        self.estimated_input_tokens = max(1, input_characters // 4)
+
+
+def _error_message(error: Exception) -> str:
+    """Return a useful message even for exceptions such as an empty ReadTimeout."""
+    message = str(error).strip()
+    if message:
+        return message
+    if isinstance(error, (httpx.TimeoutException, asyncio.TimeoutError)):
+        return "Model request timed out before a response was received"
+    return type(error).__name__
+
+
+def _node_failure_action(config: dict[str, Any]) -> str:
+    """Normalize legacy and current node failure policies."""
+    return config.get("failure_action") or {
+        "fail_parent": "stop",
+        "continue_with_error": "continue",
+        "route_to_error": "continue",
+    }.get(config.get("on_failure", "fail_parent"), "stop")
+
+
+def _failure_action_is_terminal(action: str) -> bool:
+    """Only explicit skip/continue policies may proceed after a node error."""
+    return action not in {"skip", "continue"}
+
+
 def _parallel_child_semaphore() -> asyncio.Semaphore:
     global _child_run_semaphore
     if _child_run_semaphore is None:
@@ -334,24 +386,24 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                 if isinstance(result, Exception):
                     node_outputs[node_id] = None
                     failure_event_id = await _record_node_failure_event(run_id, node, result)
+                    error_message = _error_message(result)
                     await _update_node_state(
                         run_id,
                         node_id,
                         "failed",
-                        error=str(result),
+                        error=error_message,
                         failure_event_id=failure_event_id,
                     )
                     # Check failure action
                     config = node.config or {}
-                    failure_action = config.get("failure_action") or {
-                        "fail_parent": "stop",
-                        "continue_with_error": "continue",
-                        "route_to_error": "continue",
-                    }.get(config.get("on_failure", "fail_parent"), "stop")
-                    if failure_action == "stop":
+                    failure_action = _node_failure_action(config)
+                    if _failure_action_is_terminal(failure_action):
+                        # Retries are exhausted inside the node executor. A terminal
+                        # retry/escalate (or unknown) action must fail the run rather
+                        # than silently falling through to downstream nodes.
                         await _fail_run(
                             run_id,
-                            f"Node '{node.label}' failed: {result}",
+                            f"Node '{node.label}' failed: {error_message}",
                             node_states_override=True,
                         )
                         return
@@ -363,9 +415,8 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                             "status": "failed",
                             "output": {},
                             "artifacts": [],
-                            "errors": [str(result)],
+                            "errors": [error_message],
                         }
-                    # "retry" and "escalate" fall through (retry handled inside the executor)
                 else:
                     node_outputs[node_id] = result
                     await _update_node_state(run_id, node_id, "completed", output=result)
@@ -2559,7 +2610,12 @@ async def _call_llm_chain(
 ) -> str:
     """Call each model in order, transparently notifying on every transition."""
     last_error: Exception | None = None
+    last_provider: ModelProvider | None = None
+    last_model = "unknown-model"
+    input_characters = len(json.dumps(messages, ensure_ascii=False, default=str))
     for model_index, (_provider, model_name, base_url, headers) in enumerate(model_chain):
+        last_provider = _provider
+        last_model = model_name
         for attempt in range(1 + retry_count):
             started = time.perf_counter()
             try:
@@ -2620,7 +2676,21 @@ async def _call_llm_chain(
                 timeout_seconds=timeout,
             )
 
-    raise last_error or ValueError(f"{context} failed without a model response")
+    if last_error is None:
+        raise ValueError(f"{context} failed without a model response")
+    provider_name = (
+        getattr(last_provider, "name", None)
+        or getattr(last_provider, "provider_type", None)
+        or "unknown-provider"
+    )
+    raise ModelCallError(
+        context=context,
+        provider=str(provider_name),
+        model=last_model,
+        timeout=timeout,
+        cause=last_error,
+        input_characters=input_characters,
+    ) from last_error
 
 
 async def _record_model_usage(
@@ -2825,6 +2895,27 @@ async def _record_node_failure_event(
     try:
         from shogun.services.event_logger import EventLogger
 
+        error_message = _error_message(error)
+        detail = {
+            "flow_id": str(node.flow_id),
+            "flow_run_id": str(run_id),
+            "node_id": str(node.id),
+            "node_label": node.label,
+            "node_type": node.node_type,
+            "error_type": getattr(error, "cause_type", type(error).__name__),
+            "error": error_message,
+        }
+        for attribute, key in (
+            ("provider", "provider"),
+            ("model", "model"),
+            ("timeout_seconds", "timeout_seconds"),
+            ("input_characters", "input_characters"),
+            ("estimated_input_tokens", "estimated_input_tokens"),
+        ):
+            value = getattr(error, attribute, None)
+            if value is not None:
+                detail[key] = value
+
         return await EventLogger.emit_incident_event(
             "agent_flow.node.failed",
             f"AgentFlow node '{node.label}' failed",
@@ -2832,15 +2923,7 @@ async def _record_node_failure_event(
             severity="error",
             risk_score="medium",
             trace_id=str(run_id),
-            detail={
-                "flow_id": str(node.flow_id),
-                "flow_run_id": str(run_id),
-                "node_id": str(node.id),
-                "node_label": node.label,
-                "node_type": node.node_type,
-                "error_type": type(error).__name__,
-                "error": str(error),
-            },
+            detail=detail,
         )
     except Exception:
         log.exception("Failed to write audit event for AgentFlow node %s", node.id)

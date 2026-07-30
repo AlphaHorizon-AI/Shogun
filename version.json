@@ -1,8 +1,8 @@
 {
-  "version": "1.47.22",
+  "version": "1.47.23",
   "name": "Shogun OS",
-  "build": 173,
+  "build": 174,
   "channel": "stable",
-  "released": "2026-07-30T08:24:27Z",
-  "changelog": "Add AgentFlow overview multi-selection with filter-aware Select All, selection counts, confirmed mass deletion, pre-validation, and synchronized schedule cleanup."
+  "released": "2026-07-30T09:47:00Z",
+  "changelog": "Fix AgentFlow Samurai timeout reporting and terminal retry handling, including actionable model/provider/context diagnostics and correct failed-run propagation."
 }

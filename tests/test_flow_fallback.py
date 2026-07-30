@@ -56,6 +56,25 @@ def test_provider_connection_accepts_bearer_token_credentials():
     assert headers["Authorization"] == "Bearer provider-access-token"
 
 
+def test_exhausted_retry_policy_is_terminal():
+    actions = {
+        name: flow_engine._node_failure_action(config)
+        for name, config in {
+            "retry": {"failure_action": "retry"},
+            "stop": {"failure_action": "stop"},
+            "legacy_stop": {"on_failure": "fail_parent"},
+            "continue": {"failure_action": "continue"},
+            "skip": {"failure_action": "skip"},
+        }.items()
+    }
+
+    assert flow_engine._failure_action_is_terminal(actions["retry"]) is True
+    assert flow_engine._failure_action_is_terminal(actions["stop"]) is True
+    assert flow_engine._failure_action_is_terminal(actions["legacy_stop"]) is True
+    assert flow_engine._failure_action_is_terminal(actions["continue"]) is False
+    assert flow_engine._failure_action_is_terminal(actions["skip"]) is False
+
+
 @pytest.mark.asyncio
 async def test_samurai_falls_back_after_timeout(monkeypatch):
     calls: list[tuple[str, int]] = []
@@ -128,6 +147,37 @@ async def test_samurai_exhausts_retries_before_fallback(monkeypatch):
         "",
     ) == "ok"
     assert calls == ["primary", "primary", "fallback"]
+
+
+@pytest.mark.asyncio
+async def test_exhausted_timeout_has_actionable_route_and_context_details(monkeypatch):
+    provider = SimpleNamespace(name="Local Ollama", provider_type="ollama")
+
+    async def call_llm(*_args, **_kwargs):
+        raise httpx.ReadTimeout("")
+
+    async def record_usage(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(flow_engine, "_call_llm", call_llm)
+    monkeypatch.setattr(flow_engine, "_record_model_usage", record_usage)
+
+    with pytest.raises(flow_engine.ModelCallError) as captured:
+        await flow_engine._call_llm_chain(
+            [{"role": "user", "content": "spreadsheet rows"}],
+            [(provider, "qwen-test", "http://localhost:11434/v1", {})],
+            timeout=120,
+            retry_count=0,
+            context="AgentFlow Samurai node",
+        )
+
+    error = captured.value
+    assert str(error) == "AgentFlow Samurai node timed out after 120s using Local Ollama/qwen-test"
+    assert error.cause_type == "ReadTimeout"
+    assert error.provider == "Local Ollama"
+    assert error.model == "qwen-test"
+    assert error.input_characters > len("spreadsheet rows")
+    assert error.estimated_input_tokens > 0
 
 
 @pytest.mark.asyncio

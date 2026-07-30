@@ -4,6 +4,7 @@ import json
 import uuid
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from pydantic import ValidationError
 
@@ -223,3 +224,25 @@ async def test_node_failure_event_is_deep_linkable_and_contains_exact_error(monk
     assert captured["trace_id"] == str(run_id)
     assert captured["detail"]["node_id"] == str(node.id)
     assert captured["detail"]["error"] == "Calendar connector returned 401: token expired"
+
+
+@pytest.mark.asyncio
+async def test_node_failure_event_explains_empty_model_timeout(monkeypatch):
+    captured: dict = {}
+
+    async def emit(event_type, action, **kwargs):
+        captured.update({"event_type": event_type, "action": action, **kwargs})
+        return "evt_timeout"
+
+    monkeypatch.setattr(EventLogger, "emit_incident_event", emit)
+    node = SimpleNamespace(
+        id=uuid.uuid4(),
+        flow_id=uuid.uuid4(),
+        node_type="samurai",
+        label="Analyze Data",
+    )
+
+    await flow_engine._record_node_failure_event(uuid.uuid4(), node, httpx.ReadTimeout(""))
+
+    assert captured["detail"]["error_type"] == "ReadTimeout"
+    assert captured["detail"]["error"] == "Model request timed out before a response was received"
