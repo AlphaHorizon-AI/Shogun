@@ -9,8 +9,14 @@ import shogun.db.models  # noqa: F401
 from shogun.db.base import Base
 from shogun.db.models.agent import Agent
 from shogun.db.models.agent_flow import AgentFlow
+from shogun.db.models.security_policy import SecurityPolicy
 from shogun.services import posture_guard
-from shogun.services.native_skills import NATIVE_TOOLS, WORKFLOW_TOOL_PERMISSIONS, execute_native_tool
+from shogun.services.native_skills import (
+    NATIVE_TOOLS,
+    WORKFLOW_TOOL_PERMISSIONS,
+    _shogun_workflow_permission,
+    execute_native_tool,
+)
 from shogun.services.posture_guard import filter_tools_by_posture
 
 
@@ -89,8 +95,117 @@ def test_workflow_tools_are_posture_eligible_at_tactical_and_above():
 
 
 def test_delete_tools_use_the_explicit_delete_toggles():
+    from shogun.services.tool_gate import TOOL_RISK_REGISTRY
+
     assert WORKFLOW_TOOL_PERMISSIONS["delete_agent_flow"] == ("agentflow", "allow_delete")
     assert WORKFLOW_TOOL_PERMISSIONS["delete_flow_stack"] == ("flow_stack", "allow_delete")
+    assert TOOL_RISK_REGISTRY["delete_agent_flow"] == {"risk": "high", "category": "workflow"}
+    assert TOOL_RISK_REGISTRY["delete_flow_stack"] == {"risk": "high", "category": "workflow"}
+
+
+def test_toolgate_allow_verdict_maps_to_native_workflow_permission():
+    from shogun.api.agents import _toolgate_workflow_permissions
+    from shogun.services.tool_gate import GateAction
+
+    assert _toolgate_workflow_permissions(
+        "create_agent_flow",
+        GateAction.ALLOW,
+        WORKFLOW_TOOL_PERMISSIONS,
+    ) == {("agentflow", "allow_create")}
+    assert not _toolgate_workflow_permissions(
+        "create_agent_flow",
+        GateAction.BLOCK,
+        WORKFLOW_TOOL_PERMISSIONS,
+    )
+
+
+@pytest.mark.asyncio
+async def test_campaign_toolgate_allow_authorizes_native_agentflow_capability():
+    from shogun.api.agents import _toolgate_workflow_permissions
+    from shogun.services.tool_gate import GateAction, check_tool_access
+
+    decision = await check_tool_access(
+        "campaign",
+        "create_agent_flow",
+        {},
+        local_scope="test:campaign",
+    )
+
+    assert decision.action == GateAction.ALLOW
+    assert _toolgate_workflow_permissions(
+        "create_agent_flow",
+        decision.action,
+        WORKFLOW_TOOL_PERMISSIONS,
+    ) == {("agentflow", "allow_create")}
+
+
+@pytest.mark.asyncio
+async def test_gensui_block_remains_authoritative_for_agentflow_create():
+    from shogun.api.agents import _toolgate_workflow_permissions
+    from shogun.services.tool_gate import (
+        GateAction,
+        apply_gensui_overrides,
+        check_tool_access,
+    )
+
+    apply_gensui_overrides({"create_agent_flow": "block"})
+    try:
+        decision = await check_tool_access(
+            "campaign",
+            "create_agent_flow",
+            {},
+            local_scope="test:gensui-block",
+        )
+
+        assert decision.action == GateAction.BLOCK
+        assert "gensui" in decision.reason.lower()
+        assert not _toolgate_workflow_permissions(
+            "create_agent_flow",
+            decision.action,
+            WORKFLOW_TOOL_PERMISSIONS,
+        )
+    finally:
+        apply_gensui_overrides({})
+
+
+@pytest.mark.asyncio
+async def test_native_permission_reads_primary_shogun_and_falls_back_to_policy():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with sessions() as session:
+        policy = SecurityPolicy(
+            name="Campaign AgentFlow",
+            tier="campaign",
+            permissions={"agentflow": {"allow_create": True}},
+        )
+        session.add(policy)
+        await session.flush()
+        legacy = Agent(
+            agent_type="shogun",
+            name="Legacy Shogun",
+            slug="legacy-shogun-permissions",
+            status="active",
+            is_primary=False,
+            bushido_settings={"custom_permissions": {"agentflow": {"allow_create": False}}},
+        )
+        primary = Agent(
+            agent_type="shogun",
+            name="Primary Shogun",
+            slug="primary-shogun-permissions",
+            status="active",
+            is_primary=True,
+            security_policy_id=policy.id,
+            bushido_settings={"custom_permissions": {}},
+        )
+        session.add_all([legacy, primary])
+        await session.flush()
+
+        assert await _shogun_workflow_permission(session, "agentflow", "allow_create")
+
+    await engine.dispose()
 
 
 @pytest.mark.asyncio

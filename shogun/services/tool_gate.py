@@ -392,8 +392,10 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     "create_agent_flow":      {"risk": "medium",   "category": "workflow"},
     "edit_agent_flow":        {"risk": "medium",   "category": "workflow"},
     "patch_agent_flow":       {"risk": "medium",   "category": "workflow"},
+    "delete_agent_flow":      {"risk": "high",     "category": "workflow"},
     "create_flow_stack":      {"risk": "medium",   "category": "workflow"},
     "edit_flow_stack":        {"risk": "medium",   "category": "workflow"},
+    "delete_flow_stack":      {"risk": "high",     "category": "workflow"},
     # Skills
     "skills_request_activation": {"risk": "low",   "category": "skills"},
     "skills_explain_active":     {"risk": "low",   "category": "skills"},
@@ -404,6 +406,7 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     "mcp_read_resource":      {"risk": "low",      "category": "mcp"},
     # Office — Excel (Katana)
     "office_excel_open":          {"risk": "low",      "category": "office"},
+    "office_excel_open_attachment": {"risk": "low",    "category": "office"},
     "office_excel_read_range":    {"risk": "low",      "category": "office"},
     "office_excel_write_range":   {"risk": "medium",   "category": "office"},
     "office_excel_calculate":     {"risk": "low",      "category": "office"},

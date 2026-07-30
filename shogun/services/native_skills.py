@@ -2598,13 +2598,19 @@ async def _shogun_workflow_permission(db_session, category: str, permission: str
     from shogun.db.models.security_policy import SecurityPolicy
 
     result = await db_session.execute(
-        select(Agent).where(Agent.agent_type == "shogun", Agent.is_deleted == False)
+        select(Agent)
+        .where(
+            Agent.agent_type == "shogun",
+            Agent.is_primary.is_(True),
+            Agent.is_deleted.is_(False),
+        )
+        .limit(1)
     )
-    shogun = result.scalars().first()
+    shogun = result.scalar_one_or_none()
     if not shogun:
         return False
     custom = (shogun.bushido_settings or {}).get("custom_permissions")
-    permissions = custom
+    permissions = custom if custom else None
     if permissions is None and shogun.security_policy_id:
         policy = await db_session.get(SecurityPolicy, shogun.security_policy_id)
         permissions = policy.permissions if policy else None

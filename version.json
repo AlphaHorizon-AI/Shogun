@@ -1,8 +1,8 @@
 {
-  "version": "1.47.25",
+  "version": "1.47.26",
   "name": "Shogun OS",
-  "build": 176,
+  "build": 177,
   "channel": "stable",
-  "released": "2026-07-30T11:25:00Z",
-  "changelog": "Add Workspace document discovery, offline Windows OCR for scanned PDFs, and combined AgentFlow plus attached-Excel tooling in Comms chat."
+  "released": "2026-07-30T11:35:27Z",
+  "changelog": "Align Campaign ToolGate decisions with native AgentFlow permissions while preserving Torii and Gensui governance blocks."
 }

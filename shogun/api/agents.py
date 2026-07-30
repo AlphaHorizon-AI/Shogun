@@ -42,6 +42,18 @@ def _operator_authorizes_agentflow_patch(user_msg: str) -> bool:
     return "patch_agent_flow" in operator_authorized_workflow_tools(user_msg)
 
 
+def _toolgate_workflow_permissions(
+    tool_name: str,
+    gate_action: Any,
+    workflow_permissions: dict[str, tuple[str, str]],
+) -> set[tuple[str, str]]:
+    """Translate ToolGate's effective ALLOW verdict for the native guard."""
+    action_value = getattr(gate_action, "value", gate_action)
+    if action_value == "allow" and tool_name in workflow_permissions:
+        return {workflow_permissions[tool_name]}
+    return set()
+
+
 def _chat_attachment_content(user_msg: str, attachments: list[dict] | None) -> str | list[dict]:
     """Build multimodal content plus a server-verified attached-file manifest."""
     image_parts: list[dict] = []
@@ -2624,15 +2636,31 @@ BEHAVIOUR:
                             _tg_campaign = _get_preset(_tg_preset_key)
 
                         _operator_confirmed_permissions: set[tuple[str, str]] = set()
-                        if func_name in _operator_authorized_workflow_tools:
+                        _tg_decision = await check_tool_access(
+                            mode=_tg_mode,
+                            tool_name=func_name,
+                            args=args,
+                            campaign_preset=_tg_campaign,
+                            local_scope=_tg_scope,
+                        )
+                        if (
+                            _tg_decision.action == GateAction.ALLOW
+                            and func_name in _operator_authorized_workflow_tools
+                        ):
                             _tg_decision = GateDecision(
                                 action=GateAction.ALLOW,
-                                reason="Explicitly authorized by the operator's current workflow instruction.",
-                                risk_level=RiskLevel.MEDIUM,
+                                reason=(
+                                    "ToolGate allows this operation and the operator explicitly "
+                                    "authorized it in the current workflow instruction."
+                                ),
+                                risk_level=_tg_decision.risk_level,
                                 tool_name=func_name,
+                                parameter_flags=_tg_decision.parameter_flags,
                             )
-                            _operator_confirmed_permissions.add(WORKFLOW_TOOL_PERMISSIONS[func_name])
-                        elif func_name in _workflow_confirmation_tools:
+                        elif (
+                            _tg_decision.action == GateAction.ALLOW
+                            and func_name in _workflow_confirmation_tools
+                        ):
                             _permission_name = ".".join(WORKFLOW_TOOL_PERMISSIONS[func_name])
                             _tg_decision = GateDecision(
                                 action=GateAction.CONFIRM,
@@ -2643,14 +2671,19 @@ BEHAVIOUR:
                                 risk_level=RiskLevel.MEDIUM,
                                 tool_name=func_name,
                             )
-                        else:
-                            _tg_decision = await check_tool_access(
-                                mode=_tg_mode,
-                                tool_name=func_name,
-                                args=args,
-                                campaign_preset=_tg_campaign,
-                                local_scope=_tg_scope,
+
+                        # ToolGate is the final per-call authority after Torii
+                        # capability and posture filtering. Propagate an
+                        # effective ALLOW verdict to the native workflow guard;
+                        # otherwise Campaign can display ALLOW while the native
+                        # executor independently reports permission_required.
+                        _operator_confirmed_permissions.update(
+                            _toolgate_workflow_permissions(
+                                func_name,
+                                _tg_decision.action,
+                                WORKFLOW_TOOL_PERMISSIONS,
                             )
+                        )
 
                         if (
                             _tg_decision.action == GateAction.CONFIRM
@@ -3025,14 +3058,31 @@ BEHAVIOUR:
                                 from shogun.services.campaign_presets import get_preset as _get_preset
                                 _tg_campaign = _get_preset(_tg_preset_key)
 
-                            if func_name in _operator_authorized_workflow_tools:
+                            _tg_decision = await check_tool_access(
+                                mode=_tg_mode,
+                                tool_name=func_name,
+                                args=args,
+                                campaign_preset=_tg_campaign,
+                                local_scope=_tg_scope,
+                            )
+                            if (
+                                _tg_decision.action == GateAction.ALLOW
+                                and func_name in _operator_authorized_workflow_tools
+                            ):
                                 _tg_decision = GateDecision(
                                     action=GateAction.ALLOW,
-                                    reason="Explicitly authorized by the operator's current workflow instruction.",
-                                    risk_level=RiskLevel.MEDIUM,
+                                    reason=(
+                                        "ToolGate allows this operation and the operator explicitly "
+                                        "authorized it in the current workflow instruction."
+                                    ),
+                                    risk_level=_tg_decision.risk_level,
                                     tool_name=func_name,
+                                    parameter_flags=_tg_decision.parameter_flags,
                                 )
-                            elif func_name in _workflow_confirmation_tools:
+                            elif (
+                                _tg_decision.action == GateAction.ALLOW
+                                and func_name in _workflow_confirmation_tools
+                            ):
                                 _permission_name = ".".join(WORKFLOW_TOOL_PERMISSIONS[func_name])
                                 _tg_decision = GateDecision(
                                     action=GateAction.CONFIRM,
@@ -3043,14 +3093,12 @@ BEHAVIOUR:
                                     risk_level=RiskLevel.MEDIUM,
                                     tool_name=func_name,
                                 )
-                            else:
-                                _tg_decision = await check_tool_access(
-                                    mode=_tg_mode,
-                                    tool_name=func_name,
-                                    args=args,
-                                    campaign_preset=_tg_campaign,
-                                    local_scope=_tg_scope,
-                                )
+
+                            _toolgate_allowed_permissions = _toolgate_workflow_permissions(
+                                func_name,
+                                _tg_decision.action,
+                                WORKFLOW_TOOL_PERMISSIONS,
+                            )
 
                             if (
                                 _tg_decision.action == GateAction.CONFIRM
@@ -3136,9 +3184,12 @@ BEHAVIOUR:
                                     # Execute (allow)
                                     yield f"data: {json.dumps({'type': 'action', 'content': f'Executing {func_name}...'})}\n\n"
                                     _confirmed = (
-                                        {WORKFLOW_TOOL_PERMISSIONS[func_name]}
-                                        if func_name in _operator_authorized_workflow_tools
-                                        else set()
+                                        _toolgate_allowed_permissions
+                                        | (
+                                            {WORKFLOW_TOOL_PERMISSIONS[func_name]}
+                                            if func_name in _operator_authorized_workflow_tools
+                                            else set()
+                                        )
                                     )
                                     res_str = await execute_native_tool(
                                         func_name,
