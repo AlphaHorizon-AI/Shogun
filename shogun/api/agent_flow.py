@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.api.deps import get_agent_flow_service, get_db
 from shogun.schemas.agent_flow import (
+    AgentFlowBulkDeleteRequest,
     AgentFlowCreate,
     AgentFlowGraphSave,
     AgentFlowListItem,
@@ -785,6 +786,35 @@ async def update_flow(
 
 
 # ── Delete a flow ────────────────────────────────────────────
+
+
+@router.delete("/bulk", response_model=ApiResponse)
+async def delete_flows_bulk(
+    body: AgentFlowBulkDeleteRequest,
+    svc: AgentFlowService = Depends(get_agent_flow_service),
+):
+    """Soft-delete a validated selection of Agent Flows in one request."""
+    flow_ids = list(dict.fromkeys(body.flow_ids))
+    records = []
+    missing: list[str] = []
+    for flow_id in flow_ids:
+        record = await svc.get_by_id(flow_id)
+        if not record or record.is_deleted:
+            missing.append(str(flow_id))
+        else:
+            records.append(record)
+    if missing:
+        raise HTTPException(
+            status_code=404,
+            detail={"message": "One or more Agent Flows were not found.", "missing_flow_ids": missing},
+        )
+
+    deleted_ids: list[str] = []
+    for record in records:
+        await svc.delete(record.id)
+        await _sync_live_flow_schedule(record)
+        deleted_ids.append(str(record.id))
+    return ApiResponse(data={"deleted": True, "deleted_count": len(deleted_ids), "deleted_flow_ids": deleted_ids})
 
 
 @router.delete("/{flow_id}", response_model=ApiResponse)

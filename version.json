@@ -1,8 +1,8 @@
 {
-  "version": "1.47.21",
+  "version": "1.47.22",
   "name": "Shogun OS",
-  "build": 172,
+  "build": 173,
   "channel": "stable",
-  "released": "2026-07-30T07:44:57Z",
-  "changelog": "Add secure chat file attachments with multi-file drag-and-drop, server-verified file IDs, bounded AI reading for text, data, PDF, Word, Excel, and PowerPoint files, and file-aware model tool routing."
+  "released": "2026-07-30T08:24:27Z",
+  "changelog": "Add AgentFlow overview multi-selection with filter-aware Select All, selection counts, confirmed mass deletion, pre-validation, and synchronized schedule cleanup."
 }

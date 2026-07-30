@@ -260,6 +260,12 @@ class AgentFlowUpdate(BaseModel):
     template_config: dict[str, Any] | None = None
 
 
+class AgentFlowBulkDeleteRequest(BaseModel):
+    """Operator-confirmed set of Agent Flows to soft-delete together."""
+
+    flow_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
 class AgentFlowResponse(ShogunBase):
     """Response model for a flow (with nested nodes and edges)."""
 

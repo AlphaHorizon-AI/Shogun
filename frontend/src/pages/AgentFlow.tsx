@@ -72,6 +72,8 @@ import {
   BookmarkPlus,
   Power,
   Code2,
+  Square,
+  CheckSquare2,
 } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -3924,6 +3926,7 @@ function FlowListView({
   onSelect,
   onCreate,
   onDelete,
+  onBulkDelete,
   onDuplicate,
   onRefresh,
 }: {
@@ -3932,15 +3935,62 @@ function FlowListView({
   onSelect: (id: string) => void;
   onCreate: () => void;
   onDelete: (id: string) => void;
+  onBulkDelete: (ids: string[]) => Promise<void>;
   onDuplicate: (id: string) => void;
   onRefresh: () => void;
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deletingSelection, setDeletingSelection] = useState(false);
+  const [bulkError, setBulkError] = useState('');
 
   const filtered = flows.filter((f) =>
     f.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  useEffect(() => {
+    const visibleIds = new Set(flows.map((flow) => flow.id));
+    setSelectedIds((current) => new Set([...current].filter((id) => visibleIds.has(id))));
+  }, [flows]);
+
+  const toggleSelection = (flowId: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(flowId)) next.delete(flowId);
+      else next.add(flowId);
+      return next;
+    });
+    setBulkError('');
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setBulkError('');
+  };
+
+  const deleteSelection = async () => {
+    if (selectedIds.size === 0 || deletingSelection) return;
+    const selectedNames = flows.filter((flow) => selectedIds.has(flow.id)).map((flow) => flow.name);
+    const preview = selectedNames.slice(0, 5).join(', ');
+    const suffix = selectedNames.length > 5 ? ` and ${selectedNames.length - 5} more` : '';
+    if (!window.confirm(`Delete ${selectedIds.size} Agent Flows?\n\n${preview}${suffix}\n\nThis removes the selected workflows from the overview.`)) return;
+    setDeletingSelection(true);
+    setBulkError('');
+    try {
+      await onBulkDelete([...selectedIds]);
+      exitSelectionMode();
+    } catch (error) {
+      const message = axios.isAxiosError(error)
+        ? error.response?.data?.detail?.message || error.response?.data?.detail || error.message
+        : 'Bulk deletion failed.';
+      setBulkError(String(message));
+    } finally {
+      setDeletingSelection(false);
+    }
+  };
 
   const statusColors: Record<string, string> = {
     draft: '#7a8899',
@@ -3985,12 +4035,53 @@ function FlowListView({
           <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
         </button>
         <button
+          onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
+          className={cn(
+            "flex items-center gap-2 border font-bold py-2.5 px-4 rounded-lg transition-all text-xs",
+            selectionMode
+              ? "border-[#d4a017]/50 bg-[#d4a017]/10 text-[#d4a017]"
+              : "border-[#1a2040] bg-[#0e1225] text-[#7a8899] hover:text-[#c8d0d8]"
+          )}
+        >
+          {selectionMode ? <CheckSquare2 className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+          {selectionMode ? 'CANCEL' : 'SELECT'}
+        </button>
+        <button
           onClick={onCreate}
           className="flex items-center gap-2 bg-[#4a8cc7] hover:bg-[#4a8cc7]/90 text-white font-bold py-2.5 px-5 rounded-lg transition-all shadow-[0_0_20px_rgba(74,140,199,0.15)] text-xs"
         >
           <Plus className="w-4 h-4" /> NEW FLOW
         </button>
       </div>
+
+      {selectionMode && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#d4a017]/25 bg-[#d4a017]/5 px-4 py-3">
+          <span className="text-xs font-bold text-[#c8d0d8]">{selectedIds.size} selected</span>
+          <button
+            onClick={() => setSelectedIds(new Set(filtered.map((flow) => flow.id)))}
+            disabled={filtered.length === 0}
+            className="text-[10px] font-bold uppercase tracking-wider text-[#4a8cc7] hover:text-[#6aa6dc] disabled:opacity-40"
+          >
+            Select all {searchTerm ? 'filtered' : ''}
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            disabled={selectedIds.size === 0}
+            className="text-[10px] font-bold uppercase tracking-wider text-[#7a8899] hover:text-[#c8d0d8] disabled:opacity-40"
+          >
+            Clear
+          </button>
+          <button
+            onClick={() => void deleteSelection()}
+            disabled={selectedIds.size === 0 || deletingSelection}
+            className="ml-auto flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-bold text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {deletingSelection ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            DELETE {selectedIds.size || ''}
+          </button>
+          {bulkError && <p className="w-full text-[10px] text-red-400">{bulkError}</p>}
+        </div>
+      )}
 
       {/* Flow Cards Grid */}
       {loading ? (
@@ -4013,15 +4104,43 @@ function FlowListView({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((flow) => (
-            <button
+            <div
               key={flow.id}
-              onClick={() => onSelect(flow.id)}
-              className="shogun-card !p-0 text-left hover:border-[#4a8cc7]/40 transition-all group relative overflow-hidden"
+              role="button"
+              tabIndex={0}
+              aria-pressed={selectionMode ? selectedIds.has(flow.id) : undefined}
+              onClick={() => selectionMode ? toggleSelection(flow.id) : onSelect(flow.id)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  selectionMode ? toggleSelection(flow.id) : onSelect(flow.id);
+                }
+              }}
+              className={cn(
+                "shogun-card !p-0 text-left hover:border-[#4a8cc7]/40 transition-all group relative overflow-hidden cursor-pointer",
+                selectionMode && selectedIds.has(flow.id) && "border-[#d4a017]/70 bg-[#d4a017]/5 ring-1 ring-[#d4a017]/30"
+              )}
             >
               {/* Top accent */}
               <div className="h-0.5" style={{ background: statusColors[flow.status] || '#7a8899' }} />
 
-              <div className="p-5">
+              {selectionMode && (
+                <button
+                  type="button"
+                  aria-label={`${selectedIds.has(flow.id) ? 'Deselect' : 'Select'} ${flow.name}`}
+                  onClick={(event) => { event.stopPropagation(); toggleSelection(flow.id); }}
+                  className={cn(
+                    "absolute right-4 top-4 z-10 rounded-md border p-1.5 transition-colors",
+                    selectedIds.has(flow.id)
+                      ? "border-[#d4a017]/60 bg-[#d4a017]/20 text-[#d4a017]"
+                      : "border-[#2a3060] bg-[#0e1225] text-[#7a8899] hover:text-[#c8d0d8]"
+                  )}
+                >
+                  {selectedIds.has(flow.id) ? <CheckSquare2 className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                </button>
+              )}
+
+              <div className={cn("p-5", selectionMode && "pr-14")}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-bold text-[#c8d0d8] group-hover:text-[#d4a017] transition-colors truncate">
@@ -4031,7 +4150,7 @@ function FlowListView({
                       {flow.description || 'No description'}
                     </p>
                   </div>
-                  <div className="relative">
+                  {!selectionMode && <div className="relative">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -4057,7 +4176,7 @@ function FlowListView({
                         </button>
                       </div>
                     )}
-                  </div>
+                  </div>}
                 </div>
 
                 <div className="flex items-center gap-3 mt-4">
@@ -4085,7 +4204,7 @@ function FlowListView({
                   </span>
                 </div>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       )}
@@ -4870,6 +4989,11 @@ export const AgentFlow = () => {
     }
   }, [fetchFlows]);
 
+  const handleBulkDelete = useCallback(async (flowIds: string[]) => {
+    await axios.delete('/api/v1/agent-flows/bulk', { data: { flow_ids: flowIds } });
+    await fetchFlows();
+  }, [fetchFlows]);
+
   // Duplicate flow
   const handleDuplicate = useCallback(async (flowId: string) => {
     try {
@@ -4906,6 +5030,7 @@ export const AgentFlow = () => {
         onSelect={loadFlow}
         onCreate={() => setShowCreateModal(true)}
         onDelete={handleDelete}
+        onBulkDelete={handleBulkDelete}
         onDuplicate={handleDuplicate}
         onRefresh={fetchFlows}
       />
