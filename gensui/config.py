@@ -47,6 +47,7 @@ class GensuiSettings(BaseSettings):
     # ── Initial Admin ────────────────────────────────────────
     gensui_admin_email: str = "admin@gensui.local"
     gensui_admin_password: str = "changeme"
+    gensui_allow_insecure_local_password: bool = False
 
     # ── Enrollment ───────────────────────────────────────────
     gensui_require_enrollment_approval: bool = True
@@ -106,7 +107,17 @@ class GensuiSettings(BaseSettings):
         secret = self.jwt_secret
         if len(secret) < 32 or secret.startswith("change-me-"):
             raise RuntimeError("Gensui JWT signing secret must be a unique random value")
-        if len(self.gensui_admin_password) < 12 or self.gensui_admin_password.startswith("change-me"):
+        weak_admin_password = (
+            len(self.gensui_admin_password) < 12
+            or self.gensui_admin_password.startswith("change-me")
+        )
+        if weak_admin_password and self.gensui_allow_insecure_local_password:
+            if self.gensui_server_host not in {"127.0.0.1", "localhost", "::1"}:
+                raise RuntimeError(
+                    "GENSUI_ALLOW_INSECURE_LOCAL_PASSWORD may only be used with a loopback server host"
+                )
+            return
+        if weak_admin_password:
             raise RuntimeError("GENSUI_ADMIN_PASSWORD must be a unique password of at least 12 characters")
 
 # Singleton instance

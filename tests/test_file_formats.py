@@ -238,6 +238,28 @@ async def test_chat_reader_extracts_word_document_text(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_chat_reader_extracts_excel_sheet_data_offline(tmp_path):
+    openpyxl = pytest.importorskip("openpyxl")
+    path = tmp_path / "sales.xlsx"
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "Quarterly Sales"
+    sheet.append(["Region", "Revenue"])
+    sheet.append(["North", 125000])
+    sheet.append(["South", 98000])
+    workbook.save(path)
+    workbook.close()
+
+    result = await service(tmp_path).read(path=str(path))
+
+    assert result["format_id"] == "office"
+    assert "Quarterly Sales" in result["metadata"]["sheets"]
+    assert result["metadata"]["selected_sheet"] == "Quarterly Sales"
+    assert "North" in result["content"]
+    assert "125000" in result["content"]
+
+
+@pytest.mark.asyncio
 async def test_zip_inspection_and_zip_slip_blocking(tmp_path, monkeypatch):
     path = tmp_path / "package.zip"
     with zipfile.ZipFile(path, "w") as archive:

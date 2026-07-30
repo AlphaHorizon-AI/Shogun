@@ -45,6 +45,35 @@ def test_gensui_secret_file_is_generated_with_strong_material(tmp_path: Path):
     assert len(config.jwt_secret) >= 64
 
 
+def test_gensui_can_explicitly_allow_weak_password_on_loopback(tmp_path: Path):
+    from gensui.config import GensuiSettings
+
+    config = GensuiSettings(
+        _env_file=None,
+        gensui_server_host="127.0.0.1",
+        gensui_jwt_secret="s" * 64,
+        gensui_admin_password="changeme",
+        gensui_allow_insecure_local_password=True,
+    )
+
+    config.validate_security()
+
+
+def test_gensui_rejects_weak_password_bypass_on_remote_binding():
+    from gensui.config import GensuiSettings
+
+    config = GensuiSettings(
+        _env_file=None,
+        gensui_server_host="0.0.0.0",
+        gensui_jwt_secret="s" * 64,
+        gensui_admin_password="changeme",
+        gensui_allow_insecure_local_password=True,
+    )
+
+    with pytest.raises(RuntimeError, match="loopback server host"):
+        config.validate_security()
+
+
 def test_gensui_tokens_are_typed_and_browser_cookies_are_httponly(monkeypatch):
     from gensui.api.auth import _issue_browser_session
     from gensui.config import gensui_settings

@@ -1,8 +1,8 @@
 {
-  "version": "1.47.23",
+  "version": "1.47.24",
   "name": "Shogun OS",
-  "build": 174,
+  "build": 175,
   "channel": "stable",
-  "released": "2026-07-30T09:47:00Z",
-  "changelog": "Fix AgentFlow Samurai timeout reporting and terminal retry handling, including actionable model/provider/context diagnostics and correct failed-run propagation."
+  "released": "2026-07-30T09:48:00Z",
+  "changelog": "Add deterministic offline PDF, Word, and Excel extraction for Comms attachments, plus an explicit loopback-only Gensui demo-password bypass."
 }
