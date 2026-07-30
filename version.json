@@ -1,8 +1,8 @@
 {
-  "version": "1.47.32",
+  "version": "1.47.33",
   "name": "Shogun OS",
-  "build": 183,
+  "build": 184,
   "channel": "stable",
-  "released": "2026-07-30T14:12:54Z",
-  "changelog": "Let AgentFlow document inputs use node uploads, existing workspace files, or server-verified Comms attachment references, with workspace-boundary enforcement."
+  "released": "2026-07-30T15:15:39Z",
+  "changelog": "Show failed AgentFlow document uploads as errors in the editor and report missing server paths clearly at runtime instead of presenting false success."
 }

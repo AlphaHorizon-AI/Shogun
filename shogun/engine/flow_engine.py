@@ -795,6 +795,11 @@ async def _exec_input(config: dict, context_str: str, run_input: dict[str, Any] 
                     payload = await FileFormatService(session).read(file_id=file_id, max_chars=100000)
             elif source == "upload":
                 if not uploaded or not uploaded.get("path"):
+                    if uploaded and uploaded.get("filename"):
+                        raise ValueError(
+                            f"The upload for '{uploaded['filename']}' did not complete successfully "
+                            "(server path is missing). Please remove and re-upload the document."
+                        )
                     raise ValueError("No document was uploaded to this node")
                 file_path = Path(uploaded["path"])
                 if not file_path.is_file():

@@ -14,6 +14,23 @@ async def test_document_input_requires_an_uploaded_file():
 
 
 @pytest.mark.asyncio
+async def test_document_input_reports_incomplete_upload():
+    with pytest.raises(ValueError, match="did not complete successfully"):
+        await flow_engine._exec_input(
+            {
+                "input_type": "document",
+                "uploaded_file": {
+                    "filename": "Mapla 21.07.2026.pdf",
+                    "size": 1234,
+                    "path": "",
+                    "error": "Upload failed",
+                },
+            },
+            "",
+        )
+
+
+@pytest.mark.asyncio
 async def test_document_input_uses_bounded_format_reader(tmp_path):
     document = tmp_path / "input.txt"
     document.write_text("mapped source content", encoding="utf-8")

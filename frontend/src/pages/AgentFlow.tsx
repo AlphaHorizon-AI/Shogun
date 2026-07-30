@@ -1618,9 +1618,11 @@ function NodeInspector({
                     className={cn(
                       "border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200",
                       "hover:border-[#22c55e]/50 hover:bg-[#22c55e]/5",
-                      config.uploaded_file
+                      config.uploaded_file && config.uploaded_file.path
                         ? "border-[#22c55e]/30 bg-[#22c55e]/5"
-                        : "border-[#1a2040] bg-[#0a0e1a]"
+                        : config.uploaded_file && !config.uploaded_file.path
+                          ? "border-[#ef4444]/40 bg-[#ef4444]/5"
+                          : "border-[#1a2040] bg-[#0a0e1a]"
                     )}
                     onClick={() => {
                       const input = document.createElement('input');
@@ -1678,11 +1680,23 @@ function NodeInspector({
                   >
                     {config.uploaded_file ? (
                       <div className="space-y-1">
-                        <FileText className="w-6 h-6 mx-auto text-[#22c55e]" />
-                        <p className="text-[10px] font-bold text-[#c8d0d8] truncate">{config.uploaded_file.filename}</p>
-                        <p className="text-[8px] text-[#555]">
-                          {(config.uploaded_file.size / 1024).toFixed(1)} KB
-                        </p>
+                        {config.uploaded_file.path ? (
+                          <>
+                            <FileText className="w-6 h-6 mx-auto text-[#22c55e]" />
+                            <p className="text-[10px] font-bold text-[#c8d0d8] truncate">{config.uploaded_file.filename}</p>
+                            <p className="text-[8px] text-[#555]">
+                              {(config.uploaded_file.size / 1024).toFixed(1)} KB
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="w-6 h-6 mx-auto text-[#ef4444]" />
+                            <p className="text-[10px] font-bold text-[#ef4444] truncate">{config.uploaded_file.filename}</p>
+                            <p className="text-[9px] text-[#ef4444]/80 font-bold">
+                              Upload failed — click to retry
+                            </p>
+                          </>
+                        )}
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); updateConfig('uploaded_file', null); }}
