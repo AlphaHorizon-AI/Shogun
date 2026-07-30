@@ -1,8 +1,8 @@
 {
-  "version": "1.47.26",
+  "version": "1.47.27",
   "name": "Shogun OS",
-  "build": 177,
+  "build": 178,
   "channel": "stable",
-  "released": "2026-07-30T11:35:27Z",
-  "changelog": "Align Campaign ToolGate decisions with native AgentFlow permissions while preserving Torii and Gensui governance blocks."
+  "released": "2026-07-30T12:43:28Z",
+  "changelog": "Repair stale Katana model capabilities and prevent synthesis-only Samurai nodes from incorrectly requiring model-native tool support."
 }

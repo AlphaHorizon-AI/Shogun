@@ -180,6 +180,33 @@ async def test_samurai_runtime_prefetches_governed_native_reads(monkeypatch):
     assert "Standup" in prompt
 
 
+@pytest.mark.asyncio
+async def test_samurai_legacy_tool_metadata_does_not_require_model_tool_use(monkeypatch):
+    captured: dict = {}
+
+    async def resolve_chain(*_args, **kwargs):
+        captured.update(kwargs)
+        return [object()], {"route": "test"}
+
+    async def call_chain(*_args, **_kwargs):
+        return "Mapped data"
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_chain)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain", call_chain)
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+
+    result = await flow_engine._exec_samurai(
+        {
+            "task_description": "Extract and map the supplied predecessor data.",
+            "requires_tools": ["read_pdf", "office_excel_write_range"],
+        },
+        "already extracted predecessor content",
+    )
+
+    assert result == "Mapped data"
+    assert captured["required_capabilities"] == ["chat"]
+
+
 def test_native_read_node_configs_are_normalized_and_bounded():
     email = AgentFlowNodeCreate(node_type="email_read", config={})
     calendar = AgentFlowNodeCreate(node_type="calendar_read", config={"days_ahead": 1})

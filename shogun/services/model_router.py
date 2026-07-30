@@ -255,6 +255,26 @@ def infer_capabilities(model_id: str, provider_type: str = "") -> dict[str, bool
     }
 
 
+def registry_capabilities(
+    model_id: str,
+    provider_type: str,
+    definition: ModelDefinition | None = None,
+) -> dict[str, bool]:
+    """Build safe capabilities for discovered and upgraded registry rows.
+
+    Definition booleans historically defaulted to ``False`` when discovery did
+    not know a capability. Treat affirmative metadata as authoritative without
+    letting an old unknown/default value erase a capability that can be inferred
+    from a well-known provider or model family.
+    """
+    capabilities = infer_capabilities(model_id, provider_type)
+    if definition:
+        capabilities["vision"] = capabilities["vision"] or definition.supports_vision
+        capabilities["tool_use"] = capabilities["tool_use"] or definition.supports_tools
+        capabilities["json_mode"] = capabilities["json_mode"] or definition.supports_json_mode
+    return capabilities
+
+
 def infer_tiers(model_id: str, local: bool) -> tuple[int, int, int]:
     name = model_id.lower()
     quality = 3
@@ -395,16 +415,19 @@ class ModelRegistryService:
                     item = existing_map[key]
                     if (item.config_json or {}).get("auto_discovered"):
                         item.display_name = definition.display_name if definition else model_id
+                        # Repair registry rows created by older Katana versions.
+                        # Those rows may contain ``{}`` or stale False defaults,
+                        # which makes AgentFlow routing report NoEligibleModelError
+                        # even though the connected provider works in Comms.
+                        item.capabilities = registry_capabilities(
+                            model_id,
+                            provider.provider_type,
+                            definition,
+                        )
+                        if definition and definition.context_window:
+                            item.context_window = definition.context_window
                     continue
-                caps = infer_capabilities(model_id, provider.provider_type)
-                if definition:
-                    caps.update(
-                        {
-                            "vision": definition.supports_vision,
-                            "tool_use": definition.supports_tools,
-                            "json_mode": definition.supports_json_mode,
-                        }
-                    )
+                caps = registry_capabilities(model_id, provider.provider_type, definition)
                 quality, cost, latency = infer_tiers(model_id, provider.is_local)
                 item = ModelRegistryEntry(
                     model_id=model_id,

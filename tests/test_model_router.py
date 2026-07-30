@@ -106,6 +106,52 @@ async def test_registry_sync_uses_explicit_models_even_when_definitions_exist(ro
 
 
 @pytest.mark.asyncio
+async def test_registry_sync_repairs_stale_auto_discovered_capabilities(routing_session):
+    provider = ModelProvider(
+        provider_type="openrouter",
+        name="Primary OpenRouter",
+        slug="repair-openrouter-capabilities",
+        base_url="https://openrouter.ai/api/v1",
+        status="connected",
+        config={"models": ["qwen/qwen3-32b"]},
+    )
+    routing_session.add(provider)
+    await routing_session.flush()
+    definition = ModelDefinition(
+        provider_id=provider.id,
+        model_key="qwen/qwen3-32b",
+        display_name="Qwen 3 32B",
+        supports_tools=False,
+        supports_json_mode=False,
+    )
+    stale = ModelRegistryEntry(
+        model_id="qwen/qwen3-32b",
+        display_name="Old Qwen",
+        provider_id=provider.id,
+        provider="openrouter",
+        connection_type="api",
+        enabled=True,
+        capabilities={},
+        quality_tier=3,
+        cost_tier=3,
+        latency_tier=3,
+        context_window=8192,
+        local=False,
+        role_tags=[],
+        config_json={"auto_discovered": True, "provider_available": True},
+    )
+    routing_session.add_all([definition, stale])
+    await routing_session.flush()
+
+    entries = await ModelRegistryService(routing_session).list()
+
+    assert entries[0].display_name == "Qwen 3 32B"
+    assert entries[0].capabilities["chat"] is True
+    assert entries[0].capabilities["tool_use"] is True
+    assert entries[0].capabilities["json_mode"] is True
+
+
+@pytest.mark.asyncio
 async def test_registry_sync_recovers_legacy_ollama_provider_model_name(routing_session):
     provider = ModelProvider(
         provider_type="ollama",

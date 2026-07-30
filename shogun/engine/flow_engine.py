@@ -1201,7 +1201,11 @@ async def _exec_samurai(
             session,
             prompt=user_message,
             task_type=config.get("task_type") or "stack_step_execution",
-            required_capabilities=["chat", *(["tool_use"] if config.get("requires_tools") else [])],
+            # Samurai nodes synthesize predecessor/runtime-fetched context and
+            # do not expose native tools to the model. Legacy/generated
+            # ``requires_tools`` metadata must therefore not disqualify an
+            # otherwise valid chat model.
+            required_capabilities=["chat"],
             routing_profile_id=routing_profile_id,
             stack_run_id=(governance_context or {}).get("stack_run_id"),
             step_id=(governance_context or {}).get("stack_step_id"),
