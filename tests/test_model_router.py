@@ -153,6 +153,50 @@ async def test_registry_sync_repairs_stale_auto_discovered_capabilities(routing_
 
 
 @pytest.mark.asyncio
+async def test_registry_sync_repairs_legacy_manual_row_missing_chat(routing_session):
+    provider = ModelProvider(
+        provider_type="ollama",
+        name="gemma4:12b",
+        slug="legacy-manual-gemma4-12b",
+        base_url="http://127.0.0.1:11434",
+        is_local=True,
+        status="connected",
+        config={"models": ["gemma4:12b"]},
+    )
+    routing_session.add(provider)
+    await routing_session.flush()
+    stale = ModelRegistryEntry(
+        model_id="gemma4:12b",
+        display_name="Gemma 4 12B",
+        provider_id=provider.id,
+        provider="ollama",
+        connection_type="local",
+        enabled=True,
+        capabilities={},
+        quality_tier=3,
+        cost_tier=1,
+        latency_tier=3,
+        context_window=8192,
+        local=True,
+        role_tags=[],
+        config_json={},
+    )
+    routing_session.add(stale)
+    await routing_session.flush()
+
+    result = await ModelRoutingService(routing_session).route(ModelRouteRequest(
+        prompt="Extract and map data",
+        task_type="stack_step_execution",
+        required_capabilities=["chat"],
+        profile_override="balanced",
+    ))
+
+    assert stale.capabilities["chat"] is True
+    assert result.selected.id == stale.id
+    assert result.selected.model_id == "gemma4:12b"
+
+
+@pytest.mark.asyncio
 async def test_custom_profile_survives_replaced_registry_uuid(routing_session):
     provider = ModelProvider(
         provider_type="ollama",

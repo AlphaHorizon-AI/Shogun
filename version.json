@@ -1,8 +1,8 @@
 {
-  "version": "1.47.29",
+  "version": "1.47.30",
   "name": "Shogun OS",
-  "build": 180,
+  "build": 181,
   "channel": "stable",
-  "released": "2026-07-30T13:09:04Z",
-  "changelog": "Restore AgentFlow connected-provider fallback for ordinary chat routing exhaustion while preserving policy-sensitive routing failures."
+  "released": "2026-07-30T13:31:47Z",
+  "changelog": "Self-heal legacy model-registry rows missing chat capability metadata so connected models remain eligible for AgentFlow routing."
 }

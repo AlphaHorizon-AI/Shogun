@@ -420,12 +420,18 @@ class ModelRegistryService:
                 definition = definitions_by_key.get(model_id)
                 if key in existing_map:
                     item = existing_map[key]
-                    if (item.config_json or {}).get("auto_discovered"):
-                        item.display_name = definition.display_name if definition else model_id
-                        # Repair registry rows created by older Katana versions.
-                        # Those rows may contain ``{}`` or stale False defaults,
-                        # which makes AgentFlow routing report NoEligibleModelError
-                        # even though the connected provider works in Comms.
+                    is_auto = (item.config_json or {}).get("auto_discovered")
+                    # Repair registry rows created by older Katana versions.
+                    # Those rows may contain ``{}`` or stale False defaults,
+                    # which makes AgentFlow routing report NoEligibleModelError
+                    # even though the connected provider works in Comms.
+                    # Auto-discovered rows always refresh; manually created rows
+                    # are repaired only when their capabilities are missing the
+                    # essential "chat" flag — the minimum viable routing gate.
+                    needs_capability_repair = not (item.capabilities or {}).get("chat")
+                    if is_auto or needs_capability_repair:
+                        if is_auto:
+                            item.display_name = definition.display_name if definition else model_id
                         item.capabilities = registry_capabilities(
                             model_id,
                             provider.provider_type,
