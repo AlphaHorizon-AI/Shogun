@@ -130,7 +130,7 @@ async def test_registry_sync_repairs_stale_auto_discovered_capabilities(routing_
         provider_id=provider.id,
         provider="openrouter",
         connection_type="api",
-        enabled=True,
+        enabled=False,
         capabilities={},
         quality_tier=3,
         cost_tier=3,
@@ -138,7 +138,7 @@ async def test_registry_sync_repairs_stale_auto_discovered_capabilities(routing_
         context_window=8192,
         local=False,
         role_tags=[],
-        config_json={"auto_discovered": True, "provider_available": True},
+        config_json={"auto_discovered": True},
     )
     routing_session.add_all([definition, stale])
     await routing_session.flush()
@@ -146,9 +146,67 @@ async def test_registry_sync_repairs_stale_auto_discovered_capabilities(routing_
     entries = await ModelRegistryService(routing_session).list()
 
     assert entries[0].display_name == "Qwen 3 32B"
+    assert entries[0].enabled is True
     assert entries[0].capabilities["chat"] is True
     assert entries[0].capabilities["tool_use"] is True
     assert entries[0].capabilities["json_mode"] is True
+
+
+@pytest.mark.asyncio
+async def test_custom_profile_survives_replaced_registry_uuid(routing_session):
+    provider = ModelProvider(
+        provider_type="ollama",
+        name="gemma4:12b",
+        slug="gemma4-12b-current",
+        base_url="http://127.0.0.1:11434",
+        is_local=True,
+        status="connected",
+        config={"models": ["gemma4:12b"]},
+    )
+    routing_session.add(provider)
+    await routing_session.flush()
+    old_provider_id = uuid.uuid4()
+    old_entry = ModelRegistryEntry(
+        model_id="gemma4:12b",
+        display_name="Gemma 4 12B (old)",
+        provider_id=old_provider_id,
+        provider="ollama",
+        connection_type="local",
+        enabled=False,
+        capabilities={"chat": True},
+        quality_tier=3,
+        cost_tier=1,
+        latency_tier=3,
+        context_window=8192,
+        local=True,
+        role_tags=[],
+        config_json={"auto_discovered": True, "provider_available": False},
+    )
+    routing_session.add(old_entry)
+    await routing_session.flush()
+    custom = ModelRoutingProfile(
+        name="Data Mapping",
+        rules=[{
+            "task_type": "*",
+            "primary_model_id": str(old_entry.id),
+            "fallback_model_ids": [],
+        }],
+        is_default=True,
+    )
+    routing_session.add(custom)
+    await routing_session.flush()
+
+    result = await ModelRoutingService(routing_session).route(
+        ModelRouteRequest(
+            prompt="Extract and map the supplied data",
+            task_type="stack_step_execution",
+            required_capabilities=["chat"],
+            profile_override=str(custom.id),
+        )
+    )
+
+    assert result.selected.model_id == "gemma4:12b"
+    assert result.selected.provider_id == provider.id
 
 
 @pytest.mark.asyncio

@@ -405,6 +405,11 @@ class ModelRegistryService:
                     item.enabled = False
                 elif was_available is False:
                     item.enabled = bool(state.pop("enabled_before_provider_unavailable", True))
+                elif was_available is None and state.get("auto_discovered"):
+                    # Older registry rows predate provider_available tracking.
+                    # If their selected provider is connected now, recover them
+                    # instead of preserving a stale auto-disable forever.
+                    item.enabled = True
                 state["provider_available"] = available
                 item.config_json = state
 
@@ -609,9 +614,10 @@ class ModelRoutingService:
         # long-context model and exclude otherwise compatible local vision.
         if request.context_size_estimate > 32000 and task_type not in VISION_TYPES:
             requirements.add("long_context")
+        registry_items = await self.registry.list()
         candidates = [
             item
-            for item in await self.registry.list()
+            for item in registry_items
             if item.enabled
             and item.model_id not in request.exclude_model_ids
             and is_concrete_model_id(item.model_id, item.provider)
@@ -638,7 +644,10 @@ class ModelRoutingService:
             for item in candidates
             if all((item.capabilities or {}).get(capability, False) for capability in requirements)
         ]
-        preferred_ids = self._legacy_preference(profile, task_type)
+        preferred_ids = self._expanded_preferences(
+            self._legacy_preference(profile, task_type),
+            registry_items,
+        )
         # Any profile with an explicit model order is a strict, named custom
         # profile (for example Finance or Engineering).  Built-in heuristic
         # profiles have no rules and continue to consider every eligible model.
@@ -779,6 +788,27 @@ class ModelRoutingService:
         return any(preferred in identifiers for preferred in preferred_ids)
 
     @staticmethod
+    def _expanded_preferences(
+        preferred_ids: list[str],
+        registry_items: list[ModelRegistryEntry],
+    ) -> list[str]:
+        """Resolve profile references that point at replaced registry rows.
+
+        Ollama discovery can re-register a provider/model pair and therefore
+        assign a new registry UUID. Preserve strict custom routing by expanding
+        an old selected registry UUID to its concrete model ID; the custom
+        profile still selects only that model, but no longer breaks after a
+        provider rescan or upgrade.
+        """
+        expanded = list(preferred_ids)
+        selected = set(preferred_ids)
+        for item in registry_items:
+            if str(item.id) in selected and item.model_id not in selected:
+                expanded.append(item.model_id)
+                selected.add(item.model_id)
+        return expanded
+
+    @staticmethod
     def _rank(
         item: ModelRegistryEntry,
         complexity: int,
@@ -809,6 +839,9 @@ class ModelRoutingService:
                 # hint. Capability filters run first; among eligible selected
                 # models the declared primary/fallback order is authoritative.
                 score += 1000 - index * 100
+                # Expanded legacy aliases may identify the same row more than
+                # once. Apply only the strongest (earliest) preference.
+                break
         return score
 
     @staticmethod

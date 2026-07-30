@@ -1,8 +1,8 @@
 {
-  "version": "1.47.27",
+  "version": "1.47.28",
   "name": "Shogun OS",
-  "build": 178,
+  "build": 179,
   "channel": "stable",
-  "released": "2026-07-30T12:43:28Z",
-  "changelog": "Repair stale Katana model capabilities and prevent synthesis-only Samurai nodes from incorrectly requiring model-native tool support."
+  "released": "2026-07-30T12:57:23Z",
+  "changelog": "Restore legacy auto-discovered models after reconnection and preserve custom routing across Ollama registry re-registration."
 }
