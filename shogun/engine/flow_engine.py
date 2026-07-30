@@ -19,6 +19,7 @@ import logging
 import re
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -557,7 +558,17 @@ async def _execute_single_node(
         if node_type == "input":
             result = await _exec_input(config, context_str, run_input or {})
         elif node_type == "samurai":
-            result = await _exec_samurai(config, execution_context_str, governance_context or {})
+            result = await _exec_samurai(
+                config,
+                execution_context_str,
+                governance_context or {},
+                progress_callback=lambda completed, total: _update_node_progress(
+                    run_id,
+                    node_id,
+                    completed,
+                    total,
+                ),
+            )
         elif node_type == "email_read":
             result = await _exec_email_read(config)
         elif node_type == "calendar_read":
@@ -1205,6 +1216,7 @@ async def _exec_samurai(
     config: dict,
     context_str: str,
     governance_context: dict[str, Any] | None = None,
+    progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
 ) -> str:
     """Samurai node — delegates task to LLM using agent's routing profile."""
     task_description = config.get("task_description", "")
@@ -1387,8 +1399,22 @@ async def _exec_samurai(
         local_chunk_timeout = max(60, min(requested_local_chunk_timeout, 1800))
         chunk_call_timeout = max(timeout, local_chunk_timeout) if is_local_model else timeout
         chunks = _split_model_context(context_str, chunk_token_budget * 4)
+        total_characters = max(1, sum(len(chunk) for chunk in chunks))
+        completed_characters = 0
         outputs: list[str] = []
+
+        async def report_progress(completed: int) -> None:
+            if not progress_callback:
+                return
+            try:
+                await progress_callback(completed, total_characters)
+            except Exception as exc:
+                log.warning("Could not persist AgentFlow node progress: %s", exc)
+
+        await report_progress(0)
+
         async def process_chunk(chunk: str, label: str, split_depth: int = 0) -> list[str]:
+            nonlocal completed_characters
             chunk_message = (
                 f"{task_description}\n\n"
                 f"--- CONTEXT FROM PREVIOUS STEPS ({label}) ---\n{chunk}\n\n"
@@ -1403,7 +1429,7 @@ async def _exec_samurai(
             if expected_output:
                 chunk_message += f"\n\n--- EXPECTED OUTPUT FORMAT ---\n{expected_output}"
             try:
-                return [await _call_llm_chain(
+                output = await _call_llm_chain(
                     [
                         {"role": "system", "content": agent_persona},
                         {"role": "user", "content": chunk_message},
@@ -1414,7 +1440,10 @@ async def _exec_samurai(
                     context=f"AgentFlow Samurai node {label.lower()}",
                     max_tokens=max_output_tokens,
                     routing_context=_routing,
-                )]
+                )
+                completed_characters = min(total_characters, completed_characters + len(chunk))
+                await report_progress(completed_characters)
+                return [output]
             except ModelCallError as exc:
                 timed_out = "timeout" in exc.cause_type.lower()
                 error_text = str(exc).lower()
@@ -1451,6 +1480,7 @@ async def _exec_samurai(
 
         for index, chunk in enumerate(chunks, start=1):
             outputs.extend(await process_chunk(chunk, f"chunk {index}/{len(chunks)}"))
+        await report_progress(total_characters)
         return "\n".join(outputs)
 
     return await _call_llm_chain(
@@ -3220,6 +3250,36 @@ async def _update_node_state(
         if failure_event_id:
             node_state["failure_event_id"] = failure_event_id
 
+        states[node_id] = node_state
+        run.node_states = states
+        from sqlalchemy.orm.attributes import flag_modified
+
+        flag_modified(run, "node_states")
+        await session.commit()
+
+
+async def _update_node_progress(
+    run_id: uuid.UUID,
+    node_id: str,
+    completed: int,
+    total: int,
+) -> None:
+    """Persist measurable node progress without changing its execution status."""
+    async with async_session_factory() as session:
+        run = await session.get(AgentFlowRun, run_id)
+        if not run:
+            return
+
+        states = dict(run.node_states or {})
+        node_state = dict(states.get(node_id) or {})
+        if node_state.get("status") != "running":
+            return
+
+        safe_total = max(1, int(total))
+        safe_completed = max(0, min(int(completed), safe_total))
+        node_state["progress_percent"] = round((safe_completed / safe_total) * 100)
+        node_state["progress_completed"] = safe_completed
+        node_state["progress_total"] = safe_total
         states[node_id] = node_state
         run.node_states = states
         from sqlalchemy.orm.attributes import flag_modified

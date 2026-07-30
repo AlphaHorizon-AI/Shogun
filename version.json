@@ -1,8 +1,8 @@
 {
-  "version": "1.47.38",
+  "version": "1.47.39",
   "name": "Shogun OS",
-  "build": 189,
+  "build": 190,
   "channel": "stable",
-  "released": "2026-07-30T17:47:06Z",
-  "changelog": "Add operator-controlled model context budgets, adaptive document chunk recovery, and configurable local chunk timeouts."
+  "released": "2026-07-30T18:02:10Z",
+  "changelog": "Show compact live percentage progress on active AgentFlow nodes during measurable chunked document processing."
 }

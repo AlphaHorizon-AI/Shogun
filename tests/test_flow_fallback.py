@@ -236,12 +236,24 @@ async def test_samurai_chunks_context_that_exceeds_every_single_request(monkeypa
     monkeypatch.setattr(flow_engine, "_call_llm_chain", call_chain)
 
     source = "\n\n".join(f"record {index}: " + ("x" * 300) for index in range(30))
-    result = await flow_engine._exec_samurai({"task_description": "Extract every record"}, source)
+    progress: list[int] = []
+
+    async def record_progress(completed: int, total: int):
+        progress.append(round((completed / total) * 100))
+
+    result = await flow_engine._exec_samurai(
+        {"task_description": "Extract every record"},
+        source,
+        progress_callback=record_progress,
+    )
 
     assert route_calls[0] > 0 and route_calls[1] == 0
     assert len(prompts) > 1
     assert all("do not summarize, sample, or omit" in prompt for prompt in prompts)
     assert result == "\n".join(f"row-{index}" for index in range(1, len(prompts) + 1))
+    assert progress[0] == 0
+    assert progress[-1] == 100
+    assert progress == sorted(progress)
 
 
 @pytest.mark.asyncio

@@ -333,6 +333,9 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
   const executionOutput = authoritativeState?.output ?? data.execution_output ?? '';
   const executionRunId = resultContext?.runId || data.execution_run_id || null;
   const isRunning = executionStatus === 'running';
+  const progressValue = Number(authoritativeState?.progress_percent);
+  const hasMeasuredProgress = isRunning && Number.isFinite(progressValue);
+  const progressPercent = Math.max(0, Math.min(100, Math.round(progressValue)));
   const openFailureLog = (event: React.SyntheticEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -704,15 +707,31 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
       {executionStatus && executionStatus !== 'pending' && (
         <div className="absolute -top-1 -right-1 z-10">
           {executionStatus === 'running' && (
-            <div
-              className="w-6 h-6 rounded-full flex items-center justify-center animate-pulse"
-              style={{
-                background: color,
-                boxShadow: `0 0 10px ${color}, 0 0 22px ${color}cc`,
-              }}
-            >
-              <Loader2 className="w-3 h-3 text-white animate-spin" />
-            </div>
+            hasMeasuredProgress ? (
+              <div
+                className="w-8 h-8 rounded-full p-[2px] flex items-center justify-center"
+                style={{
+                  background: `conic-gradient(${color} ${progressPercent * 3.6}deg, #1a2040 ${progressPercent * 3.6}deg)`,
+                  boxShadow: `0 0 10px ${color}99, 0 0 20px ${color}55`,
+                }}
+                title={`${progressPercent}% complete`}
+                aria-label={`${data.label || 'Node'} ${progressPercent}% complete`}
+              >
+                <span className="flex h-full w-full items-center justify-center rounded-full bg-[#0e1225] font-mono text-[7px] font-bold text-white">
+                  {progressPercent}%
+                </span>
+              </div>
+            ) : (
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center animate-pulse"
+                style={{
+                  background: color,
+                  boxShadow: `0 0 10px ${color}, 0 0 22px ${color}cc`,
+                }}
+              >
+                <Loader2 className="w-3 h-3 text-white animate-spin" />
+              </div>
+            )
           )}
           {executionStatus === 'completed' && (
             <div className="w-5 h-5 rounded-full bg-[#22c55e] flex items-center justify-center shadow-[0_0_8px_rgba(34,197,94,0.4)]">

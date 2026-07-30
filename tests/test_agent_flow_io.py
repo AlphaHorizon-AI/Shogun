@@ -176,7 +176,7 @@ async def test_samurai_node_receives_complete_predecessor_document(monkeypatch):
     async def update_state(*_args, **_kwargs):
         return None
 
-    async def execute_samurai(_config, context, _governance):
+    async def execute_samurai(_config, context, _governance, **_kwargs):
         captured["context"] = context
         return "done"
 
