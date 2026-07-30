@@ -169,6 +169,59 @@ NATIVE_TOOLS = [
     },
     {
         "type": "function",
+        "risk": "medium",
+        "category": "memory",
+        "function": {
+            "name": "reminder_board_add",
+            "description": "Record a concrete unresolved future obligation on Shogun's operational Reminder Board. Do not use for ordinary facts or vague ideas.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Short, action-oriented obligation title."},
+                    "description": {"type": "string", "description": "Optional details needed when the item is reviewed."},
+                    "item_type": {"type": "string", "enum": ["obligation", "follow_up", "check", "deferred", "reminder"]},
+                    "review_at": {"type": "string", "description": "ISO-8601 date/time when this must be reviewed."},
+                    "review_in_minutes": {"type": "integer", "minimum": 1, "description": "Relative review time; use instead of review_at."},
+                    "reason": {"type": "string", "description": "Why this remains unresolved and belongs on the board."},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "expires_in_hours": {"type": "integer", "minimum": 1, "maximum": 8760},
+                    "priority": {"type": "integer", "minimum": 0, "maximum": 100},
+                    "source_message_id": {"type": "string"},
+                },
+                "required": ["title", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "low",
+        "category": "memory",
+        "function": {
+            "name": "reminder_board_list",
+            "description": "List Shogun's unresolved operational obligations and reminders.",
+            "parameters": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 50}}},
+        },
+    },
+    {
+        "type": "function",
+        "risk": "medium",
+        "category": "memory",
+        "function": {
+            "name": "reminder_board_update",
+            "description": "Resolve, cancel, pause, resume, or snooze an existing Reminder Board item.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "action": {"type": "string", "enum": ["complete", "cancel", "pause", "resume", "snooze"]},
+                    "snooze_minutes": {"type": "integer", "minimum": 1, "maximum": 525600},
+                },
+                "required": ["task_id", "action"],
+            },
+        },
+    },
+    {
+        "type": "function",
         "risk": "low",
         "category": "comms",
         "function": {
@@ -2827,6 +2880,90 @@ async def execute_native_tool(
             result = await router.route(request, persist=name != "model_router_preview_route")
             if name != "model_router_preview_route": await db_session.commit()
             return json.dumps({"status": "success", **result.payload}, default=str)
+
+        elif name in {"reminder_board_add", "reminder_board_list", "reminder_board_update"}:
+            import uuid
+            from datetime import datetime, timedelta, timezone
+
+            from sqlalchemy import select
+            from shogun.db.models.agent import Agent
+            from shogun.services.reminder_service import ReminderService
+
+            shogun = await db_session.scalar(
+                select(Agent).where(
+                    Agent.agent_type == "shogun",
+                    Agent.is_primary.is_(True),
+                    Agent.is_deleted.is_(False),
+                ).limit(1)
+            )
+            if not shogun:
+                return json.dumps({"status": "error", "message": "Primary Shogun not found."})
+            service = ReminderService(db_session)
+            if name == "reminder_board_list":
+                limit = min(50, max(1, int(args.get("limit", 10))))
+                context = await service.prompt_context(agent_id=shogun.id, limit=limit)
+                await db_session.commit()
+                return json.dumps({"status": "success", "board": context})
+            if name == "reminder_board_update":
+                try:
+                    task_id = uuid.UUID(str(args["task_id"]))
+                    task = await service.transition(
+                        task_id,
+                        str(args["action"]),
+                        snooze_minutes=int(args.get("snooze_minutes", 10)),
+                    )
+                except (ValueError, KeyError) as exc:
+                    return json.dumps({"status": "error", "message": str(exc)})
+                if not task:
+                    return json.dumps({"status": "error", "message": "Reminder Board item not found."})
+                await db_session.commit()
+                return json.dumps({"status": "success", "task_id": str(task.id), "state": task.status})
+
+            now = datetime.now(timezone.utc)
+            try:
+                title = str(args["title"]).strip()
+                reason = str(args["reason"]).strip()
+                item_type = str(args.get("item_type", "obligation"))
+                confidence = float(args.get("confidence", 1.0))
+                priority = int(args.get("priority", 50))
+                if not title or not reason:
+                    raise ValueError("title and reason are required")
+                if item_type not in {"obligation", "follow_up", "check", "deferred", "reminder"}:
+                    raise ValueError("unsupported item_type")
+                if not 0 <= confidence <= 1 or not 0 <= priority <= 100:
+                    raise ValueError("confidence or priority is outside its allowed range")
+                if args.get("review_at"):
+                    review_at = datetime.fromisoformat(str(args["review_at"]).replace("Z", "+00:00"))
+                    if review_at.tzinfo is None:
+                        review_at = review_at.replace(tzinfo=timezone.utc)
+                else:
+                    review_at = now + timedelta(minutes=int(args["review_in_minutes"]))
+                if review_at <= now:
+                    raise ValueError("review time must be in the future")
+                expires_at = now + timedelta(hours=int(args.get("expires_in_hours", 168)))
+                if expires_at <= review_at:
+                    expires_at = review_at + timedelta(days=7)
+                task, created = await service.create_ai_obligation(
+                    title=title,
+                    description=args.get("description"),
+                    item_type=item_type,
+                    review_at=review_at,
+                    reason=reason,
+                    confidence=confidence,
+                    expires_at=expires_at,
+                    source_message_id=args.get("source_message_id"),
+                    priority=priority,
+                    agent_id=shogun.id,
+                )
+            except (ValueError, KeyError, TypeError) as exc:
+                return json.dumps({"status": "error", "message": f"Invalid Reminder Board item: {exc}"})
+            await db_session.commit()
+            return json.dumps({
+                "status": "success",
+                "created": created,
+                "task_id": str(task.id),
+                "message": "Obligation recorded." if created else "Matching unresolved obligation already exists.",
+            })
 
         elif name == "store_memory":
             from sqlalchemy import select

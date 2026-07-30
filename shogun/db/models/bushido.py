@@ -72,7 +72,7 @@ class BushidoSchedule(Base, UUIDMixin, AuditMixin):
 
 
 class ReminderTask(Base, UUIDMixin, AuditMixin):
-    """Durable, user-scoped L0 reminder owned by Bushido."""
+    """Durable user reminder or agent-owned operational obligation."""
 
     __tablename__ = "agent_scheduled_tasks"
 
@@ -85,6 +85,13 @@ class ReminderTask(Base, UUIDMixin, AuditMixin):
 
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
+    item_type: Mapped[str] = mapped_column(String(30), nullable=False, default="reminder")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    requires_confirmation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     schedule_type: Mapped[str] = mapped_column(String(30), nullable=False, default="one_time")
     timezone: Mapped[str] = mapped_column(String(100), nullable=False, default="UTC")

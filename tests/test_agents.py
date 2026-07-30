@@ -40,6 +40,12 @@ def test_https_url_routes_to_mission():
     assert res["mode"] == "mission", f"Expected mission, got {res}"
 
 
+def test_reminder_language_routes_to_tool_enabled_mission():
+    res = _classify_chat_mode("Remind me to review this tomorrow", [])
+    assert res["mode"] == "mission"
+    assert "remind" in res["matched"]
+
+
 def test_gemma_12b_is_treated_as_prompt_constrained():
     provider = SimpleNamespace(provider_type="ollama")
 

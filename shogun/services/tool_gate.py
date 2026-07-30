@@ -342,6 +342,9 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     "update_model_settings":  {"risk": "medium",   "category": "system"},
     # Memory
     "store_memory":           {"risk": "medium",   "category": "memory"},
+    "reminder_board_add":     {"risk": "medium",   "category": "memory"},
+    "reminder_board_list":    {"risk": "low",      "category": "memory"},
+    "reminder_board_update":  {"risk": "medium",   "category": "memory"},
     "set_agent_flow_status":  {"risk": "medium",   "category": "workflow"},
     # File format adapters
     "file_detect_type":       {"risk": "low",      "category": "files"},

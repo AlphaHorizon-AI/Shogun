@@ -16,7 +16,20 @@ from shogun.db.models.bushido import ReminderRun, ReminderTask
 log = logging.getLogger(__name__)
 
 ACTIVE_STATUSES = {"active", "snoozed"}
-FINAL_STATUSES = {"completed", "cancelled"}
+OPEN_STATUSES = {"active", "snoozed", "paused", "due"}
+FINAL_STATUSES = {"completed", "cancelled", "expired"}
+
+REMINDER_BOARD_GUIDE = """REMINDER BOARD — operational short-term memory:
+- Use reminder_board_add for a concrete unresolved future obligation, follow-up,
+  check, or deferred action that Shogun must revisit.
+- Do not add ordinary facts, conversation summaries, uncommitted ideas,
+  speculation, or completed work. Durable knowledge belongs in Archives.
+- Record direct, unambiguous operator requests immediately. If an inferred
+  obligation is uncertain, ask before creating it.
+- Avoid duplicates. Include a review time and concise reason. Resolve or
+  reschedule an item when its outcome is known.
+- The board tracks obligations; it does not execute external work. Use the
+  appropriate governed tool or AgentFlow for execution."""
 
 
 def _utc(value: datetime) -> datetime:
@@ -73,6 +86,86 @@ class ReminderService:
         await self.session.flush()
         return task
 
+    async def create_ai_obligation(
+        self,
+        *,
+        title: str,
+        review_at: datetime,
+        agent_id: uuid.UUID | None,
+        description: str | None = None,
+        item_type: str = "obligation",
+        reason: str | None = None,
+        confidence: float = 1.0,
+        expires_at: datetime | None = None,
+        source_message_id: str | None = None,
+        priority: int = 50,
+    ) -> tuple[ReminderTask, bool]:
+        """Create an AI obligation, suppressing duplicate unresolved titles."""
+        normalized = " ".join(title.lower().split())
+        result = await self.session.execute(
+            select(ReminderTask).where(
+                ReminderTask.origin == "ai",
+                ReminderTask.status.in_(OPEN_STATUSES),
+                ReminderTask.agent_id == agent_id,
+            )
+        )
+        for existing in result.scalars():
+            if " ".join(existing.title.lower().split()) == normalized:
+                return existing, False
+        task = await self.create(
+            title=title.strip(),
+            description=description,
+            origin="ai",
+            item_type=item_type,
+            reason=reason,
+            confidence=confidence,
+            expires_at=expires_at,
+            source_message_id=source_message_id,
+            agent_id=agent_id,
+            priority=priority,
+            schedule_type="one_time",
+            timezone="UTC",
+            run_at=_utc(review_at),
+            delivery_channel="web",
+        )
+        return task, True
+
+    async def prompt_context(
+        self,
+        *,
+        agent_id: uuid.UUID | None,
+        user_id: str = "local_user",
+        limit: int = 10,
+    ) -> str:
+        """Return a compact prompt-safe view of unresolved operational items."""
+        now = datetime.now(timezone.utc)
+        result = await self.session.execute(
+            select(ReminderTask)
+            .where(
+                ReminderTask.status.in_(OPEN_STATUSES),
+                or_(ReminderTask.agent_id == agent_id, ReminderTask.user_id == user_id),
+            )
+            .order_by(ReminderTask.priority.desc(), ReminderTask.next_run_at.is_(None), ReminderTask.next_run_at)
+            .limit(limit)
+        )
+        items = []
+        for task in result.scalars():
+            if task.expires_at and _utc(task.expires_at) <= now:
+                task.status = "expired"
+                task.next_run_at = None
+                continue
+            review = _as_aware_utc(task.next_run_at or task.run_at)
+            when = review.isoformat() if review else task.status
+            reason = f"; reason={task.reason[:180]}" if task.reason else ""
+            items.append(
+                f"- id={task.id}; {task.origin}/{task.item_type}; status={task.status}; "
+                f"review={when}; title={task.title[:240]}{reason}"
+            )
+        await self.session.flush()
+        if not items:
+            return "REMINDER BOARD — unresolved items: none."
+        return "REMINDER BOARD — unresolved items:\n" + "\n".join(items)
+
     async def get(self, task_id: uuid.UUID) -> ReminderTask | None:
         return await self.session.get(ReminderTask, task_id)
 
@@ -120,14 +213,18 @@ class ReminderService:
         if not task:
             return None
         now = datetime.now(timezone.utc)
-        if action == "pause" and task.status in ACTIVE_STATUSES:
+        if action == "pause" and task.status in OPEN_STATUSES:
             task.status = "paused"
             task.next_run_at = None
         elif action == "resume" and task.status == "paused":
-            task.status = "active"
             task.snoozed_until = None
-            task.next_run_at = calculate_next_run(task, after=now, initial=task.occurrence_count == 0)
-        elif action == "snooze" and task.status in ACTIVE_STATUSES:
+            if task.schedule_type == "one_time" and task.occurrence_count > 0 and task.origin in {"ai", "system"}:
+                task.status = "due"
+                task.next_run_at = None
+            else:
+                task.status = "active"
+                task.next_run_at = calculate_next_run(task, after=now, initial=task.occurrence_count == 0)
+        elif action == "snooze" and task.status in OPEN_STATUSES:
             task.status = "snoozed"
             task.snoozed_until = now + timedelta(minutes=snooze_minutes or 10)
             task.next_run_at = task.snoozed_until
@@ -261,7 +358,9 @@ async def process_due_reminders(batch_size: int = 50) -> int:
             exhausted = bool(task.max_occurrences and task.occurrence_count >= task.max_occurrences)
             ended = bool(task.end_at and _utc(task.end_at) <= run.completed_at)
             if task.schedule_type == "one_time" or exhausted or ended:
-                task.status = "completed"
+                # Agent obligations remain open after notification. Their due
+                # time is a review point, not proof that the work is complete.
+                task.status = "due" if task.origin in {"ai", "system"} else "completed"
                 task.next_run_at = None
             else:
                 task.status = "active"

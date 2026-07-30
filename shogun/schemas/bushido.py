@@ -193,6 +193,13 @@ class ReminderCreate(ShogunBase):
 
     title: str = Field(min_length=1, max_length=500)
     description: str | None = Field(default=None, max_length=8000)
+    origin: str = Field(default="user", pattern="^(user|ai|system)$")
+    item_type: str = Field(default="reminder", pattern="^(reminder|obligation|follow_up|check|deferred)$")
+    reason: str | None = Field(default=None, max_length=4000)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    expires_at: datetime | None = None
+    source_message_id: str | None = Field(default=None, max_length=255)
+    requires_confirmation: bool = False
     tenant_id: str = Field(default="local", min_length=1, max_length=255)
     user_id: str = Field(default="local_user", min_length=1, max_length=255)
     agent_id: uuid.UUID | None = None
@@ -260,6 +267,9 @@ class ReminderCreate(ShogunBase):
 class ReminderUpdate(ShogunBase):
     title: str | None = Field(default=None, min_length=1, max_length=500)
     description: str | None = Field(default=None, max_length=8000)
+    item_type: str | None = Field(default=None, pattern="^(reminder|obligation|follow_up|check|deferred)$")
+    reason: str | None = Field(default=None, max_length=4000)
+    expires_at: datetime | None = None
     priority: int | None = Field(default=None, ge=0, le=100)
     delivery_channel: str | None = Field(default=None, pattern="^(web|telegram|teams|both)$")
     metadata_json: dict[str, Any] | None = None
@@ -275,6 +285,13 @@ class ReminderResponse(ShogunBase):
     topic_id: str | None
     title: str
     description: str | None
+    origin: str
+    item_type: str
+    reason: str | None
+    confidence: float | None
+    expires_at: datetime | None
+    source_message_id: str | None
+    requires_confirmation: bool
     priority: int
     schedule_type: str
     timezone: str

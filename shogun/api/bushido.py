@@ -343,7 +343,10 @@ async def list_reminders(
 
 @router.post("/reminders", response_model=ApiResponse, status_code=201)
 async def create_reminder(body: ReminderCreate, db: AsyncSession = Depends(get_db)):
-    record = await ReminderService(db).create(**body.model_dump())
+    # Public API entries are operator-owned; AI/system origins are reserved for internal tools.
+    data = body.model_dump()
+    data.update(origin="user", requires_confirmation=False)
+    record = await ReminderService(db).create(**data)
     return ApiResponse(data=ReminderResponse.model_validate(record))
 
 

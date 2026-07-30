@@ -69,6 +69,11 @@ interface Reminder {
   delivery_channel: string;
   next_run_at?: string;
   occurrence_count: number;
+  origin: 'user' | 'ai' | 'system';
+  item_type: string;
+  reason?: string;
+  confidence?: number;
+  expires_at?: string;
 }
 
 interface FlowSchedule {
@@ -106,6 +111,7 @@ export function Bushido() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [flowSchedules, setFlowSchedules] = useState<FlowSchedule[]>([]);
   const [boardView, setBoardView] = useState<'reminders' | 'flows'>('reminders');
+  const [boardOrigin, setBoardOrigin] = useState<'all' | 'ai' | 'user' | 'system'>('all');
   const [showReminderForm, setShowReminderForm] = useState(false);
   const [reminderSaving, setReminderSaving] = useState(false);
   const [reminderForm, setReminderForm] = useState({
@@ -270,6 +276,7 @@ export function Bushido() {
   const engineOk = stats?.engine_status === 'synchronized';
   const consolidationDisplay = (calibration.consolidation_rate / 1000).toFixed(2);
   const varianceDisplay = (calibration.exploration_variance / 100).toFixed(2);
+  const visibleBoardItems = boardOrigin === 'all' ? reminders : reminders.filter(item => item.origin === boardOrigin);
 
   // ── Risk level colors ─────────────────────────────
   const riskColors: Record<string, string> = {
@@ -341,7 +348,7 @@ export function Bushido() {
               <Bell className="w-5 h-5 text-shogun-gold" /> Reminder Board
             </h3>
             <p className="text-[10px] text-shogun-subdued mt-1 uppercase tracking-widest">
-              Durable L0 reminders owned by Bushido
+              Shogun operational memory and user reminders
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -349,7 +356,7 @@ export function Bushido() {
               <button onClick={() => setBoardView('reminders')} className={cn(
                 "px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors",
                 boardView === 'reminders' ? "bg-shogun-blue text-white" : "text-shogun-subdued hover:text-shogun-text"
-              )}>Reminders ({reminders.length})</button>
+              )}>Board ({reminders.length})</button>
               <button onClick={() => setBoardView('flows')} className={cn(
                 "px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors",
                 boardView === 'flows' ? "bg-shogun-blue text-white" : "text-shogun-subdued hover:text-shogun-text"
@@ -357,7 +364,7 @@ export function Bushido() {
             </div>
             {boardView === 'reminders' && (
               <button onClick={() => setShowReminderForm(value => !value)} className="flex items-center gap-2 px-3 py-2 bg-shogun-gold/10 border border-shogun-gold/30 rounded-lg text-shogun-gold text-[10px] font-bold uppercase tracking-wider hover:bg-shogun-gold/20 transition-colors">
-                <Plus className="w-3.5 h-3.5" /> New reminder
+                <Plus className="w-3.5 h-3.5" /> New user reminder
               </button>
             )}
           </div>
@@ -387,19 +394,27 @@ export function Bushido() {
 
         {boardView === 'reminders' ? (
           <div className="space-y-2">
-            {reminders.length === 0 && <div className="py-8 text-center text-xs text-shogun-subdued border border-dashed border-shogun-border rounded-xl">No reminders yet. Schedule one to get started.</div>}
-            {reminders.map(reminder => (
+            <div className="flex flex-wrap items-center gap-1 pb-2">
+              {(['all', 'ai', 'user', 'system'] as const).map(origin => <button key={origin} onClick={() => setBoardOrigin(origin)} className={cn("px-2.5 py-1 rounded border text-[9px] font-bold uppercase tracking-wider", boardOrigin === origin ? 'border-shogun-blue/50 bg-shogun-blue/10 text-shogun-blue' : 'border-shogun-border text-shogun-subdued')}>{origin}</button>)}
+              <span className="ml-auto text-[9px] text-shogun-subdued uppercase tracking-wider">Archives remember facts · this board tracks unresolved work</span>
+            </div>
+            {visibleBoardItems.length === 0 && <div className="py-8 text-center text-xs text-shogun-subdued border border-dashed border-shogun-border rounded-xl">No matching board items.</div>}
+            {visibleBoardItems.map(reminder => (
               <div key={reminder.id} className="flex flex-col md:flex-row md:items-center gap-3 p-3 rounded-xl border border-shogun-border bg-black/10">
-                <div className={cn("w-2 h-2 rounded-full shrink-0", reminder.status === 'active' ? 'bg-green-500' : reminder.status === 'snoozed' ? 'bg-shogun-gold' : 'bg-shogun-subdued')} />
+                <div className={cn("w-2 h-2 rounded-full shrink-0", reminder.status === 'due' ? 'bg-red-400 animate-pulse' : reminder.status === 'active' ? 'bg-green-500' : reminder.status === 'snoozed' ? 'bg-shogun-gold' : 'bg-shogun-subdued')} />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-bold text-shogun-text truncate">{reminder.title}</div>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={cn("text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border", reminder.origin === 'ai' ? 'text-purple-300 border-purple-500/30 bg-purple-500/10' : reminder.origin === 'system' ? 'text-orange-300 border-orange-500/30 bg-orange-500/10' : 'text-shogun-blue border-shogun-blue/30 bg-shogun-blue/10')}>{reminder.origin}</span>
+                    <div className="text-sm font-bold text-shogun-text truncate">{reminder.title}</div>
+                  </div>
+                  {reminder.reason && <div className="text-[10px] text-shogun-subdued mt-1 line-clamp-2">Why: {reminder.reason}</div>}
                   <div className="text-[10px] text-shogun-subdued mt-1 flex flex-wrap gap-x-3 gap-y-1 uppercase tracking-wide">
-                    <span>{reminder.schedule_type.replace('_', ' ')}</span><span>{formatSchedule(reminder)}</span><span>{reminder.delivery_channel}</span><span>{reminder.occurrence_count} delivered</span>
+                    <span>{reminder.item_type.replace('_', ' ')}</span><span>{formatSchedule(reminder)}</span><span>{reminder.delivery_channel}</span><span>{reminder.occurrence_count} reviews</span>{reminder.expires_at && <span>expires {new Date(reminder.expires_at).toLocaleString()}</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  {['active', 'snoozed'].includes(reminder.status) && <button title="Snooze 10 minutes" onClick={() => handleReminderAction(reminder.id, 'snooze')} className="p-2 text-shogun-subdued hover:text-shogun-gold"><TimerReset className="w-4 h-4" /></button>}
-                  {['active', 'snoozed'].includes(reminder.status) ? <button title="Pause" onClick={() => handleReminderAction(reminder.id, 'pause')} className="p-2 text-shogun-subdued hover:text-shogun-blue"><Pause className="w-4 h-4" /></button> : reminder.status === 'paused' && <button title="Resume" onClick={() => handleReminderAction(reminder.id, 'resume')} className="p-2 text-shogun-subdued hover:text-green-500"><Play className="w-4 h-4" /></button>}
+                  {['active', 'snoozed', 'due'].includes(reminder.status) && <button title="Snooze 10 minutes" onClick={() => handleReminderAction(reminder.id, 'snooze')} className="p-2 text-shogun-subdued hover:text-shogun-gold"><TimerReset className="w-4 h-4" /></button>}
+                  {['active', 'snoozed', 'due'].includes(reminder.status) ? <button title="Pause" onClick={() => handleReminderAction(reminder.id, 'pause')} className="p-2 text-shogun-subdued hover:text-shogun-blue"><Pause className="w-4 h-4" /></button> : reminder.status === 'paused' && <button title="Resume" onClick={() => handleReminderAction(reminder.id, 'resume')} className="p-2 text-shogun-subdued hover:text-green-500"><Play className="w-4 h-4" /></button>}
                   {!['completed', 'cancelled'].includes(reminder.status) && <button title="Complete" onClick={() => handleReminderAction(reminder.id, 'complete')} className="p-2 text-shogun-subdued hover:text-green-500"><Check className="w-4 h-4" /></button>}
                   {!['completed', 'cancelled'].includes(reminder.status) && <button title="Cancel" onClick={() => handleReminderAction(reminder.id, 'cancel')} className="p-2 text-shogun-subdued hover:text-red-400"><X className="w-4 h-4" /></button>}
                 </div>
