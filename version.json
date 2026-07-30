@@ -1,8 +1,8 @@
 {
-  "version": "1.47.37",
+  "version": "1.47.38",
   "name": "Shogun OS",
-  "build": 188,
+  "build": 189,
   "channel": "stable",
-  "released": "2026-07-30T16:34:10Z",
-  "changelog": "Use practical local-model document chunks and automatically split and retry individual AgentFlow chunks that exceed the model timeout."
+  "released": "2026-07-30T17:47:06Z",
+  "changelog": "Add operator-controlled model context budgets, adaptive document chunk recovery, and configurable local chunk timeouts."
 }

@@ -287,7 +287,15 @@ async def test_samurai_chunking_survives_stale_registry_chat_gate(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_samurai_bisects_and_retries_a_timed_out_chunk(monkeypatch):
+@pytest.mark.parametrize(
+    "recoverable_error",
+    [
+        httpx.ReadTimeout(""),
+        ValueError("LLM API error 400: prompt exceeds maximum context length"),
+    ],
+    ids=["timeout", "provider-context-rejection"],
+)
+async def test_samurai_bisects_and_retries_a_recoverable_chunk(monkeypatch, recoverable_error):
     monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
     provider = SimpleNamespace(
         id=uuid.uuid4(),
@@ -315,7 +323,7 @@ async def test_samurai_bisects_and_retries_a_timed_out_chunk(monkeypatch):
                 provider="Local Ollama",
                 model="gemma-test",
                 timeout=300,
-                cause=httpx.ReadTimeout(""),
+                cause=recoverable_error,
                 input_characters=content_length,
             )
         return "recovered-row"
@@ -329,6 +337,55 @@ async def test_samurai_bisects_and_retries_a_timed_out_chunk(monkeypatch):
     assert len(calls) >= 3
     assert calls[1] < calls[0] and calls[2] < calls[0]
     assert result.count("recovered-row") >= 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("node_timeout", "local_chunk_timeout", "expected_timeout"),
+    [(300, 900, 900), (1200, 600, 1200)],
+)
+async def test_samurai_uses_configurable_local_document_chunk_timeout(
+    monkeypatch,
+    node_timeout,
+    local_chunk_timeout,
+    expected_timeout,
+):
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Local Ollama",
+        provider_type="ollama",
+        is_local=True,
+        config={},
+    )
+
+    async def resolve_route(*_args, **_kwargs):
+        return [(provider, "gemma-test", "http://localhost:11434/v1", {})], {
+            "selected_context_window": 16_384,
+            "selected_max_input_tokens": 12_288,
+            "selected_max_output_tokens": 2_048,
+        }
+
+    timeouts: list[int] = []
+
+    async def call_chain(_messages, *_args, **kwargs):
+        timeouts.append(kwargs["timeout"])
+        return "mapped-row"
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain", call_chain)
+
+    source = "\n\n".join("record " + ("x" * 1000) for _ in range(80))
+    await flow_engine._exec_samurai(
+        {
+            "task_description": "Extract every record",
+            "timeout": node_timeout,
+            "local_chunk_timeout": local_chunk_timeout,
+        },
+        source,
+    )
+
+    assert timeouts and set(timeouts) == {expected_timeout}
 
 
 @pytest.mark.asyncio

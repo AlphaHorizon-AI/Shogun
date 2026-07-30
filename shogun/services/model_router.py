@@ -447,8 +447,6 @@ class ModelRegistryService:
                             provider.provider_type,
                             definition,
                         )
-                        if definition and definition.context_window:
-                            item.context_window = definition.context_window
                     continue
                 caps = registry_capabilities(model_id, provider.provider_type, definition)
                 quality, cost, latency = infer_tiers(model_id, provider.is_local)
@@ -463,13 +461,15 @@ class ModelRegistryService:
                     quality_tier=quality,
                     cost_tier=cost,
                     latency_tier=latency,
-                    context_window=(
-                        definition.context_window if definition and definition.context_window else 8192
-                    ),
+                    # Context is an operator-controlled runtime limit. Catalog
+                    # metadata describes an architectural maximum, not what a
+                    # local provider actually allocated on this machine.
+                    context_window=8192,
                     local=provider.is_local,
                     role_tags=self._roles(caps, quality, provider.is_local),
                     config_json={
                         "auto_discovered": True,
+                        "context_limit_source": "operator_default",
                         "provider_available": provider_connected,
                         **({"enabled_before_provider_unavailable": True} if not provider_connected else {}),
                     },
@@ -512,6 +512,11 @@ class ModelRegistryService:
     async def create(self, data: dict[str, Any]) -> ModelRegistryEntry:
         if "capabilities" in data and hasattr(data["capabilities"], "model_dump"):
             data["capabilities"] = data["capabilities"].model_dump()
+        self._validate_token_limits(
+            int(data.get("context_window", 8192)),
+            int(data.get("max_output_tokens", 4096)),
+            data.get("config_json") or {},
+        )
         item = ModelRegistryEntry(**data)
         self.session.add(item)
         await self.session.flush()
@@ -523,10 +528,31 @@ class ModelRegistryService:
             return None
         if "capabilities" in data and hasattr(data["capabilities"], "model_dump"):
             data["capabilities"] = data["capabilities"].model_dump()
+        self._validate_token_limits(
+            int(data.get("context_window", item.context_window)),
+            int(data.get("max_output_tokens", item.max_output_tokens)),
+            data.get("config_json", item.config_json) or {},
+        )
         for key, value in data.items():
             setattr(item, key, value)
         await self.session.flush()
         return item
+
+    @staticmethod
+    def _validate_token_limits(context_window: int, max_output_tokens: int, config_json: dict) -> None:
+        if max_output_tokens + 128 > context_window:
+            raise ValueError("Max output must leave at least 128 tokens of the manual context limit for input.")
+        configured_input = config_json.get("max_input_tokens")
+        if configured_input is None:
+            return
+        try:
+            max_input_tokens = int(configured_input)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Max input must be a whole number of tokens.") from exc
+        if max_input_tokens < 128:
+            raise ValueError("Max input must be at least 128 tokens.")
+        if max_input_tokens + max_output_tokens > context_window:
+            raise ValueError("Max input plus Max output cannot exceed the manual context limit.")
 
     async def delete(self, item_id: uuid.UUID) -> bool:
         result = await self.session.execute(delete(ModelRegistryEntry).where(ModelRegistryEntry.id == item_id))

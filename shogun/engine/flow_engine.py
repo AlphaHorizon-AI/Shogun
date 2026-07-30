@@ -1383,6 +1383,9 @@ async def _exec_samurai(
         # on one request. Timed-out chunks are bisected again below.
         if is_local_model:
             chunk_token_budget = min(chunk_token_budget, 4096)
+        requested_local_chunk_timeout = int(config.get("local_chunk_timeout") or 600)
+        local_chunk_timeout = max(60, min(requested_local_chunk_timeout, 1800))
+        chunk_call_timeout = max(timeout, local_chunk_timeout) if is_local_model else timeout
         chunks = _split_model_context(context_str, chunk_token_budget * 4)
         outputs: list[str] = []
         async def process_chunk(chunk: str, label: str, split_depth: int = 0) -> list[str]:
@@ -1406,7 +1409,7 @@ async def _exec_samurai(
                         {"role": "user", "content": chunk_message},
                     ],
                     model_chain,
-                    timeout=timeout,
+                    timeout=chunk_call_timeout,
                     retry_count=retry_count,
                     context=f"AgentFlow Samurai node {label.lower()}",
                     max_tokens=max_output_tokens,
@@ -1414,7 +1417,18 @@ async def _exec_samurai(
                 )]
             except ModelCallError as exc:
                 timed_out = "timeout" in exc.cause_type.lower()
-                if not timed_out or split_depth >= 5 or len(chunk) <= 4000:
+                error_text = str(exc).lower()
+                context_rejected = any(
+                    marker in error_text
+                    for marker in (
+                        "context length",
+                        "context window",
+                        "maximum context",
+                        "prompt too long",
+                        "too many tokens",
+                    )
+                )
+                if not (timed_out or context_rejected) or split_depth >= 5 or len(chunk) <= 4000:
                     raise
                 subchunks = _split_model_context(chunk, max(1000, len(chunk) // 2))
                 if len(subchunks) < 2:

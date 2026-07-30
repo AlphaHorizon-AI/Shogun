@@ -107,7 +107,10 @@ async def registry(db: AsyncSession = Depends(get_db)):
 
 @router.post("/registry", response_model=ApiResponse, status_code=201)
 async def create_registry(body: ModelRegistryCreate, db: AsyncSession = Depends(get_db)):
-    item = await ModelRegistryService(db).create(body.model_dump())
+    try:
+        item = await ModelRegistryService(db).create(body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     await db.commit()
     await ModelRoutingService._audit(
         "model.registry.model_added",
@@ -120,7 +123,10 @@ async def create_registry(body: ModelRegistryCreate, db: AsyncSession = Depends(
 
 @router.patch("/registry/{model_id}", response_model=ApiResponse)
 async def update_registry(model_id: uuid.UUID, body: ModelRegistryUpdate, db: AsyncSession = Depends(get_db)):
-    item = await ModelRegistryService(db).update(model_id, body.model_dump(exclude_unset=True))
+    try:
+        item = await ModelRegistryService(db).update(model_id, body.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     if not item:
         raise HTTPException(404, "Registry model not found.")
     await db.commit()

@@ -1359,6 +1359,8 @@ function NodeInspector({
                   type="number"
                   value={config.timeout || 300}
                   onChange={(e) => updateConfig('timeout', parseInt(e.target.value))}
+                  min={1}
+                  max={1800}
                   className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#d4a017] transition-colors outline-none"
                 />
               </div>
@@ -1373,6 +1375,26 @@ function NodeInspector({
                   className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#d4a017] transition-colors outline-none"
                 />
               </div>
+            </div>
+
+            <div className="space-y-1.5 rounded-lg border border-[#1a2040] bg-[#0a0e1a]/60 p-2.5">
+              <label className="flex items-center justify-between gap-2 text-[9px] font-bold uppercase tracking-widest text-[#7a8899]">
+                <span>Local document chunk timeout</span>
+                <strong className="font-mono text-[#d4a017]">{config.local_chunk_timeout || 600}s</strong>
+              </label>
+              <input
+                type="range"
+                value={config.local_chunk_timeout || 600}
+                onChange={(e) => updateConfig('local_chunk_timeout', Number(e.target.value))}
+                min={60}
+                max={1800}
+                step={60}
+                className="block w-full accent-[#d4a017]"
+                aria-label="Local document chunk timeout"
+              />
+              <p className="text-[8px] leading-relaxed text-[#7a8899]">
+                Used for chunked PDF, Word, and Excel processing on local models. The normal node timeout is retained when it is higher.
+              </p>
             </div>
 
             <div className="space-y-1.5">

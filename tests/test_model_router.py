@@ -166,6 +166,53 @@ async def test_registry_sync_repairs_stale_auto_discovered_capabilities(routing_
 
 
 @pytest.mark.asyncio
+async def test_registry_context_limit_is_manual_and_catalog_sync_does_not_overwrite_it(routing_session):
+    provider = ModelProvider(
+        provider_type="ollama",
+        name="gemma4:12b",
+        slug="manual-context-gemma4-12b",
+        base_url="http://127.0.0.1:11434",
+        is_local=True,
+        status="connected",
+        config={"models": ["gemma4:12b"]},
+    )
+    routing_session.add(provider)
+    await routing_session.flush()
+    routing_session.add(ModelDefinition(
+        provider_id=provider.id,
+        model_key="gemma4:12b",
+        display_name="Gemma 4 12B",
+        context_window=256_000,
+    ))
+    await routing_session.flush()
+
+    entries = await ModelRegistryService(routing_session).list()
+    assert entries[0].context_window == 8192
+    entries[0].context_window = 32_768
+    await routing_session.flush()
+
+    refreshed = await ModelRegistryService(routing_session).list()
+    assert refreshed[0].context_window == 32_768
+
+
+@pytest.mark.asyncio
+async def test_registry_rejects_token_allocations_above_manual_context(routing_session):
+    entry = await _model(routing_session, "manual-budget-model", quality=3, cost=1)
+    entry.context_window = 8192
+    entry.max_output_tokens = 2048
+    entry.config_json = {"max_input_tokens": 6144}
+    await routing_session.flush()
+
+    with pytest.raises(ValueError, match="cannot exceed"):
+        await ModelRegistryService(routing_session).update(
+            entry.id,
+            {
+                "config_json": {"max_input_tokens": 7000},
+            },
+        )
+
+
+@pytest.mark.asyncio
 async def test_registry_sync_repairs_legacy_manual_row_missing_chat(routing_session):
     provider = ModelProvider(
         provider_type="ollama",
