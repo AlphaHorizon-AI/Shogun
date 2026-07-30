@@ -1,5 +1,6 @@
 import uuid
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -210,6 +211,50 @@ def test_legacy_failure_sentinels_are_real_failures():
         flow_engine._validated_node_result("[BLOCKED] Office App Mode is disabled")
     with pytest.raises(RuntimeError, match="Permission denied"):
         flow_engine._validated_node_result("[ERROR] Permission denied")
+
+
+@pytest.mark.asyncio
+async def test_pdf_read_uses_workspace_file_without_office_app_mode(tmp_path, monkeypatch):
+    from shogun.office import config as office_config
+    from shogun.services import file_formats
+
+    pdf_path = tmp_path / "Input" / "scheduled.pdf"
+    pdf_path.parent.mkdir(parents=True)
+    pdf_path.write_bytes(b"%PDF-1.4 test fixture")
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    monkeypatch.setattr(office_config, "load_office_config", lambda: SimpleNamespace(enabled=False))
+
+    class FakeFileFormatService:
+        def __init__(self, session=None, allowed_roots=None):
+            assert session is None
+            assert allowed_roots == [tmp_path.resolve()]
+
+        async def read(self, *, path, start, end, max_chars):
+            assert Path(path) == pdf_path.resolve()
+            assert (start, end) == (3, 8)
+            assert max_chars == settings.agent_flow_document_max_chars
+            return {
+                "filename": "scheduled.pdf",
+                "content": "scheduled PDF content",
+                "truncated": False,
+                "metadata": {"start_page": 3, "end_page": 8},
+                "warnings": [],
+            }
+
+    monkeypatch.setattr(file_formats, "FileFormatService", FakeFileFormatService)
+
+    result = await flow_engine._exec_office(
+        {
+            "action": "pdf_read",
+            "input_path": "Input/scheduled.pdf",
+            "start_page": 3,
+            "end_page": 8,
+        },
+        "",
+    )
+
+    assert "[PDF: scheduled.pdf; pages 3-8]" in result
+    assert "scheduled PDF content" in result
 
 
 @pytest.mark.asyncio

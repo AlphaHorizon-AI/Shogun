@@ -63,7 +63,6 @@ import {
   Radio,
   Clipboard,
   FolderOpen,
-  FileSpreadsheet,
   Sparkles,
   LayoutGrid,
   MessageSquare,
@@ -235,7 +234,7 @@ const NODE_PALETTE = [
   { type: 'email_send',      label: 'Email Send',       icon: Mail,      color: '#e879a8', desc: 'Send email via SMTP' },
   { type: 'channel_send',    label: 'Telegram / Teams', icon: MessageSquare, color: '#38bdf8', desc: 'Send an operator message' },
   { type: 'workspace',       label: 'Workspace',        icon: FolderOpen, color: '#f59e0b', desc: 'File operations' },
-  { type: 'office',          label: 'Office',           icon: FileSpreadsheet, color: '#10b981', desc: 'Office documents' },
+  { type: 'office',          label: 'Files',            icon: FileText, color: '#10b981', desc: 'PDF, Word, Excel, and PowerPoint files' },
   { type: 'subflow',         label: 'Subflow',          icon: Layers3, color: '#8b5cf6', desc: 'Run a reusable child flow' },
   { type: 'stack_orchestrator', label: 'Stack Orchestrator', icon: Network, color: '#c084fc', desc: 'Supervise long-running Agent Stacks' },
 ] as const;
@@ -276,7 +275,7 @@ const nodeIcons: Record<string, React.ElementType> = {
   email_send: Mail,
   channel_send: MessageSquare,
   workspace: FolderOpen,
-  office: FileSpreadsheet,
+  office: FileText,
   subflow: Layers3,
   stack_orchestrator: Network,
 };
@@ -617,7 +616,7 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
         {type === 'office' && (
           <>
             <div className="flex items-center gap-1">
-              <FileSpreadsheet className="w-2.5 h-2.5 text-[#10b981]/70" />
+              <FileText className="w-2.5 h-2.5 text-[#10b981]/70" />
               <span className="text-[8px] font-bold text-[#10b981]/80 uppercase">
                 {config.action || 'word_read'}
               </span>
@@ -842,12 +841,12 @@ const edgeTypes: EdgeTypes = {
 
 
 // ═══════════════════════════════════════════════════════════════
-// OFFICE NODE FIELDS — with folder picker
+// FILES NODE FIELDS — with folder picker
 // ═══════════════════════════════════════════════════════════════
 
-const READ_ACTIONS = ['excel_read', 'word_read', 'pptx_read'];
+const READ_ACTIONS = ['pdf_read', 'excel_read', 'word_read', 'pptx_read'];
 
-function OfficeNodeFields({ config, updateConfig }: { config: Record<string, any>; updateConfig: (k: string, v: any) => void }) {
+function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>; updateConfig: (k: string, v: any) => void }) {
   const [showPicker, setShowPicker] = useState(false);
   const [treeData, setTreeData] = useState<any[]>([]);
   const [loadingTree, setLoadingTree] = useState(false);
@@ -864,6 +863,7 @@ function OfficeNodeFields({ config, updateConfig }: { config: Record<string, any
 
   // File extensions relevant to the current action
   const relevantExtensions = useMemo(() => {
+    if (action.startsWith('pdf')) return ['pdf'];
     if (action.startsWith('excel')) return ['xlsx', 'xls', 'csv'];
     if (action.startsWith('word')) return ['docx', 'doc'];
     if (action.startsWith('pptx')) return ['pptx', 'ppt'];
@@ -982,6 +982,9 @@ function OfficeNodeFields({ config, updateConfig }: { config: Record<string, any
           onChange={(e) => updateConfig('action', e.target.value)}
           className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#10b981] transition-colors outline-none"
         >
+          <optgroup label="PDF">
+            <option value="pdf_read">PDF &mdash; Read</option>
+          </optgroup>
           <optgroup label="Excel">
             <option value="excel_read">Excel &mdash; Read</option>
             <option value="excel_create">Excel &mdash; Create</option>
@@ -1052,6 +1055,34 @@ function OfficeNodeFields({ config, updateConfig }: { config: Record<string, any
         </div>
       )}
 
+      {/* PDF page range */}
+      {action === 'pdf_read' && (
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Start Page</label>
+            <input
+              type="number"
+              min={1}
+              value={config.start_page || 1}
+              onChange={(e) => updateConfig('start_page', Math.max(1, Number(e.target.value) || 1))}
+              className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#10b981] transition-colors outline-none"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">End Page</label>
+            <input
+              type="number"
+              min={1}
+              value={config.end_page || ''}
+              onChange={(e) => updateConfig('end_page', e.target.value ? Math.max(1, Number(e.target.value)) : null)}
+              className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#10b981] transition-colors outline-none"
+              placeholder="Last page"
+            />
+          </div>
+          <p className="col-span-2 text-[8px] text-[#7a8899]/60">Leave End Page empty to read through the end of the PDF.</p>
+        </div>
+      )}
+
       {/* Word content template */}
       {action === 'word_create' && (
         <div className="space-y-1.5">
@@ -1068,8 +1099,8 @@ function OfficeNodeFields({ config, updateConfig }: { config: Record<string, any
 
       <div className="p-2.5 bg-[#10b981]/5 border border-[#10b981]/20 rounded-lg">
         <p className="text-[8px] text-[#10b981]/80">
-          <strong>Office</strong> &mdash; All paths are relative to the workspace root.
-          Requires Office App Mode enabled in the Katana.
+          <strong>Files</strong> &mdash; All paths are relative to the workspace root.
+          PDF Read works in scheduled flows without Adobe or Office. Word, Excel, and PowerPoint actions require Office App Mode in Katana.
         </p>
       </div>
 
@@ -2924,9 +2955,9 @@ Content-Type: application/json
           </>
         )}
 
-        {/* Office fields */}
+        {/* Files fields (internal node type remains "office" for compatibility) */}
         {nodeType === 'office' && (
-          <OfficeNodeFields config={config} updateConfig={updateConfig} />
+          <FilesNodeFields config={config} updateConfig={updateConfig} />
         )}
       </div>
     </div>
@@ -3017,6 +3048,7 @@ export function AgentFlowCanvas({
   const [selectedRunTree, setSelectedRunTree] = useState<any | null>(null);
   const [loadingRunDetails, setLoadingRunDetails] = useState(false);
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
+  const [cancellingRunId, setCancellingRunId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadRunResult = useCallback(async (
@@ -3303,6 +3335,9 @@ export function AgentFlowCanvas({
         days_ahead: 1,
         start_date: null,
         end_date: null,
+      } : nodeType === 'office' ? {
+        action: 'pdf_read',
+        start_page: 1,
       } : {};
       const newNode: Node = {
         id: crypto.randomUUID(),
@@ -3441,17 +3476,32 @@ export function AgentFlowCanvas({
   }, [executing, dirty, handleSave, flow.id, setNodes]);
 
   // ── Cancel run ───────────────────────────────────────────
-  const handleCancel = useCallback(async () => {
-    if (!activeRunId) return;
+  const handleCancel = useCallback(async (requestedRunId?: string) => {
+    const runId = requestedRunId || activeRunId;
+    if (!runId || cancellingRunId) return;
+    if (!window.confirm('Cancel this running AgentFlow? Partial node output from the current run may be lost.')) return;
+    setCancellingRunId(runId);
     try {
-      await axios.post(`/api/v1/agent-flows/runs/${activeRunId}/cancel`);
-      setActiveRunId(null);
-      setExecuting(false);
-      setRunStatus('cancelled');
-    } catch {
-      // ignore
+      await axios.post(`/api/v1/agent-flows/runs/${runId}/cancel`);
+      if (activeRunId === runId) {
+        setActiveRunId(null);
+        setExecuting(false);
+        setRunStatus('cancelled');
+        if (pollRef.current) clearInterval(pollRef.current);
+      }
+      setRunHistory((runs) => runs.map((run) => (
+        run.id === runId ? { ...run, status: 'cancelled' } : run
+      )));
+      setSelectedRunDetails((details: any) => (
+        details?.id === runId ? { ...details, status: 'cancelled' } : details
+      ));
+      void fetchHistory();
+    } catch (err: any) {
+      window.alert(err?.response?.data?.detail || 'Could not cancel this AgentFlow run.');
+    } finally {
+      setCancellingRunId(null);
     }
-  }, [activeRunId]);
+  }, [activeRunId, cancellingRunId, fetchHistory]);
 
   // ── Fetch run history ────────────────────────────────────
   useEffect(() => {
@@ -3658,11 +3708,14 @@ export function AgentFlowCanvas({
             {/* Run / Cancel button */}
             {executing ? (
               <button
-                onClick={handleCancel}
+                onClick={() => void handleCancel()}
+                disabled={Boolean(cancellingRunId)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-[#ef4444]/20 text-[#ef4444] border border-[#ef4444]/30 hover:bg-[#ef4444]/30 transition-all"
               >
-                <StopCircle className="w-3 h-3" />
-                Cancel
+                {cancellingRunId
+                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                  : <StopCircle className="w-3 h-3" />}
+                {cancellingRunId ? 'Cancelling...' : 'Cancel'}
               </button>
             ) : (
               <button
@@ -3712,6 +3765,19 @@ export function AgentFlowCanvas({
                 <span className="text-[9px] opacity-70">
                   {Object.values(nodeStates).filter((s: any) => s.status === 'completed').length}/{Object.values(nodeStates).length} nodes completed
                 </span>
+              )}
+              {['pending', 'running'].includes(runStatus) && activeRunId && (
+                <button
+                  type="button"
+                  onClick={() => void handleCancel(activeRunId)}
+                  disabled={Boolean(cancellingRunId)}
+                  className="flex items-center gap-1 rounded border border-[#ef4444]/40 bg-[#ef4444]/15 px-2 py-1 text-[9px] font-bold text-[#ef4444] hover:bg-[#ef4444]/25 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {cancellingRunId === activeRunId
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <StopCircle className="h-3 w-3" />}
+                  {cancellingRunId === activeRunId ? 'Cancelling...' : 'Cancel run'}
+                </button>
               )}
               {runStatus !== 'running' && (
                 <button
@@ -3896,6 +3962,23 @@ export function AgentFlowCanvas({
                       <span className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]/60 bg-[#7a8899]/10 px-1.5 py-0.5 rounded truncate max-w-[80px]">
                         {run.trigger_type}
                       </span>
+                      {['pending', 'running'].includes(run.status) && (
+                        <button
+                          type="button"
+                          title="Cancel running AgentFlow"
+                          disabled={Boolean(cancellingRunId)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleCancel(run.id);
+                          }}
+                          className="flex items-center gap-1 rounded border border-[#ef4444]/30 bg-[#ef4444]/10 px-1.5 py-1 text-[8px] font-bold uppercase text-[#ef4444] hover:bg-[#ef4444]/20 disabled:cursor-wait disabled:opacity-50"
+                        >
+                          {cancellingRunId === run.id
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <StopCircle className="h-3 w-3" />}
+                          Cancel
+                        </button>
+                      )}
                       <button
                         type="button"
                         title="Delete run and Output file"
@@ -3946,12 +4029,27 @@ export function AgentFlowCanvas({
                     <h2 className="text-sm font-bold text-[#c8d0d8] uppercase tracking-wider">Run Details</h2>
                     {loadingRunDetails && <Loader2 className="w-4 h-4 text-[#4a8cc7] animate-spin" />}
                   </div>
-                  <button 
-                    onClick={() => setSelectedRunId(null)}
-                    className="p-2 hover:bg-[#1a2040] text-[#7a8899] hover:text-[#c8d0d8] rounded-lg transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {selectedRunDetails && ['pending', 'running'].includes(selectedRunDetails.status) && (
+                      <button
+                        type="button"
+                        onClick={() => void handleCancel(selectedRunId)}
+                        disabled={Boolean(cancellingRunId)}
+                        className="flex items-center gap-1.5 rounded-lg border border-[#ef4444]/30 bg-[#ef4444]/10 px-3 py-2 text-[9px] font-bold uppercase text-[#ef4444] hover:bg-[#ef4444]/20 disabled:cursor-wait disabled:opacity-50"
+                      >
+                        {cancellingRunId === selectedRunId
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <StopCircle className="h-3.5 w-3.5" />}
+                        {cancellingRunId === selectedRunId ? 'Cancelling...' : 'Cancel run'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setSelectedRunId(null)}
+                      className="p-2 hover:bg-[#1a2040] text-[#7a8899] hover:text-[#c8d0d8] rounded-lg transition-colors"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">

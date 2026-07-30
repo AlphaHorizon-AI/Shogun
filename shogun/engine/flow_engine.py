@@ -2333,9 +2333,9 @@ async def _exec_office(
     run_id: uuid.UUID | None = None,
     node_id: str | None = None,
 ) -> str:
-    """Office node — performs Office document operations using adapters.
+    """Files node — reads PDFs and performs Office document operations.
 
-    Actions: excel_read, excel_write, excel_create, word_read, word_replace,
+    Actions: pdf_read, excel_read, excel_write, excel_create, word_read, word_replace,
              word_create, pptx_read, pptx_replace
     """
     from pathlib import Path
@@ -2346,11 +2346,6 @@ async def _exec_office(
     input_path = config.get("input_path", "").strip()
     output_path = config.get("output_path", "").strip()
     sheet_name = config.get("sheet_name", "Sheet1")
-
-    # Check office is enabled
-    office_cfg = load_office_config()
-    if not office_cfg.enabled:
-        return "[BLOCKED] Office App Mode is disabled. Enable it in the Katana settings."
 
     root = settings.workspace_path.resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -2387,6 +2382,47 @@ async def _exec_office(
         return relative
 
     try:
+        # PDF reading is a native file operation. It deliberately does not
+        # depend on Office App Mode or an interactive desktop application, so
+        # it remains available to scheduled AgentFlows.
+        if action == "pdf_read":
+            from shogun.services.file_formats import FileFormatService
+
+            abs_path = _resolve(input_path)
+            start_page = max(1, int(config.get("start_page") or 1))
+            configured_end = config.get("end_page")
+            end_page = max(start_page, int(configured_end)) if configured_end else None
+            payload = await FileFormatService(allowed_roots=[root]).read(
+                path=abs_path,
+                start=start_page,
+                end=end_page,
+                max_chars=settings.agent_flow_document_max_chars,
+            )
+            filename = str(payload.get("filename") or Path(abs_path).name)
+            content = str(payload.get("content") or "")
+            if not content.strip():
+                return f"[ERROR] PDF '{filename}' contained no readable text."
+            if payload.get("truncated"):
+                return (
+                    f"[ERROR] PDF '{filename}' exceeds the AgentFlow extraction safety limit of "
+                    f"{settings.agent_flow_document_max_chars:,} characters. Select a smaller page range "
+                    "or increase SHOGUN_AGENT_FLOW_DOCUMENT_MAX_CHARS."
+                )
+            metadata = payload.get("metadata") or {}
+            warnings = payload.get("warnings") or []
+            page_range = (
+                f"pages {metadata.get('start_page', start_page)}-"
+                f"{metadata.get('end_page', end_page or 'end')}"
+            )
+            suffix = f"\n\n[Read warnings: {'; '.join(str(item) for item in warnings)}]" if warnings else ""
+            log.info("[Flow/Files] pdf_read: %s, %s, chars=%d", input_path, page_range, len(content))
+            return f"[PDF: {filename}; {page_range}]\n{content}{suffix}"
+
+        # Office formats still require Office App Mode.
+        office_cfg = load_office_config()
+        if not office_cfg.enabled:
+            return "[BLOCKED] Office App Mode is disabled. Enable it in the Katana settings."
+
         # ── Excel Operations ──
         if action == "excel_read":
             from shogun.office.adapters.excel_adapter import (
@@ -2583,12 +2619,12 @@ async def _exec_office(
                 close_presentation(handle)
 
         else:
-            return f"[ERROR] Unknown office action: {action}"
+            return f"[ERROR] Unknown files action: {action}"
 
     except ImportError as exc:
         return f"[ERROR] Missing dependency for '{action}': {exc}"
     except Exception as exc:
-        return f"[ERROR] Office '{action}' failed: {str(exc)[:500]}"
+        return f"[ERROR] Files '{action}' failed: {str(exc)[:500]}"
 
 
 # ═══════════════════════════════════════════════════════════════
