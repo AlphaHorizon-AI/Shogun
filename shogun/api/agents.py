@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 _CHAT_ATTACHMENT_TOTAL_CHARS = 60000
 _CHAT_ATTACHMENT_FILE_CHARS = 40000
+_CHAT_WORKSPACE_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".md", ".csv", ".json"}
+_CHAT_FILE_INTENT_WORDS = ("read", "review", "summarize", "analyse", "analyze", "explain", "translate", "open")
 
 
 def _operator_authorizes_agentflow_patch(user_msg: str) -> bool:
@@ -47,10 +49,17 @@ def _chat_attachment_content(user_msg: str, attachments: list[dict] | None) -> s
     for attachment in attachments or []:
         mime_type = str(attachment.get("mime_type") or "")
         path = attachment.get("path")
-        if attachment.get("type") == "file" and attachment.get("file_id"):
+        if attachment.get("type") == "file" and (
+            attachment.get("file_id") or attachment.get("workspace_relative_path")
+        ):
+            reference = (
+                f"file_id: {attachment['file_id']}"
+                if attachment.get("file_id")
+                else f"workspace path: {attachment['workspace_relative_path']}"
+            )
             label = (
                 f"{attachment.get('original_filename') or 'attachment'} "
-                f"(file_id: {attachment['file_id']}, format: {attachment.get('format_id') or 'unknown'}, "
+                f"({reference}, format: {attachment.get('format_id') or 'unknown'}, "
                 f"size: {attachment.get('size_bytes') or 0} bytes)"
             )
             extracted = str(attachment.get("extracted_content") or "").strip()
@@ -61,6 +70,7 @@ def _chat_attachment_content(user_msg: str, attachments: list[dict] | None) -> s
                     "BEGIN LOCALLY EXTRACTED CONTENT\n"
                     f"{extracted}\n"
                     "END LOCALLY EXTRACTED CONTENT"
+                    + (f"\nLOCAL EXTRACTION WARNING: {read_error}" if read_error else "")
                 )
             elif read_error:
                 file_lines.append(f"FILE: {label}\nLOCAL EXTRACTION ERROR: {read_error}")
@@ -132,10 +142,11 @@ async def _resolve_chat_attachments(session, requested: list[dict]) -> list[dict
                     attachment["extracted_content"] = extracted
                     attachment["content_truncated"] = bool(read_result.get("truncated"))
                     attachment["read_metadata"] = read_result.get("metadata") or {}
+                    attachment["read_warnings"] = read_result.get("warnings") or []
                     remaining_chars = max(0, remaining_chars - len(extracted))
                     if attachment.get("format_id") == "pdf" and not extracted.strip("- Page 0123456789\n"):
                         attachment["read_error"] = (
-                            "The PDF contains no extractable text. It may be scanned and require local OCR."
+                            "The PDF contains no extractable text and the local OCR fallback produced no text."
                         )
                 except FileFormatError as exc:
                     attachment["read_error"] = str(exc)
@@ -144,6 +155,84 @@ async def _resolve_chat_attachments(session, requested: list[dict]) -> list[dict
                 attachment["read_error"] = "The combined attachment text limit was reached."
             resolved.append(attachment)
     return resolved
+
+
+async def _resolve_workspace_chat_files(session, user_msg: str) -> list[dict]:
+    """Resolve explicit or unique Workspace file references without model tool calling."""
+    normalized_message = user_msg.lower().replace("\\", "/")
+    if not any(word in normalized_message for word in _CHAT_FILE_INTENT_WORDS):
+        return []
+    if "workspace" not in normalized_message and not any(
+        extension in normalized_message for extension in _CHAT_WORKSPACE_EXTENSIONS
+    ):
+        return []
+
+    workspace_root = settings.workspace_path.resolve()
+    if not workspace_root.is_dir():
+        return []
+
+    candidates: list[tuple[Path, str]] = []
+    try:
+        for path in workspace_root.rglob("*"):
+            if len(candidates) >= 5000:
+                break
+            if path.is_file() and not path.is_symlink() and path.suffix.lower() in _CHAT_WORKSPACE_EXTENSIONS:
+                relative = path.relative_to(workspace_root).as_posix()
+                candidates.append((path, relative))
+    except OSError as exc:
+        logger.warning("Could not scan Workspace for chat file references: %s", exc)
+        return []
+
+    matched = [
+        item
+        for item in candidates
+        if item[1].lower() in normalized_message or item[0].name.lower() in normalized_message
+    ]
+    if not matched:
+        mentioned_extensions = {
+            extension
+            for extension in _CHAT_WORKSPACE_EXTENSIONS
+            if extension in normalized_message
+            or (extension == ".pdf" and " pdf" in f" {normalized_message}")
+            or (extension == ".docx" and " word" in f" {normalized_message}")
+            or (extension == ".xlsx" and " excel" in f" {normalized_message}")
+            or (extension == ".pptx" and "powerpoint" in normalized_message)
+        }
+        narrowed = [item for item in candidates if not mentioned_extensions or item[0].suffix.lower() in mentioned_extensions]
+        if len(narrowed) == 1:
+            matched = narrowed
+
+    # Never guess between files with the same name or multiple type matches.
+    if len(matched) != 1:
+        if len(matched) > 1:
+            logger.info("Workspace chat reference was ambiguous across %d files", len(matched))
+        return []
+
+    from shogun.services.file_formats import FileFormatError, FileFormatService
+
+    path, relative = matched[0]
+    files = FileFormatService(session)
+    attachment = {
+        "type": "file",
+        "workspace_relative_path": relative,
+        "original_filename": path.name,
+        "size_bytes": path.stat().st_size,
+    }
+    try:
+        read_result = await files.read(path=str(path), max_chars=_CHAT_ATTACHMENT_FILE_CHARS)
+        attachment.update(
+            {
+                "format_id": read_result.get("format_id") or path.suffix.lower().lstrip("."),
+                "extracted_content": str(read_result.get("content") or ""),
+                "content_truncated": bool(read_result.get("truncated")),
+                "read_metadata": read_result.get("metadata") or {},
+                "read_warnings": read_result.get("warnings") or [],
+            }
+        )
+    except FileFormatError as exc:
+        attachment.update({"format_id": path.suffix.lower().lstrip("."), "read_error": str(exc)})
+        logger.warning("Could not read Workspace chat file %s: %s", relative, exc)
+    return [attachment]
 
 
 # Lazy import to avoid circular deps at module level
@@ -405,7 +494,10 @@ async def shogun_chat(
     visual_session_id = str(body.get("session_id") or "web-chat")
     if attachments:
         attachments = await _resolve_chat_attachments(svc.session, attachments)
-    elif any(token in user_msg.lower() for token in ("image", "photo", "picture", "screenshot", "in it", "on it", "this design")):
+    elif user_msg:
+        attachments = await _resolve_workspace_chat_files(svc.session, user_msg)
+
+    if not attachments and any(token in user_msg.lower() for token in ("image", "photo", "picture", "screenshot", "in it", "on it", "this design")):
         # Keep natural follow-up questions grounded in the latest image from this chat.
         from shogun.services.visual_intake import VisualIntakeService
         visual = VisualIntakeService(svc.session)
@@ -717,6 +809,19 @@ def _filter_tools_by_intent(tools: list, matched_keywords: list, is_small_model:
         ]
     else:
         filtered = [t for t in tools if t.get("category") in needed_categories]
+
+    # A request can legitimately combine an Office operation with AgentFlow
+    # orchestration (for example: inspect an attached workbook, create a flow,
+    # then produce an Excel result).  The application-specific branches above
+    # deliberately narrow the large Office tool family, but must not discard
+    # workflow tools that were explicitly selected for the same turn.
+    if "workflow" in matched:
+        selected_names = {tool["function"]["name"] for tool in filtered}
+        filtered.extend(
+            tool for tool in tools
+            if tool.get("category") == "workflow"
+            and tool["function"]["name"] not in selected_names
+        )
     
     logger.info(f"[OPTIMIZE] Filtered tools: {len(tools)} → {len(filtered)} (categories: {needed_categories})")
     return filtered
@@ -1338,6 +1443,7 @@ async def _shogun_chat_internal(
 
     _workflow_context = is_workflow_request(user_msg)
     _workflow_request = requires_workflow_tools(user_msg)
+    _excel_request = bool(re.search(r"\b(excel|spreadsheet|xlsx|workbook)\b", user_msg, re.IGNORECASE))
     _file_request = any(item.get("type") == "file" for item in (attachments or [])) or any(
         token in user_msg.lower() for token in ("read file", "read this file", "attached file", "document", "pdf", "docx", "xlsx", "pptx")
     )
@@ -2005,14 +2111,15 @@ BEHAVIOUR:
             break
 
         # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ 7b. Global posture enforcement layer ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
-        # Workflow discovery and inspection are read-only and mandatory. Keep
-        # them available even for legacy agents that have no assigned policy;
-        # the global posture filter below remains authoritative.
+        # Workflow discovery and explicitly requested writes are mandatory for
+        # the current operator turn. Keep them available even for legacy agents
+        # that have no assigned policy; posture and ToolGate remain authoritative.
         if _workflow_request:
+            _required_workflow_tools = WORKFLOW_READ_TOOLS | _operator_authorized_workflow_tools
             _loaded_names = {tool["function"]["name"] for tool in active_tools}
             active_tools.extend(
                 tool for tool in NATIVE_TOOLS
-                if tool["function"]["name"] in WORKFLOW_READ_TOOLS
+                if tool["function"]["name"] in _required_workflow_tools
                 and tool["function"]["name"] not in _loaded_names
             )
 
@@ -2025,6 +2132,18 @@ BEHAVIOUR:
             active_tools.extend(
                 tool for tool in NATIVE_TOOLS
                 if tool["function"]["name"] in file_chat_tools
+                and tool["function"]["name"] not in _loaded_names
+            )
+
+        # Excel work requested directly in chat is a core Katana capability.
+        # Restore the bounded Excel family for legacy agents; each operation is
+        # still checked by global posture, ToolGate, Office permissions, and the
+        # file boundary validator when it executes.
+        if _excel_request:
+            _loaded_names = {tool["function"]["name"] for tool in active_tools}
+            active_tools.extend(
+                tool for tool in NATIVE_TOOLS
+                if tool["function"]["name"].startswith("office_excel_")
                 and tool["function"]["name"] not in _loaded_names
             )
 

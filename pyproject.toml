@@ -101,6 +101,7 @@ include = ["shogun*"]
 [tool.setuptools.package-data]
 shogun = [
     "resources/*.json",
+    "resources/*.ps1",
     "resources/skills/**/*.md",
     "resources/skills/**/*.yaml",
     "ui/static/**/*",

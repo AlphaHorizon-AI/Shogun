@@ -811,6 +811,28 @@ NATIVE_TOOLS = [
         "risk": "low",
         "category": "office",
         "function": {
+            "name": "office_excel_open_attachment",
+            "description": (
+                "Open an Excel workbook attached to the current chat by its server-verified file_id. "
+                "Returns workbook metadata and the canonical file_path to use for later Excel calls."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_id": {
+                        "type": "string",
+                        "description": "The file_id shown in the attached-files manifest.",
+                    },
+                },
+                "required": ["file_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "low",
+        "category": "office",
+        "function": {
             "name": "office_excel_read_range",
             "description": "Read cell values from an Excel sheet. Returns a 2D array of values. The workbook must be opened first with office_excel_open.",
             "parameters": {
@@ -4404,7 +4426,7 @@ async def execute_native_tool(
 
         # ── Office App Mode (Katana) ──────────────────────────────
         elif name.startswith("office_"):
-            return await _execute_office_tool(name, args)
+            return await _execute_office_tool(name, args, db_session)
 
         # ── Workspace Tools ──────────────────────────────────────────
         elif name.startswith("workspace_"):
@@ -4484,7 +4506,7 @@ async def _execute_mcp_tool(name: str, args: dict[str, Any], db_session) -> str:
         return json.dumps({"status": "error", "message": "MCP tool execution failed. Check the Shogun logs."})
 
 
-async def _execute_office_tool(name: str, args: dict[str, Any]) -> str:
+async def _execute_office_tool(name: str, args: dict[str, Any], db_session=None) -> str:
     """Execute an Office App Mode tool.
 
     All Office tools route through this function, which handles:
@@ -4518,6 +4540,42 @@ async def _execute_office_tool(name: str, args: dict[str, Any]) -> str:
         tier = await get_current_posture_tier()
 
         # ── Excel Tools ──────────────────────────────────────────
+        if name == "office_excel_open_attachment":
+            if db_session is None:
+                return json.dumps({"status": "error", "message": "A database session is required."})
+            try:
+                import uuid as _uuid
+                from pathlib import Path as _Path
+
+                from shogun.db.models.file_artifact import FileArtifact
+                from shogun.services.file_formats import FileSafetyGate
+
+                artifact = await db_session.get(FileArtifact, _uuid.UUID(str(args["file_id"])))
+            except (ValueError, KeyError):
+                artifact = None
+            if artifact is None:
+                return json.dumps({"status": "error", "message": "The attached Excel file was not found."})
+            if artifact.format_id not in {"xlsx", "excel"} and not str(artifact.path).lower().endswith(".xlsx"):
+                return json.dumps({"status": "error", "message": "The attached file is not an .xlsx workbook."})
+
+            attachment_path = _Path(artifact.path)
+            FileSafetyGate().validate(attachment_path)
+            from shogun.office.adapters.excel_adapter import get_workbook_metadata, open_workbook
+
+            handle = open_workbook(str(attachment_path.resolve()))
+            canonical_path = str(attachment_path.resolve())
+            _open_handles[canonical_path] = handle
+            meta = get_workbook_metadata(handle)
+            meta["file_path"] = canonical_path
+            await _log_office_event(
+                "office.excel.open_attachment",
+                "Opened attached workbook",
+                "excel",
+                canonical_path,
+                start_ms=start_ms,
+            )
+            return json.dumps({"status": "success", "data": meta})
+
         if name == "office_excel_open":
             vp = validator.validate(args["file_path"], PathPurpose.READ)
             from shogun.office.adapters.excel_adapter import open_workbook, get_workbook_metadata

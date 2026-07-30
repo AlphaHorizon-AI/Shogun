@@ -2,7 +2,12 @@ import uuid
 
 import pytest
 
-from shogun.api.agents import _chat_attachment_content, _filter_tools_by_intent, _resolve_chat_attachments
+from shogun.api.agents import (
+    _chat_attachment_content,
+    _filter_tools_by_intent,
+    _resolve_chat_attachments,
+    _resolve_workspace_chat_files,
+)
 
 
 def test_file_attachment_manifest_uses_opaque_id_without_server_path():
@@ -72,6 +77,78 @@ async def test_chat_attachment_resolution_reads_content_before_model_call(monkey
 
     assert resolved[0]["extracted_content"].endswith("A completely local report")
     assert resolved[0]["read_metadata"] == {"page_count": 1}
+
+
+@pytest.mark.asyncio
+async def test_unique_workspace_pdf_is_read_before_model_call(monkeypatch, tmp_path):
+    from shogun.config import settings
+    from shogun.services.file_formats import FileFormatService
+
+    document = tmp_path / "orders" / "production-plan.pdf"
+    document.parent.mkdir()
+    document.write_bytes(b"%PDF-local-test")
+
+    async def read(_self, *, path, max_chars):
+        assert path == str(document)
+        assert max_chars == 40000
+        return {
+            "format_id": "pdf",
+            "content": "Locally extracted production plan",
+            "truncated": False,
+            "metadata": {"page_count": 2},
+            "warnings": [],
+        }
+
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    monkeypatch.setattr(FileFormatService, "read", read)
+
+    resolved = await _resolve_workspace_chat_files(object(), "Read the PDF in the Workspace")
+
+    assert resolved[0]["workspace_relative_path"] == "orders/production-plan.pdf"
+    assert resolved[0]["extracted_content"] == "Locally extracted production plan"
+
+
+@pytest.mark.asyncio
+async def test_named_nested_workspace_file_is_resolved(monkeypatch, tmp_path):
+    from shogun.config import settings
+    from shogun.services.file_formats import FileFormatService
+
+    first = tmp_path / "finance" / "forecast.xlsx"
+    second = tmp_path / "operations" / "inventory.xlsx"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+
+    async def read(_self, *, path, max_chars):
+        return {
+            "format_id": "office",
+            "content": "Inventory workbook rows",
+            "truncated": False,
+            "metadata": {"selected_sheet": "Stock"},
+            "warnings": [],
+        }
+
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    monkeypatch.setattr(FileFormatService, "read", read)
+
+    resolved = await _resolve_workspace_chat_files(object(), "Analyze operations/inventory.xlsx from Workspace")
+
+    assert len(resolved) == 1
+    assert resolved[0]["workspace_relative_path"] == "operations/inventory.xlsx"
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_workspace_type_reference_does_not_guess(monkeypatch, tmp_path):
+    from shogun.config import settings
+
+    (tmp_path / "one.pdf").write_bytes(b"one")
+    (tmp_path / "two.pdf").write_bytes(b"two")
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+
+    resolved = await _resolve_workspace_chat_files(object(), "Read the PDF in Workspace")
+
+    assert resolved == []
 
 
 def test_attachment_intent_keeps_file_tools_for_small_models():

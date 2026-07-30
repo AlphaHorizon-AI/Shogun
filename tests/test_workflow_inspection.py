@@ -17,6 +17,7 @@ from shogun.api.agents import (
 from shogun.db.base import Base
 from shogun.db.models.agent import Agent
 from shogun.db.models.agent_flow import AgentFlow, AgentFlowEdge, AgentFlowNode
+from shogun.db.models.file_artifact import FileArtifact
 from shogun.services import posture_guard
 from shogun.services.native_skills import (
     NATIVE_TOOLS,
@@ -77,6 +78,83 @@ def test_workflow_requests_always_select_mission_and_retain_workflow_tools() -> 
     assert "list_agent_flows" in selected_names
     assert "get_agent_flow" in selected_names
     assert "create_agent_flow" in selected_names
+
+
+def test_combined_excel_attachment_request_retains_workflow_and_office_tools() -> None:
+    selected = _filter_tools_by_intent(
+        NATIVE_TOOLS,
+        ["attachment", "file", "excel", "spreadsheet", "workflow"],
+        True,
+    )
+    selected_names = {tool["function"]["name"] for tool in selected}
+
+    assert "list_agent_flows" in selected_names
+    assert "get_agent_flow" in selected_names
+    assert "create_agent_flow" in selected_names
+    assert "office_excel_open_attachment" in selected_names
+    assert "office_excel_read_range" in selected_names
+    assert "office_excel_write_range" in selected_names
+    assert "office_excel_save_as" in selected_names
+
+
+def test_excel_attachment_open_tool_accepts_server_file_id() -> None:
+    tools = {tool["function"]["name"]: tool for tool in NATIVE_TOOLS}
+    attachment_tool = tools["office_excel_open_attachment"]
+
+    assert attachment_tool["risk"] == "low"
+    assert attachment_tool["category"] == "office"
+    assert attachment_tool["function"]["parameters"]["required"] == ["file_id"]
+
+
+@pytest.mark.asyncio
+async def test_excel_attachment_can_be_opened_by_server_file_id(tmp_path, monkeypatch) -> None:
+    openpyxl = pytest.importorskip("openpyxl")
+    from shogun.config import settings
+    from shogun.services.native_skills import _open_handles
+
+    workbook_path = tmp_path / "reference.xlsx"
+    workbook = openpyxl.Workbook()
+    workbook.active["A1"] = "Reference layout"
+    workbook.save(workbook_path)
+    monkeypatch.setattr(settings, "uploads_path", tmp_path)
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with sessions() as session:
+            artifact = FileArtifact(
+                original_filename="reference.xlsx",
+                path=str(workbook_path),
+                format_id="xlsx",
+                mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                size_bytes=workbook_path.stat().st_size,
+                hash_sha256="0" * 64,
+                source="upload",
+                detection_confidence=1.0,
+                detection_method="test",
+            )
+            session.add(artifact)
+            await session.flush()
+
+            result = json.loads(
+                await execute_native_tool(
+                    "office_excel_open_attachment",
+                    {"file_id": str(artifact.id)},
+                    session,
+                )
+            )
+
+        assert result["status"] == "success"
+        assert result["data"]["sheets"] == ["Sheet"]
+        assert result["data"]["file_path"] == str(workbook_path.resolve())
+    finally:
+        handle = _open_handles.pop(str(workbook_path.resolve()), None)
+        if handle:
+            handle.close()
+        await engine.dispose()
 
 
 def test_workflow_operator_guide_is_fixed_and_requires_verified_execution() -> None:

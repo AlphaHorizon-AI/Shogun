@@ -1,8 +1,8 @@
 {
-  "version": "1.47.24",
+  "version": "1.47.25",
   "name": "Shogun OS",
-  "build": 175,
+  "build": 176,
   "channel": "stable",
-  "released": "2026-07-30T09:48:00Z",
-  "changelog": "Add deterministic offline PDF, Word, and Excel extraction for Comms attachments, plus an explicit loopback-only Gensui demo-password bypass."
+  "released": "2026-07-30T11:25:00Z",
+  "changelog": "Add Workspace document discovery, offline Windows OCR for scanned PDFs, and combined AgentFlow plus attached-Excel tooling in Comms chat."
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import zipfile
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -257,6 +258,27 @@ async def test_chat_reader_extracts_excel_sheet_data_offline(tmp_path):
     assert result["metadata"]["selected_sheet"] == "Quarterly Sales"
     assert "North" in result["content"]
     assert "125000" in result["content"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Uses the built-in Windows OCR engine")
+@pytest.mark.asyncio
+async def test_chat_reader_applies_offline_ocr_to_image_only_pdf(tmp_path):
+    image_module = pytest.importorskip("PIL.Image")
+    image_draw = pytest.importorskip("PIL.ImageDraw")
+    image_font = pytest.importorskip("PIL.ImageFont")
+    path = tmp_path / "scanned-report.pdf"
+    image = image_module.new("RGB", (1600, 900), "white")
+    draw = image_draw.Draw(image)
+    font = image_font.truetype("arial.ttf", 72)
+    draw.text((100, 250), "OFFLINE OCR REPORT 4827", fill="black", font=font)
+    image.save(path, "PDF", resolution=150)
+
+    result = await service(tmp_path).read(path=str(path))
+
+    assert result["format_id"] == "pdf"
+    assert "OFFLINE OCR REPORT 4827" in result["content"]
+    assert result["metadata"]["ocr_candidate_pages"] == [1]
+    assert any("Applied local Windows OCR" in warning for warning in result["warnings"])
 
 
 @pytest.mark.asyncio

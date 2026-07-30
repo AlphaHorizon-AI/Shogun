@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import configparser
 import csv
 import hashlib
@@ -1200,11 +1201,48 @@ class FileFormatService:
                 last = min(int(end or page_count), page_count)
                 if start > page_count or last < start:
                     raise FileFormatError("Requested PDF page range is outside the document.", "invalid_request")
-                chunks = []
+                page_text: dict[int, str] = {}
+                ocr_candidates: list[int] = []
                 for page_number in range(start - 1, last):
-                    chunks.append(f"--- Page {page_number + 1} ---\n{reader.pages[page_number].extract_text() or ''}")
+                    display_number = page_number + 1
+                    extracted = reader.pages[page_number].extract_text() or ""
+                    page_text[display_number] = extracted
+                    if len(extracted.strip()) < 10:
+                        ocr_candidates.append(display_number)
+
+                ocr_pages = ocr_candidates[:25]
+                if ocr_pages:
+                    from shogun.services.pdf_ocr import PdfOcrError, windows_ocr_pdf_pages
+
+                    try:
+                        recognized = await asyncio.to_thread(windows_ocr_pdf_pages, target, ocr_pages)
+                        applied = []
+                        for page_number, recognized_text in recognized.items():
+                            if recognized_text and len(recognized_text) > len(page_text.get(page_number, "").strip()):
+                                page_text[page_number] = recognized_text
+                                applied.append(page_number)
+                        if applied:
+                            warnings.append(
+                                "Applied local Windows OCR to PDF page(s): "
+                                + ", ".join(str(number) for number in applied)
+                                + "."
+                            )
+                    except PdfOcrError as exc:
+                        warnings.append(f"Local PDF OCR was unavailable: {exc}")
+                if len(ocr_candidates) > len(ocr_pages):
+                    warnings.append("OCR was limited to the first 25 image-only pages in the requested range.")
+
+                chunks = [
+                    f"--- Page {page_number} ---\n{page_text.get(page_number, '')}"
+                    for page_number in range(start, last + 1)
+                ]
                 content = "\n\n".join(chunks)
-                metadata = {"page_count": page_count, "start_page": start, "end_page": last}
+                metadata = {
+                    "page_count": page_count,
+                    "start_page": start,
+                    "end_page": last,
+                    "ocr_candidate_pages": ocr_candidates,
+                }
             elif format_id in {"docx", "word"} or (format_id == "office" and target.suffix.lower() == ".docx"):
                 from shogun.office.adapters.word_adapter import close_document, open_document, read_text
 
