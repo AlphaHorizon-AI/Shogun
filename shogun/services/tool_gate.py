@@ -349,6 +349,7 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     # File format adapters
     "file_detect_type":       {"risk": "low",      "category": "files"},
     "file_inspect":           {"risk": "low",      "category": "files"},
+    "file_read":              {"risk": "low",      "category": "files"},
     "file_preview":           {"risk": "low",      "category": "files"},
     "file_schema":            {"risk": "low",      "category": "files"},
     "file_query":             {"risk": "low",      "category": "files"},

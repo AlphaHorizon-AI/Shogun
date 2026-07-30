@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Terminal, Bot, User, Trash2, History, X, ChevronDown, ChevronRight, ChevronUp, Globe, Mail, Calendar, MessageSquare, Zap, Shield, ShieldAlert, Target, Sparkles, Monitor, MousePointer2, Keyboard, AlertCircle, Camera, Square, Check, XCircle, FolderOpen, ImagePlus, Pin } from 'lucide-react';
+import { Send, Terminal, Bot, User, Trash2, History, X, ChevronDown, ChevronRight, ChevronUp, Globe, Mail, Calendar, MessageSquare, Zap, Shield, ShieldAlert, Target, Sparkles, Monitor, MousePointer2, Keyboard, AlertCircle, Camera, Square, Check, XCircle, FolderOpen, Paperclip, FileText, Pin } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
 import { MailView } from './MailView';
@@ -12,6 +12,7 @@ type RoninAttachment =
   | { type: 'screenshot'; url: string; description: string }
   | { type: 'action'; action: string; detail: string }
   | { type: 'toolgate_confirm'; confirmId: string; tool: string; args: Record<string, string>; risk: string; reason: string; resolved?: 'approved' | 'denied' | 'timeout' }
+  | { type: 'file'; file_id: string; original_filename: string; format_id: string; mime_type?: string; size_bytes: number; summary?: string }
   | { type: 'image'; artifact_id: string; content_url: string; thumbnail_url: string; filename: string; source: string; status: string; width: number; height: number; caption?: string; pinned?: boolean };
 
 interface Message {
@@ -231,10 +232,12 @@ export const ChatConsole = () => {
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [pendingImages, setPendingImages] = useState<Extract<RoninAttachment, { type: 'image' }>[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<Extract<RoninAttachment, { type: 'file' }>[]>([]);
   const [imageViewer, setImageViewer] = useState<Extract<RoninAttachment, { type: 'image' }> | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [routingProfile, setRoutingProfile] = useState('Balanced');
 
   useEffect(() => {
@@ -244,24 +247,32 @@ export const ChatConsole = () => {
       .catch(() => undefined);
   }, []);
 
-  const handleImageUpload = async (file?: File) => {
+  const handleAttachmentUpload = async (file?: File) => {
     if (!file) return;
-    setUploadingImage(true);
+    setUploadingAttachment(true);
     try {
       const form = new FormData();
       form.append('file', file);
-      form.append('source', 'chat');
-      form.append('chat_session_id', 'web-chat');
-      const response = await fetch('/api/v1/visual/intake', { method: 'POST', body: form });
+      const isImage = file.type.startsWith('image/');
+      if (isImage) {
+        form.append('source', 'chat');
+        form.append('chat_session_id', 'web-chat');
+      }
+      const response = await fetch(isImage ? '/api/v1/visual/intake' : '/api/v1/files/register?source=chat', { method: 'POST', body: form });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.detail || 'Image upload failed.');
-      setPendingImages(prev => [...prev, payload.data]);
+      if (!response.ok) throw new Error(payload.detail?.message || payload.detail || 'File upload failed.');
+      if (isImage) setPendingImages(prev => [...prev, payload.data]);
+      else setPendingFiles(prev => [...prev, { type: 'file', ...payload.data, original_filename: payload.data.original_filename || file.name }]);
     } catch (error: any) {
-      setStatusText(error.message || 'Image upload failed.');
+      setStatusText(error.message || 'File upload failed.');
     } finally {
-      setUploadingImage(false);
-      if (imageInputRef.current) imageInputRef.current.value = '';
+      setUploadingAttachment(false);
     }
+  };
+
+  const handleAttachments = async (files: FileList | File[]) => {
+    for (const file of Array.from(files)) await handleAttachmentUpload(file);
+    if (attachmentInputRef.current) attachmentInputRef.current.value = '';
   };
 
   useEffect(() => {
@@ -306,10 +317,12 @@ export const ChatConsole = () => {
   }, [messages, isThinking]);
 
   const handleSend = async () => {
-    if ((!input.trim() && pendingImages.length === 0) || isThinking) return;
+    if ((!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || isThinking) return;
 
-    const outgoingText = input.trim() || 'Please review this image.';
+    const outgoingText = input.trim() || 'Please review the attached file(s).';
     const outgoingImages = [...pendingImages];
+    const outgoingFiles = [...pendingFiles];
+    const outgoingAttachments: RoninAttachment[] = [...outgoingImages, ...outgoingFiles];
 
     const userMsg: Message = {
       id: crypto.randomUUID(),
@@ -317,7 +330,7 @@ export const ChatConsole = () => {
       content: outgoingText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       channel: 'comms',
-      attachments: outgoingImages,
+      attachments: outgoingAttachments,
     };
     try {
       await persistSharedMessage(userMsg);
@@ -329,6 +342,7 @@ export const ChatConsole = () => {
     setMessages(updatedMessages);
     setInput('');
     setPendingImages([]);
+    setPendingFiles([]);
     setIsThinking(true);
     setStatusText(null);
 
@@ -352,7 +366,7 @@ export const ChatConsole = () => {
       const resp = await fetch('/api/v1/agents/shogun/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: outgoingText, history: hist.slice(0, -1), mode: chatMode, session_id: 'web-chat', attachments: outgoingImages.map(image => ({ artifact_id: image.artifact_id })) }),
+        body: JSON.stringify({ message: outgoingText, history: hist.slice(0, -1), mode: chatMode, session_id: 'web-chat', attachments: [...outgoingImages.map(image => ({ artifact_id: image.artifact_id })), ...outgoingFiles.map(file => ({ file_id: file.file_id }))] }),
         signal: controller.signal,
       });
 
@@ -561,7 +575,14 @@ export const ChatConsole = () => {
   };
 
   return (
-    <div className="flex flex-col w-full min-w-0 h-full space-y-4">
+    <div
+      className="relative flex flex-col w-full min-w-0 h-full space-y-4"
+      onDragEnter={event => { event.preventDefault(); setIsDraggingFile(true); }}
+      onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setIsDraggingFile(true); }}
+      onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setIsDraggingFile(false); }}
+      onDrop={event => { event.preventDefault(); setIsDraggingFile(false); void handleAttachments(event.dataTransfer.files); }}
+    >
+      {isDraggingFile && <div className="absolute inset-0 z-50 flex items-center justify-center rounded-xl border-2 border-dashed border-cyan-400 bg-[#05080f]/90 text-cyan-300"><div className="flex flex-col items-center gap-3"><Paperclip className="w-10 h-10" /><span className="text-sm font-bold uppercase tracking-widest">Drop files into Chat</span></div></div>}
       {/* Clear Bar */}
       <div className="flex justify-between items-center shrink-0">
         <div className="flex items-center gap-2"><span className="text-xs font-bold text-shogun-subdued uppercase tracking-widest">
@@ -678,6 +699,14 @@ export const ChatConsole = () => {
                                       <button onClick={removeImage} title="Delete image" className="p-1.5 rounded border border-red-500/30 text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
                                     </div>
                                   </div>
+                                </div>
+                              );
+                            }
+                            if (att.type === 'file') {
+                              return (
+                                <div key={idx} className="flex items-center gap-3 rounded-lg border border-cyan-500/25 bg-cyan-500/5 px-3 py-2">
+                                  <FileText className="w-5 h-5 shrink-0 text-cyan-400" />
+                                  <div className="min-w-0"><p className="truncate text-xs font-bold text-shogun-text">{att.original_filename}</p><p className="text-[9px] uppercase text-shogun-subdued">{att.format_id} · {(att.size_bytes / 1024).toFixed(1)} KB</p></div>
                                 </div>
                               );
                             }
@@ -813,9 +842,9 @@ export const ChatConsole = () => {
           </div>
 
           <div className="relative flex items-center">
-            <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={event => void handleImageUpload(event.target.files?.[0])} />
-            <button type="button" onClick={() => imageInputRef.current?.click()} disabled={uploadingImage || isThinking} title="Add image" className="absolute left-2 z-10 p-2 text-cyan-400 hover:bg-cyan-500/10 rounded-lg disabled:opacity-40">
-              <ImagePlus className={cn('w-5 h-5', uploadingImage && 'animate-pulse')} />
+            <input ref={attachmentInputRef} type="file" multiple className="hidden" onChange={event => event.target.files && void handleAttachments(event.target.files)} />
+            <button type="button" onClick={() => attachmentInputRef.current?.click()} disabled={uploadingAttachment || isThinking} title="Attach files" className="absolute left-2 z-10 p-2 text-cyan-400 hover:bg-cyan-500/10 rounded-lg disabled:opacity-40">
+              <Paperclip className={cn('w-5 h-5', uploadingAttachment && 'animate-pulse')} />
             </button>
             <input
               type="text"
@@ -837,7 +866,7 @@ export const ChatConsole = () => {
             ) : (
               <button
                 onClick={handleSend}
-                disabled={!input.trim() && pendingImages.length === 0}
+                disabled={!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0}
                 className="absolute right-2 p-2 bg-shogun-blue text-white rounded-lg hover:bg-shogun-blue/80 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Send className="w-5 h-5" />
@@ -850,6 +879,16 @@ export const ChatConsole = () => {
                 <div key={image.artifact_id} className="relative w-24 h-20 rounded-lg overflow-hidden border border-cyan-500/30 bg-black">
                   <img src={image.thumbnail_url} alt={image.filename} className="w-full h-full object-cover" />
                   <button onClick={() => setPendingImages(prev => prev.filter(item => item.artifact_id !== image.artifact_id))} className="absolute right-1 top-1 p-1 rounded bg-black/80 text-white"><X className="w-3 h-3" /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          {pendingFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {pendingFiles.map(file => (
+                <div key={file.file_id} className="flex max-w-xs items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2">
+                  <FileText className="w-4 h-4 shrink-0 text-cyan-400" /><span className="truncate text-[10px] text-shogun-text">{file.original_filename}</span>
+                  <button onClick={() => setPendingFiles(prev => prev.filter(item => item.file_id !== file.file_id))} className="ml-auto text-shogun-subdued hover:text-white"><X className="w-3 h-3" /></button>
                 </div>
               ))}
             </div>
@@ -1046,4 +1085,3 @@ export const Chat = () => {
     </div>
   );
 };
-

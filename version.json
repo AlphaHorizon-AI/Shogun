@@ -1,8 +1,8 @@
 {
-  "version": "1.47.20",
+  "version": "1.47.21",
   "name": "Shogun OS",
-  "build": 171,
+  "build": 172,
   "channel": "stable",
-  "released": "2026-07-30T07:16:19Z",
-  "changelog": "Rework the Bushido Reminder Board into Shogun operational short-term memory with AI-owned obligations, prompt context, provenance, expiry, duplicate suppression, and persistent due-state review."
+  "released": "2026-07-30T07:44:57Z",
+  "changelog": "Add secure chat file attachments with multi-file drag-and-drop, server-verified file IDs, bounded AI reading for text, data, PDF, Word, Excel, and PowerPoint files, and file-aware model tool routing."
 }

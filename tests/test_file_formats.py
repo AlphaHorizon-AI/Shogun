@@ -197,6 +197,47 @@ async def test_inspection_registers_file_id_and_supports_later_lookup(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_bounded_file_read_returns_content_and_truncates(tmp_path):
+    path = tmp_path / "chat-notes.txt"
+    path.write_text("important note\n" * 500, encoding="utf-8")
+
+    result = await service(tmp_path).read(path=str(path), max_chars=1000)
+
+    assert result["operation"] == "read"
+    assert "important note" in result["content"]
+    assert len(result["content"]) == 1000
+    assert result["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_ooxml_files_are_detected_as_office_not_generic_zip(tmp_path):
+    path = tmp_path / "brief.docx"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types />")
+        archive.writestr("word/document.xml", "<document />")
+
+    result = await service(tmp_path).detect(path=str(path))
+
+    assert result["detected_format"] == "office"
+
+
+@pytest.mark.asyncio
+async def test_chat_reader_extracts_word_document_text(tmp_path):
+    docx = pytest.importorskip("docx")
+    path = tmp_path / "brief.docx"
+    document = docx.Document()
+    document.add_heading("Launch Plan", level=1)
+    document.add_paragraph("Ship the governed file reader.")
+    document.save(path)
+
+    result = await service(tmp_path).read(path=str(path))
+
+    assert result["format_id"] == "office"
+    assert "Launch Plan" in result["content"]
+    assert "governed file reader" in result["content"]
+
+
+@pytest.mark.asyncio
 async def test_zip_inspection_and_zip_slip_blocking(tmp_path, monkeypatch):
     path = tmp_path / "package.zip"
     with zipfile.ZipFile(path, "w") as archive:

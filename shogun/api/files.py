@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.api.deps import get_db
 from shogun.config import settings
+from shogun.db.models.file_artifact import FileArtifact
 from shogun.schemas.file_formats import (
     ArchiveExtractRequest,
     FileCompareRequest,
@@ -65,6 +66,11 @@ async def register_upload(
                     raise FileFormatError("Upload exceeds the configured file size limit.", "file_too_large")
                 output.write(chunk)
         result = await svc.inspect(path=str(destination), source=source, mime_type=file.content_type)
+        if result.get("file_id"):
+            artifact = await svc.session.get(FileArtifact, uuid.UUID(result["file_id"]))
+            if artifact:
+                artifact.original_filename = safe_name
+            result["original_filename"] = safe_name
         await svc.session.commit()
         return {"data": result}
     except FileFormatError as exc:

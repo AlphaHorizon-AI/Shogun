@@ -38,11 +38,19 @@ def _operator_authorizes_agentflow_patch(user_msg: str) -> bool:
 
 
 def _chat_attachment_content(user_msg: str, attachments: list[dict] | None) -> str | list[dict]:
-    """Build OpenAI-compatible multimodal content for local saved images."""
+    """Build multimodal content plus a server-verified attached-file manifest."""
     image_parts: list[dict] = []
+    file_lines: list[str] = []
     for attachment in attachments or []:
         mime_type = str(attachment.get("mime_type") or "")
         path = attachment.get("path")
+        if attachment.get("type") == "file" and attachment.get("file_id"):
+            file_lines.append(
+                f"- {attachment.get('original_filename') or 'attachment'} "
+                f"(file_id: {attachment['file_id']}, format: {attachment.get('format_id') or 'unknown'}, "
+                f"size: {attachment.get('size_bytes') or 0} bytes)"
+            )
+            continue
         if not mime_type.startswith("image/") or not path:
             continue
 
@@ -62,10 +70,38 @@ def _chat_attachment_content(user_msg: str, attachments: list[dict] | None) -> s
         except Exception as exc:
             logger.warning("Could not attach image to chat context: %s", exc)
 
+    manifest = ""
+    if file_lines:
+        manifest = (
+            "\n\nATTACHED FILES (server verified):\n" + "\n".join(file_lines) +
+            "\nUse file_read with the listed file_id when the operator asks you to read, summarize, or analyze a file."
+        )
+    text_content = user_msg + manifest
     if not image_parts:
-        return user_msg
+        return text_content
 
-    return [{"type": "text", "text": user_msg}, *image_parts]
+    return [{"type": "text", "text": text_content}, *image_parts]
+
+
+async def _resolve_chat_attachments(session, requested: list[dict]) -> list[dict]:
+    """Resolve opaque attachment IDs; never trust a browser-supplied path."""
+    resolved: list[dict] = []
+    visual_refs = [item for item in requested if item.get("artifact_id")]
+    if visual_refs:
+        from shogun.services.visual_intake import VisualIntakeService
+        resolved.extend(await VisualIntakeService(session).resolve_attachments(visual_refs))
+    if any(item.get("file_id") for item in requested):
+        from shogun.services.file_formats import FileFormatError, FileFormatService
+        files = FileFormatService(session)
+        for item in requested:
+            if not item.get("file_id"):
+                continue
+            try:
+                file_id = uuid.UUID(str(item["file_id"]))
+                resolved.append({"type": "file", **await files.get_artifact(file_id)})
+            except (ValueError, FileFormatError) as exc:
+                logger.warning("Ignoring invalid chat file attachment: %s", exc)
+    return resolved
 
 
 # Lazy import to avoid circular deps at module level
@@ -326,8 +362,7 @@ async def shogun_chat(
     attachments = body.get("attachments") if isinstance(body.get("attachments"), list) else []
     visual_session_id = str(body.get("session_id") or "web-chat")
     if attachments:
-        from shogun.services.visual_intake import VisualIntakeService
-        attachments = await VisualIntakeService(svc.session).resolve_attachments(attachments)
+        attachments = await _resolve_chat_attachments(svc.session, attachments)
     elif any(token in user_msg.lower() for token in ("image", "photo", "picture", "screenshot", "in it", "on it", "this design")):
         # Keep natural follow-up questions grounded in the latest image from this chat.
         from shogun.services.visual_intake import VisualIntakeService
@@ -511,7 +546,8 @@ def _filter_tools_by_intent(tools: list, matched_keywords: list, is_small_model:
     # Map keywords to tool categories
     _KEYWORD_TO_CATEGORIES: dict[str, set[str]] = {
         # Office / document keywords → office + workspace tools
-        "document": {"office", "workspace"},
+        "attachment": {"files", "office", "workspace", "visual"},
+        "document": {"files", "office", "workspace"},
         "docx": {"office", "workspace"},
         ".docx": {"office", "workspace"},
         "spreadsheet": {"office", "workspace"},
@@ -528,12 +564,12 @@ def _filter_tools_by_intent(tools: list, matched_keywords: list, is_small_model:
         "folder": {"workspace", "office"},
         "input/": {"workspace", "office"},
         "output/": {"workspace", "office"},
-        "file": {"workspace", "office"},
-        "read file": {"workspace", "office"},
-        "write file": {"workspace", "office"},
-        "upload": {"workspace", "visual"},
+        "file": {"files", "workspace", "office"},
+        "read file": {"files", "workspace", "office"},
+        "write file": {"files", "workspace", "office"},
+        "upload": {"files", "workspace", "visual"},
         "download": {"workspace"},
-        "analyze": {"workspace", "office"},
+        "analyze": {"files", "workspace", "office"},
         # Email keywords → comms
         "email": {"comms"},
         "send mail": {"comms"},
@@ -605,6 +641,7 @@ def _filter_tools_by_intent(tools: list, matched_keywords: list, is_small_model:
 
     if translation_intent and word_intent and not excel_intent and not pptx_intent:
         translation_tools = {
+            "file_read",
             "office_word_read_page",
             "office_word_create_from_text",
         }
@@ -617,7 +654,7 @@ def _filter_tools_by_intent(tools: list, matched_keywords: list, is_small_model:
             t for t in tools
             if (
                 t["function"]["name"].startswith("office_word_")
-                or t.get("category") in {"workspace", "memory"}
+                or t.get("category") in {"files", "workspace", "memory"}
             )
         ]
     elif excel_intent and not word_intent and not pptx_intent:
@@ -625,7 +662,7 @@ def _filter_tools_by_intent(tools: list, matched_keywords: list, is_small_model:
             t for t in tools
             if (
                 t["function"]["name"].startswith("office_excel_")
-                or t.get("category") in {"workspace", "memory"}
+                or t.get("category") in {"files", "workspace", "memory"}
             )
         ]
     elif pptx_intent and not word_intent and not excel_intent:
@@ -633,7 +670,7 @@ def _filter_tools_by_intent(tools: list, matched_keywords: list, is_small_model:
             t for t in tools
             if (
                 t["function"]["name"].startswith("office_pptx_")
-                or t.get("category") in {"workspace", "memory"}
+                or t.get("category") in {"files", "workspace", "memory"}
             )
         ]
     else:
@@ -1259,6 +1296,9 @@ async def _shogun_chat_internal(
 
     _workflow_context = is_workflow_request(user_msg)
     _workflow_request = requires_workflow_tools(user_msg)
+    _file_request = any(item.get("type") == "file" for item in (attachments or [])) or any(
+        token in user_msg.lower() for token in ("read file", "read this file", "attached file", "document", "pdf", "docx", "xlsx", "pptx")
+    )
 
     # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ 0. Posture enforcement: kill switch gate ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
     try:
@@ -1934,6 +1974,18 @@ BEHAVIOUR:
                 and tool["function"]["name"] not in _loaded_names
             )
 
+        # Reading an operator-selected attachment is a core, read-only chat
+        # capability. Keep these bounded tools available to legacy agents
+        # without a policy; the posture and file safety gates still apply.
+        if _file_request:
+            file_chat_tools = {"file_read", "file_inspect", "file_preview", "file_schema", "file_query"}
+            _loaded_names = {tool["function"]["name"] for tool in active_tools}
+            active_tools.extend(
+                tool for tool in NATIVE_TOOLS
+                if tool["function"]["name"] in file_chat_tools
+                and tool["function"]["name"] not in _loaded_names
+            )
+
         # The per-agent policy gating above checks the agent's assigned policy.
         # This additional layer enforces the GLOBAL posture tier constraints,
         # stripping tools that the current tier does not permit.
@@ -1943,6 +1995,8 @@ BEHAVIOUR:
         # ━━ 7c-opt. Intent-based tool filtering for small local models ━━
         _small_model = _is_small_local_model(provider, model_name)
         _classification_matched = classification.get("matched", []) if classification else []
+        if _file_request and "attachment" not in _classification_matched:
+            _classification_matched = [*_classification_matched, "attachment"]
         if _small_model and _classification_matched:
             active_tools = _filter_tools_by_intent(active_tools, _classification_matched, _small_model)
         if _posture_denied:

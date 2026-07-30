@@ -2295,6 +2295,11 @@ NATIVE_TOOLS = [
     },
     {
         "type": "function", "risk": "low", "category": "files",
+        "function": {"name": "file_read", "description": "Read bounded content from an attached file ID or approved workspace path. Supports text/data files, PDF pages, Word documents, Excel sheets, and PowerPoint slides without executing content.",
+                     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}, "start": {"type": "integer", "minimum": 1}, "end": {"type": "integer", "minimum": 1}, "sheet": {"type": "string"}, "max_chars": {"type": "integer", "minimum": 1000, "maximum": 100000}}}},
+    },
+    {
+        "type": "function", "risk": "low", "category": "files",
         "function": {"name": "file_preview", "description": "Return a bounded, secret-masked preview through the detected format adapter.",
                      "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "file_id": {"type": "string"}}}},
     },
@@ -2633,6 +2638,14 @@ async def execute_native_tool(
                     raise FileFormatError("path or file_id is required.", "invalid_request")
                 if name == "file_detect_type":
                     result = await service.detect(**reference)
+                elif name == "file_read":
+                    result = await service.read(
+                        **reference,
+                        start=int(args.get("start") or 1),
+                        end=int(args["end"]) if args.get("end") is not None else None,
+                        sheet=args.get("sheet"),
+                        max_chars=int(args.get("max_chars") or 40000),
+                    )
                 elif name in {"file_inspect", "file_preview", "file_schema"}:
                     result = await service.inspect(**reference, source=str(args.get("source") or "agent"))
                     if name == "file_preview":

@@ -964,6 +964,8 @@ class AdapterRegistry:
             mime = mime.split(";", 1)[0].strip().lower()
         sample = path.read_bytes()[:65536]
         stripped = sample.lstrip()
+        if sample.startswith(b"PK\x03\x04") and extension in {".docx", ".xlsx", ".pptx"}:
+            return DetectionResult("office", 0.99, "magic_bytes_and_extension", extension, mime)
         if sample.startswith(b"PK\x03\x04"):
             return DetectionResult("zip", 1.0, "magic_bytes", extension, mime)
         if sample.startswith(b"%PDF-"):
@@ -1161,6 +1163,116 @@ class FileFormatService:
             "data": result,
             "warnings": [],
             "artifacts": [],
+            "audit_event_id": event_id,
+        }
+
+    async def read(
+        self,
+        path: str | None = None,
+        file_id: uuid.UUID | None = None,
+        *,
+        start: int = 1,
+        end: int | None = None,
+        sheet: str | None = None,
+        max_chars: int = 40000,
+    ) -> dict[str, Any]:
+        """Read bounded content from a registered or approved file.
+
+        This is the content-level counterpart to ``inspect``. It never
+        executes file content and caps the returned payload before it reaches
+        an LLM context window.
+        """
+        target = await self._path(path, file_id)
+        warnings = self.safety.validate(target)
+        detection = registry.detect(target)
+        format_id = detection.detected_format
+        limit = max(1000, min(int(max_chars or 40000), 100000))
+        start = max(1, int(start or 1))
+        content: Any
+        metadata: dict[str, Any] = {}
+
+        try:
+            if format_id == "pdf":
+                from pypdf import PdfReader
+
+                reader = PdfReader(str(target))
+                page_count = len(reader.pages)
+                last = min(int(end or page_count), page_count)
+                if start > page_count or last < start:
+                    raise FileFormatError("Requested PDF page range is outside the document.", "invalid_request")
+                chunks = []
+                for page_number in range(start - 1, last):
+                    chunks.append(f"--- Page {page_number + 1} ---\n{reader.pages[page_number].extract_text() or ''}")
+                content = "\n\n".join(chunks)
+                metadata = {"page_count": page_count, "start_page": start, "end_page": last}
+            elif format_id in {"docx", "word"} or (format_id == "office" and target.suffix.lower() == ".docx"):
+                from shogun.office.adapters.word_adapter import close_document, open_document, read_text
+
+                handle = open_document(str(target))
+                try:
+                    content = read_text(handle)
+                finally:
+                    close_document(handle)
+            elif format_id in {"xlsx", "excel"} or (format_id == "office" and target.suffix.lower() == ".xlsx"):
+                from shogun.office.adapters.excel_adapter import close_workbook, list_sheets, open_workbook, read_used_range
+
+                handle = open_workbook(str(target))
+                try:
+                    sheets = list_sheets(handle)
+                    selected = sheet or (sheets[0] if sheets else None)
+                    if not selected:
+                        content = []
+                    else:
+                        content = read_used_range(handle, selected)[: settings.file_max_rows_preview]
+                    metadata = {"sheets": sheets, "selected_sheet": selected}
+                finally:
+                    close_workbook(handle)
+            elif format_id in {"pptx", "powerpoint"} or (format_id == "office" and target.suffix.lower() == ".pptx"):
+                from shogun.office.adapters.pptx_adapter import close_presentation, open_presentation, read_slide_text
+
+                handle = open_presentation(str(target))
+                try:
+                    slide_count = len(handle.presentation.slides)
+                    last = min(int(end or slide_count), slide_count)
+                    if start > slide_count or last < start:
+                        raise FileFormatError("Requested slide range is outside the presentation.", "invalid_request")
+                    content = "\n\n".join(
+                        f"--- Slide {number} ---\n{read_slide_text(handle, number - 1)}"
+                        for number in range(start, last + 1)
+                    )
+                    metadata = {"slide_count": slide_count, "start_slide": start, "end_slide": last}
+                finally:
+                    close_presentation(handle)
+            else:
+                inspected = registry.get(format_id).inspect(target, settings.file_max_rows_preview)
+                content = inspected.preview
+                metadata = {"schema": inspected.schema, "profile": inspected.data}
+                warnings.extend(inspected.warnings)
+        except FileFormatError:
+            raise
+        except Exception as exc:
+            raise FileFormatError(f"Could not read {target.name}: {exc}", "parse_error") from exc
+
+        serialized = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False, default=str)
+        if settings.file_mask_secrets_in_preview:
+            serialized, masked_count = _masked(serialized)
+            if masked_count:
+                warnings.append(f"Masked {masked_count} likely secret(s) in file content.")
+        truncated = len(serialized) > limit
+        if truncated:
+            serialized = serialized[:limit]
+            warnings.append(f"Content was truncated to {limit:,} characters for safe chat use.")
+        event_id = await self._audit("file.read.completed", f"Read bounded content from {target.name}", target, format_id)
+        return {
+            "status": "success",
+            "file_id": str(file_id) if file_id else None,
+            "format_id": format_id,
+            "operation": "read",
+            "filename": target.name,
+            "content": serialized,
+            "truncated": truncated,
+            "metadata": metadata,
+            "warnings": warnings,
             "audit_event_id": event_id,
         }
 
