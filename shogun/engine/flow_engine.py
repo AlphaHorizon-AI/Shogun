@@ -1258,6 +1258,8 @@ async def _exec_samurai(
     # Resolve agent persona
     agent_persona = "You are a Samurai agent executing a task in an automated workflow."
     async with async_session_factory() as session:
+        from shogun.services.model_router import NoEligibleModelError, configured_max_input_tokens
+
         if agent_id:
             agent_result = await session.execute(select(Agent).where(Agent.id == uuid.UUID(agent_id)))
             agent = agent_result.scalar_one_or_none()
@@ -1295,19 +1297,63 @@ async def _exec_samurai(
                 context_size_estimate=max(1, len(user_message) // 4),
                 **route_options,
             )
-        except Exception as exc:
+        except NoEligibleModelError as exc:
             # A document can be larger than every model's single-request
             # context while still being perfectly processable in batches. Keep
             # every other routing/policy failure authoritative.
             if "context capacity" not in str(exc).lower() and "enough context" not in str(exc).lower():
                 raise
             chunk_required = True
-            model_chain, _routing = await _resolve_task_llm_chain(
-                session,
-                prompt=task_description,
-                context_size_estimate=0,
-                **route_options,
-            )
+            try:
+                model_chain, _routing = await _resolve_task_llm_chain(
+                    session,
+                    prompt=task_description,
+                    context_size_estimate=0,
+                    **route_options,
+                )
+            except NoEligibleModelError as chunk_route_error:
+                # The first error proves at least one enabled, connected model
+                # existed before the single-request context filter. Upgraded
+                # registries can nevertheless fail the second capability pass
+                # because of stale row metadata. Preserve the configured/legacy
+                # connected chain for chunk execution instead of resurrecting a
+                # misleading "Required capabilities: chat" failure.
+                model_chain = await _resolve_llm_chain(session, routing_profile_id)
+                if not model_chain:
+                    raise chunk_route_error
+                provider, model_name, *_ = model_chain[0]
+                registry_entry = None
+                try:
+                    registry_entry = await session.scalar(
+                        select(ModelRegistryEntry).where(
+                            ModelRegistryEntry.provider_id == provider.id,
+                            ModelRegistryEntry.model_id == model_name,
+                        )
+                    )
+                except Exception:
+                    pass
+                if registry_entry:
+                    selected_context = int(registry_entry.context_window)
+                    selected_output = int(registry_entry.max_output_tokens)
+                    selected_input = configured_max_input_tokens(registry_entry)
+                else:
+                    selected_context = int((provider.config or {}).get("context_window") or 8192)
+                    selected_output = min(4096, max(128, selected_context // 4))
+                    selected_input = max(1024, selected_context - selected_output)
+                _routing = {
+                    "active_profile": "connected_chunk_compatibility",
+                    "selected_model": model_name,
+                    "selected_provider": provider.provider_type,
+                    "selected_context_window": selected_context,
+                    "selected_max_input_tokens": selected_input,
+                    "selected_max_output_tokens": selected_output,
+                    "fallback_reason": str(chunk_route_error),
+                }
+                log.warning(
+                    "Chunk routing bypassed stale registry eligibility for connected model %s/%s",
+                    provider.name,
+                    model_name,
+                )
 
     if not model_chain:
         raise ValueError("No active LLM provider available for Samurai execution")

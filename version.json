@@ -1,8 +1,8 @@
 {
-  "version": "1.47.35",
+  "version": "1.47.36",
   "name": "Shogun OS",
-  "build": 186,
+  "build": 187,
   "channel": "stable",
-  "released": "2026-07-30T16:02:30Z",
-  "changelog": "Add model-aware input and output token controls, chunk long AgentFlow documents without silent truncation, and convert Markdown tables into structured Excel columns."
+  "released": "2026-07-30T16:14:33Z",
+  "changelog": "Keep long-document AgentFlow chunking on a connected model route when upgraded registry metadata incorrectly rejects the chat capability."
 }

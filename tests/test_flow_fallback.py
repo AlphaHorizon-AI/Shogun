@@ -245,6 +245,48 @@ async def test_samurai_chunks_context_that_exceeds_every_single_request(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_samurai_chunking_survives_stale_registry_chat_gate(monkeypatch):
+    session_context = _SessionContext()
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: session_context)
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Local Ollama",
+        provider_type="ollama",
+        config={"context_window": 8192},
+    )
+    route_calls = 0
+
+    async def resolve_route(*_args, **_kwargs):
+        nonlocal route_calls
+        route_calls += 1
+        if route_calls == 1:
+            raise NoEligibleModelError("No enabled model has enough context capacity for this input")
+        raise NoEligibleModelError("No eligible model found for this task. Required capabilities: chat.")
+
+    async def resolve_connected(*_args, **_kwargs):
+        return [(provider, "gemma-test", "http://localhost:11434/v1", {})]
+
+    prompts: list[str] = []
+
+    async def call_chain(messages, *_args, **_kwargs):
+        prompts.append(messages[1]["content"])
+        return "mapped-row"
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_resolve_llm_chain", resolve_connected)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain", call_chain)
+
+    result = await flow_engine._exec_samurai(
+        {"task_description": "Extract every record"},
+        "\n\n".join("record " + ("x" * 1000) for _ in range(50)),
+    )
+
+    assert route_calls == 2
+    assert len(prompts) > 1
+    assert result.startswith("mapped-row")
+
+
+@pytest.mark.asyncio
 async def test_exhausted_timeout_has_actionable_route_and_context_details(monkeypatch):
     provider = SimpleNamespace(name="Local Ollama", provider_type="ollama")
 
