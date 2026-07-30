@@ -287,6 +287,51 @@ async def test_samurai_chunking_survives_stale_registry_chat_gate(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_samurai_bisects_and_retries_a_timed_out_chunk(monkeypatch):
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Local Ollama",
+        provider_type="ollama",
+        is_local=True,
+        config={},
+    )
+
+    async def resolve_route(*_args, **_kwargs):
+        return [(provider, "gemma-test", "http://localhost:11434/v1", {})], {
+            "selected_context_window": 32_768,
+            "selected_max_input_tokens": 24_576,
+            "selected_max_output_tokens": 4_096,
+        }
+
+    calls: list[int] = []
+
+    async def call_chain(messages, *_args, **_kwargs):
+        content_length = len(messages[1]["content"])
+        calls.append(content_length)
+        if len(calls) == 1:
+            raise flow_engine.ModelCallError(
+                context="AgentFlow Samurai node chunk 1/1",
+                provider="Local Ollama",
+                model="gemma-test",
+                timeout=300,
+                cause=httpx.ReadTimeout(""),
+                input_characters=content_length,
+            )
+        return "recovered-row"
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain", call_chain)
+
+    source = "\n\n".join("record " + ("x" * 1000) for _ in range(120))
+    result = await flow_engine._exec_samurai({"task_description": "Extract every record"}, source)
+
+    assert len(calls) >= 3
+    assert calls[1] < calls[0] and calls[2] < calls[0]
+    assert result.count("recovered-row") >= 2
+
+
+@pytest.mark.asyncio
 async def test_exhausted_timeout_has_actionable_route_and_context_details(monkeypatch):
     provider = SimpleNamespace(name="Local Ollama", provider_type="ollama")
 

@@ -1373,12 +1373,22 @@ async def _exec_samurai(
                 "The selected model's input allocation is too small for this Samurai task. "
                 "Increase Max input or reduce Max output in Katana."
             )
+        primary_provider = model_chain[0][0]
+        is_local_model = bool(getattr(primary_provider, "is_local", False)) or getattr(
+            primary_provider, "provider_type", ""
+        ) in {"ollama", "lmstudio", "local"}
+        # A model's theoretical context window is not a practical batch size,
+        # especially for CPU/GPU-constrained local inference. Bound local
+        # chunks so a 12B model is less likely to spend the entire node timeout
+        # on one request. Timed-out chunks are bisected again below.
+        if is_local_model:
+            chunk_token_budget = min(chunk_token_budget, 4096)
         chunks = _split_model_context(context_str, chunk_token_budget * 4)
         outputs: list[str] = []
-        for index, chunk in enumerate(chunks, start=1):
+        async def process_chunk(chunk: str, label: str, split_depth: int = 0) -> list[str]:
             chunk_message = (
                 f"{task_description}\n\n"
-                f"--- CONTEXT FROM PREVIOUS STEPS (CHUNK {index} OF {len(chunks)}) ---\n{chunk}\n\n"
+                f"--- CONTEXT FROM PREVIOUS STEPS ({label}) ---\n{chunk}\n\n"
                 "Process every relevant record in this chunk. Return only the requested structured "
                 "data for this chunk; do not summarize, sample, or omit repeated records."
             )
@@ -1389,8 +1399,8 @@ async def _exec_samurai(
                 )
             if expected_output:
                 chunk_message += f"\n\n--- EXPECTED OUTPUT FORMAT ---\n{expected_output}"
-            outputs.append(
-                await _call_llm_chain(
+            try:
+                return [await _call_llm_chain(
                     [
                         {"role": "system", "content": agent_persona},
                         {"role": "user", "content": chunk_message},
@@ -1398,11 +1408,35 @@ async def _exec_samurai(
                     model_chain,
                     timeout=timeout,
                     retry_count=retry_count,
-                    context=f"AgentFlow Samurai node chunk {index}/{len(chunks)}",
+                    context=f"AgentFlow Samurai node {label.lower()}",
                     max_tokens=max_output_tokens,
                     routing_context=_routing,
+                )]
+            except ModelCallError as exc:
+                timed_out = "timeout" in exc.cause_type.lower()
+                if not timed_out or split_depth >= 5 or len(chunk) <= 4000:
+                    raise
+                subchunks = _split_model_context(chunk, max(1000, len(chunk) // 2))
+                if len(subchunks) < 2:
+                    raise
+                log.warning(
+                    "%s timed out; retrying it as %d smaller parts",
+                    label,
+                    len(subchunks),
                 )
-            )
+                recovered: list[str] = []
+                for part_index, subchunk in enumerate(subchunks, start=1):
+                    recovered.extend(
+                        await process_chunk(
+                            subchunk,
+                            f"{label}, part {part_index}/{len(subchunks)}",
+                            split_depth + 1,
+                        )
+                    )
+                return recovered
+
+        for index, chunk in enumerate(chunks, start=1):
+            outputs.extend(await process_chunk(chunk, f"chunk {index}/{len(chunks)}"))
         return "\n".join(outputs)
 
     return await _call_llm_chain(
