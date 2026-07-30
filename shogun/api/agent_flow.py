@@ -1326,15 +1326,27 @@ async def upload_flow_document(
         )
 
     # Save file
-    upload_dir = Path(settings.data_dir) / "flows" / str(flow_id) / "uploads"
-    upload_dir.mkdir(parents=True, exist_ok=True)
+    upload_dir = Path(settings.uploads_path) / "agent_flows" / str(flow_id)
+    try:
+        upload_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not create the AgentFlow upload directory: {exc}",
+        ) from exc
 
     # Use a safe filename
     safe_name = file.filename.replace("..", "_").replace("/", "_").replace("\\", "_")
     dest_path = upload_dir / safe_name
 
     content = await file.read()
-    dest_path.write_bytes(content)
+    try:
+        dest_path.write_bytes(content)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not save the AgentFlow upload: {exc}",
+        ) from exc
 
     return ApiResponse(data={
         "filename": safe_name,

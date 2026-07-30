@@ -1,8 +1,8 @@
 {
-  "version": "1.47.33",
+  "version": "1.47.34",
   "name": "Shogun OS",
-  "build": 184,
+  "build": 185,
   "channel": "stable",
-  "released": "2026-07-30T15:15:39Z",
-  "changelog": "Show failed AgentFlow document uploads as errors in the editor and report missing server paths clearly at runtime instead of presenting false success."
+  "released": "2026-07-30T15:25:54Z",
+  "changelog": "Fix AgentFlow document uploads by writing to the configured uploads directory and surface exact storage errors in the editor."
 }

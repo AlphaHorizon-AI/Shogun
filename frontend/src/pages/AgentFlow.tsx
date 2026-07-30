@@ -1641,12 +1641,12 @@ function NodeInspector({
                             size: file.size,
                             path: data?.path || '',
                           });
-                        } catch {
+                        } catch (err: any) {
                           updateConfig('uploaded_file', {
                             filename: file.name,
                             size: file.size,
                             path: '',
-                            error: 'Upload failed',
+                            error: err?.response?.data?.detail || 'Upload failed',
                           });
                         }
                       };
@@ -1668,12 +1668,12 @@ function NodeInspector({
                           size: file.size,
                           path: data?.path || '',
                         });
-                      } catch {
+                      } catch (err: any) {
                         updateConfig('uploaded_file', {
                           filename: file.name,
                           size: file.size,
                           path: '',
-                          error: 'Upload failed',
+                          error: err?.response?.data?.detail || 'Upload failed',
                         });
                       }
                     }}
@@ -1693,7 +1693,7 @@ function NodeInspector({
                             <FileText className="w-6 h-6 mx-auto text-[#ef4444]" />
                             <p className="text-[10px] font-bold text-[#ef4444] truncate">{config.uploaded_file.filename}</p>
                             <p className="text-[9px] text-[#ef4444]/80 font-bold">
-                              Upload failed — click to retry
+                              {config.uploaded_file.error || 'Upload failed'} — click to retry
                             </p>
                           </>
                         )}

@@ -1,10 +1,36 @@
+from io import BytesIO
 import uuid
 from types import SimpleNamespace
 
 import pytest
+from fastapi import UploadFile
 
 from shogun.config import settings
 from shogun.engine import flow_engine
+
+
+@pytest.mark.asyncio
+async def test_agent_flow_upload_uses_configured_upload_directory(tmp_path, monkeypatch):
+    from shogun.api.agent_flow import upload_flow_document
+
+    flow_id = uuid.uuid4()
+    upload_root = tmp_path / "uploads"
+    monkeypatch.setattr(settings, "uploads_path", upload_root)
+
+    class FakeFlowService:
+        async def get_by_id(self, requested_flow_id):
+            assert requested_flow_id == flow_id
+            return object()
+
+    response = await upload_flow_document(
+        flow_id,
+        UploadFile(filename="Mapla 21.07.2026.pdf", file=BytesIO(b"%PDF-1.4 test")),
+        FakeFlowService(),
+    )
+
+    expected = upload_root / "agent_flows" / str(flow_id) / "Mapla 21.07.2026.pdf"
+    assert expected.read_bytes() == b"%PDF-1.4 test"
+    assert response.data["path"] == str(expected)
 
 
 @pytest.mark.asyncio
