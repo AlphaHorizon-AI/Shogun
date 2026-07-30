@@ -45,7 +45,7 @@ Start the flow and produce its initial context.
 
 - `input_type`: `manual`, `document`, `api`, `scheduled`, `event`, or `nexus`.
 - Manual: set `manual_input` and optional `description`.
-- Document: use the UI-managed `uploaded_file`; never invent a local path.
+- Document supports three governed sources: `upload` uses the UI-managed `uploaded_file`; `workspace` uses a verified workspace-relative `workspace_path`; `attachment` uses the exact server-verified `attachment_file_id` shown in the current Comms attachment manifest. Never invent a path or file ID.
 - Scheduled: use `schedule_frequency` (`hourly`, `nightly`, `weekly`, `monthly`), `schedule_time`, `schedule_minute_offset`, `schedule_days`, or `schedule_day` as applicable. Do not place a raw cron expression in node config.
 - API/event/Nexus: set the relevant configured tool, event source/filter, or workspace/message type.
 

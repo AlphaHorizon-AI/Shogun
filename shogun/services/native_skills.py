@@ -606,7 +606,16 @@ NATIVE_TOOLS = [
                                 "label": {"type": "string", "description": "Display label for the node."},
                                 "position_x": {"type": "number", "description": "X position on canvas (start at 100, space 300 apart)."},
                                 "position_y": {"type": "number", "description": "Y position on canvas (start at 200, space 150 apart)."},
-                                "config": {"type": "object", "description": "Node-specific config (task_description, approval_mode, condition_expression, etc.)."},
+                                "config": {
+                                    "type": "object",
+                                    "description": (
+                                        "Node-specific config. For a document input sourced from a file attached "
+                                        "to the current Comms message, copy the exact server-verified file_id from "
+                                        "the attachment manifest into document_source='attachment' and "
+                                        "attachment_file_id. For an existing workspace file, use "
+                                        "document_source='workspace' and workspace_path relative to the workspace."
+                                    ),
+                                },
                             },
                             "required": ["id", "node_type", "label"],
                         },

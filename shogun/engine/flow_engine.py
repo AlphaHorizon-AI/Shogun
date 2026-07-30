@@ -749,27 +749,71 @@ async def _exec_input(config: dict, context_str: str, run_input: dict[str, Any] 
 
     elif input_type == "document":
         uploaded = config.get("uploaded_file")
-        if uploaded and uploaded.get("path"):
-            file_path = Path(uploaded["path"])
-            if file_path.exists():
-                try:
-                    from shogun.services.file_formats import FileFormatService
+        workspace_path = str(config.get("workspace_path") or "").strip()
+        attachment_file_id = str(config.get("attachment_file_id") or config.get("file_id") or "").strip()
+        source = str(config.get("document_source") or "").strip().lower()
+        if not source:
+            source = (
+                "upload"
+                if uploaded and uploaded.get("path")
+                else "workspace"
+                if workspace_path
+                else "attachment"
+                if attachment_file_id
+                else "upload"
+            )
 
-                    payload = await FileFormatService(allowed_roots=[file_path.parent]).read(
-                        path=str(file_path),
-                        max_chars=100000,
-                    )
-                    content = str(payload.get("content") or "")
-                    if not content.strip():
-                        raise ValueError(f"Document '{file_path.name}' contained no readable content")
-                    output_parts.append(f"[Document: {uploaded.get('filename', 'unknown')}]\n{content}")
-                    log.info("[Flow] Input: read document %s (%d chars)", uploaded["filename"], len(content))
-                except Exception as exc:
-                    raise ValueError(f"Could not read uploaded document '{file_path.name}': {exc}") from exc
+        try:
+            from shogun.services.file_formats import FileFormatService
+
+            if source == "workspace":
+                if not workspace_path:
+                    raise ValueError("No workspace file was selected")
+                from shogun.config import settings
+
+                workspace_root = settings.workspace_path.resolve()
+                requested = Path(workspace_path)
+                file_path = requested.resolve() if requested.is_absolute() else (workspace_root / requested).resolve()
+                try:
+                    file_path.relative_to(workspace_root)
+                except ValueError as exc:
+                    raise ValueError("Workspace document must remain inside the configured workspace") from exc
+                if not file_path.is_file():
+                    raise FileNotFoundError(f"Workspace document not found: {workspace_path}")
+                payload = await FileFormatService(allowed_roots=[workspace_root]).read(
+                    path=str(file_path),
+                    max_chars=100000,
+                )
+            elif source == "attachment":
+                if not attachment_file_id:
+                    raise ValueError("No chat attachment reference was bound to this node")
+                try:
+                    file_id = uuid.UUID(attachment_file_id)
+                except ValueError as exc:
+                    raise ValueError("The chat attachment reference is invalid") from exc
+                async with async_session_factory() as session:
+                    payload = await FileFormatService(session).read(file_id=file_id, max_chars=100000)
+            elif source == "upload":
+                if not uploaded or not uploaded.get("path"):
+                    raise ValueError("No document was uploaded to this node")
+                file_path = Path(uploaded["path"])
+                if not file_path.is_file():
+                    raise FileNotFoundError(f"Uploaded document not found: {uploaded.get('filename', 'unknown')}")
+                payload = await FileFormatService(allowed_roots=[file_path.parent]).read(
+                    path=str(file_path),
+                    max_chars=100000,
+                )
             else:
-                raise FileNotFoundError(f"Uploaded document not found: {uploaded.get('filename', 'unknown')}")
-        else:
-            raise ValueError("Document input requires an uploaded file before the AgentFlow can run")
+                raise ValueError(f"Unsupported document source: {source}")
+
+            filename = str(payload.get("filename") or config.get("attachment_filename") or "document")
+            content = str(payload.get("content") or "")
+            if not content.strip():
+                raise ValueError(f"Document '{filename}' contained no readable content")
+            output_parts.append(f"[Document: {filename}]\n{content}")
+            log.info("[Flow] Input: read %s document %s (%d chars)", source, filename, len(content))
+        except Exception as exc:
+            raise ValueError(f"Could not read {source} document: {exc}") from exc
 
     # Add any context from upstream nodes
     if context_str:

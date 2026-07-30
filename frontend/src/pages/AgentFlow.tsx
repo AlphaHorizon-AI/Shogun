@@ -55,6 +55,7 @@ import {
   StopCircle,
   Globe,
   Mail,
+  Paperclip,
   Upload,
   FileText,
   Link,
@@ -1193,6 +1194,8 @@ function NodeInspector({
   const color = nodeColors[nodeType] || '#d4a017';
   const Icon = nodeIcons[nodeType] || Users;
   const config: Record<string, any> = (node.data as Record<string, any>)?.config || {};
+  const documentSource = config.document_source
+    || (config.workspace_path ? 'workspace' : config.attachment_file_id ? 'attachment' : 'upload');
   const samuraiToolContract = [
     config.task_description,
     ...(Array.isArray(config.required_tools) ? config.required_tools : []),
@@ -1595,6 +1598,19 @@ function NodeInspector({
             {config.input_type === 'document' && (
               <>
                 <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Document Source</label>
+                  <select
+                    value={documentSource}
+                    onChange={(e) => updateConfig('document_source', e.target.value)}
+                    className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#22c55e] transition-colors outline-none cursor-pointer"
+                  >
+                    <option value="upload">Upload to this AgentFlow</option>
+                    <option value="workspace">Existing workspace file</option>
+                    <option value="attachment">Chat attachment reference</option>
+                  </select>
+                </div>
+
+                {documentSource === 'upload' && <div className="space-y-1.5">
                   <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest flex items-center gap-1">
                     <Upload className="w-3 h-3" /> Upload Document
                   </label>
@@ -1687,7 +1703,41 @@ function NodeInspector({
                       </div>
                     )}
                   </div>
-                </div>
+                </div>}
+
+                {documentSource === 'workspace' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest flex items-center gap-1">
+                      <FolderOpen className="w-3 h-3" /> Workspace File
+                    </label>
+                    <input
+                      type="text"
+                      value={config.workspace_path || ''}
+                      onChange={(e) => updateConfig('workspace_path', e.target.value)}
+                      className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#22c55e] transition-colors outline-none"
+                      placeholder="Input/document.pdf"
+                    />
+                    <p className="text-[8px] text-[#555]">Path relative to the configured Shogun workspace.</p>
+                  </div>
+                )}
+
+                {documentSource === 'attachment' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest flex items-center gap-1">
+                      <Paperclip className="w-3 h-3" /> Chat Attachment File ID
+                    </label>
+                    <input
+                      type="text"
+                      value={config.attachment_file_id || ''}
+                      onChange={(e) => updateConfig('attachment_file_id', e.target.value)}
+                      className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#22c55e] transition-colors outline-none"
+                      placeholder="Server-verified file_id"
+                    />
+                    <p className="text-[8px] text-[#555]">
+                      Filled automatically when Shogun creates a flow from a file attached in Comms.
+                    </p>
+                  </div>
+                )}
               </>
             )}
 

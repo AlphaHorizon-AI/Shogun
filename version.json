@@ -1,8 +1,8 @@
 {
-  "version": "1.47.31",
+  "version": "1.47.32",
   "name": "Shogun OS",
-  "build": 182,
+  "build": 183,
   "channel": "stable",
-  "released": "2026-07-30T13:57:34Z",
-  "changelog": "Fix AgentFlow document ingestion and Office output generation, including OCR-backed input reads, explicit output filenames, artifact tracking, and honest node failure states."
+  "released": "2026-07-30T14:12:54Z",
+  "changelog": "Let AgentFlow document inputs use node uploads, existing workspace files, or server-verified Comms attachment references, with workspace-boundary enforcement."
 }
