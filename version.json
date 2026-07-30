@@ -1,8 +1,8 @@
 {
-  "version": "1.47.34",
+  "version": "1.47.35",
   "name": "Shogun OS",
-  "build": 185,
+  "build": 186,
   "channel": "stable",
-  "released": "2026-07-30T15:25:54Z",
-  "changelog": "Fix AgentFlow document uploads by writing to the configured uploads directory and surface exact storage errors in the editor."
+  "released": "2026-07-30T16:02:30Z",
+  "changelog": "Add model-aware input and output token controls, chunk long AgentFlow documents without silent truncation, and convert Markdown tables into structured Excel columns."
 }

@@ -1,5 +1,5 @@
-from io import BytesIO
 import uuid
+from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
@@ -74,6 +74,24 @@ async def test_document_input_uses_bounded_format_reader(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_agent_flow_document_is_not_clipped_at_legacy_chat_limit(tmp_path):
+    content = "row-data\n" * 20_000
+    document = tmp_path / "large-input.txt"
+    document.write_text(content, encoding="utf-8")
+
+    result = await flow_engine._exec_input(
+        {
+            "input_type": "document",
+            "uploaded_file": {"path": str(document), "filename": document.name},
+        },
+        "",
+    )
+
+    assert len(content) > 100_000
+    assert content in result.replace("\r\n", "\n")
+
+
+@pytest.mark.asyncio
 async def test_document_input_reads_workspace_file(tmp_path, monkeypatch):
     workspace = tmp_path / "workspace"
     document = workspace / "Input" / "source.txt"
@@ -131,7 +149,7 @@ async def test_document_input_reads_bound_chat_attachment(monkeypatch):
             assert session is not None
 
         async def read(self, *, file_id, max_chars):
-            assert max_chars == 100000
+            assert max_chars == settings.agent_flow_document_max_chars
             return {"filename": "attached.pdf", "content": "attachment source content"}
 
     monkeypatch.setattr(flow_engine, "async_session_factory", lambda: FakeSessionContext())
@@ -148,6 +166,43 @@ async def test_document_input_reads_bound_chat_attachment(monkeypatch):
 
     assert "[Document: attached.pdf]" in result
     assert "attachment source content" in result
+
+
+@pytest.mark.asyncio
+async def test_samurai_node_receives_complete_predecessor_document(monkeypatch):
+    predecessor = "page data\n" * 10_000
+    captured: dict[str, str] = {}
+
+    async def update_state(*_args, **_kwargs):
+        return None
+
+    async def execute_samurai(_config, context, _governance):
+        captured["context"] = context
+        return "done"
+
+    monkeypatch.setattr(flow_engine, "_update_node_state", update_state)
+    monkeypatch.setattr(flow_engine, "_exec_samurai", execute_samurai)
+    monkeypatch.setattr(flow_engine, "_finalize_node_skills", update_state)
+    node = SimpleNamespace(
+        id=uuid.uuid4(),
+        flow_id=uuid.uuid4(),
+        node_type="samurai",
+        label="Extract",
+        config={"task_description": "Extract all rows"},
+    )
+    predecessor_id = str(uuid.uuid4())
+    predecessor_node = SimpleNamespace(label="Input PDF")
+
+    result = await flow_engine._execute_single_node(
+        uuid.uuid4(),
+        node,
+        {predecessor_id: predecessor},
+        {predecessor_id: predecessor_node},
+    )
+
+    assert result == "done"
+    assert predecessor in captured["context"]
+    assert "[...truncated...]" not in captured["context"]
 
 
 def test_legacy_failure_sentinels_are_real_failures():
@@ -175,3 +230,37 @@ async def test_excel_create_combines_destination_folder_and_filename(tmp_path, m
 
     assert (tmp_path / "Output" / "output.xlsx").is_file()
     assert "Output/output.xlsx" in result
+
+
+@pytest.mark.asyncio
+async def test_excel_create_converts_markdown_table_to_columns(tmp_path, monkeypatch):
+    import openpyxl
+
+    from shogun.office import config as office_config
+
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    monkeypatch.setattr(office_config, "load_office_config", lambda: SimpleNamespace(enabled=True))
+    markdown = """Narrative that should not become a worksheet row.
+
+| Item | Quantity | Date |
+| --- | ---: | --- |
+| 140000 | 26 | 21.07.2026 |
+| Item | Quantity | Date |
+| 140006 | 3 | 21.07.2026 |
+"""
+
+    await flow_engine._exec_office(
+        {"action": "excel_create", "output_path": "Output/result.xlsx", "sheet_name": "Mapped Data"},
+        markdown,
+    )
+
+    workbook = openpyxl.load_workbook(tmp_path / "Output" / "result.xlsx", read_only=True)
+    try:
+        rows = list(workbook["Mapped Data"].iter_rows(values_only=True))
+    finally:
+        workbook.close()
+    assert rows == [
+        ("Item", "Quantity", "Date"),
+        ("140000", "26", "21.07.2026"),
+        ("140006", "3", "21.07.2026"),
+    ]

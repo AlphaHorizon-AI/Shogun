@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -23,11 +24,23 @@ from shogun.services.model_router import (
     ModelUsageLogger,
     NoEligibleModelError,
     TaskClassifierService,
+    configured_max_input_tokens,
     infer_tiers,
     is_concrete_model_id,
     legacy_provider_name_model_id,
 )
 from shogun.services.model_service import ModelRoutingProfileService
+
+
+def test_configured_input_budget_is_bounded_by_context_and_output_reserve():
+    item = SimpleNamespace(
+        context_window=16_384,
+        max_output_tokens=4_096,
+        config_json={"max_input_tokens": 10_000},
+    )
+    assert configured_max_input_tokens(item) == 10_000
+    item.config_json["max_input_tokens"] = 99_999
+    assert configured_max_input_tokens(item) == 12_288
 
 
 @pytest.fixture

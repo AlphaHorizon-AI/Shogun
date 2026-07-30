@@ -157,6 +157,7 @@ class Settings(BaseSettings):
     file_safe_parsing: bool = True
     file_max_preview_bytes: int = 1_048_576
     file_max_parse_bytes: int = 52_428_800
+    agent_flow_document_max_chars: int = 5_000_000
     file_max_rows_preview: int = 100
     file_max_json_depth: int = 100
     file_mask_secrets_in_preview: bool = True

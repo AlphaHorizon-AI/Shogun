@@ -496,9 +496,11 @@ async def _execute_single_node(
         pred_label = pred_node.label if pred_node else pred_id
         if output is not None:
             output_text = str(output)
-            # Final output nodes must receive the complete predecessor result.
-            # Other executable nodes retain a context guard for model calls.
-            if node_type != "output":
+            # Data-processing and delivery nodes must receive complete results.
+            # Samurai handles large inputs with model-aware chunking below.
+            # Keep the legacy guard only for executors that do not yet support
+            # chunking and could otherwise overrun a single model request.
+            if node_type in {"coding", "mado_browser"}:
                 output_text = _truncate(output_text, 4000)
             context_parts.append(f"[Output from '{pred_label}']:\n{output_text}")
     context_str = "\n\n".join(context_parts) if context_parts else ""
@@ -721,8 +723,8 @@ async def _exec_input(config: dict, context_str: str, run_input: dict[str, Any] 
     - document: reads uploaded file content from disk
     - scheduled/api/event/nexus: uses description as context
     """
-    from pathlib import Path
     import logging
+    from pathlib import Path
 
     log = logging.getLogger("shogun.flow")
     description = config.get("description", "")
@@ -764,13 +766,12 @@ async def _exec_input(config: dict, context_str: str, run_input: dict[str, Any] 
             )
 
         try:
+            from shogun.config import settings
             from shogun.services.file_formats import FileFormatService
 
             if source == "workspace":
                 if not workspace_path:
                     raise ValueError("No workspace file was selected")
-                from shogun.config import settings
-
                 workspace_root = settings.workspace_path.resolve()
                 requested = Path(workspace_path)
                 file_path = requested.resolve() if requested.is_absolute() else (workspace_root / requested).resolve()
@@ -782,7 +783,7 @@ async def _exec_input(config: dict, context_str: str, run_input: dict[str, Any] 
                     raise FileNotFoundError(f"Workspace document not found: {workspace_path}")
                 payload = await FileFormatService(allowed_roots=[workspace_root]).read(
                     path=str(file_path),
-                    max_chars=100000,
+                    max_chars=settings.agent_flow_document_max_chars,
                 )
             elif source == "attachment":
                 if not attachment_file_id:
@@ -792,7 +793,10 @@ async def _exec_input(config: dict, context_str: str, run_input: dict[str, Any] 
                 except ValueError as exc:
                     raise ValueError("The chat attachment reference is invalid") from exc
                 async with async_session_factory() as session:
-                    payload = await FileFormatService(session).read(file_id=file_id, max_chars=100000)
+                    payload = await FileFormatService(session).read(
+                        file_id=file_id,
+                        max_chars=settings.agent_flow_document_max_chars,
+                    )
             elif source == "upload":
                 if not uploaded or not uploaded.get("path"):
                     if uploaded and uploaded.get("filename"):
@@ -806,7 +810,7 @@ async def _exec_input(config: dict, context_str: str, run_input: dict[str, Any] 
                     raise FileNotFoundError(f"Uploaded document not found: {uploaded.get('filename', 'unknown')}")
                 payload = await FileFormatService(allowed_roots=[file_path.parent]).read(
                     path=str(file_path),
-                    max_chars=100000,
+                    max_chars=settings.agent_flow_document_max_chars,
                 )
             else:
                 raise ValueError(f"Unsupported document source: {source}")
@@ -815,6 +819,12 @@ async def _exec_input(config: dict, context_str: str, run_input: dict[str, Any] 
             content = str(payload.get("content") or "")
             if not content.strip():
                 raise ValueError(f"Document '{filename}' contained no readable content")
+            if payload.get("truncated"):
+                raise ValueError(
+                    f"Document '{filename}' exceeds the AgentFlow extraction safety limit "
+                    f"of {settings.agent_flow_document_max_chars:,} characters. Split the document "
+                    "or increase SHOGUN_AGENT_FLOW_DOCUMENT_MAX_CHARS."
+                )
             output_parts.append(f"[Document: {filename}]\n{content}")
             log.info("[Flow] Input: read %s document %s (%d chars)", source, filename, len(content))
         except Exception as exc:
@@ -1264,40 +1274,128 @@ async def _exec_samurai(
 
         # Resolve a task-aware primary + fallback chain. Older databases fall
         # back to the original profile resolver inside this helper.
-        model_chain, _routing = await _resolve_task_llm_chain(
-            session,
-            prompt=user_message,
-            task_type=config.get("task_type") or "stack_step_execution",
+        route_options = {
+            "task_type": config.get("task_type") or "stack_step_execution",
             # Samurai nodes synthesize predecessor/runtime-fetched context and
             # do not expose native tools to the model. Legacy/generated
             # ``requires_tools`` metadata must therefore not disqualify an
             # otherwise valid chat model.
-            required_capabilities=["chat"],
-            routing_profile_id=routing_profile_id,
-            stack_run_id=(governance_context or {}).get("stack_run_id"),
-            step_id=(governance_context or {}).get("stack_step_id"),
-            retry_count=retry_count,
-            risk_level=config.get("risk_level", "low"),
-            context_size_estimate=max(1, len(user_message) // 4),
-        )
+            "required_capabilities": ["chat"],
+            "routing_profile_id": routing_profile_id,
+            "stack_run_id": (governance_context or {}).get("stack_run_id"),
+            "step_id": (governance_context or {}).get("stack_step_id"),
+            "retry_count": retry_count,
+            "risk_level": config.get("risk_level", "low"),
+        }
+        chunk_required = False
+        try:
+            model_chain, _routing = await _resolve_task_llm_chain(
+                session,
+                prompt=user_message,
+                context_size_estimate=max(1, len(user_message) // 4),
+                **route_options,
+            )
+        except Exception as exc:
+            # A document can be larger than every model's single-request
+            # context while still being perfectly processable in batches. Keep
+            # every other routing/policy failure authoritative.
+            if "context capacity" not in str(exc).lower() and "enough context" not in str(exc).lower():
+                raise
+            chunk_required = True
+            model_chain, _routing = await _resolve_task_llm_chain(
+                session,
+                prompt=task_description,
+                context_size_estimate=0,
+                **route_options,
+            )
 
     if not model_chain:
         raise ValueError("No active LLM provider available for Samurai execution")
 
-    messages = [
-        {"role": "system", "content": agent_persona},
-        {"role": "user", "content": user_message},
-    ]
+    max_output_tokens = _routing.get("selected_max_output_tokens") if _routing else None
+    max_input_tokens = int((_routing or {}).get("selected_max_input_tokens") or 0)
+    if not max_input_tokens:
+        context_window = int((_routing or {}).get("selected_context_window") or 8192)
+        max_input_tokens = max(1024, context_window - int(max_output_tokens or 2048))
+
+    if context_str and (chunk_required or len(user_message) // 4 > max_input_tokens):
+        fixed_text = user_message.replace(context_str, "", 1)
+        fixed_tokens = max(1, len(fixed_text) // 4) + 256
+        chunk_token_budget = max_input_tokens - fixed_tokens
+        if chunk_token_budget < 512:
+            raise ValueError(
+                "The selected model's input allocation is too small for this Samurai task. "
+                "Increase Max input or reduce Max output in Katana."
+            )
+        chunks = _split_model_context(context_str, chunk_token_budget * 4)
+        outputs: list[str] = []
+        for index, chunk in enumerate(chunks, start=1):
+            chunk_message = (
+                f"{task_description}\n\n"
+                f"--- CONTEXT FROM PREVIOUS STEPS (CHUNK {index} OF {len(chunks)}) ---\n{chunk}\n\n"
+                "Process every relevant record in this chunk. Return only the requested structured "
+                "data for this chunk; do not summarize, sample, or omit repeated records."
+            )
+            if native_read_context:
+                chunk_message += (
+                    "\n\n--- GOVERNED NATIVE READ RESULTS ---\n"
+                    + json.dumps(native_read_context, default=str, ensure_ascii=False)
+                )
+            if expected_output:
+                chunk_message += f"\n\n--- EXPECTED OUTPUT FORMAT ---\n{expected_output}"
+            outputs.append(
+                await _call_llm_chain(
+                    [
+                        {"role": "system", "content": agent_persona},
+                        {"role": "user", "content": chunk_message},
+                    ],
+                    model_chain,
+                    timeout=timeout,
+                    retry_count=retry_count,
+                    context=f"AgentFlow Samurai node chunk {index}/{len(chunks)}",
+                    max_tokens=max_output_tokens,
+                    routing_context=_routing,
+                )
+            )
+        return "\n".join(outputs)
 
     return await _call_llm_chain(
-        messages,
+        [
+            {"role": "system", "content": agent_persona},
+            {"role": "user", "content": user_message},
+        ],
         model_chain,
         timeout=timeout,
         retry_count=retry_count,
         context="AgentFlow Samurai node",
-        max_tokens=_routing.get("selected_max_output_tokens") if _routing else None,
+        max_tokens=max_output_tokens,
         routing_context=_routing,
     )
+
+
+def _split_model_context(text: str, max_chars: int) -> list[str]:
+    """Split long predecessor context without dropping or duplicating text."""
+    limit = max(1000, int(max_chars))
+    if len(text) <= limit:
+        return [text]
+    chunks: list[str] = []
+    current = ""
+    for part in re.split(r"(\n\n+)", text):
+        if not part:
+            continue
+        while len(part) > limit:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.append(part[:limit])
+            part = part[limit:]
+        if len(current) + len(part) > limit and current:
+            chunks.append(current)
+            current = ""
+        current += part
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 _SAMURAI_NATIVE_READ_TOOLS = ("fetch_inbox", "list_calendar_events")
@@ -2081,6 +2179,30 @@ async def _exec_workspace(config: dict, context_str: str) -> str:
         return f"[ERROR] Workspace '{action}' failed: {str(exc)[:500]}"
 
 
+def _excel_rows_from_context(context: str) -> list[list[str]]:
+    """Convert TSV or a model-produced Markdown table into worksheet rows."""
+    lines = context.strip().splitlines() if context.strip() else []
+    markdown_rows: list[list[str]] = []
+    saw_separator = False
+    for line in lines:
+        stripped = line.strip()
+        if not (stripped.startswith("|") and stripped.endswith("|")):
+            continue
+        cells = [cell.strip() for cell in stripped[1:-1].split("|")]
+        if cells and all(re.fullmatch(r":?-{3,}:?", cell.replace(" ", "")) for cell in cells):
+            saw_separator = True
+            continue
+        if cells:
+            # Chunked extraction commonly repeats the same table header. Keep
+            # one header while retaining every data record.
+            if markdown_rows and cells == markdown_rows[0]:
+                continue
+            markdown_rows.append(cells)
+    if saw_separator and markdown_rows:
+        return markdown_rows
+    return [line.split("\t") for line in lines]
+
+
 async def _exec_office(
     config: dict,
     context_str: str,
@@ -2173,18 +2295,16 @@ async def _exec_office(
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = sheet_name or "Sheet1"
-            # Parse context as tab-separated data
-            lines = context_str.strip().split("\n") if context_str.strip() else []
-            for r_idx, line in enumerate(lines, 1):
-                cells = line.split("\t")
+            rows = _excel_rows_from_context(context_str)
+            for r_idx, cells in enumerate(rows, 1):
                 for c_idx, val in enumerate(cells, 1):
                     ws.cell(row=r_idx, column=c_idx, value=val.strip())
             Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
             wb.save(abs_out)
             wb.close()
             saved_path = await _record_output(abs_out)
-            log.info("[Flow/Office] excel_create: %s (%d rows)", saved_path, len(lines))
-            return f"Excel workbook created: {saved_path} ({len(lines)} rows)"
+            log.info("[Flow/Office] excel_create: %s (%d rows)", saved_path, len(rows))
+            return f"Excel workbook created: {saved_path} ({len(rows)} rows)"
 
         elif action == "excel_write":
             from shogun.office.adapters.excel_adapter import (

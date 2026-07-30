@@ -1187,7 +1187,11 @@ class FileFormatService:
         warnings = self.safety.validate(target)
         detection = registry.detect(target)
         format_id = detection.detected_format
-        limit = max(1000, min(int(max_chars or 40000), 100000))
+        # Ordinary chat callers still request a conservative 40k-100k limit.
+        # AgentFlow may deliberately request more so a long document can be
+        # divided into model-sized chunks instead of silently losing everything
+        # after the first 100,000 characters.
+        limit = max(1000, min(int(max_chars or 40000), settings.file_max_parse_bytes))
         start = max(1, int(start or 1))
         content: Any
         metadata: dict[str, Any] = {}

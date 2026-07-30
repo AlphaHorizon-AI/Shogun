@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from shogun.db.models.model_routing import ModelRoutingProfile
 from shogun.engine import flow_engine
 from shogun.services import notification_service, posture_guard
-from shogun.services.model_service import ModelRoutingProfileService
 from shogun.services.model_router import NoEligibleModelError
+from shogun.services.model_service import ModelRoutingProfileService
 
 
 class _SessionContext:
@@ -208,6 +208,40 @@ async def test_samurai_exhausts_retries_before_fallback(monkeypatch):
         "",
     ) == "ok"
     assert calls == ["primary", "primary", "fallback"]
+
+
+@pytest.mark.asyncio
+async def test_samurai_chunks_context_that_exceeds_every_single_request(monkeypatch):
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    route_calls: list[int] = []
+    model_chain = [(object(), "chunk-model", "https://model.invalid/v1", {})]
+
+    async def resolve_route(*_args, **kwargs):
+        route_calls.append(kwargs["context_size_estimate"])
+        if len(route_calls) == 1:
+            raise NoEligibleModelError("No enabled model has enough context capacity for this input")
+        return model_chain, {
+            "selected_context_window": 2048,
+            "selected_max_input_tokens": 1536,
+            "selected_max_output_tokens": 512,
+        }
+
+    prompts: list[str] = []
+
+    async def call_chain(messages, *_args, **_kwargs):
+        prompts.append(messages[1]["content"])
+        return f"row-{len(prompts)}"
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain", call_chain)
+
+    source = "\n\n".join(f"record {index}: " + ("x" * 300) for index in range(30))
+    result = await flow_engine._exec_samurai({"task_description": "Extract every record"}, source)
+
+    assert route_calls[0] > 0 and route_calls[1] == 0
+    assert len(prompts) > 1
+    assert all("do not summarize, sample, or omit" in prompt for prompt in prompts)
+    assert result == "\n".join(f"row-{index}" for index in range(1, len(prompts) + 1))
 
 
 @pytest.mark.asyncio

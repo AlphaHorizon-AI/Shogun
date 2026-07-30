@@ -10,6 +10,7 @@ type RegistryModel = {
   id: string; model_id: string; display_name: string; provider: string; connection_type: string; enabled: boolean;
   capabilities: Record<string, boolean>; quality_tier: number; cost_tier: number; latency_tier: number;
   context_window: number; max_output_tokens: number; local: boolean; role_tags: string[];
+  config_json: Record<string, unknown>;
 };
 type Decision = {
   selected_model: string; selected_provider: string; fallback_model?: string; reason: string;
@@ -333,26 +334,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
                 </label>;
               })}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
-              <label className="text-[9px] uppercase text-shogun-subdued">Context window (tokens)
-                <input type="number" min="1024" step="1024" defaultValue={item.context_window}
-                  onBlur={event => {
-                    const value = Number(event.currentTarget.value);
-                    if (value >= 1024 && value !== item.context_window) patchModel(item, { context_window: value });
-                    else event.currentTarget.value = String(item.context_window);
-                  }}
-                  className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-1.5 text-xs normal-case font-mono" />
-              </label>
-              <label className="text-[9px] uppercase text-shogun-subdued">Maximum output (tokens)
-                <input type="number" min="128" step="128" defaultValue={item.max_output_tokens}
-                  onBlur={event => {
-                    const value = Number(event.currentTarget.value);
-                    if (value >= 128 && value !== item.max_output_tokens) patchModel(item, { max_output_tokens: value });
-                    else event.currentTarget.value = String(item.max_output_tokens);
-                  }}
-                  className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-1.5 text-xs normal-case font-mono" />
-              </label>
-            </div>
+            <TokenBudgetControls item={item} disabled={busy === item.id} onPatch={patch => patchModel(item, patch)} />
             {usage.by_model?.[`${item.provider}:${item.model_id}`] && (() => {
               const modelUsage = usage.by_model[`${item.provider}:${item.model_id}`];
               const peakPercent = Math.min(100, Number(modelUsage.peak_context_percent || 0));
@@ -400,4 +382,91 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
 
 function Metric({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string | number }) {
   return <div className="rounded-lg border border-shogun-border p-2"><div className="flex items-center justify-center gap-1 text-[8px] uppercase text-shogun-subdued">{icon}{label}</div><div className="font-bold text-sm mt-1">{value}</div></div>;
+}
+
+function TokenBudgetControls({ item, disabled, onPatch }: {
+  item: RegistryModel;
+  disabled: boolean;
+  onPatch: (patch: Partial<RegistryModel>) => void;
+}) {
+  const minimum = 128;
+  const context = Math.max(1024, Number(item.context_window) || 8192);
+  const outputCeiling = Math.max(minimum, context - minimum);
+  const initialOutput = Math.max(minimum, Math.min(Number(item.max_output_tokens) || 4096, outputCeiling));
+  const configuredInput = Number(item.config_json?.max_input_tokens);
+  const initialInput = Math.max(
+    minimum,
+    Math.min(Number.isFinite(configuredInput) ? configuredInput : context - initialOutput, context - initialOutput),
+  );
+  const [inputTokens, setInputTokens] = useState(initialInput);
+  const [outputTokens, setOutputTokens] = useState(initialOutput);
+
+  useEffect(() => {
+    setInputTokens(initialInput);
+    setOutputTokens(initialOutput);
+  }, [initialInput, initialOutput, item.id]);
+
+  const configWithInput = (value: number) => ({
+    ...(item.config_json || {}),
+    max_input_tokens: value,
+  });
+  const commitInput = () => {
+    if (inputTokens !== initialInput) onPatch({ config_json: configWithInput(inputTokens) });
+  };
+  const commitOutput = () => {
+    const clampedInput = Math.min(inputTokens, context - outputTokens);
+    const patch: Partial<RegistryModel> = {};
+    if (outputTokens !== initialOutput) patch.max_output_tokens = outputTokens;
+    if (clampedInput !== initialInput) patch.config_json = configWithInput(clampedInput);
+    if (Object.keys(patch).length) onPatch(patch);
+  };
+  const commitContext = (value: number) => {
+    if (value < 1024 || value === context) return;
+    const nextOutput = Math.min(outputTokens, value - minimum);
+    const nextInput = Math.min(inputTokens, value - nextOutput);
+    onPatch({
+      context_window: value,
+      max_output_tokens: nextOutput,
+      config_json: configWithInput(nextInput),
+    });
+  };
+
+  return <div className="mb-3 rounded-lg border border-shogun-border bg-[#050508] p-3">
+    <div className="flex flex-wrap items-end justify-between gap-2">
+      <label className="text-[9px] uppercase text-shogun-subdued">Model context window
+        <input type="number" min="1024" step="1024" defaultValue={context} disabled={disabled}
+          onBlur={event => {
+            const value = Number(event.currentTarget.value);
+            if (value >= 1024) commitContext(value);
+            else event.currentTarget.value = String(context);
+          }}
+          className="ml-2 w-28 rounded border border-shogun-border bg-[#080b14] p-1 text-right font-mono text-[10px] normal-case" />
+      </label>
+      <span className="text-[8px] text-shogun-subdued">Input + output cannot exceed {context.toLocaleString()} tokens</span>
+    </div>
+    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <label className="text-[9px] uppercase text-shogun-subdued">
+        <span className="flex justify-between gap-2"><span>Max input</span><strong className="font-mono text-cyan-300">{inputTokens.toLocaleString()}</strong></span>
+        <input type="range" min={minimum} max={Math.max(minimum, context - outputTokens)} step="128"
+          value={inputTokens} disabled={disabled}
+          onChange={event => setInputTokens(Number(event.target.value))}
+          onPointerUp={commitInput} onKeyUp={commitInput}
+          aria-label={`Maximum input tokens for ${item.display_name}`}
+          className="mt-2 block w-full accent-cyan-400" />
+      </label>
+      <label className="text-[9px] uppercase text-shogun-subdued">
+        <span className="flex justify-between gap-2"><span>Max output</span><strong className="font-mono text-purple-300">{outputTokens.toLocaleString()}</strong></span>
+        <input type="range" min={minimum} max={outputCeiling} step="128"
+          value={outputTokens} disabled={disabled}
+          onChange={event => {
+            const value = Number(event.target.value);
+            setOutputTokens(value);
+            setInputTokens(current => Math.min(current, context - value));
+          }}
+          onPointerUp={commitOutput} onKeyUp={commitOutput}
+          aria-label={`Maximum output tokens for ${item.display_name}`}
+          className="mt-2 block w-full accent-purple-400" />
+      </label>
+    </div>
+  </div>;
 }

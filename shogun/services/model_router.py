@@ -293,6 +293,16 @@ def infer_tiers(model_id: str, local: bool) -> tuple[int, int, int]:
     return quality, cost, latency
 
 
+def configured_max_input_tokens(item: ModelRegistryEntry) -> int:
+    """Return the operator input budget without exceeding model capacity."""
+    available = max(1, int(item.context_window) - int(item.max_output_tokens))
+    configured = (item.config_json or {}).get("max_input_tokens")
+    try:
+        return max(1, min(int(configured), available)) if configured is not None else available
+    except (TypeError, ValueError):
+        return available
+
+
 @dataclass(slots=True)
 class RoutingResult:
     decision: ModelRoutingDecision | None
@@ -642,7 +652,7 @@ class ModelRoutingService:
             candidates = [
                 item
                 for item in candidates
-                if request.context_size_estimate <= max(1, item.context_window - item.max_output_tokens)
+                if request.context_size_estimate <= configured_max_input_tokens(item)
             ]
             context_capacity_exhausted = before_context_filter > 0 and not candidates
         if request.local_only:
@@ -719,6 +729,7 @@ class ModelRoutingService:
             "selected_model": selected.model_id,
             "selected_provider": selected.provider,
             "selected_context_window": selected.context_window,
+            "selected_max_input_tokens": configured_max_input_tokens(selected),
             "selected_max_output_tokens": selected.max_output_tokens,
             "fallback_model": fallbacks[0].model_id if fallbacks else None,
             "fallback_provider": fallbacks[0].provider if fallbacks else None,
