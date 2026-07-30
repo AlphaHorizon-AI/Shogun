@@ -1,8 +1,8 @@
 {
-  "version": "1.47.30",
+  "version": "1.47.31",
   "name": "Shogun OS",
-  "build": 181,
+  "build": 182,
   "channel": "stable",
-  "released": "2026-07-30T13:31:47Z",
-  "changelog": "Self-heal legacy model-registry rows missing chat capability metadata so connected models remain eligible for AgentFlow routing."
+  "released": "2026-07-30T13:57:34Z",
+  "changelog": "Fix AgentFlow document ingestion and Office output generation, including OCR-backed input reads, explicit output filenames, artifact tracking, and honest node failure states."
 }

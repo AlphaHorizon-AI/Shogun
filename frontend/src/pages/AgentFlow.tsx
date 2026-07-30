@@ -839,7 +839,7 @@ function OfficeNodeFields({ config, updateConfig }: { config: Record<string, any
   const pickerLabel = isReadAction ? 'Source File' : 'Destination Folder';
   const fieldHint = isReadAction
     ? 'Select the file to read'
-    : 'Where to save the output file';
+    : 'Select the destination folder; the filename is configured below';
   const fieldPlaceholder = isReadAction ? 'Input/document.docx' : 'Output/';
 
   // File extensions relevant to the current action
@@ -1003,6 +1003,20 @@ function OfficeNodeFields({ config, updateConfig }: { config: Record<string, any
         </div>
         <p className="text-[8px] text-[#7a8899]/60">{fieldHint}</p>
       </div>
+
+      {!isReadAction && (
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Output Filename</label>
+          <input
+            type="text"
+            value={config.output_filename || ''}
+            onChange={(e) => updateConfig('output_filename', e.target.value)}
+            className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#10b981] transition-colors outline-none"
+            placeholder={action.startsWith('excel') ? 'output.xlsx' : action.startsWith('word') ? 'output.docx' : 'output.pptx'}
+          />
+          <p className="text-[8px] text-[#7a8899]/60">A matching extension is added automatically if omitted.</p>
+        </div>
+      )}
 
       {/* Excel sheet name */}
       {['excel_read', 'excel_create', 'excel_write'].includes(action) && (

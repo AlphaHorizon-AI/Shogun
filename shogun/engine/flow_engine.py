@@ -97,6 +97,15 @@ def _error_message(error: Exception) -> str:
     return type(error).__name__
 
 
+def _validated_node_result(result: Any) -> Any:
+    """Convert legacy string failure sentinels into real node failures."""
+    if isinstance(result, str):
+        message = result.strip()
+        if re.match(r"^\[(?:ERROR|BLOCKED)\]", message, re.IGNORECASE):
+            raise RuntimeError(message)
+    return result
+
+
 def _node_failure_action(config: dict[str, Any]) -> str:
     """Normalize legacy and current node failure policies."""
     return config.get("failure_action") or {
@@ -592,7 +601,7 @@ async def _execute_single_node(
         elif node_type == "workspace":
             result = await _exec_workspace(config, context_str)
         elif node_type == "office":
-            result = await _exec_office(config, context_str)
+            result = await _exec_office(config, context_str, run_id, node_id)
         elif node_type == "subflow":
             result = await _exec_subflow(
                 run_id,
@@ -605,6 +614,7 @@ async def _execute_single_node(
             result = await _exec_stack_orchestrator(run_id, config, run_input or {})
         else:
             raise ValueError(f"Unknown node type: {node_type}")
+        result = _validated_node_result(result)
     except Exception as exc:
         await _finalize_node_skills(active_skill_run_ids, "failed", str(exc))
         raise
@@ -743,15 +753,23 @@ async def _exec_input(config: dict, context_str: str, run_input: dict[str, Any] 
             file_path = Path(uploaded["path"])
             if file_path.exists():
                 try:
-                    content = file_path.read_text(encoding="utf-8", errors="replace")
+                    from shogun.services.file_formats import FileFormatService
+
+                    payload = await FileFormatService(allowed_roots=[file_path.parent]).read(
+                        path=str(file_path),
+                        max_chars=100000,
+                    )
+                    content = str(payload.get("content") or "")
+                    if not content.strip():
+                        raise ValueError(f"Document '{file_path.name}' contained no readable content")
                     output_parts.append(f"[Document: {uploaded.get('filename', 'unknown')}]\n{content}")
                     log.info("[Flow] Input: read document %s (%d chars)", uploaded["filename"], len(content))
                 except Exception as exc:
-                    output_parts.append(f"[ERROR reading document: {exc}]")
+                    raise ValueError(f"Could not read uploaded document '{file_path.name}': {exc}") from exc
             else:
-                output_parts.append(f"[Document not found: {uploaded.get('filename', 'unknown')}]")
+                raise FileNotFoundError(f"Uploaded document not found: {uploaded.get('filename', 'unknown')}")
         else:
-            output_parts.append("[No document uploaded yet]")
+            raise ValueError("Document input requires an uploaded file before the AgentFlow can run")
 
     # Add any context from upstream nodes
     if context_str:
@@ -2014,7 +2032,12 @@ async def _exec_workspace(config: dict, context_str: str) -> str:
         return f"[ERROR] Workspace '{action}' failed: {str(exc)[:500]}"
 
 
-async def _exec_office(config: dict, context_str: str) -> str:
+async def _exec_office(
+    config: dict,
+    context_str: str,
+    run_id: uuid.UUID | None = None,
+    node_id: str | None = None,
+) -> str:
     """Office node — performs Office document operations using adapters.
 
     Actions: excel_read, excel_write, excel_create, word_read, word_replace,
@@ -2050,6 +2073,24 @@ async def _exec_office(config: dict, context_str: str) -> str:
             raise ValueError(f"Path escape blocked: {rel}")
         return str(target)
 
+    def _resolve_output(rel: str, suffix: str, fallback_name: str) -> str:
+        """Resolve the UI's destination-folder plus filename contract."""
+        target = Path(_resolve(rel))
+        if target.suffix.lower() != suffix:
+            configured_name = str(config.get("output_filename") or fallback_name).strip()
+            filename = Path(configured_name).name
+            if not filename.lower().endswith(suffix):
+                filename = f"{filename}{suffix}"
+            target = target / filename
+        return str(target)
+
+    async def _record_output(abs_path: str) -> str:
+        target = Path(abs_path)
+        relative = str(target.relative_to(root)).replace("\\", "/")
+        if run_id and node_id:
+            await _record_node_artifact(run_id, node_id, relative)
+        return relative
+
     try:
         # ── Excel Operations ──
         if action == "excel_read":
@@ -2076,16 +2117,9 @@ async def _exec_office(config: dict, context_str: str) -> str:
                 close_workbook(handle)
 
         elif action == "excel_create":
-            from shogun.office.adapters.excel_adapter import (
-                open_workbook,
-                write_range,
-                save_as,
-                close_workbook,
-                create_sheet,
-            )
             import openpyxl
 
-            abs_out = _resolve(output_path)
+            abs_out = _resolve_output(output_path, ".xlsx", "output.xlsx")
             # Create new workbook
             wb = openpyxl.Workbook()
             ws = wb.active
@@ -2099,8 +2133,9 @@ async def _exec_office(config: dict, context_str: str) -> str:
             Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
             wb.save(abs_out)
             wb.close()
-            log.info("[Flow/Office] excel_create: %s (%d rows)", output_path, len(lines))
-            return f"Excel workbook created: {output_path} ({len(lines)} rows)"
+            saved_path = await _record_output(abs_out)
+            log.info("[Flow/Office] excel_create: %s (%d rows)", saved_path, len(lines))
+            return f"Excel workbook created: {saved_path} ({len(lines)} rows)"
 
         elif action == "excel_write":
             from shogun.office.adapters.excel_adapter import (
@@ -2111,7 +2146,11 @@ async def _exec_office(config: dict, context_str: str) -> str:
             )
 
             abs_in = _resolve(input_path)
-            abs_out = _resolve(output_path) if output_path else abs_in
+            abs_out = (
+                _resolve_output(output_path, ".xlsx", Path(abs_in).name)
+                if output_path
+                else abs_in
+            )
             handle = open_workbook(abs_in)
             try:
                 # Parse context as 2D data
@@ -2124,10 +2163,11 @@ async def _exec_office(config: dict, context_str: str) -> str:
                     write_range(handle, target_sheet, 1, 1, data)
                 Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
                 save_as(handle, abs_out)
+                saved_path = await _record_output(abs_out)
                 log.info(
-                    "[Flow/Office] excel_write: %s → %s (%d rows)", input_path, output_path or input_path, len(data)
+                    "[Flow/Office] excel_write: %s → %s (%d rows)", input_path, saved_path, len(data)
                 )
-                return f"Excel updated: {output_path or input_path} ({len(data)} rows written)"
+                return f"Excel updated: {saved_path} ({len(data)} rows written)"
             finally:
                 close_workbook(handle)
 
@@ -2151,7 +2191,7 @@ async def _exec_office(config: dict, context_str: str) -> str:
         elif action == "word_create":
             from docx import Document
 
-            abs_out = _resolve(output_path)
+            abs_out = _resolve_output(output_path, ".docx", "output.docx")
             doc = Document()
             # Use template or context as content
             content = config.get("content_template", "") or context_str or ""
@@ -2161,8 +2201,9 @@ async def _exec_office(config: dict, context_str: str) -> str:
                 doc.add_paragraph(para)
             Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
             doc.save(abs_out)
-            log.info("[Flow/Office] word_create: %s", output_path)
-            return f"Word document created: {output_path}"
+            saved_path = await _record_output(abs_out)
+            log.info("[Flow/Office] word_create: %s", saved_path)
+            return f"Word document created: {saved_path}"
 
         elif action == "word_replace":
             from shogun.office.adapters.word_adapter import (
@@ -2173,7 +2214,11 @@ async def _exec_office(config: dict, context_str: str) -> str:
             )
 
             abs_in = _resolve(input_path)
-            abs_out = _resolve(output_path) if output_path else abs_in
+            abs_out = (
+                _resolve_output(output_path, ".docx", Path(abs_in).name)
+                if output_path
+                else abs_in
+            )
             handle = open_document(abs_in)
             try:
                 replacements = config.get("replacements", {})
@@ -2182,13 +2227,14 @@ async def _exec_office(config: dict, context_str: str) -> str:
                 count = replace_placeholders(handle, replacements)
                 Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
                 save_as(handle, abs_out)
+                saved_path = await _record_output(abs_out)
                 log.info(
                     "[Flow/Office] word_replace: %s → %s (%d replacements)",
                     input_path,
-                    output_path or input_path,
+                    saved_path,
                     count,
                 )
-                return f"Word document updated: {output_path or input_path} ({count} replacements)"
+                return f"Word document updated: {saved_path} ({count} replacements)"
             finally:
                 close_document(handle)
 
@@ -2224,7 +2270,11 @@ async def _exec_office(config: dict, context_str: str) -> str:
             )
 
             abs_in = _resolve(input_path)
-            abs_out = _resolve(output_path) if output_path else abs_in
+            abs_out = (
+                _resolve_output(output_path, ".pptx", Path(abs_in).name)
+                if output_path
+                else abs_in
+            )
             handle = open_presentation(abs_in)
             try:
                 replacements = config.get("replacements", {})
@@ -2233,8 +2283,9 @@ async def _exec_office(config: dict, context_str: str) -> str:
                 count = replace_placeholders(handle, replacements)
                 Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
                 save_as(handle, abs_out)
-                log.info("[Flow/Office] pptx_replace: %s → %s", input_path, output_path or input_path)
-                return f"Presentation updated: {output_path or input_path} ({count} replacements)"
+                saved_path = await _record_output(abs_out)
+                log.info("[Flow/Office] pptx_replace: %s → %s", input_path, saved_path)
+                return f"Presentation updated: {saved_path} ({count} replacements)"
             finally:
                 close_presentation(handle)
 
