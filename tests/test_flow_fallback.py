@@ -11,6 +11,7 @@ from shogun.db.models.model_routing import ModelRoutingProfile
 from shogun.engine import flow_engine
 from shogun.services import notification_service, posture_guard
 from shogun.services.model_service import ModelRoutingProfileService
+from shogun.services.model_router import NoEligibleModelError
 
 
 class _SessionContext:
@@ -54,6 +55,66 @@ def test_provider_connection_accepts_bearer_token_credentials():
     _, _, _, headers = flow_engine._provider_connection(provider)
 
     assert headers["Authorization"] == "Bearer provider-access-token"
+
+
+@pytest.mark.asyncio
+async def test_task_router_chat_exhaustion_uses_connected_provider_chain(monkeypatch):
+    provider = SimpleNamespace(name="Gemma 4", provider_type="ollama")
+    expected_chain = [(provider, "gemma4:12b", "http://127.0.0.1:11434/v1", {})]
+
+    class EmptyRegistryRouter:
+        def __init__(self, _session):
+            pass
+
+        async def route(self, _request):
+            raise NoEligibleModelError(
+                "No eligible model found for this task. Required capabilities: chat.",
+                allow_connected_fallback=True,
+            )
+
+    async def legacy_chain(_session, _profile_id=None):
+        return expected_chain
+
+    from shogun.services import model_router
+
+    monkeypatch.setattr(model_router, "ModelRoutingService", EmptyRegistryRouter)
+    monkeypatch.setattr(flow_engine, "_resolve_llm_chain", legacy_chain)
+
+    chain, routing = await flow_engine._resolve_task_llm_chain(
+        object(),
+        prompt="Extract and map data",
+        task_type="stack_step_execution",
+        required_capabilities=["chat"],
+    )
+
+    assert chain == expected_chain
+    assert routing["selected_model"] == "gemma4:12b"
+    assert routing["active_profile"] == "connected_provider_compatibility"
+
+
+@pytest.mark.asyncio
+async def test_task_router_policy_failure_does_not_use_compatibility_chain(monkeypatch):
+    class BlockedRouter:
+        def __init__(self, _session):
+            pass
+
+        async def route(self, _request):
+            raise NoEligibleModelError("Daily model budget reached.")
+
+    async def forbidden_legacy_chain(*_args, **_kwargs):
+        raise AssertionError("Policy failures must not reach the legacy chain")
+
+    from shogun.services import model_router
+
+    monkeypatch.setattr(model_router, "ModelRoutingService", BlockedRouter)
+    monkeypatch.setattr(flow_engine, "_resolve_llm_chain", forbidden_legacy_chain)
+
+    with pytest.raises(NoEligibleModelError, match="Daily model budget"):
+        await flow_engine._resolve_task_llm_chain(
+            object(),
+            prompt="Extract and map data",
+            required_capabilities=["chat"],
+        )
 
 
 def test_exhausted_retry_policy_is_terminal():

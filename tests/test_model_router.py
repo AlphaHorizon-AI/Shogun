@@ -447,6 +447,18 @@ async def test_empty_named_custom_profile_does_not_fall_back_to_all_models(routi
 
 
 @pytest.mark.asyncio
+async def test_automatic_profile_chat_exhaustion_allows_connected_provider_compatibility(routing_session):
+    with pytest.raises(NoEligibleModelError) as captured:
+        await ModelRoutingService(routing_session).route(ModelRouteRequest(
+            prompt="Extract and map data",
+            required_capabilities=["chat"],
+            profile_override="balanced",
+        ))
+
+    assert captured.value.allow_connected_fallback is True
+
+
+@pytest.mark.asyncio
 async def test_registry_routing_target_uses_exact_provider_and_credential(routing_session):
     entry = await _model(
         routing_session, "vendor/secured-model", quality=4, cost=2,

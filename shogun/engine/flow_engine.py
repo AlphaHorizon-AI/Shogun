@@ -2556,7 +2556,31 @@ async def _resolve_task_llm_chain(
                 chain.append(_provider_connection(provider, entry.model_id))
         if chain:
             return chain, result.payload
-    except NoEligibleModelError:
+    except NoEligibleModelError as exc:
+        # Compatibility path for upgraded desktop installations: Comms and
+        # pre-router AgentFlows resolve directly from connected providers. If
+        # the governed registry has no ordinary chat candidate, keep AgentFlow
+        # operational through that same provider chain. Policy-sensitive
+        # failures (budget, premium approval, context limits, custom profiles,
+        # vision/tool requirements) do not opt into this fallback and remain
+        # authoritative hard failures.
+        if exc.allow_connected_fallback and set(required_capabilities or ["chat"]) == {"chat"}:
+            legacy_chain = await _resolve_llm_chain(session, routing_profile_id)
+            if legacy_chain:
+                provider, model_name, *_ = legacy_chain[0]
+                log.warning(
+                    "Task-aware routing found no chat candidate; using connected-provider "
+                    "compatibility route %s/%s",
+                    provider.name,
+                    model_name,
+                )
+                return legacy_chain, {
+                    "active_profile": "connected_provider_compatibility",
+                    "selected_model": model_name,
+                    "selected_provider": provider.provider_type,
+                    "selected_max_output_tokens": None,
+                    "fallback_reason": str(exc),
+                }
         raise
     except Exception as exc:
         log.info("Task-aware routing unavailable; using legacy model chain: %s", exc)

@@ -1,8 +1,8 @@
 {
-  "version": "1.47.28",
+  "version": "1.47.29",
   "name": "Shogun OS",
-  "build": 179,
+  "build": 180,
   "channel": "stable",
-  "released": "2026-07-30T12:57:23Z",
-  "changelog": "Restore legacy auto-discovered models after reconnection and preserve custom routing across Ollama registry re-registration."
+  "released": "2026-07-30T13:09:04Z",
+  "changelog": "Restore AgentFlow connected-provider fallback for ordinary chat routing exhaustion while preserving policy-sensitive routing failures."
 }

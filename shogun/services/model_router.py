@@ -25,7 +25,9 @@ log = logging.getLogger(__name__)
 
 
 class NoEligibleModelError(ValueError):
-    pass
+    def __init__(self, message: str, *, allow_connected_fallback: bool = False):
+        super().__init__(message)
+        self.allow_connected_fallback = allow_connected_fallback
 
 
 DEFAULT_PROFILES = {
@@ -670,7 +672,10 @@ class ModelRoutingService:
                     f"No enabled model has enough context capacity for approximately "
                     f"{request.context_size_estimate} input tokens plus its configured output reserve."
                 )
-            raise NoEligibleModelError(f"No eligible model found for this task. Required capabilities: {required}.")
+            raise NoEligibleModelError(
+                f"No eligible model found for this task. Required capabilities: {required}.",
+                allow_connected_fallback=requirements == {"chat"} and not is_custom_profile,
+            )
         profile_config = {
             **DEFAULT_PROFILES.get(profile_key, DEFAULT_PROFILES["balanced"]),
             **(config.get("profiles", {}).get(profile_key) or {}),
