@@ -1,8 +1,8 @@
 {
-  "version": "1.47.40",
+  "version": "1.47.41",
   "name": "Shogun OS",
-  "build": 191,
+  "build": 192,
   "channel": "stable",
-  "released": "2026-07-30T19:34:00Z",
-  "changelog": "Add visible AgentFlow run cancellation and scheduled workspace PDF reading through the renamed Files node."
+  "released": "2026-07-31T06:42:25Z",
+  "changelog": "Reset active AgentFlow node highlighting when a running flow is cancelled."
 }

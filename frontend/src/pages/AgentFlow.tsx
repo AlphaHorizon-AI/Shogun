@@ -216,6 +216,19 @@ function formatRunTimestamp(value?: string | null): string {
   return value ? parseRunTimestamp(value).toLocaleString() : '-';
 }
 
+function cancelRunningNodeStates(
+  states: Record<string, any>,
+): Record<string, any> {
+  return Object.fromEntries(
+    Object.entries(states).map(([nodeId, state]) => [
+      nodeId,
+      state?.status === 'running'
+        ? { ...state, status: 'cancelled' }
+        : state,
+    ])
+  );
+}
+
 
 // ═══════════════════════════════════════════════════════════════
 // NODE PALETTE — card types available for dragging
@@ -3050,6 +3063,7 @@ export function AgentFlowCanvas({
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const [cancellingRunId, setCancellingRunId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cancelledRunIdsRef = useRef(new Set<string>());
 
   const loadRunResult = useCallback(async (
     runId: string,
@@ -3113,7 +3127,10 @@ export function AgentFlowCanvas({
   }, [flow.id]);
 
   const hydrateRunState = useCallback((run: any) => {
-    const normalizedStates = { ...(run.node_states || {}) };
+    let normalizedStates = { ...(run.node_states || {}) };
+    if (run.status === 'cancelled') {
+      normalizedStates = cancelRunningNodeStates(normalizedStates);
+    }
     if (run.status === 'completed') {
       (flow.nodes || []).forEach((node) => {
         if (node.node_type !== 'output') return;
@@ -3221,8 +3238,11 @@ export function AgentFlowCanvas({
         const resp = await axios.get(`/api/v1/agent-flows/runs/${activeRunId}`);
         const run = resp.data?.data;
         if (run) {
+          const terminal = ['completed', 'failed', 'cancelled'].includes(run.status);
+          if (cancelledRunIdsRef.current.has(activeRunId) && !terminal) return;
           hydrateRunState(run);
-          if (['completed', 'failed', 'cancelled'].includes(run.status)) {
+          if (terminal) {
+            cancelledRunIdsRef.current.delete(activeRunId);
             setActiveRunId(null);
             setExecuting(false);
             void fetchHistory();
@@ -3483,6 +3503,20 @@ export function AgentFlowCanvas({
     setCancellingRunId(runId);
     try {
       await axios.post(`/api/v1/agent-flows/runs/${runId}/cancel`);
+      cancelledRunIdsRef.current.add(runId);
+      setNodeStates((states) => cancelRunningNodeStates(states));
+      setNodes((currentNodes) => currentNodes.map((node) => ({
+        ...node,
+        className: node.className === 'agent-flow-node-running'
+          ? undefined
+          : node.className,
+        data: {
+          ...node.data,
+          execution_status: node.data?.execution_status === 'running'
+            ? 'cancelled'
+            : node.data?.execution_status,
+        },
+      })));
       if (activeRunId === runId) {
         setActiveRunId(null);
         setExecuting(false);
@@ -3501,7 +3535,7 @@ export function AgentFlowCanvas({
     } finally {
       setCancellingRunId(null);
     }
-  }, [activeRunId, cancellingRunId, fetchHistory]);
+  }, [activeRunId, cancellingRunId, fetchHistory, setNodes]);
 
   // ── Fetch run history ────────────────────────────────────
   useEffect(() => {
