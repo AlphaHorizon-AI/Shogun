@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -8,6 +8,7 @@ import {
   FlaskConical,
   Loader2,
   LockKeyhole,
+  Minus,
   Pencil,
   Plus,
   RefreshCw,
@@ -60,6 +61,13 @@ interface ToolRecord {
   gensui_override: GateAction | null;
   effective_action: GateAction;
   reason: string;
+  supports_path_controls: boolean;
+  detail: ToolDetail;
+}
+
+interface ToolDetail {
+  allowed_internal_paths: string[];
+  allowed_network_paths: string[];
 }
 
 interface ToolGateData {
@@ -186,6 +194,9 @@ export function ToolGate() {
   const [builtInPolicies, setBuiltInPolicies] = useState<SecurityPolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingTool, setSavingTool] = useState<string | null>(null);
+  const [expandedTool, setExpandedTool] = useState<string | null>(null);
+  const [detailDrafts, setDetailDrafts] = useState<Record<string, ToolDetail>>({});
+  const [savingDetail, setSavingDetail] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
@@ -249,6 +260,12 @@ export function ToolGate() {
         enabled: normalized.advanced_controls.enabled,
         rules: normalized.advanced_controls.rules || [],
       });
+      setDetailDrafts(Object.fromEntries(
+        normalized.tools.map(tool => [tool.name, tool.detail || {
+          allowed_internal_paths: [],
+          allowed_network_paths: [],
+        }]),
+      ));
       setSimulationTool(current => current || payload.tools[0]?.name || '');
     } catch {
       setMessage({ type: 'error', text: 'ToolGate status could not be loaded.' });
@@ -349,7 +366,7 @@ export function ToolGate() {
     }
   };
 
-  const addAdvancedRule = () => {
+  const addAdvancedRule = (toolName?: string) => {
     setAdvancedDraft(current => ({
       ...current,
       enabled: true,
@@ -361,12 +378,39 @@ export function ToolGate() {
           pattern: '',
           match_type: 'contains',
           action: 'confirm',
-          tools: [],
+          tools: toolName ? [toolName] : [],
           case_sensitive: false,
           enabled: true,
         },
       ],
     }));
+  };
+
+  const updateToolDetail = (toolName: string, key: keyof ToolDetail, value: string) => {
+    setDetailDrafts(current => ({
+      ...current,
+      [toolName]: {
+        ...(current[toolName] || { allowed_internal_paths: [], allowed_network_paths: [] }),
+        [key]: value.split(/\r?\n/).map(item => item.trim()).filter(Boolean),
+      },
+    }));
+  };
+
+  const saveToolDetail = async (toolName: string) => {
+    setSavingDetail(toolName);
+    setMessage(null);
+    try {
+      await axios.put(
+        `/api/v1/security/toolgate/tools/${encodeURIComponent(toolName)}/detail`,
+        detailDrafts[toolName] || { allowed_internal_paths: [], allowed_network_paths: [] },
+      );
+      setMessage({ type: 'success', text: `Detailed controls saved for ${toolName}.` });
+      await fetchData();
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: errorMessage(error, 'Detailed tool controls could not be saved.') });
+    } finally {
+      setSavingDetail(null);
+    }
   };
 
   const updateAdvancedRule = (id: string, patch: Partial<AdvancedRule>) => {
@@ -963,7 +1007,7 @@ export function ToolGate() {
           <div className="flex flex-wrap justify-between gap-3">
             <button
               type="button"
-              onClick={addAdvancedRule}
+              onClick={() => addAdvancedRule()}
               className="flex items-center gap-2 rounded-lg border border-orange-400/25 px-3 py-2 text-xs font-bold text-orange-300 hover:bg-orange-500/10"
             >
               <Plus className="h-4 w-4" /> Add content rule
@@ -1013,6 +1057,7 @@ export function ToolGate() {
           <table className="w-full min-w-[920px] text-left">
             <thead className="bg-[#080b12] text-[9px] uppercase tracking-widest text-shogun-subdued">
               <tr>
+                <th className="w-12 px-3 py-3"><span className="sr-only">Details</span></th>
                 <th className="px-4 py-3">Tool</th>
                 <th className="px-4 py-3">Risk</th>
                 <th className="px-4 py-3">Effective</th>
@@ -1021,8 +1066,24 @@ export function ToolGate() {
               </tr>
             </thead>
             <tbody className="divide-y divide-shogun-border/60">
-              {filteredTools.map(tool => (
-                <tr key={tool.name} className="bg-shogun-card/20 hover:bg-shogun-card/50">
+              {filteredTools.map(tool => {
+                const expanded = expandedTool === tool.name;
+                const detail = detailDrafts[tool.name] || tool.detail;
+                const toolRules = advancedDraft.rules.filter(rule => rule.tools.length === 0 || rule.tools.includes(tool.name));
+                return (
+                <Fragment key={tool.name}>
+                <tr className="bg-shogun-card/20 hover:bg-shogun-card/50">
+                  <td className="px-3 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTool(expanded ? null : tool.name)}
+                      className="rounded-md border border-shogun-border p-1.5 text-shogun-subdued transition-colors hover:border-shogun-gold/50 hover:text-shogun-gold"
+                      aria-expanded={expanded}
+                      aria-label={`${expanded ? 'Collapse' : 'Expand'} controls for ${tool.name}`}
+                    >
+                      {expanded ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                    </button>
+                  </td>
                   <td className="px-4 py-3">
                     <p className="font-mono text-xs font-semibold text-shogun-text">{tool.name}</p>
                     <p className="mt-1 text-[9px] uppercase tracking-widest text-shogun-subdued">{tool.category}</p>
@@ -1056,7 +1117,130 @@ export function ToolGate() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                {expanded && (
+                  <tr className="bg-[#080b12]/70">
+                    <td colSpan={6} className="px-6 py-5">
+                      <div className="space-y-5">
+                        <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-widest text-shogun-text">Detailed controls · {tool.name}</p>
+                            <p className="mt-1 max-w-3xl text-xs text-shogun-subdued">{tool.reason}</p>
+                          </div>
+                          {data.advanced_controls.editable && (
+                            <button
+                              type="button"
+                              onClick={() => addAdvancedRule(tool.name)}
+                              className="flex shrink-0 items-center gap-2 rounded-lg border border-orange-400/25 px-3 py-2 text-xs font-bold text-orange-300 hover:bg-orange-500/10"
+                            >
+                              <Plus className="h-3.5 w-3.5" /> Add argument restriction
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="rounded-lg border border-shogun-border/70 bg-shogun-card/30 p-4">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-shogun-subdued">Argument restrictions</p>
+                          {toolRules.length ? (
+                            <div className="mt-3 space-y-2">
+                              {toolRules.map(rule => (
+                                <div key={rule.id} className="grid gap-2 rounded-md border border-shogun-border/60 p-3 lg:grid-cols-[1fr_8rem_7rem] lg:items-center">
+                                  <div>
+                                    <input
+                                      value={rule.pattern}
+                                      onChange={event => updateAdvancedRule(rule.id, { pattern: event.target.value })}
+                                      disabled={!data.advanced_controls.editable}
+                                      placeholder="Text or argument pattern"
+                                      className="w-full rounded-md border border-shogun-border bg-shogun-bg px-2.5 py-2 font-mono text-xs text-shogun-text outline-none focus:border-orange-400 disabled:opacity-45"
+                                    />
+                                    <p className="mt-1 text-[9px] uppercase tracking-wider text-shogun-subdued">
+                                      {rule.tools.length === 0 ? 'All tools' : 'This tool'}
+                                    </p>
+                                  </div>
+                                  <select
+                                    value={rule.action}
+                                    onChange={event => updateAdvancedRule(rule.id, { action: event.target.value as AdvancedAction })}
+                                    disabled={!data.advanced_controls.editable}
+                                    className="rounded-md border border-shogun-border bg-shogun-bg px-2.5 py-2 text-xs text-shogun-text disabled:opacity-45"
+                                  >
+                                    <option value="confirm">Confirm</option>
+                                    <option value="block">Block</option>
+                                  </select>
+                                  <label className="flex items-center gap-2 text-[10px] text-shogun-subdued">
+                                    <input
+                                      type="checkbox"
+                                      checked={rule.enabled}
+                                      onChange={event => updateAdvancedRule(rule.id, { enabled: event.target.checked })}
+                                      disabled={!data.advanced_controls.editable}
+                                    />
+                                    Enabled
+                                  </label>
+                                </div>
+                              ))}
+                              {data.advanced_controls.editable && (
+                                <div className="flex justify-end pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={saveAdvancedControls}
+                                    disabled={savingAdvanced || advancedDraft.rules.some(rule => !rule.pattern.trim())}
+                                    className="flex items-center gap-2 rounded-lg border border-orange-400/25 px-3 py-2 text-xs font-bold text-orange-300 disabled:opacity-50"
+                                  >
+                                    {savingAdvanced ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                                    Save restrictions
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-shogun-subdued">No advanced content rules currently apply to this tool.</p>
+                          )}
+                        </div>
+
+                        {tool.supports_path_controls && (
+                          <div className="grid gap-4 lg:grid-cols-2">
+                            <label className="space-y-2">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-cyan-300">Internal folders</span>
+                              <textarea
+                                value={(detail?.allowed_internal_paths || []).join('\n')}
+                                onChange={event => updateToolDetail(tool.name, 'allowed_internal_paths', event.target.value)}
+                                disabled={!data.authority.editable}
+                                rows={4}
+                                placeholder={'input\noutput\nProjects/Approved'}
+                                className="w-full rounded-lg border border-shogun-border bg-shogun-bg px-3 py-2 font-mono text-xs text-shogun-text outline-none focus:border-shogun-blue disabled:opacity-45"
+                              />
+                              <span className="block text-[10px] text-shogun-subdued">One workspace-relative or absolute local folder per line.</span>
+                            </label>
+                            <label className="space-y-2">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Network folders</span>
+                              <textarea
+                                value={(detail?.allowed_network_paths || []).join('\n')}
+                                onChange={event => updateToolDetail(tool.name, 'allowed_network_paths', event.target.value)}
+                                disabled={!data.authority.editable}
+                                rows={4}
+                                placeholder={'\\\\server\\share\\approved'}
+                                className="w-full rounded-lg border border-shogun-border bg-shogun-bg px-3 py-2 font-mono text-xs text-shogun-text outline-none focus:border-shogun-blue disabled:opacity-45"
+                              />
+                              <span className="block text-[10px] text-shogun-subdued">One UNC or mounted network folder per line.</span>
+                            </label>
+                            {data.authority.editable && (
+                              <div className="lg:col-span-2 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => saveToolDetail(tool.name)}
+                                  disabled={savingDetail === tool.name}
+                                  className="flex items-center gap-2 rounded-lg bg-shogun-gold px-4 py-2.5 text-xs font-bold text-black disabled:opacity-50"
+                                >
+                                  {savingDetail === tool.name ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                  Save detailed controls
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+              )})}
             </tbody>
           </table>
           {filteredTools.length === 0 && <p className="py-10 text-center text-sm text-shogun-subdued">No tools match the current filters.</p>}

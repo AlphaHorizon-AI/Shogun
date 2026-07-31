@@ -2659,12 +2659,25 @@ async def execute_native_tool(
         if name.startswith("file_"):
             import uuid
 
-            from shogun.services.file_formats import FileFormatError, FileFormatService, registry
+            from shogun.services.file_formats import (
+                FileFormatError,
+                FileFormatService,
+                FileSafetyGate,
+                registry,
+            )
+            from shogun.services.posture_guard import get_posture_permissions
+            from shogun.services.tool_gate import get_tool_allowed_roots, get_toolgate_scope
 
             if name == "file_list_formats":
                 return json.dumps({"status": "success", "formats": registry.formats()}, default=str)
             try:
-                service = FileFormatService(db_session)
+                posture = await get_posture_permissions()
+                scope = get_toolgate_scope(posture)["key"]
+                allowed_roots = [
+                    *FileSafetyGate().allowed_roots,
+                    *get_tool_allowed_roots(name, scope),
+                ]
+                service = FileFormatService(db_session, allowed_roots=allowed_roots)
                 if name == "file_compare":
                     result = await service.compare(str(args.get("left_path") or ""), str(args.get("right_path") or ""))
                     await db_session.commit()
@@ -5106,7 +5119,11 @@ async def _log_office_event(
 
 # ── Workspace Tool Execution ─────────────────────────────────────────
 
-def _validate_workspace_path(workspace_root: str, relative_path: str) -> str:
+def _validate_workspace_path(
+    workspace_root: str,
+    relative_path: str,
+    allowed_roots: list[str] | None = None,
+) -> str:
     """Resolve a relative path against the workspace root and validate it.
 
     Returns the absolute path string if valid.
@@ -5115,21 +5132,14 @@ def _validate_workspace_path(workspace_root: str, relative_path: str) -> str:
     from pathlib import Path
 
     root = Path(workspace_root).resolve()
-    # Reject obvious traversal patterns
-    if ".." in relative_path or relative_path.startswith("/") or relative_path.startswith("\\"):
-        raise ValueError(f"Path traversal blocked: '{relative_path}' — paths must be relative and cannot contain '..'")
+    requested = Path(relative_path)
+    if ".." in requested.parts:
+        raise ValueError(f"Path traversal blocked: '{relative_path}' cannot contain '..'")
 
-    # Reject UNC paths
-    if relative_path.startswith("\\\\"):
-        raise ValueError(f"UNC paths are not allowed: '{relative_path}'")
-
-    target = (root / relative_path).resolve()
-
-    # Final containment check
-    try:
-        target.relative_to(root)
-    except ValueError:
-        raise ValueError(f"Path escape blocked: '{relative_path}' resolves outside the workspace boundary")
+    target = requested.resolve() if requested.is_absolute() else (root / requested).resolve()
+    permitted_roots = [root, *(Path(item).resolve() for item in (allowed_roots or []))]
+    if not any(target == allowed or allowed in target.parents for allowed in permitted_roots):
+        raise ValueError(f"Path escape blocked: '{relative_path}' is outside the configured workspace roots")
 
     return str(target)
 
@@ -5180,12 +5190,16 @@ async def _execute_workspace_tool(name: str, args: dict[str, Any]) -> str:
     All operations are gated by the posture guard (blocked at SHRINE)
     and path-validated to stay inside the workspace boundary.
     """
-    import os
     from pathlib import Path
-    from shogun.services.posture_guard import check_workspace_access
+
+    from shogun.services.posture_guard import check_workspace_access, get_posture_permissions
+    from shogun.services.tool_gate import get_tool_allowed_roots, get_toolgate_scope
 
     try:
         workspace_root = await check_workspace_access()
+        posture = await get_posture_permissions()
+        scope = get_toolgate_scope(posture)["key"]
+        configured_roots = [str(path) for path in get_tool_allowed_roots(name, scope)]
     except Exception:
         logger.exception("Workspace access check failed")
         return json.dumps({"status": "error", "message": "Workspace access was denied."})
@@ -5209,7 +5223,7 @@ async def _execute_workspace_tool(name: str, args: dict[str, Any]) -> str:
 
         elif name == "workspace_list":
             rel_path = args.get("path", ".").strip() or "."
-            target = _validate_workspace_path(workspace_root, rel_path)
+            target = _validate_workspace_path(workspace_root, rel_path, configured_roots)
             target_path = Path(target)
 
             if not target_path.exists():
@@ -5241,7 +5255,7 @@ async def _execute_workspace_tool(name: str, args: dict[str, Any]) -> str:
             if not rel_path:
                 return json.dumps({"status": "error", "message": "Missing required parameter: path"})
 
-            target = _validate_workspace_path(workspace_root, rel_path)
+            target = _validate_workspace_path(workspace_root, rel_path, configured_roots)
             target_path = Path(target)
 
             if not target_path.exists():
@@ -5283,7 +5297,7 @@ async def _execute_workspace_tool(name: str, args: dict[str, Any]) -> str:
             if not rel_path:
                 return json.dumps({"status": "error", "message": "Missing required parameter: path"})
 
-            target = _validate_workspace_path(workspace_root, rel_path)
+            target = _validate_workspace_path(workspace_root, rel_path, configured_roots)
             target_path = Path(target)
 
             # Create parent directories
@@ -5306,7 +5320,7 @@ async def _execute_workspace_tool(name: str, args: dict[str, Any]) -> str:
             if not rel_path:
                 return json.dumps({"status": "error", "message": "Missing required parameter: path"})
 
-            target = _validate_workspace_path(workspace_root, rel_path)
+            target = _validate_workspace_path(workspace_root, rel_path, configured_roots)
             target_path = Path(target)
 
             existed = target_path.exists()
@@ -5324,7 +5338,7 @@ async def _execute_workspace_tool(name: str, args: dict[str, Any]) -> str:
             if not rel_path:
                 return json.dumps({"status": "error", "message": "Missing required parameter: path"})
 
-            target = _validate_workspace_path(workspace_root, rel_path)
+            target = _validate_workspace_path(workspace_root, rel_path, configured_roots)
             target_path = Path(target)
 
             if not target_path.exists():
@@ -5347,7 +5361,7 @@ async def _execute_workspace_tool(name: str, args: dict[str, Any]) -> str:
             if not rel_path:
                 return json.dumps({"status": "error", "message": "Missing required parameter: path"})
 
-            target = _validate_workspace_path(workspace_root, rel_path)
+            target = _validate_workspace_path(workspace_root, rel_path, configured_roots)
             target_path = Path(target)
 
             if not target_path.exists():
@@ -5388,7 +5402,7 @@ async def _execute_workspace_tool(name: str, args: dict[str, Any]) -> str:
             if not rel_path:
                 return json.dumps({"status": "error", "message": "Missing required parameter: path"})
 
-            target = _validate_workspace_path(workspace_root, rel_path)
+            target = _validate_workspace_path(workspace_root, rel_path, configured_roots)
             target_path = Path(target)
 
             if not target_path.exists():

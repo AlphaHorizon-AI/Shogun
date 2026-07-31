@@ -45,6 +45,18 @@ def test_gensui_secret_file_is_generated_with_strong_material(tmp_path: Path):
     assert len(config.jwt_secret) >= 64
 
 
+def test_shogun_workspace_always_has_input_and_output_folders(tmp_path: Path, monkeypatch):
+    from shogun.config import settings
+
+    workspace = tmp_path / "workspace"
+    monkeypatch.setattr(settings, "workspace_path", workspace)
+
+    settings.ensure_directories()
+
+    assert (workspace / "input").is_dir()
+    assert (workspace / "output").is_dir()
+
+
 def test_gensui_can_explicitly_allow_weak_password_on_loopback(tmp_path: Path):
     from gensui.config import GensuiSettings
 

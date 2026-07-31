@@ -25,6 +25,23 @@ router = APIRouter(prefix="/updates", tags=["updates"])
 RUNNING_VERSION = get_local_version_sync()
 
 
+def _frontend_install_failure_detail(output: str) -> str:
+    """Turn npm's noisy output into an actionable, safe updater message."""
+    normalized = output.lower()
+    if "eperm" in normalized or "eacces" in normalized or "permission denied" in normalized:
+        return (
+            "Frontend dependency installation was blocked by Windows file permissions "
+            "or a locked file. Close other Node/npm processes and retry."
+        )
+    if "enospc" in normalized or "no space left" in normalized:
+        return "Frontend dependency installation ran out of disk space. Free space and retry."
+    if any(marker in normalized for marker in ("econnreset", "etimedout", "enotfound", "network")):
+        return "Frontend dependencies could not be downloaded. Check the network connection and retry."
+    if "eresolve" in normalized:
+        return "Frontend dependencies contain an incompatible version constraint in the update package."
+    return "Frontend dependency installation failed. Check the Shogun server log for npm details."
+
+
 def _with_runtime_version_status(payload: dict) -> dict:
     """Attach whether the running server still needs a restart after update."""
     installed = get_local_version_sync()
@@ -161,18 +178,30 @@ async def apply_update():
             logger.info("Building frontend from update package...")
             try:
                 npm_cmd = "npm.cmd" if platform.system() == "Windows" else "npm"
+                npm_cache = tmp_extract / ".npm-cache"
+                install_command = "ci" if (source_frontend_dir / "package-lock.json").exists() else "install"
                 npm_install = subprocess.run(
-                    [npm_cmd, "install", "--silent"],
+                    [
+                        npm_cmd,
+                        install_command,
+                        "--no-audit",
+                        "--no-fund",
+                        "--cache",
+                        str(npm_cache),
+                    ],
                     cwd=str(source_frontend_dir),
                     capture_output=True,
                     text=True,
                     timeout=600,
                 )
                 if npm_install.returncode != 0:
-                    logger.error("Frontend npm install failed: %s", npm_install.stderr[-4000:])
+                    npm_output = "\n".join(
+                        part for part in (npm_install.stdout, npm_install.stderr) if part
+                    )
+                    logger.error("Frontend npm %s failed: %s", install_command, npm_output[-4000:])
                     raise HTTPException(
                         status_code=500,
-                        detail="Frontend update build failed during npm install. Shogun was not changed.",
+                        detail=f"{_frontend_install_failure_detail(npm_output)} Shogun was not changed.",
                     )
 
                 npm_build = subprocess.run(

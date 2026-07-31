@@ -302,6 +302,8 @@ class Settings(BaseSettings):
             self.office_path / "temp",
             # Agent workspace
             self.workspace_path,
+            self.workspace_path / "input",
+            self.workspace_path / "output",
         ]:
             directory.mkdir(parents=True, exist_ok=True)
 

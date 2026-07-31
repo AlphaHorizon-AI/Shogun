@@ -11,9 +11,11 @@ from shogun.services.tool_gate import (
     get_gensui_overrides,
     get_local_advanced_controls,
     get_local_overrides,
+    get_local_tool_detail,
     get_toolgate_scope,
     set_local_advanced_controls,
     set_local_overrides,
+    set_local_tool_detail,
 )
 
 
@@ -29,14 +31,20 @@ def restore_toolgate_overrides(tmp_path, monkeypatch):
         scope: dict(config)
         for scope, config in tool_gate._local_advanced_scopes.items()
     }
+    original_detail_scopes = {
+        scope: {tool: dict(detail) for tool, detail in tools.items()}
+        for scope, tools in tool_gate._local_detail_scopes.items()
+    }
     monkeypatch.setattr(tool_gate, "_LOCAL_OVERRIDES_PATH", tmp_path / "toolgate_overrides.json")
     tool_gate._local_override_scopes = {}
     tool_gate._local_advanced_scopes = {}
+    tool_gate._local_detail_scopes = {}
     apply_gensui_overrides({})
     apply_gensui_advanced_controls({})
     yield
     tool_gate._local_override_scopes = original_scopes
     tool_gate._local_advanced_scopes = original_advanced_scopes
+    tool_gate._local_detail_scopes = original_detail_scopes
     apply_gensui_overrides({})
     apply_gensui_advanced_controls({})
 
@@ -121,6 +129,60 @@ async def test_local_overrides_are_isolated_by_effective_policy_scope():
     assert custom_decision.action == GateAction.BLOCK
     assert tier_decision.action == GateAction.ALLOW
     assert get_local_overrides("policy:custom-a") == {"send_email": "block"}
+
+
+def test_detailed_path_controls_are_persisted_and_isolated_by_scope(tmp_path):
+    from shogun.services import tool_gate
+
+    set_local_tool_detail(
+        "workspace_read",
+        {
+            "allowed_internal_paths": ["input", "input"],
+            "allowed_network_paths": [r"\\server\share\approved"],
+        },
+        "tier:guarded",
+    )
+
+    assert get_local_tool_detail("workspace_read", "tier:guarded") == {
+        "allowed_internal_paths": ["input"],
+        "allowed_network_paths": [r"\\server\share\approved"],
+    }
+    assert get_local_tool_detail("workspace_read", "tier:campaign") == {
+        "allowed_internal_paths": [],
+        "allowed_network_paths": [],
+    }
+    payload = json.loads(tool_gate._LOCAL_OVERRIDES_PATH.read_text(encoding="utf-8"))
+    assert payload["detail_scopes"]["tier:guarded"]["workspace_read"]["allowed_internal_paths"] == ["input"]
+
+
+@pytest.mark.asyncio
+async def test_detailed_path_controls_block_paths_outside_allowlist(tmp_path, monkeypatch):
+    from shogun.config import settings
+
+    workspace = tmp_path / "workspace"
+    monkeypatch.setattr(settings, "workspace_path", workspace)
+    set_local_tool_detail(
+        "workspace_read",
+        {"allowed_internal_paths": ["input"], "allowed_network_paths": []},
+        "tier:tactical",
+    )
+
+    allowed = await check_tool_access(
+        mode="standard",
+        tool_name="workspace_read",
+        args={"path": "input/report.txt"},
+        local_scope="tier:tactical",
+    )
+    blocked = await check_tool_access(
+        mode="standard",
+        tool_name="workspace_read",
+        args={"path": "output/report.txt"},
+        local_scope="tier:tactical",
+    )
+
+    assert allowed.action == GateAction.ALLOW
+    assert blocked.action == GateAction.BLOCK
+    assert blocked.parameter_flags == ["path_not_allowlisted:$.path"]
 
 
 def test_custom_policy_gets_stable_scope_and_inherits_its_base_tier():

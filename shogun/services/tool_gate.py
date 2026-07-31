@@ -34,6 +34,19 @@ _LOCAL_OVERRIDES_PATH = Path("data/toolgate_overrides.json")
 _DEFAULT_LOCAL_SCOPE = "global"
 _ADVANCED_ACTIONS = {"confirm", "block"}
 _ADVANCED_MATCH_TYPES = {"contains", "word"}
+_PATH_ARGUMENT_KEYS = {
+    "path",
+    "file_path",
+    "left_path",
+    "right_path",
+    "input_path",
+    "output_path",
+    "source_path",
+    "destination_path",
+    "output_directory",
+    "directory",
+    "folder",
+}
 
 
 def normalize_advanced_controls(config: dict[str, Any] | None) -> dict[str, Any]:
@@ -140,15 +153,66 @@ def _load_local_advanced_controls() -> dict[str, dict[str, Any]]:
 _local_advanced_scopes: dict[str, dict[str, Any]] = _load_local_advanced_controls()
 
 
+def normalize_tool_detail(config: dict[str, Any] | None) -> dict[str, list[str]]:
+    """Normalize one tool's detailed filesystem boundary."""
+    config = config or {}
+    if not isinstance(config, dict):
+        raise ValueError("Tool detail must be an object.")
+
+    normalized: dict[str, list[str]] = {}
+    for key in ("allowed_internal_paths", "allowed_network_paths"):
+        values = config.get(key, [])
+        if not isinstance(values, list) or len(values) > 50:
+            raise ValueError(f"{key} must be a list of at most 50 paths.")
+        paths = []
+        for value in values:
+            path = str(value).strip()
+            if not path:
+                continue
+            if len(path) > 1024:
+                raise ValueError("ToolGate allowlist paths may not exceed 1024 characters.")
+            if path not in paths:
+                paths.append(path)
+        normalized[key] = paths
+    return normalized
+
+
+def _load_local_tool_details() -> dict[str, dict[str, dict[str, list[str]]]]:
+    try:
+        if not _LOCAL_OVERRIDES_PATH.exists():
+            return {}
+        payload = json.loads(_LOCAL_OVERRIDES_PATH.read_text(encoding="utf-8"))
+        scopes = payload.get("detail_scopes", {}) if isinstance(payload, dict) else {}
+        if not isinstance(scopes, dict):
+            return {}
+        result = {}
+        for scope, tools in scopes.items():
+            if not isinstance(tools, dict):
+                continue
+            result[str(scope)] = {
+                str(tool): normalize_tool_detail(detail)
+                for tool, detail in tools.items()
+                if isinstance(detail, dict)
+            }
+        return result
+    except Exception as exc:
+        log.warning("[ToolGate] Failed to load detailed tool controls: %s", exc)
+        return {}
+
+
+_local_detail_scopes: dict[str, dict[str, dict[str, list[str]]]] = _load_local_tool_details()
+
+
 def _persist_local_policy() -> None:
     _LOCAL_OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
     temp_path = _LOCAL_OVERRIDES_PATH.with_suffix(".tmp")
     temp_path.write_text(
         json.dumps(
             {
-                "version": 3,
+                "version": 4,
                 "scopes": _local_override_scopes,
                 "advanced_scopes": _local_advanced_scopes,
+                "detail_scopes": _local_detail_scopes,
             },
             indent=2,
         ),
@@ -202,6 +266,39 @@ def get_local_advanced_controls(scope: str = _DEFAULT_LOCAL_SCOPE) -> dict[str, 
     """Return advanced content rules for one effective tier/policy."""
     config = _local_advanced_scopes.get(scope)
     return normalize_advanced_controls(config)
+
+
+def set_local_tool_detail(
+    tool_name: str,
+    config: dict[str, Any],
+    scope: str = _DEFAULT_LOCAL_SCOPE,
+) -> None:
+    """Persist detailed controls for one tool in one effective policy scope."""
+    if tool_name not in TOOL_RISK_REGISTRY:
+        raise ValueError(f"Unknown ToolGate tool '{tool_name}'.")
+    normalized = normalize_tool_detail(config)
+    global _local_detail_scopes
+    next_scopes = {
+        key: {tool: dict(detail) for tool, detail in tools.items()}
+        for key, tools in _local_detail_scopes.items()
+    }
+    details = next_scopes.setdefault(scope, {})
+    if normalized["allowed_internal_paths"] or normalized["allowed_network_paths"]:
+        details[tool_name] = normalized
+    else:
+        details.pop(tool_name, None)
+    if not details:
+        next_scopes.pop(scope, None)
+    _local_detail_scopes = next_scopes
+    _persist_local_policy()
+
+
+def get_local_tool_detail(
+    tool_name: str,
+    scope: str = _DEFAULT_LOCAL_SCOPE,
+) -> dict[str, list[str]]:
+    """Return normalized detailed controls for one tool and policy scope."""
+    return normalize_tool_detail(_local_detail_scopes.get(scope, {}).get(tool_name))
 
 
 def get_toolgate_scope(posture: dict[str, Any]) -> dict[str, str | None]:
@@ -362,6 +459,15 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     "file_index_profile":     {"risk": "medium",   "category": "files"},
     "file_index":             {"risk": "medium",   "category": "files"},
     "file_list_formats":      {"risk": "low",      "category": "files"},
+    # Persistent agent workspace
+    "workspace_info":         {"risk": "low",      "category": "workspace"},
+    "workspace_list":         {"risk": "low",      "category": "workspace"},
+    "workspace_read":         {"risk": "low",      "category": "workspace"},
+    "workspace_read_image":   {"risk": "low",      "category": "workspace"},
+    "workspace_read_pdf":     {"risk": "low",      "category": "workspace"},
+    "workspace_write":        {"risk": "medium",   "category": "workspace"},
+    "workspace_mkdir":        {"risk": "medium",   "category": "workspace"},
+    "workspace_delete":       {"risk": "critical", "category": "workspace"},
     # Comms — read
     "fetch_inbox":            {"risk": "low",      "category": "comms"},
     "read_email":             {"risk": "low",      "category": "comms"},
@@ -655,6 +761,57 @@ def evaluate_advanced_controls(
     return action, f"Advanced content rule matched ({labels}): {action.value}", flags
 
 
+def tool_supports_path_controls(tool_name: str) -> bool:
+    """Return whether ToolGate can enforce filesystem roots for this tool."""
+    return get_tool_category(tool_name) in {"files", "workspace"}
+
+
+def get_tool_allowed_roots(
+    tool_name: str,
+    local_scope: str = _DEFAULT_LOCAL_SCOPE,
+) -> list[Path]:
+    """Resolve configured internal and network roots without requiring them to exist."""
+    from shogun.config import settings
+
+    detail = get_local_tool_detail(tool_name, local_scope)
+    roots: list[Path] = []
+    for value in detail["allowed_internal_paths"]:
+        candidate = Path(value)
+        if not candidate.is_absolute():
+            candidate = settings.workspace_path / candidate
+        roots.append(candidate.resolve())
+    for value in detail["allowed_network_paths"]:
+        roots.append(Path(value).resolve())
+    return roots
+
+
+def evaluate_tool_path_controls(
+    tool_name: str,
+    args: dict[str, Any],
+    local_scope: str = _DEFAULT_LOCAL_SCOPE,
+) -> tuple[bool, list[str]]:
+    """Require path arguments to stay inside a tool's configured allowlist."""
+    if not tool_supports_path_controls(tool_name):
+        return True, []
+    roots = get_tool_allowed_roots(tool_name, local_scope)
+    if not roots:
+        return True, []
+
+    from shogun.config import settings
+
+    flags = []
+    for key, raw_value in args.items():
+        if key not in _PATH_ARGUMENT_KEYS or not isinstance(raw_value, str) or not raw_value.strip():
+            continue
+        candidate = Path(raw_value.strip())
+        if not candidate.is_absolute():
+            candidate = settings.workspace_path / candidate
+        candidate = candidate.resolve()
+        if not any(candidate == root or root in candidate.parents for root in roots):
+            flags.append(f"path_not_allowlisted:$.{key}")
+    return not flags, flags
+
+
 # ── Campaign Preset Override Resolution ──────────────────────────────
 
 def _resolve_campaign_override(
@@ -762,6 +919,16 @@ async def check_tool_access(
             reason=explicit_reason or "Explicit override: block",
             risk_level=risk,
             tool_name=tool_name,
+        )
+
+    path_allowed, path_flags = evaluate_tool_path_controls(tool_name, args, local_scope)
+    if not path_allowed:
+        return GateDecision(
+            action=GateAction.BLOCK,
+            reason="A file path is outside this tool's configured internal/network allowlist.",
+            risk_level=RiskLevel.CRITICAL,
+            tool_name=tool_name,
+            parameter_flags=path_flags,
         )
 
     # ── 1.5. Gensui central governance override ──

@@ -247,6 +247,8 @@ async def check_workspace_access() -> str:
 
     workspace_dir = settings.workspace_path
     workspace_dir.mkdir(parents=True, exist_ok=True)
+    (workspace_dir / "input").mkdir(parents=True, exist_ok=True)
+    (workspace_dir / "output").mkdir(parents=True, exist_ok=True)
     return str(workspace_dir.resolve())
 
 

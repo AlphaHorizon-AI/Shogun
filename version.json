@@ -1,8 +1,8 @@
 {
-  "version": "1.47.43",
+  "version": "1.47.44",
   "name": "Shogun OS",
-  "build": 194,
+  "build": 195,
   "channel": "stable",
-  "released": "2026-07-31T06:59:41Z",
-  "changelog": "Retain all generated AgentFlow output files when deleting run history."
+  "released": "2026-07-31T07:28:20Z",
+  "changelog": "Add detailed ToolGate controls, guaranteed workspace folders, and resilient frontend updates."
 }
