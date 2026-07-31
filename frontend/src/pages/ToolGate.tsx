@@ -74,6 +74,14 @@ interface FilesystemFolder {
   delete: boolean;
 }
 
+interface ToolTheme {
+  id: string;
+  label: string;
+  description: string;
+  categories: string[];
+  matches?: (tool: ToolRecord) => boolean;
+}
+
 interface ToolGateData {
   authority: {
     mode: 'standalone' | 'gensui';
@@ -144,6 +152,76 @@ const COMMS_LABELS: Record<string, string> = {
   allow_manage_cron: 'Manage scheduled jobs',
 };
 
+const TOOL_THEMES: ToolTheme[] = [
+  {
+    id: 'files',
+    label: 'Files & documents',
+    description: 'Workspace files, format handling, spreadsheets, documents, and presentations.',
+    categories: ['files', 'workspace', 'office'],
+    matches: tool => (
+      ['files', 'workspace'].includes(tool.category)
+      || (tool.category === 'office' && !tool.name.startsWith('office_outlook_'))
+    ),
+  },
+  {
+    id: 'communications',
+    label: 'Communication & schedules',
+    description: 'Email, messaging, calendars, scheduled jobs, and Outlook actions.',
+    categories: ['comms'],
+    matches: tool => tool.category === 'comms' || tool.name.startsWith('office_outlook_'),
+  },
+  {
+    id: 'web-desktop',
+    label: 'Web & desktop',
+    description: 'Browser navigation, screenshots, and direct desktop interaction.',
+    categories: ['browser', 'desktop'],
+  },
+  {
+    id: 'automation',
+    label: 'Workflows & agents',
+    description: 'AgentFlow, Flow Stack, agent spawning, editing, execution, and deletion.',
+    categories: ['workflow', 'agents'],
+  },
+  {
+    id: 'knowledge',
+    label: 'Knowledge & skills',
+    description: 'Memory, reminders, IDE knowledge, and skill lifecycle operations.',
+    categories: ['memory', 'ide', 'skills'],
+  },
+  {
+    id: 'integrations',
+    label: 'External integrations',
+    description: 'MCP tools and resources exposed by connected services.',
+    categories: ['mcp'],
+  },
+  {
+    id: 'system',
+    label: 'System & diagnostics',
+    description: 'Model configuration, system inspection, and diagnostic utilities.',
+    categories: ['system', 'debug'],
+  },
+];
+
+const OVERRIDE_OPTIONS: Array<{ value: 'default' | GateAction; label: string }> = [
+  { value: 'default', label: 'Default' },
+  { value: 'allow', label: 'Allow' },
+  { value: 'confirm', label: 'Ask first' },
+  { value: 'block', label: 'Block' },
+];
+
+function themeForTool(tool: ToolRecord) {
+  return TOOL_THEMES.find(theme => (
+    theme.matches ? theme.matches(tool) : theme.categories.includes(tool.category)
+  ));
+}
+
+function formatToolName(name: string) {
+  return name
+    .replace(/^office_/, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
 const DEFAULT_POLICY_PERMISSIONS: Record<string, Record<string, unknown>> = {
   filesystem: { mode: 'scoped', allowed_paths: [], allow_home_access: false, allow_arbitrary_paths: false },
   network: { mode: 'allowlist', allowed_domains: [], allow_arbitrary_requests: false },
@@ -204,6 +282,7 @@ export function ToolGate() {
   const [builtInPolicies, setBuiltInPolicies] = useState<SecurityPolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingTool, setSavingTool] = useState<string | null>(null);
+  const [savingTheme, setSavingTheme] = useState<string | null>(null);
   const [expandedTool, setExpandedTool] = useState<string | null>(null);
   const [filesystemDraft, setFilesystemDraft] = useState<{ enabled: boolean; folders: FilesystemFolder[] }>({
     enabled: false,
@@ -212,6 +291,7 @@ export function ToolGate() {
   const [savingFilesystem, setSavingFilesystem] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [search, setSearch] = useState('');
+  const [themeFilter, setThemeFilter] = useState('all');
   const [category, setCategory] = useState('all');
   const [actionFilter, setActionFilter] = useState('all');
   const [simulationTool, setSimulationTool] = useState('');
@@ -301,11 +381,22 @@ export function ToolGate() {
   const filteredTools = useMemo(() => {
     const query = search.trim().toLowerCase();
     return (data?.tools || []).filter(tool => (
-      (!query || tool.name.toLowerCase().includes(query) || tool.category.toLowerCase().includes(query))
-      && (category === 'all' || tool.category === category)
+      (!query
+        || tool.name.toLowerCase().includes(query)
+        || tool.category.toLowerCase().includes(query)
+        || themeForTool(tool)?.label.toLowerCase().includes(query))
+      && (themeFilter === 'all' || themeForTool(tool)?.id === themeFilter)
       && (actionFilter === 'all' || tool.effective_action === actionFilter)
     ));
-  }, [data, search, category, actionFilter]);
+  }, [data, search, themeFilter, actionFilter]);
+
+  const themedTools = useMemo(() => TOOL_THEMES
+    .map(theme => ({
+      ...theme,
+      tools: filteredTools.filter(tool => themeForTool(tool)?.id === theme.id),
+      allTools: (data?.tools || []).filter(tool => themeForTool(tool)?.id === theme.id),
+    }))
+    .filter(theme => theme.tools.length > 0), [data, filteredTools]);
 
   const counts = useMemo(() => ({
     allow: data?.tools.filter(tool => tool.effective_action === 'allow').length || 0,
@@ -328,6 +419,30 @@ export function ToolGate() {
       setMessage({ type: 'error', text: errorMessage(error, 'ToolGate rule could not be saved.') });
     } finally {
       setSavingTool(null);
+    }
+  };
+
+  const changeThemeOverride = async (themeId: string, tools: ToolRecord[], value: string) => {
+    if (!data?.authority.editable) return;
+    setSavingTheme(themeId);
+    setMessage(null);
+    const next = { ...data.local_overrides };
+    tools.forEach(tool => {
+      if (value === 'default') delete next[tool.name];
+      else next[tool.name] = value as GateAction;
+    });
+    try {
+      await axios.put('/api/v1/security/toolgate/overrides', { overrides: next });
+      const theme = TOOL_THEMES.find(item => item.id === themeId);
+      setMessage({
+        type: 'success',
+        text: `${theme?.label || 'Theme'} now uses ${value === 'default' ? 'policy defaults' : value === 'confirm' ? 'ask first' : value}.`,
+      });
+      await fetchData();
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: errorMessage(error, 'Theme permissions could not be saved.') });
+    } finally {
+      setSavingTheme(null);
     }
   };
 
@@ -1179,6 +1294,171 @@ export function ToolGate() {
       </div>
 
       <div className="shogun-card space-y-4">
+        <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-widest text-shogun-text">Tool themes</h2>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-shogun-subdued">
+              Set one safe behavior for a complete theme, then make individual exceptions only where needed.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <label className="relative">
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-shogun-subdued" />
+              <input
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                placeholder="Search tools..."
+                className="w-52 rounded-lg border border-shogun-border bg-shogun-bg py-2 pl-9 pr-3 text-xs text-shogun-text outline-none focus:border-cyan-400"
+              />
+            </label>
+            <select
+              value={themeFilter}
+              onChange={event => setThemeFilter(event.target.value)}
+              className="rounded-lg border border-shogun-border bg-shogun-bg px-3 py-2 text-xs text-shogun-text"
+            >
+              <option value="all">All themes</option>
+              {TOOL_THEMES.map(theme => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
+            </select>
+            <select
+              value={actionFilter}
+              onChange={event => setActionFilter(event.target.value)}
+              className="rounded-lg border border-shogun-border bg-shogun-bg px-3 py-2 text-xs text-shogun-text"
+            >
+              <option value="all">All decisions</option>
+              <option value="allow">Allow</option>
+              <option value="confirm">Ask first</option>
+              <option value="block">Block</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {themedTools.map(theme => {
+            const localValues = theme.allTools.map(tool => tool.local_override || 'default');
+            const sharedValue = localValues.every(value => value === localValues[0]) ? localValues[0] : 'mixed';
+            return (
+              <div key={theme.id} className="rounded-xl border border-cyan-400/20 bg-cyan-500/[0.04] p-4">
+                <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-cyan-300" />
+                      <p className="text-xs font-bold uppercase tracking-widest text-shogun-text">{theme.label}</p>
+                      <span className="rounded border border-cyan-400/20 bg-cyan-500/10 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-cyan-200">
+                        One shared setup
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-shogun-subdued">
+                      {theme.description} {theme.allTools.filter(tool => tool.local_override).length} of {theme.allTools.length} tools use a custom choice.
+                    </p>
+                  </div>
+                  <label className="flex shrink-0 items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-shogun-subdued">
+                    Set whole theme
+                    <select
+                      value={sharedValue}
+                      disabled={!data.authority.editable || savingTheme === theme.id}
+                      onChange={event => changeThemeOverride(theme.id, theme.allTools, event.target.value)}
+                      className="min-w-32 rounded-lg border border-cyan-400/25 bg-shogun-bg px-3 py-2 text-xs font-bold normal-case tracking-normal text-cyan-100 disabled:opacity-45"
+                    >
+                      {sharedValue === 'mixed' && <option value="mixed" disabled>Mixed settings</option>}
+                      {OVERRIDE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                    {savingTheme === theme.id && <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />}
+                  </label>
+                </div>
+
+                <div className="mt-4 overflow-x-auto rounded-lg border border-shogun-border/70">
+                  <div className="min-w-[900px]">
+                    <div className="grid grid-cols-[44px_minmax(260px,1fr)_90px_110px_repeat(4,92px)] bg-[#080b12] px-3 py-2 text-center text-[9px] font-bold uppercase tracking-widest text-shogun-subdued">
+                      <span />
+                      <span className="text-left">Capability</span>
+                      <span>Risk</span>
+                      <span>Effective</span>
+                      {OVERRIDE_OPTIONS.map(option => <span key={option.value}>{option.label}</span>)}
+                    </div>
+                    {theme.tools.map(tool => {
+                      const expanded = expandedTool === tool.name;
+                      const toolRules = advancedDraft.rules.filter(rule => rule.tools.length === 0 || rule.tools.includes(tool.name));
+                      return (
+                        <Fragment key={tool.name}>
+                          <div className="grid grid-cols-[44px_minmax(260px,1fr)_90px_110px_repeat(4,92px)] items-center border-t border-shogun-border/60 px-3 py-2.5">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedTool(expanded ? null : tool.name)}
+                              className="mx-auto rounded-md border border-shogun-border p-1.5 text-shogun-subdued transition-colors hover:border-cyan-400/50 hover:text-cyan-200"
+                              aria-expanded={expanded}
+                              aria-label={`${expanded ? 'Collapse' : 'Expand'} controls for ${tool.name}`}
+                            >
+                              {expanded ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                            </button>
+                            <div className="px-2">
+                              <p className="text-xs font-semibold text-shogun-text">{formatToolName(tool.name)}</p>
+                              <p className="mt-0.5 font-mono text-[9px] text-shogun-subdued">{tool.name}</p>
+                            </div>
+                            <span className={cn('text-center text-[10px] font-bold uppercase tracking-wider', RISK_STYLES[tool.risk])}>{tool.risk}</span>
+                            <div className="flex justify-center"><ActionBadge action={tool.effective_action} /></div>
+                            {OVERRIDE_OPTIONS.map(option => (
+                              <label key={option.value} className="flex justify-center">
+                                <input
+                                  type="radio"
+                                  name={`tool-permission-${tool.name}`}
+                                  checked={(tool.local_override || 'default') === option.value}
+                                  disabled={!data.authority.editable || savingTool === tool.name || savingTheme === theme.id}
+                                  onChange={() => changeOverride(tool.name, option.value)}
+                                  className="h-4 w-4 accent-cyan-400"
+                                  aria-label={`${option.label} for ${tool.name}`}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                          {expanded && (
+                            <div className="border-t border-shogun-border/60 bg-[#080b12]/70 px-6 py-5">
+                              <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
+                                <div>
+                                  <p className="text-xs font-bold uppercase tracking-widest text-shogun-text">
+                                    Detailed controls · {formatToolName(tool.name)}
+                                  </p>
+                                  <p className="mt-1 max-w-3xl text-xs leading-relaxed text-shogun-subdued">{tool.reason}</p>
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <span className="rounded border border-shogun-border px-2 py-1 text-[9px] uppercase text-shogun-subdued">
+                                      Policy default: {tool.default_action}
+                                    </span>
+                                    {tool.gensui_override && <span className="rounded bg-indigo-500/10 px-2 py-1 text-[9px] text-indigo-300">Gensui: {tool.gensui_override}</span>}
+                                    {tool.campaign_override && <span className="rounded bg-orange-500/10 px-2 py-1 text-[9px] text-orange-300">Campaign: {tool.campaign_override}</span>}
+                                    {tool.local_override && <span className="rounded bg-cyan-500/10 px-2 py-1 text-[9px] text-cyan-300">Local: {tool.local_override}</span>}
+                                  </div>
+                                  <p className="mt-3 text-[10px] text-shogun-subdued">
+                                    {toolRules.length
+                                      ? `${toolRules.length} content restriction${toolRules.length === 1 ? '' : 's'} currently apply.`
+                                      : 'No content restrictions currently apply.'}
+                                  </p>
+                                </div>
+                                {data.advanced_controls.editable && (
+                                  <button
+                                    type="button"
+                                    onClick={() => addAdvancedRule(tool.name)}
+                                    className="flex shrink-0 items-center gap-2 rounded-lg border border-orange-400/25 px-3 py-2 text-xs font-bold text-orange-300 hover:bg-orange-500/10"
+                                  >
+                                    <Plus className="h-3.5 w-3.5" /> Add argument restriction
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {themedTools.length === 0 && (
+            <p className="py-10 text-center text-sm text-shogun-subdued">No tools match the current filters.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="hidden">
         <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-widest text-shogun-text">Effective tool policy</h2>

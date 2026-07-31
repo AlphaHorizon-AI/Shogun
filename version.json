@@ -1,8 +1,8 @@
 {
-  "version": "1.47.45",
+  "version": "1.47.46",
   "name": "Shogun OS",
-  "build": 196,
+  "build": 197,
   "channel": "stable",
-  "released": "2026-07-31T07:54:58Z",
-  "changelog": "Unify advanced ToolGate file access with per-folder read, write, create, and delete permissions."
+  "released": "2026-07-31T08:14:08Z",
+  "changelog": "Organize ToolGate permissions into user-friendly themes with shared and per-tool controls."
 }
