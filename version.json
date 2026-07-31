@@ -1,8 +1,8 @@
 {
-  "version": "1.47.42",
+  "version": "1.47.43",
   "name": "Shogun OS",
-  "build": 193,
+  "build": 194,
   "channel": "stable",
-  "released": "2026-07-31T06:51:54Z",
-  "changelog": "Version scheduled AgentFlow file outputs by timestamp and run ID to prevent overwriting earlier runs."
+  "released": "2026-07-31T06:59:41Z",
+  "changelog": "Retain all generated AgentFlow output files when deleting run history."
 }

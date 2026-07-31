@@ -1241,8 +1241,7 @@ async def delete_flow_run(
     run_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a historical run and its generated workspace artifacts."""
-    from shogun.config import settings
+    """Delete a historical run while retaining every generated artifact."""
     from shogun.db.models.agent_flow_run import AgentFlowRun
 
     result = await db.execute(
@@ -1254,24 +1253,15 @@ async def delete_flow_run(
     if run.status in {"pending", "running"}:
         raise HTTPException(status_code=409, detail="Active runs cannot be deleted")
 
-    root = settings.workspace_path.resolve()
-    deleted_files: list[str] = []
-    for artifact in _run_artifact_files(run):
-        if not artifact.is_file():
-            continue
-        try:
-            relative = str(artifact.relative_to(root)).replace("\\", "/")
-        except ValueError:
-            continue
-        artifact.unlink()
-        deleted_files.append(relative)
-
     await db.delete(run)
     await db.commit()
     return ApiResponse(data={
         "deleted": True,
         "run_id": str(run_id),
-        "deleted_files": deleted_files,
+        # Preserve the legacy response field for client compatibility while
+        # enforcing that history cleanup never removes workspace output.
+        "deleted_files": [],
+        "artifacts_retained": True,
     })
 
 

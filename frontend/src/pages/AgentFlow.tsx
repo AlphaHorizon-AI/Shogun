@@ -3548,7 +3548,7 @@ export function AgentFlowCanvas({
   }, [fetchHistory, showHistory]);
 
   const deleteRun = useCallback(async (id: string) => {
-    if (!window.confirm('Delete this run and its generated Output file?')) return;
+    if (!window.confirm('Delete this run from history? Generated output files will be kept.')) return;
     setDeletingRunId(id);
     try {
       await axios.delete(`/api/v1/agent-flows/runs/${id}`);
@@ -4015,7 +4015,7 @@ export function AgentFlowCanvas({
                       )}
                       <button
                         type="button"
-                        title="Delete run and Output file"
+                        title="Delete run from history (output files are kept)"
                         disabled={deletingRunId === run.id || run.status === 'running' || run.status === 'pending'}
                         onClick={(e) => {
                           e.stopPropagation();
