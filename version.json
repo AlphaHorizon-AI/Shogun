@@ -1,8 +1,8 @@
 {
-  "version": "1.47.41",
+  "version": "1.47.42",
   "name": "Shogun OS",
-  "build": 192,
+  "build": 193,
   "channel": "stable",
-  "released": "2026-07-31T06:42:25Z",
-  "changelog": "Reset active AgentFlow node highlighting when a running flow is cancelled."
+  "released": "2026-07-31T06:51:54Z",
+  "changelog": "Version scheduled AgentFlow file outputs by timestamp and run ID to prevent overwriting earlier runs."
 }

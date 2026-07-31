@@ -19,10 +19,11 @@ import logging
 import re
 import time
 import uuid
-from collections.abc import Awaitable, Callable
 from collections import defaultdict, deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -314,6 +315,7 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                 raise LookupError(f"Flow run {run_id} was not visible after launch")
             run_input = dict(run.input_payload or {})
             governance_context = dict(run.governance_context or {})
+            run_trigger_type = str(run.trigger_type or "manual")
             run.status = "running"
             run.started_at = datetime.now(timezone.utc)
 
@@ -385,6 +387,7 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                         run_input=run_input,
                         governance_context=governance_context,
                         flow_name=flow.name,
+                        trigger_type=run_trigger_type,
                     )
                 )
 
@@ -482,6 +485,7 @@ async def _execute_single_node(
     run_input: dict[str, Any] | None = None,
     governance_context: dict[str, Any] | None = None,
     flow_name: str = "Agent Flow",
+    trigger_type: str = "manual",
 ) -> Any:
     """Execute a single node and return its output."""
     node_id = str(node.id)
@@ -612,9 +616,9 @@ async def _execute_single_node(
         elif node_type == "channel_send":
             result = await _exec_channel_send(config, context_str)
         elif node_type == "workspace":
-            result = await _exec_workspace(config, context_str)
+            result = await _exec_workspace(config, context_str, run_id, trigger_type)
         elif node_type == "office":
-            result = await _exec_office(config, context_str, run_id, node_id)
+            result = await _exec_office(config, context_str, run_id, node_id, trigger_type)
         elif node_type == "subflow":
             result = await _exec_subflow(
                 run_id,
@@ -2180,13 +2184,31 @@ async def _exec_email_send(config: dict, context_str: str) -> str:
     return f"Email sent to {to_address}\nSubject: {subject}\nStatus: {status}"
 
 
-async def _exec_workspace(config: dict, context_str: str) -> str:
+def _scheduled_output_path(
+    target: Path,
+    trigger_type: str,
+    run_id: uuid.UUID | None,
+) -> Path:
+    """Give each scheduled run its own timestamped, traceable output file."""
+    if trigger_type != "scheduled" or not run_id:
+        return target
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    version = f"v{timestamp}_{str(run_id)[:8]}"
+    return target.with_name(f"{target.stem}_{version}{target.suffix}")
+
+
+async def _exec_workspace(
+    config: dict,
+    context_str: str,
+    run_id: uuid.UUID | None = None,
+    trigger_type: str = "manual",
+) -> str:
     """Workspace node — performs file operations inside the agent workspace.
 
     Actions: read_file, write_file, list_files, mkdir, delete, copy
     """
-    from pathlib import Path
     import shutil
+
     from shogun.config import settings
     from shogun.services.posture_guard import get_posture_permissions
 
@@ -2232,7 +2254,7 @@ async def _exec_workspace(config: dict, context_str: str) -> str:
         elif action == "write_file":
             if not file_path:
                 return "[ERROR] No path specified for write_file"
-            target = _safe(file_path)
+            target = _scheduled_output_path(_safe(file_path), trigger_type, run_id)
             target.parent.mkdir(parents=True, exist_ok=True)
             # Content: template with {{context}} or raw predecessor output
             if content_template:
@@ -2240,8 +2262,9 @@ async def _exec_workspace(config: dict, context_str: str) -> str:
             else:
                 body = context_str or ""
             target.write_text(body, encoding="utf-8")
-            log.info("[Flow/Workspace] write_file: %s (%d chars)", file_path, len(body))
-            return f"Written {len(body)} characters to: {file_path}"
+            saved_path = str(target.relative_to(root)).replace("\\", "/")
+            log.info("[Flow/Workspace] write_file: %s (%d chars)", saved_path, len(body))
+            return f"Written {len(body)} characters to: {saved_path}"
 
         elif action == "list_files":
             target = _safe(file_path) if file_path else root
@@ -2332,13 +2355,13 @@ async def _exec_office(
     context_str: str,
     run_id: uuid.UUID | None = None,
     node_id: str | None = None,
+    trigger_type: str = "manual",
 ) -> str:
     """Files node — reads PDFs and performs Office document operations.
 
     Actions: pdf_read, excel_read, excel_write, excel_create, word_read, word_replace,
              word_create, pptx_read, pptx_replace
     """
-    from pathlib import Path
     from shogun.config import settings
     from shogun.office.config import load_office_config
 
@@ -2372,6 +2395,7 @@ async def _exec_office(
             if not filename.lower().endswith(suffix):
                 filename = f"{filename}{suffix}"
             target = target / filename
+        target = _scheduled_output_path(target, trigger_type, run_id)
         return str(target)
 
     async def _record_output(abs_path: str) -> str:
@@ -2478,7 +2502,7 @@ async def _exec_office(
             abs_out = (
                 _resolve_output(output_path, ".xlsx", Path(abs_in).name)
                 if output_path
-                else abs_in
+                else str(_scheduled_output_path(Path(abs_in), trigger_type, run_id))
             )
             handle = open_workbook(abs_in)
             try:
@@ -2546,7 +2570,7 @@ async def _exec_office(
             abs_out = (
                 _resolve_output(output_path, ".docx", Path(abs_in).name)
                 if output_path
-                else abs_in
+                else str(_scheduled_output_path(Path(abs_in), trigger_type, run_id))
             )
             handle = open_document(abs_in)
             try:
@@ -2602,7 +2626,7 @@ async def _exec_office(
             abs_out = (
                 _resolve_output(output_path, ".pptx", Path(abs_in).name)
                 if output_path
-                else abs_in
+                else str(_scheduled_output_path(Path(abs_in), trigger_type, run_id))
             )
             handle = open_presentation(abs_in)
             try:

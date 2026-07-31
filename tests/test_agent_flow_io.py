@@ -278,6 +278,63 @@ async def test_excel_create_combines_destination_folder_and_filename(tmp_path, m
 
 
 @pytest.mark.asyncio
+async def test_scheduled_excel_create_versions_each_run_output(tmp_path, monkeypatch):
+    from shogun.office import config as office_config
+
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    monkeypatch.setattr(office_config, "load_office_config", lambda: SimpleNamespace(enabled=True))
+    run_ids = [
+        uuid.UUID("12345678-0000-0000-0000-000000000001"),
+        uuid.UUID("87654321-0000-0000-0000-000000000002"),
+    ]
+
+    results = [
+        await flow_engine._exec_office(
+            {
+                "action": "excel_create",
+                "output_path": "Output/result.xlsx",
+                "sheet_name": "Mapped Data",
+            },
+            f"Run\tValue\n{index}\tSaved",
+            run_id=run_id,
+            trigger_type="scheduled",
+        )
+        for index, run_id in enumerate(run_ids, 1)
+    ]
+
+    outputs = sorted((tmp_path / "Output").glob("result_v*.xlsx"))
+    assert len(outputs) == 2
+    assert any(path.name.endswith("_12345678.xlsx") for path in outputs)
+    assert any(path.name.endswith("_87654321.xlsx") for path in outputs)
+    assert not (tmp_path / "Output" / "result.xlsx").exists()
+    assert all(str(path.relative_to(tmp_path)).replace("\\", "/") in "\n".join(results) for path in outputs)
+
+
+@pytest.mark.asyncio
+async def test_scheduled_workspace_write_versions_each_run_output(tmp_path, monkeypatch):
+    from shogun.services import posture_guard
+
+    async def allow_workspace():
+        return {"workspace_enabled": True}
+
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    monkeypatch.setattr(posture_guard, "get_posture_permissions", allow_workspace)
+
+    result = await flow_engine._exec_workspace(
+        {"action": "write_file", "path": "Output/summary.txt"},
+        "scheduled content",
+        run_id=uuid.UUID("abcdef12-0000-0000-0000-000000000003"),
+        trigger_type="scheduled",
+    )
+
+    outputs = list((tmp_path / "Output").glob("summary_v*_abcdef12.txt"))
+    assert len(outputs) == 1
+    assert outputs[0].read_text(encoding="utf-8") == "scheduled content"
+    assert "Output/summary_v" in result
+    assert not (tmp_path / "Output" / "summary.txt").exists()
+
+
+@pytest.mark.asyncio
 async def test_excel_create_converts_markdown_table_to_columns(tmp_path, monkeypatch):
     import openpyxl
 
