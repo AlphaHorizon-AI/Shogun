@@ -2666,23 +2666,45 @@ async def execute_native_tool(
                 registry,
             )
             from shogun.services.posture_guard import get_posture_permissions
-            from shogun.services.tool_gate import get_tool_allowed_roots, get_toolgate_scope
+            from shogun.services.tool_gate import (
+                evaluate_tool_path_controls,
+                get_local_filesystem_controls,
+                get_tool_allowed_roots,
+                get_toolgate_scope,
+            )
 
             if name == "file_list_formats":
                 return json.dumps({"status": "success", "formats": registry.formats()}, default=str)
             try:
                 posture = await get_posture_permissions()
                 scope = get_toolgate_scope(posture)["key"]
-                allowed_roots = [
-                    *FileSafetyGate().allowed_roots,
-                    *get_tool_allowed_roots(name, scope),
-                ]
+                filesystem = get_local_filesystem_controls(scope)
+                configured_roots = get_tool_allowed_roots(name, scope)
+                allowed_roots = (
+                    configured_roots
+                    if filesystem["enabled"]
+                    else [*FileSafetyGate().allowed_roots, *configured_roots]
+                )
                 service = FileFormatService(db_session, allowed_roots=allowed_roots)
                 if name == "file_compare":
                     result = await service.compare(str(args.get("left_path") or ""), str(args.get("right_path") or ""))
                     await db_session.commit()
                     return json.dumps(result, default=str, ensure_ascii=False)
                 file_id = uuid.UUID(str(args["file_id"])) if args.get("file_id") else None
+                if file_id and filesystem["enabled"]:
+                    from shogun.db.models.file_artifact import FileArtifact
+
+                    artifact = await db_session.get(FileArtifact, file_id)
+                    allowed, _ = evaluate_tool_path_controls(
+                        name,
+                        {**args, "path": artifact.path if artifact else ""},
+                        scope,
+                    )
+                    if not allowed:
+                        raise FileFormatError(
+                            "The shared filesystem policy denied this file operation.",
+                            "policy_blocked",
+                        )
                 reference = {"path": args.get("path"), "file_id": file_id}
                 if not reference["path"] and not file_id:
                     raise FileFormatError("path or file_id is required.", "invalid_request")

@@ -807,6 +807,11 @@ class ToolGateDetailRequest(BaseModel):
     allowed_network_paths: list[str] = Field(default_factory=list)
 
 
+class ToolGateFilesystemRequest(BaseModel):
+    enabled: bool = False
+    folders: list[dict] = Field(default_factory=list)
+
+
 class ToolGateSimulateRequest(BaseModel):
     tool_name: str
     args: dict = {}
@@ -869,10 +874,9 @@ async def get_toolgate_control():
         get_gensui_advanced_controls,
         get_gensui_overrides,
         get_local_advanced_controls,
+        get_local_filesystem_controls,
         get_local_overrides,
-        get_local_tool_detail,
         resolve_explicit_overrides,
-        tool_supports_path_controls,
     )
     from shogun.services.toolgate_confirm import list_pending_confirmations
 
@@ -914,8 +918,6 @@ async def get_toolgate_control():
                 "gensui_override": gensui_overrides.get(tool_name),
                 "effective_action": decision.action.value,
                 "reason": decision.reason,
-                "supports_path_controls": tool_supports_path_controls(tool_name),
-                "detail": get_local_tool_detail(tool_name, scope["key"]),
             }
         )
 
@@ -944,6 +946,11 @@ async def get_toolgate_control():
             "local_overrides": local_overrides,
             "advanced_controls": {
                 **advanced_controls,
+                "editable": bool(authority["editable"]),
+                "source": "gensui" if authority["mode"] == "gensui" else "local",
+            },
+            "filesystem_controls": {
+                **get_local_filesystem_controls(scope["key"]),
                 "editable": bool(authority["editable"]),
                 "source": "gensui" if authority["mode"] == "gensui" else "local",
             },
@@ -1012,6 +1019,30 @@ async def update_toolgate_tool_detail(tool_name: str, body: ToolGateDetailReques
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     saved = get_local_tool_detail(tool_name, scope["key"])
     return ApiResponse(data={"scope": scope, "tool_name": tool_name, "detail": saved})
+
+
+@router.put("/toolgate/filesystem", response_model=ApiResponse)
+async def update_toolgate_filesystem_controls(body: ToolGateFilesystemRequest):
+    """Replace the shared folder and operation policy for this scope."""
+    authority = _toolgate_authority()
+    if not authority["editable"]:
+        raise HTTPException(
+            status_code=423,
+            detail="ToolGate is managed by Gensui. Edit filesystem controls in Gensui.",
+        )
+
+    from shogun.services.tool_gate import (
+        get_local_filesystem_controls,
+        set_local_filesystem_controls,
+    )
+
+    _, _, _, scope = await _active_toolgate_context()
+    try:
+        set_local_filesystem_controls(body.model_dump(), scope["key"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    saved = get_local_filesystem_controls(scope["key"])
+    return ApiResponse(data={"scope": scope, "filesystem_controls": saved})
 
 
 @router.put("/toolgate/advanced", response_model=ApiResponse)

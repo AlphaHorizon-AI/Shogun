@@ -6,6 +6,7 @@ import {
   CircleHelp,
   Clock3,
   FlaskConical,
+  FolderOpen,
   Loader2,
   LockKeyhole,
   Minus,
@@ -61,13 +62,16 @@ interface ToolRecord {
   gensui_override: GateAction | null;
   effective_action: GateAction;
   reason: string;
-  supports_path_controls: boolean;
-  detail: ToolDetail;
 }
 
-interface ToolDetail {
-  allowed_internal_paths: string[];
-  allowed_network_paths: string[];
+interface FilesystemFolder {
+  id: string;
+  path: string;
+  kind: 'internal' | 'network';
+  read: boolean;
+  write: boolean;
+  create: boolean;
+  delete: boolean;
 }
 
 interface ToolGateData {
@@ -100,6 +104,12 @@ interface ToolGateData {
   advanced_controls: {
     enabled: boolean;
     rules: AdvancedRule[];
+    editable: boolean;
+    source: 'local' | 'gensui';
+  };
+  filesystem_controls: {
+    enabled: boolean;
+    folders: FilesystemFolder[];
     editable: boolean;
     source: 'local' | 'gensui';
   };
@@ -195,8 +205,11 @@ export function ToolGate() {
   const [loading, setLoading] = useState(true);
   const [savingTool, setSavingTool] = useState<string | null>(null);
   const [expandedTool, setExpandedTool] = useState<string | null>(null);
-  const [detailDrafts, setDetailDrafts] = useState<Record<string, ToolDetail>>({});
-  const [savingDetail, setSavingDetail] = useState<string | null>(null);
+  const [filesystemDraft, setFilesystemDraft] = useState<{ enabled: boolean; folders: FilesystemFolder[] }>({
+    enabled: false,
+    folders: [],
+  });
+  const [savingFilesystem, setSavingFilesystem] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
@@ -250,6 +263,12 @@ export function ToolGate() {
           editable: payload.authority?.editable ?? true,
           source: payload.authority?.mode === 'gensui' ? 'gensui' : 'local',
         },
+        filesystem_controls: payload.filesystem_controls || {
+          enabled: false,
+          folders: [],
+          editable: payload.authority?.editable ?? true,
+          source: 'local',
+        },
       };
       setData(normalized);
       const policyRecords = (policiesResponse.data.data || []) as SecurityPolicy[];
@@ -260,12 +279,10 @@ export function ToolGate() {
         enabled: normalized.advanced_controls.enabled,
         rules: normalized.advanced_controls.rules || [],
       });
-      setDetailDrafts(Object.fromEntries(
-        normalized.tools.map(tool => [tool.name, tool.detail || {
-          allowed_internal_paths: [],
-          allowed_network_paths: [],
-        }]),
-      ));
+      setFilesystemDraft({
+        enabled: normalized.filesystem_controls.enabled,
+        folders: normalized.filesystem_controls.folders || [],
+      });
       setSimulationTool(current => current || payload.tools[0]?.name || '');
     } catch {
       setMessage({ type: 'error', text: 'ToolGate status could not be loaded.' });
@@ -386,30 +403,43 @@ export function ToolGate() {
     }));
   };
 
-  const updateToolDetail = (toolName: string, key: keyof ToolDetail, value: string) => {
-    setDetailDrafts(current => ({
+  const addFilesystemFolder = () => {
+    setFilesystemDraft(current => ({
       ...current,
-      [toolName]: {
-        ...(current[toolName] || { allowed_internal_paths: [], allowed_network_paths: [] }),
-        [key]: value.split(/\r?\n/).map(item => item.trim()).filter(Boolean),
-      },
+      enabled: true,
+      folders: [
+        ...current.folders,
+        {
+          id: `folder-${Date.now()}`,
+          path: '',
+          kind: 'internal',
+          read: true,
+          write: false,
+          create: false,
+          delete: false,
+        },
+      ],
     }));
   };
 
-  const saveToolDetail = async (toolName: string) => {
-    setSavingDetail(toolName);
+  const updateFilesystemFolder = (id: string, patch: Partial<FilesystemFolder>) => {
+    setFilesystemDraft(current => ({
+      ...current,
+      folders: current.folders.map(folder => folder.id === id ? { ...folder, ...patch } : folder),
+    }));
+  };
+
+  const saveFilesystemControls = async () => {
+    setSavingFilesystem(true);
     setMessage(null);
     try {
-      await axios.put(
-        `/api/v1/security/toolgate/tools/${encodeURIComponent(toolName)}/detail`,
-        detailDrafts[toolName] || { allowed_internal_paths: [], allowed_network_paths: [] },
-      );
-      setMessage({ type: 'success', text: `Detailed controls saved for ${toolName}.` });
+      await axios.put('/api/v1/security/toolgate/filesystem', filesystemDraft);
+      setMessage({ type: 'success', text: 'Shared filesystem controls saved.' });
       await fetchData();
     } catch (error: unknown) {
-      setMessage({ type: 'error', text: errorMessage(error, 'Detailed tool controls could not be saved.') });
+      setMessage({ type: 'error', text: errorMessage(error, 'Filesystem controls could not be saved.') });
     } finally {
-      setSavingDetail(null);
+      setSavingFilesystem(false);
     }
   };
 
@@ -897,6 +927,129 @@ export function ToolGate() {
           </div>
         )}
 
+        <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/[0.04] p-4">
+          <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+            <div>
+              <div className="flex items-center gap-2">
+                <FolderOpen className="h-4 w-4 text-cyan-300" />
+                <p className="text-xs font-bold uppercase tracking-widest text-shogun-text">File access</p>
+                <span className="rounded border border-cyan-400/20 bg-cyan-500/10 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-cyan-200">
+                  One shared setup
+                </span>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-shogun-subdued">
+                Add each local or network folder once, then choose exactly which operations all file tools may perform there.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={!data.filesystem_controls.editable}
+              onClick={() => setFilesystemDraft(current => ({ ...current, enabled: !current.enabled }))}
+              className={cn(
+                'flex items-center gap-3 rounded-lg border px-3 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-55',
+                filesystemDraft.enabled
+                  ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-200'
+                  : 'border-shogun-border bg-shogun-bg text-shogun-subdued',
+              )}
+            >
+              <span className={cn(
+                'relative h-5 w-10 rounded-full border',
+                filesystemDraft.enabled ? 'border-cyan-400/40 bg-cyan-500/20' : 'border-shogun-border bg-black/30',
+              )}>
+                <span className={cn(
+                  'absolute top-0.5 h-4 w-4 rounded-full transition-all',
+                  filesystemDraft.enabled ? 'left-5 bg-cyan-300' : 'left-0.5 bg-shogun-subdued',
+                )} />
+              </span>
+              Folder permissions {filesystemDraft.enabled ? 'on' : 'off'}
+            </button>
+          </div>
+
+          <div className="mt-4 overflow-x-auto rounded-lg border border-shogun-border/70">
+            <div className="min-w-[760px]">
+              <div className="grid grid-cols-[minmax(260px,1fr)_110px_repeat(4,76px)_44px] bg-[#080b12] px-3 py-2 text-center text-[9px] font-bold uppercase tracking-widest text-shogun-subdued">
+                <span className="text-left">Folder</span>
+                <span>Type</span>
+                <span>Read</span>
+                <span>Write</span>
+                <span>Create</span>
+                <span>Delete</span>
+                <span />
+              </div>
+              {filesystemDraft.folders.map(folder => (
+                <div key={folder.id} className="grid grid-cols-[minmax(260px,1fr)_110px_repeat(4,76px)_44px] items-center gap-0 border-t border-shogun-border/60 px-3 py-2">
+                  <input
+                    value={folder.path}
+                    disabled={!data.filesystem_controls.editable}
+                    onChange={event => updateFilesystemFolder(folder.id, { path: event.target.value })}
+                    placeholder={folder.kind === 'network' ? '\\\\server\\share\\folder' : 'input, output, or C:\\Approved'}
+                    className="mr-2 rounded-md border border-shogun-border bg-shogun-bg px-3 py-2 font-mono text-xs text-shogun-text outline-none focus:border-cyan-400 disabled:opacity-45"
+                  />
+                  <select
+                    value={folder.kind}
+                    disabled={!data.filesystem_controls.editable}
+                    onChange={event => updateFilesystemFolder(folder.id, { kind: event.target.value as FilesystemFolder['kind'] })}
+                    className="mr-2 rounded-md border border-shogun-border bg-shogun-bg px-2 py-2 text-xs text-shogun-text disabled:opacity-45"
+                  >
+                    <option value="internal">Internal</option>
+                    <option value="network">Network</option>
+                  </select>
+                  {(['read', 'write', 'create', 'delete'] as const).map(operation => (
+                    <label key={operation} className="flex justify-center">
+                      <input
+                        type="checkbox"
+                        checked={folder[operation]}
+                        disabled={!data.filesystem_controls.editable}
+                        onChange={event => updateFilesystemFolder(folder.id, { [operation]: event.target.checked })}
+                        className="h-4 w-4 accent-cyan-400"
+                        aria-label={`${operation} permission for ${folder.path || 'folder'}`}
+                      />
+                    </label>
+                  ))}
+                  <button
+                    type="button"
+                    disabled={!data.filesystem_controls.editable}
+                    onClick={() => setFilesystemDraft(current => ({
+                      ...current,
+                      folders: current.folders.filter(item => item.id !== folder.id),
+                    }))}
+                    className="rounded p-2 text-red-300 hover:bg-red-500/10 disabled:opacity-45"
+                    title="Remove folder"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+              {filesystemDraft.folders.length === 0 && (
+                <p className="border-t border-shogun-border/60 px-4 py-6 text-center text-xs text-shogun-subdued">
+                  No folders configured. Add a folder to begin.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {data.filesystem_controls.editable && (
+            <div className="mt-3 flex flex-wrap justify-between gap-3">
+              <button
+                type="button"
+                onClick={addFilesystemFolder}
+                className="flex items-center gap-2 rounded-lg border border-cyan-400/25 px-3 py-2 text-xs font-bold text-cyan-200 hover:bg-cyan-500/10"
+              >
+                <Plus className="h-4 w-4" /> Add folder
+              </button>
+              <button
+                type="button"
+                onClick={saveFilesystemControls}
+                disabled={savingFilesystem || filesystemDraft.folders.some(folder => !folder.path.trim())}
+                className="flex items-center gap-2 rounded-lg bg-cyan-300 px-4 py-2.5 text-xs font-bold text-black disabled:opacity-50"
+              >
+                {savingFilesystem ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save file access
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="space-y-3">
           {advancedDraft.rules.map((rule, index) => (
             <div key={rule.id} className="rounded-lg border border-shogun-border/70 bg-shogun-bg/45 p-4">
@@ -1068,7 +1221,6 @@ export function ToolGate() {
             <tbody className="divide-y divide-shogun-border/60">
               {filteredTools.map(tool => {
                 const expanded = expandedTool === tool.name;
-                const detail = detailDrafts[tool.name] || tool.detail;
                 const toolRules = advancedDraft.rules.filter(rule => rule.tools.length === 0 || rule.tools.includes(tool.name));
                 return (
                 <Fragment key={tool.name}>
@@ -1194,47 +1346,6 @@ export function ToolGate() {
                           )}
                         </div>
 
-                        {tool.supports_path_controls && (
-                          <div className="grid gap-4 lg:grid-cols-2">
-                            <label className="space-y-2">
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-cyan-300">Internal folders</span>
-                              <textarea
-                                value={(detail?.allowed_internal_paths || []).join('\n')}
-                                onChange={event => updateToolDetail(tool.name, 'allowed_internal_paths', event.target.value)}
-                                disabled={!data.authority.editable}
-                                rows={4}
-                                placeholder={'input\noutput\nProjects/Approved'}
-                                className="w-full rounded-lg border border-shogun-border bg-shogun-bg px-3 py-2 font-mono text-xs text-shogun-text outline-none focus:border-shogun-blue disabled:opacity-45"
-                              />
-                              <span className="block text-[10px] text-shogun-subdued">One workspace-relative or absolute local folder per line.</span>
-                            </label>
-                            <label className="space-y-2">
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Network folders</span>
-                              <textarea
-                                value={(detail?.allowed_network_paths || []).join('\n')}
-                                onChange={event => updateToolDetail(tool.name, 'allowed_network_paths', event.target.value)}
-                                disabled={!data.authority.editable}
-                                rows={4}
-                                placeholder={'\\\\server\\share\\approved'}
-                                className="w-full rounded-lg border border-shogun-border bg-shogun-bg px-3 py-2 font-mono text-xs text-shogun-text outline-none focus:border-shogun-blue disabled:opacity-45"
-                              />
-                              <span className="block text-[10px] text-shogun-subdued">One UNC or mounted network folder per line.</span>
-                            </label>
-                            {data.authority.editable && (
-                              <div className="lg:col-span-2 flex justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() => saveToolDetail(tool.name)}
-                                  disabled={savingDetail === tool.name}
-                                  className="flex items-center gap-2 rounded-lg bg-shogun-gold px-4 py-2.5 text-xs font-bold text-black disabled:opacity-50"
-                                >
-                                  {savingDetail === tool.name ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                                  Save detailed controls
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
                     </td>
                   </tr>

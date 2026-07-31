@@ -10,12 +10,12 @@ from shogun.services.tool_gate import (
     check_tool_access,
     get_gensui_overrides,
     get_local_advanced_controls,
+    get_local_filesystem_controls,
     get_local_overrides,
-    get_local_tool_detail,
     get_toolgate_scope,
     set_local_advanced_controls,
+    set_local_filesystem_controls,
     set_local_overrides,
-    set_local_tool_detail,
 )
 
 
@@ -35,16 +35,22 @@ def restore_toolgate_overrides(tmp_path, monkeypatch):
         scope: {tool: dict(detail) for tool, detail in tools.items()}
         for scope, tools in tool_gate._local_detail_scopes.items()
     }
+    original_filesystem_scopes = {
+        scope: dict(config)
+        for scope, config in tool_gate._local_filesystem_scopes.items()
+    }
     monkeypatch.setattr(tool_gate, "_LOCAL_OVERRIDES_PATH", tmp_path / "toolgate_overrides.json")
     tool_gate._local_override_scopes = {}
     tool_gate._local_advanced_scopes = {}
     tool_gate._local_detail_scopes = {}
+    tool_gate._local_filesystem_scopes = {}
     apply_gensui_overrides({})
     apply_gensui_advanced_controls({})
     yield
     tool_gate._local_override_scopes = original_scopes
     tool_gate._local_advanced_scopes = original_advanced_scopes
     tool_gate._local_detail_scopes = original_detail_scopes
+    tool_gate._local_filesystem_scopes = original_filesystem_scopes
     apply_gensui_overrides({})
     apply_gensui_advanced_controls({})
 
@@ -131,59 +137,176 @@ async def test_local_overrides_are_isolated_by_effective_policy_scope():
     assert get_local_overrides("policy:custom-a") == {"send_email": "block"}
 
 
-def test_detailed_path_controls_are_persisted_and_isolated_by_scope(tmp_path):
+def test_shared_filesystem_controls_are_persisted_and_isolated_by_scope():
     from shogun.services import tool_gate
 
-    set_local_tool_detail(
-        "workspace_read",
+    set_local_filesystem_controls(
         {
-            "allowed_internal_paths": ["input", "input"],
-            "allowed_network_paths": [r"\\server\share\approved"],
+            "enabled": True,
+            "folders": [
+                {
+                    "id": "input",
+                    "path": "input",
+                    "kind": "internal",
+                    "read": True,
+                    "write": False,
+                    "create": False,
+                    "delete": False,
+                },
+            ],
         },
         "tier:guarded",
     )
 
-    assert get_local_tool_detail("workspace_read", "tier:guarded") == {
-        "allowed_internal_paths": ["input"],
-        "allowed_network_paths": [r"\\server\share\approved"],
-    }
-    assert get_local_tool_detail("workspace_read", "tier:campaign") == {
-        "allowed_internal_paths": [],
-        "allowed_network_paths": [],
-    }
+    assert get_local_filesystem_controls("tier:guarded")["folders"][0]["read"] is True
+    assert get_local_filesystem_controls("tier:campaign") == {"enabled": False, "folders": []}
     payload = json.loads(tool_gate._LOCAL_OVERRIDES_PATH.read_text(encoding="utf-8"))
-    assert payload["detail_scopes"]["tier:guarded"]["workspace_read"]["allowed_internal_paths"] == ["input"]
+    assert payload["version"] == 5
+    assert payload["filesystem_scopes"]["tier:guarded"]["folders"][0]["path"] == "input"
+
+
+def test_legacy_per_tool_folders_migrate_to_one_shared_policy():
+    from shogun.services.tool_gate import _legacy_filesystem_controls
+
+    migrated = _legacy_filesystem_controls(
+        {
+            "workspace_read": {
+                "allowed_internal_paths": ["input"],
+                "allowed_network_paths": [],
+            },
+            "workspace_write": {
+                "allowed_internal_paths": ["output"],
+                "allowed_network_paths": [r"\\server\generated"],
+            },
+            "workspace_delete": {
+                "allowed_internal_paths": ["output"],
+                "allowed_network_paths": [],
+            },
+        }
+    )
+
+    folders = {(folder["kind"], folder["path"]): folder for folder in migrated["folders"]}
+    assert migrated["enabled"] is True
+    assert folders[("internal", "input")]["read"] is True
+    assert folders[("internal", "output")]["write"] is True
+    assert folders[("internal", "output")]["create"] is True
+    assert folders[("internal", "output")]["delete"] is True
+    assert folders[("network", r"\\server\generated")]["create"] is True
 
 
 @pytest.mark.asyncio
-async def test_detailed_path_controls_block_paths_outside_allowlist(tmp_path, monkeypatch):
+async def test_shared_filesystem_controls_enforce_operations_per_folder(tmp_path, monkeypatch):
     from shogun.config import settings
 
     workspace = tmp_path / "workspace"
+    (workspace / "input").mkdir(parents=True)
+    (workspace / "input" / "report.txt").write_text("report", encoding="utf-8")
+    (workspace / "output").mkdir()
     monkeypatch.setattr(settings, "workspace_path", workspace)
-    set_local_tool_detail(
-        "workspace_read",
-        {"allowed_internal_paths": ["input"], "allowed_network_paths": []},
+    set_local_filesystem_controls(
+        {
+            "enabled": True,
+            "folders": [
+                {
+                    "path": "input",
+                    "kind": "internal",
+                    "read": True,
+                    "write": False,
+                    "create": False,
+                    "delete": False,
+                },
+                {
+                    "path": "output",
+                    "kind": "internal",
+                    "read": True,
+                    "write": True,
+                    "create": True,
+                    "delete": False,
+                },
+            ],
+        },
         "tier:tactical",
     )
 
-    allowed = await check_tool_access(
+    read_allowed = await check_tool_access(
         mode="standard",
         tool_name="workspace_read",
         args={"path": "input/report.txt"},
         local_scope="tier:tactical",
     )
-    blocked = await check_tool_access(
+    write_blocked = await check_tool_access(
         mode="standard",
-        tool_name="workspace_read",
-        args={"path": "output/report.txt"},
+        tool_name="workspace_write",
+        args={"path": "input/report.txt"},
+        local_scope="tier:tactical",
+    )
+    create_allowed = await check_tool_access(
+        mode="standard",
+        tool_name="workspace_write",
+        args={"path": "output/new-report.txt"},
+        local_scope="tier:tactical",
+    )
+    delete_blocked = await check_tool_access(
+        mode="standard",
+        tool_name="workspace_delete",
+        args={"path": "input/report.txt"},
         local_scope="tier:tactical",
     )
 
-    assert allowed.action == GateAction.ALLOW
-    assert blocked.action == GateAction.BLOCK
-    assert blocked.parameter_flags == ["path_not_allowlisted:$.path"]
+    assert read_allowed.action == GateAction.ALLOW
+    assert write_blocked.action == GateAction.BLOCK
+    assert write_blocked.parameter_flags == ["filesystem_permission_denied:write:$.path"]
+    assert create_allowed.action == GateAction.ALLOW
+    assert delete_blocked.action == GateAction.BLOCK
+    assert delete_blocked.parameter_flags == ["filesystem_permission_denied:delete:$.path"]
 
+
+@pytest.mark.asyncio
+async def test_file_transform_requires_input_read_and_output_create(tmp_path, monkeypatch):
+    from shogun.config import settings
+
+    workspace = tmp_path / "workspace"
+    input_folder = workspace / "input"
+    input_folder.mkdir(parents=True)
+    source = input_folder / "report.csv"
+    source.write_text("name\nShogun\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "workspace_path", workspace)
+    set_local_filesystem_controls(
+        {
+            "enabled": True,
+            "folders": [
+                {
+                    "path": "input",
+                    "kind": "internal",
+                    "read": True,
+                    "write": False,
+                    "create": False,
+                    "delete": False,
+                },
+                {
+                    "path": ".",
+                    "kind": "internal",
+                    "read": False,
+                    "write": False,
+                    "create": False,
+                    "delete": False,
+                },
+            ],
+        },
+        "tier:tactical",
+    )
+
+    blocked = await check_tool_access(
+        mode="standard",
+        tool_name="file_transform",
+        args={"path": str(source), "target_format": "json", "output_filename": "report.json"},
+        local_scope="tier:tactical",
+    )
+
+    assert blocked.action == GateAction.BLOCK
+    assert blocked.parameter_flags == [
+        "filesystem_permission_denied:create:$.output_filename",
+    ]
 
 def test_custom_policy_gets_stable_scope_and_inherits_its_base_tier():
     scope = get_toolgate_scope(

@@ -1024,15 +1024,19 @@ registry = AdapterRegistry()
 
 class FileSafetyGate:
     def __init__(self, allowed_roots: list[Path] | None = None):
-        roots = allowed_roots or [
-            settings.workspace_path,
-            settings.uploads_path,
-            settings.office_path,
-            settings.mado_path,
-            settings.memory_imports_path,
-            settings.memory_exports_path,
-            PROJECT_ROOT,
-        ]
+        roots = (
+            allowed_roots
+            if allowed_roots is not None
+            else [
+                settings.workspace_path,
+                settings.uploads_path,
+                settings.office_path,
+                settings.mado_path,
+                settings.memory_imports_path,
+                settings.memory_exports_path,
+                PROJECT_ROOT,
+            ]
+        )
         self.allowed_roots = [root.resolve() for root in roots]
 
     def validate(self, path: Path, *, allow_archive: bool = False) -> list[str]:

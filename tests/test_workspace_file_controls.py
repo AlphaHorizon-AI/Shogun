@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from shogun.services.file_formats import FileFormatError, FileSafetyGate
 from shogun.services.native_skills import _validate_workspace_path
 
 
@@ -32,3 +33,11 @@ def test_workspace_path_rejects_parent_traversal_even_with_allowed_root(tmp_path
 
     with pytest.raises(ValueError, match="cannot contain"):
         _validate_workspace_path(str(workspace), "../secret.txt", [str(tmp_path)])
+
+
+def test_file_safety_gate_explicit_empty_roots_denies_all_files(tmp_path: Path):
+    target = tmp_path / "report.txt"
+    target.write_text("restricted", encoding="utf-8")
+
+    with pytest.raises(FileFormatError, match="outside approved"):
+        FileSafetyGate([]).validate(target)

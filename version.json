@@ -1,8 +1,8 @@
 {
-  "version": "1.47.44",
+  "version": "1.47.45",
   "name": "Shogun OS",
-  "build": 195,
+  "build": 196,
   "channel": "stable",
-  "released": "2026-07-31T07:28:20Z",
-  "changelog": "Add detailed ToolGate controls, guaranteed workspace folders, and resilient frontend updates."
+  "released": "2026-07-31T07:54:58Z",
+  "changelog": "Unify advanced ToolGate file access with per-folder read, write, create, and delete permissions."
 }

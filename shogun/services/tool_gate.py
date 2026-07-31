@@ -47,6 +47,8 @@ _PATH_ARGUMENT_KEYS = {
     "directory",
     "folder",
 }
+_FILESYSTEM_OPERATIONS = ("read", "write", "create", "delete")
+_OUTPUT_PATH_KEYS = {"output_path", "destination_path", "output_directory"}
 
 
 def normalize_advanced_controls(config: dict[str, Any] | None) -> dict[str, Any]:
@@ -203,16 +205,123 @@ def _load_local_tool_details() -> dict[str, dict[str, dict[str, list[str]]]]:
 _local_detail_scopes: dict[str, dict[str, dict[str, list[str]]]] = _load_local_tool_details()
 
 
+def normalize_filesystem_controls(config: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize the shared advanced filesystem policy."""
+    config = config or {}
+    if not isinstance(config, dict):
+        raise ValueError("Filesystem controls must be an object.")
+    folders = config.get("folders", [])
+    if not isinstance(folders, list) or len(folders) > 100:
+        raise ValueError("Filesystem controls support at most 100 folders.")
+
+    normalized_folders = []
+    seen: set[tuple[str, str]] = set()
+    for index, folder in enumerate(folders):
+        if not isinstance(folder, dict):
+            raise ValueError(f"Filesystem folder {index + 1} must be an object.")
+        path = str(folder.get("path", "")).strip()
+        if not path or len(path) > 1024:
+            raise ValueError(f"Filesystem folder {index + 1} needs a valid path.")
+        kind = str(folder.get("kind", "internal")).lower()
+        if kind not in {"internal", "network"}:
+            raise ValueError("Filesystem folder kind must be 'internal' or 'network'.")
+        identity = (kind, path.casefold())
+        if identity in seen:
+            continue
+        seen.add(identity)
+        normalized_folders.append(
+            {
+                "id": str(folder.get("id") or f"folder-{index + 1}")[:80],
+                "path": path,
+                "kind": kind,
+                **{operation: bool(folder.get(operation, False)) for operation in _FILESYSTEM_OPERATIONS},
+            }
+        )
+    return {"enabled": bool(config.get("enabled", False)), "folders": normalized_folders}
+
+
+def _tool_default_filesystem_operation(tool_name: str) -> str:
+    if tool_name == "workspace_delete":
+        return "delete"
+    if tool_name == "workspace_mkdir":
+        return "create"
+    if tool_name == "workspace_write" or tool_name in {
+        "file_transform",
+        "file_export",
+        "file_archive_extract_selected",
+    }:
+        return "write"
+    return "read"
+
+
+def _legacy_filesystem_controls(
+    tools: dict[str, dict[str, list[str]]],
+) -> dict[str, Any]:
+    """Merge v4 per-tool roots into one conservative folder policy."""
+    entries: dict[tuple[str, str], dict[str, Any]] = {}
+    for tool_name, detail in tools.items():
+        if not isinstance(detail, dict):
+            continue
+        for key, kind in (
+            ("allowed_internal_paths", "internal"),
+            ("allowed_network_paths", "network"),
+        ):
+            for path in detail.get(key, []):
+                identity = (kind, str(path).casefold())
+                entry = entries.setdefault(
+                    identity,
+                    {
+                        "id": f"migrated-{len(entries) + 1}",
+                        "path": str(path),
+                        "kind": kind,
+                        **{operation: False for operation in _FILESYSTEM_OPERATIONS},
+                    },
+                )
+                operation = _tool_default_filesystem_operation(tool_name)
+                entry[operation] = True
+                # The legacy write-capable tools could both replace existing
+                # files and create new ones. Preserve both capabilities when
+                # migrating to the more precise shared permission model.
+                if operation == "write":
+                    entry["create"] = True
+    return {"enabled": bool(entries), "folders": list(entries.values())}
+
+
+def _load_local_filesystem_controls() -> dict[str, dict[str, Any]]:
+    try:
+        payload = (
+            json.loads(_LOCAL_OVERRIDES_PATH.read_text(encoding="utf-8"))
+            if _LOCAL_OVERRIDES_PATH.exists()
+            else {}
+        )
+        scopes = payload.get("filesystem_scopes", {}) if isinstance(payload, dict) else {}
+        result = {
+            str(scope): normalize_filesystem_controls(config)
+            for scope, config in scopes.items()
+            if isinstance(config, dict)
+        } if isinstance(scopes, dict) else {}
+        for scope, tools in _local_detail_scopes.items():
+            result.setdefault(scope, _legacy_filesystem_controls(tools))
+        return result
+    except Exception as exc:
+        log.warning("[ToolGate] Failed to load filesystem controls: %s", exc)
+        return {}
+
+
+_local_filesystem_scopes: dict[str, dict[str, Any]] = _load_local_filesystem_controls()
+
+
 def _persist_local_policy() -> None:
     _LOCAL_OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
     temp_path = _LOCAL_OVERRIDES_PATH.with_suffix(".tmp")
     temp_path.write_text(
         json.dumps(
             {
-                "version": 4,
+                "version": 5,
                 "scopes": _local_override_scopes,
                 "advanced_scopes": _local_advanced_scopes,
                 "detail_scopes": _local_detail_scopes,
+                "filesystem_scopes": _local_filesystem_scopes,
             },
             indent=2,
         ),
@@ -299,6 +408,29 @@ def get_local_tool_detail(
 ) -> dict[str, list[str]]:
     """Return normalized detailed controls for one tool and policy scope."""
     return normalize_tool_detail(_local_detail_scopes.get(scope, {}).get(tool_name))
+
+
+def set_local_filesystem_controls(
+    config: dict[str, Any],
+    scope: str = _DEFAULT_LOCAL_SCOPE,
+) -> None:
+    """Persist one shared folder/operation policy for the effective scope."""
+    normalized = normalize_filesystem_controls(config)
+    global _local_filesystem_scopes
+    next_scopes = {key: dict(value) for key, value in _local_filesystem_scopes.items()}
+    if normalized["enabled"] or normalized["folders"]:
+        next_scopes[scope] = normalized
+    else:
+        next_scopes.pop(scope, None)
+    _local_filesystem_scopes = next_scopes
+    _persist_local_policy()
+
+
+def get_local_filesystem_controls(
+    scope: str = _DEFAULT_LOCAL_SCOPE,
+) -> dict[str, Any]:
+    """Return the shared advanced filesystem policy for one scope."""
+    return normalize_filesystem_controls(_local_filesystem_scopes.get(scope))
 
 
 def get_toolgate_scope(posture: dict[str, Any]) -> dict[str, str | None]:
@@ -770,8 +902,18 @@ def get_tool_allowed_roots(
     tool_name: str,
     local_scope: str = _DEFAULT_LOCAL_SCOPE,
 ) -> list[Path]:
-    """Resolve configured internal and network roots without requiring them to exist."""
+    """Resolve shared (or legacy per-tool) roots without requiring them to exist."""
     from shogun.config import settings
+
+    filesystem = get_local_filesystem_controls(local_scope)
+    if filesystem["enabled"]:
+        roots = []
+        for folder in filesystem["folders"]:
+            candidate = Path(folder["path"])
+            if folder["kind"] == "internal" and not candidate.is_absolute():
+                candidate = settings.workspace_path / candidate
+            roots.append(candidate.resolve())
+        return roots
 
     detail = get_local_tool_detail(tool_name, local_scope)
     roots: list[Path] = []
@@ -785,6 +927,29 @@ def get_tool_allowed_roots(
     return roots
 
 
+def _filesystem_candidate(raw_value: str, kind: str = "internal") -> Path:
+    from shogun.config import settings
+
+    candidate = Path(raw_value.strip())
+    if kind == "internal" and not candidate.is_absolute():
+        candidate = settings.workspace_path / candidate
+    return candidate.resolve()
+
+
+def _required_filesystem_operation(
+    tool_name: str,
+    key: str,
+    candidate: Path,
+) -> str:
+    if tool_name == "workspace_delete":
+        return "delete"
+    if tool_name == "workspace_mkdir":
+        return "create"
+    if tool_name == "workspace_write" or key in _OUTPUT_PATH_KEYS:
+        return "write" if candidate.exists() else "create"
+    return "read"
+
+
 def evaluate_tool_path_controls(
     tool_name: str,
     args: dict[str, Any],
@@ -793,22 +958,53 @@ def evaluate_tool_path_controls(
     """Require path arguments to stay inside a tool's configured allowlist."""
     if not tool_supports_path_controls(tool_name):
         return True, []
-    roots = get_tool_allowed_roots(tool_name, local_scope)
-    if not roots:
-        return True, []
+    filesystem = get_local_filesystem_controls(local_scope)
+    if not filesystem["enabled"]:
+        roots = get_tool_allowed_roots(tool_name, local_scope)
+        if not roots:
+            return True, []
+        flags = []
+        for key, raw_value in args.items():
+            if key not in _PATH_ARGUMENT_KEYS or not isinstance(raw_value, str) or not raw_value.strip():
+                continue
+            candidate = _filesystem_candidate(raw_value)
+            if not any(candidate == root or root in candidate.parents for root in roots):
+                flags.append(f"path_not_allowlisted:$.{key}")
+        return not flags, flags
 
-    from shogun.config import settings
+    configured = []
+    for folder in filesystem["folders"]:
+        root = _filesystem_candidate(folder["path"], folder["kind"])
+        configured.append((root, folder))
 
-    flags = []
+    candidates: list[tuple[str, Path, str]] = []
     for key, raw_value in args.items():
         if key not in _PATH_ARGUMENT_KEYS or not isinstance(raw_value, str) or not raw_value.strip():
             continue
-        candidate = Path(raw_value.strip())
-        if not candidate.is_absolute():
-            candidate = settings.workspace_path / candidate
-        candidate = candidate.resolve()
-        if not any(candidate == root or root in candidate.parents for root in roots):
-            flags.append(f"path_not_allowlisted:$.{key}")
+        candidate = _filesystem_candidate(raw_value)
+        candidates.append((key, candidate, _required_filesystem_operation(tool_name, key, candidate)))
+
+    if tool_name in {"file_transform", "file_export"}:
+        from shogun.config import settings
+
+        filename = Path(str(args.get("output_filename") or "transformed-output")).name
+        output = (settings.workspace_path / filename).resolve()
+        candidates.append(("output_filename", output, "write" if output.exists() else "create"))
+    elif tool_name == "file_archive_extract_selected" and not args.get("output_directory"):
+        from shogun.config import settings
+
+        source = Path(str(args.get("path") or "archive"))
+        output = (settings.workspace_path / f"extracted-{source.stem}").resolve()
+        candidates.append(("output_directory", output, "create"))
+
+    flags = []
+    for key, candidate, operation in candidates:
+        allowed = any(
+            (candidate == root or root in candidate.parents) and bool(folder[operation])
+            for root, folder in configured
+        )
+        if not allowed:
+            flags.append(f"filesystem_permission_denied:{operation}:$.{key}")
     return not flags, flags
 
 
@@ -925,7 +1121,7 @@ async def check_tool_access(
     if not path_allowed:
         return GateDecision(
             action=GateAction.BLOCK,
-            reason="A file path is outside this tool's configured internal/network allowlist.",
+            reason="The shared filesystem policy does not grant the required folder operation.",
             risk_level=RiskLevel.CRITICAL,
             tool_name=tool_name,
             parameter_flags=path_flags,
