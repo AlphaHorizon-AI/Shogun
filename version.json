@@ -1,8 +1,8 @@
 {
-  "version": "1.47.46",
+  "version": "1.47.47",
   "name": "Shogun OS",
-  "build": 197,
+  "build": 198,
   "channel": "stable",
-  "released": "2026-07-31T08:14:08Z",
-  "changelog": "Organize ToolGate permissions into user-friendly themes with shared and per-tool controls."
+  "released": "2026-07-31T09:02:06Z",
+  "changelog": "Add shared ToolGate Internet access modes with domain allowlists and wildcard enforcement."
 }

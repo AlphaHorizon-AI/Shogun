@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from shogun.api.mado import router
 from shogun.api.setup import MADO_DEFAULTS
 from shogun.services import mado_hardening as hardening
+from shogun.services.mado_service import _domain_matches
 
 
 def _posture(**overrides):
@@ -31,6 +32,13 @@ def test_setup_contains_safe_reliability_defaults():
     assert MADO_DEFAULTS["retry"]["max_attempts"] == 3
     assert MADO_DEFAULTS["dialog_policy"]["cookie_banner_policy"] == "accept_necessary_only"
     assert MADO_DEFAULTS["dialog_policy"]["permission_prompt_policy"] == "deny"
+
+
+def test_domain_allowlist_supports_all_and_subdomain_wildcards():
+    assert _domain_matches("anything.example", ["*.*"]) is True
+    assert _domain_matches("api.openai.com", ["*.openai.com"]) is True
+    assert _domain_matches("openai.com", ["*.openai.com"]) is True
+    assert _domain_matches("not-openai.com", ["*.openai.com"]) is False
 
 
 @pytest.mark.asyncio

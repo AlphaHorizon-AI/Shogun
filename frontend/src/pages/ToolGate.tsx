@@ -7,6 +7,7 @@ import {
   Clock3,
   FlaskConical,
   FolderOpen,
+  Globe2,
   Loader2,
   LockKeyhole,
   Minus,
@@ -82,6 +83,12 @@ interface ToolTheme {
   matches?: (tool: ToolRecord) => boolean;
 }
 
+interface NetworkControls {
+  enabled: boolean;
+  mode: 'disabled' | 'allowlist' | 'full';
+  allowed_domains: string[];
+}
+
 interface ToolGateData {
   authority: {
     mode: 'standalone' | 'gensui';
@@ -118,6 +125,10 @@ interface ToolGateData {
   filesystem_controls: {
     enabled: boolean;
     folders: FilesystemFolder[];
+    editable: boolean;
+    source: 'local' | 'gensui';
+  };
+  network_controls: NetworkControls & {
     editable: boolean;
     source: 'local' | 'gensui';
   };
@@ -289,6 +300,12 @@ export function ToolGate() {
     folders: [],
   });
   const [savingFilesystem, setSavingFilesystem] = useState(false);
+  const [networkDraft, setNetworkDraft] = useState<NetworkControls>({
+    enabled: false,
+    mode: 'allowlist',
+    allowed_domains: [],
+  });
+  const [savingNetwork, setSavingNetwork] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [search, setSearch] = useState('');
   const [themeFilter, setThemeFilter] = useState('all');
@@ -349,6 +366,13 @@ export function ToolGate() {
           editable: payload.authority?.editable ?? true,
           source: 'local',
         },
+        network_controls: payload.network_controls || {
+          enabled: false,
+          mode: 'allowlist',
+          allowed_domains: [],
+          editable: payload.authority?.editable ?? true,
+          source: 'local',
+        },
       };
       setData(normalized);
       const policyRecords = (policiesResponse.data.data || []) as SecurityPolicy[];
@@ -362,6 +386,11 @@ export function ToolGate() {
       setFilesystemDraft({
         enabled: normalized.filesystem_controls.enabled,
         folders: normalized.filesystem_controls.folders || [],
+      });
+      setNetworkDraft({
+        enabled: normalized.network_controls.enabled,
+        mode: normalized.network_controls.mode,
+        allowed_domains: normalized.network_controls.allowed_domains || [],
       });
       setSimulationTool(current => current || payload.tools[0]?.name || '');
     } catch {
@@ -555,6 +584,40 @@ export function ToolGate() {
       setMessage({ type: 'error', text: errorMessage(error, 'Filesystem controls could not be saved.') });
     } finally {
       setSavingFilesystem(false);
+    }
+  };
+
+  const addNetworkDomain = () => {
+    setNetworkDraft(current => ({
+      ...current,
+      enabled: true,
+      mode: current.mode === 'full' ? 'allowlist' : current.mode,
+      allowed_domains: [...current.allowed_domains, ''],
+    }));
+  };
+
+  const updateNetworkDomain = (index: number, value: string) => {
+    setNetworkDraft(current => ({
+      ...current,
+      allowed_domains: current.allowed_domains.map((domain, itemIndex) => itemIndex === index ? value : domain),
+    }));
+  };
+
+  const saveNetworkControls = async () => {
+    setSavingNetwork(true);
+    setMessage(null);
+    try {
+      const payload = {
+        ...networkDraft,
+        allowed_domains: networkDraft.allowed_domains.map(domain => domain.trim()).filter(Boolean),
+      };
+      await axios.put('/api/v1/security/toolgate/network', payload);
+      setMessage({ type: 'success', text: 'Shared Internet access controls saved.' });
+      await fetchData();
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: errorMessage(error, 'Internet access controls could not be saved.') });
+    } finally {
+      setSavingNetwork(false);
     }
   };
 
@@ -1160,6 +1223,143 @@ export function ToolGate() {
               >
                 {savingFilesystem ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save file access
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-sky-400/20 bg-sky-500/[0.04] p-4">
+          <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+            <div>
+              <div className="flex items-center gap-2">
+                <Globe2 className="h-4 w-4 text-sky-300" />
+                <p className="text-xs font-bold uppercase tracking-widest text-shogun-text">Internet access</p>
+                <span className="rounded border border-sky-400/20 bg-sky-500/10 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-sky-200">
+                  One shared setup
+                </span>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-shogun-subdued">
+                Choose whether network-capable tools may reach no websites, only approved domains, or the entire Internet.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={!data.network_controls.editable}
+              onClick={() => setNetworkDraft(current => ({ ...current, enabled: !current.enabled }))}
+              className={cn(
+                'flex items-center gap-3 rounded-lg border px-3 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-55',
+                networkDraft.enabled
+                  ? 'border-sky-400/35 bg-sky-500/10 text-sky-200'
+                  : 'border-shogun-border bg-shogun-bg text-shogun-subdued',
+              )}
+            >
+              <span className={cn(
+                'relative h-5 w-10 rounded-full border',
+                networkDraft.enabled ? 'border-sky-400/40 bg-sky-500/20' : 'border-shogun-border bg-black/30',
+              )}>
+                <span className={cn(
+                  'absolute top-0.5 h-4 w-4 rounded-full transition-all',
+                  networkDraft.enabled ? 'left-5 bg-sky-300' : 'left-0.5 bg-shogun-subdued',
+                )} />
+              </span>
+              Internet rules {networkDraft.enabled ? 'on' : 'off'}
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-[220px_1fr]">
+            <label className="space-y-1">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-shogun-subdued">Access mode</span>
+              <select
+                value={networkDraft.mode}
+                disabled={!data.network_controls.editable}
+                onChange={event => setNetworkDraft(current => ({
+                  ...current,
+                  enabled: true,
+                  mode: event.target.value as NetworkControls['mode'],
+                }))}
+                className="w-full rounded-lg border border-shogun-border bg-shogun-bg px-3 py-2.5 text-xs font-bold text-shogun-text disabled:opacity-45"
+              >
+                <option value="disabled">No Internet</option>
+                <option value="allowlist">Approved websites only</option>
+                <option value="full">All Internet</option>
+              </select>
+            </label>
+
+            <div className="rounded-lg border border-shogun-border/70 bg-[#080b12]">
+              {networkDraft.mode === 'allowlist' ? (
+                <>
+                  <div className="grid grid-cols-[1fr_44px] px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-shogun-subdued">
+                    <span>Approved domain or pattern</span>
+                    <span />
+                  </div>
+                  {networkDraft.allowed_domains.map((domain, index) => (
+                    <div key={index} className="grid grid-cols-[1fr_44px] items-center border-t border-shogun-border/60 px-3 py-2">
+                      <input
+                        value={domain}
+                        disabled={!data.network_controls.editable}
+                        onChange={event => updateNetworkDomain(index, event.target.value)}
+                        placeholder="example.com, *.example.com, or *.*"
+                        className="mr-2 rounded-md border border-shogun-border bg-shogun-bg px-3 py-2 font-mono text-xs text-shogun-text outline-none focus:border-sky-400 disabled:opacity-45"
+                      />
+                      <button
+                        type="button"
+                        disabled={!data.network_controls.editable}
+                        onClick={() => setNetworkDraft(current => ({
+                          ...current,
+                          allowed_domains: current.allowed_domains.filter((_, itemIndex) => itemIndex !== index),
+                        }))}
+                        className="rounded p-2 text-red-300 hover:bg-red-500/10 disabled:opacity-45"
+                        title="Remove domain"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  {networkDraft.allowed_domains.length === 0 && (
+                    <p className="border-t border-shogun-border/60 px-4 py-5 text-center text-xs text-shogun-subdued">
+                      No domains are approved. Internet navigation will be blocked.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="px-4 py-5">
+                  <p className={cn(
+                    'text-xs font-semibold',
+                    networkDraft.mode === 'full' ? 'text-amber-300' : 'text-emerald-300',
+                  )}>
+                    {networkDraft.mode === 'full'
+                      ? 'All websites are permitted. This is equivalent to adding *.*.'
+                      : 'All Internet access from governed network tools is blocked.'}
+                  </p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-shogun-subdued">
+                    Tool-specific confirmation and block decisions still apply on top of this boundary.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {data.network_controls.editable && (
+            <div className="mt-3 flex flex-wrap justify-between gap-3">
+              <button
+                type="button"
+                onClick={addNetworkDomain}
+                disabled={networkDraft.mode !== 'allowlist'}
+                className="flex items-center gap-2 rounded-lg border border-sky-400/25 px-3 py-2 text-xs font-bold text-sky-200 hover:bg-sky-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Plus className="h-4 w-4" /> Add website
+              </button>
+              <button
+                type="button"
+                onClick={saveNetworkControls}
+                disabled={savingNetwork || (
+                  networkDraft.mode === 'allowlist'
+                  && networkDraft.allowed_domains.some(domain => !domain.trim())
+                )}
+                className="flex items-center gap-2 rounded-lg bg-sky-300 px-4 py-2.5 text-xs font-bold text-black disabled:opacity-50"
+              >
+                {savingNetwork ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save Internet access
               </button>
             </div>
           )}

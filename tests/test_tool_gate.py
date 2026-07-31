@@ -11,10 +11,12 @@ from shogun.services.tool_gate import (
     get_gensui_overrides,
     get_local_advanced_controls,
     get_local_filesystem_controls,
+    get_local_network_controls,
     get_local_overrides,
     get_toolgate_scope,
     set_local_advanced_controls,
     set_local_filesystem_controls,
+    set_local_network_controls,
     set_local_overrides,
 )
 
@@ -39,11 +41,16 @@ def restore_toolgate_overrides(tmp_path, monkeypatch):
         scope: dict(config)
         for scope, config in tool_gate._local_filesystem_scopes.items()
     }
+    original_network_scopes = {
+        scope: dict(config)
+        for scope, config in tool_gate._local_network_scopes.items()
+    }
     monkeypatch.setattr(tool_gate, "_LOCAL_OVERRIDES_PATH", tmp_path / "toolgate_overrides.json")
     tool_gate._local_override_scopes = {}
     tool_gate._local_advanced_scopes = {}
     tool_gate._local_detail_scopes = {}
     tool_gate._local_filesystem_scopes = {}
+    tool_gate._local_network_scopes = {}
     apply_gensui_overrides({})
     apply_gensui_advanced_controls({})
     yield
@@ -51,6 +58,7 @@ def restore_toolgate_overrides(tmp_path, monkeypatch):
     tool_gate._local_advanced_scopes = original_advanced_scopes
     tool_gate._local_detail_scopes = original_detail_scopes
     tool_gate._local_filesystem_scopes = original_filesystem_scopes
+    tool_gate._local_network_scopes = original_network_scopes
     apply_gensui_overrides({})
     apply_gensui_advanced_controls({})
 
@@ -161,7 +169,7 @@ def test_shared_filesystem_controls_are_persisted_and_isolated_by_scope():
     assert get_local_filesystem_controls("tier:guarded")["folders"][0]["read"] is True
     assert get_local_filesystem_controls("tier:campaign") == {"enabled": False, "folders": []}
     payload = json.loads(tool_gate._LOCAL_OVERRIDES_PATH.read_text(encoding="utf-8"))
-    assert payload["version"] == 5
+    assert payload["version"] == 6
     assert payload["filesystem_scopes"]["tier:guarded"]["folders"][0]["path"] == "input"
 
 
@@ -307,6 +315,98 @@ async def test_file_transform_requires_input_read_and_output_create(tmp_path, mo
     assert blocked.parameter_flags == [
         "filesystem_permission_denied:create:$.output_filename",
     ]
+
+
+def test_shared_network_controls_are_persisted_and_isolated_by_scope():
+    from shogun.services import tool_gate
+
+    set_local_network_controls(
+        {
+            "enabled": True,
+            "mode": "allowlist",
+            "allowed_domains": ["*.openai.com", "*.*", "*.openai.com"],
+        },
+        "tier:guarded",
+    )
+
+    assert get_local_network_controls("tier:guarded") == {
+        "enabled": True,
+        "mode": "allowlist",
+        "allowed_domains": ["*.openai.com", "*.*"],
+    }
+    assert get_local_network_controls("tier:campaign") == {
+        "enabled": False,
+        "mode": "allowlist",
+        "allowed_domains": [],
+    }
+    payload = json.loads(tool_gate._LOCAL_OVERRIDES_PATH.read_text(encoding="utf-8"))
+    assert payload["version"] == 6
+    assert payload["network_scopes"]["tier:guarded"]["allowed_domains"] == ["*.openai.com", "*.*"]
+
+
+@pytest.mark.asyncio
+async def test_network_allowlist_accepts_exact_and_wildcard_domains():
+    set_local_network_controls(
+        {
+            "enabled": True,
+            "mode": "allowlist",
+            "allowed_domains": ["example.com", "*.openai.com"],
+        },
+        "tier:tactical",
+    )
+
+    exact = await check_tool_access(
+        mode="standard",
+        tool_name="browse_web",
+        args={"url": "https://example.com/report"},
+        local_scope="tier:tactical",
+    )
+    wildcard = await check_tool_access(
+        mode="standard",
+        tool_name="browse_web",
+        args={"url": "https://api.openai.com/v1/models"},
+        local_scope="tier:tactical",
+    )
+    blocked = await check_tool_access(
+        mode="standard",
+        tool_name="browse_web",
+        args={"url": "https://not-allowed.test"},
+        local_scope="tier:tactical",
+    )
+
+    assert exact.action == GateAction.ALLOW
+    assert wildcard.action == GateAction.ALLOW
+    assert blocked.action == GateAction.BLOCK
+    assert blocked.parameter_flags == ["network_domain_not_allowlisted:not-allowed.test"]
+
+
+@pytest.mark.asyncio
+async def test_network_star_dot_star_allows_every_domain_and_disabled_blocks():
+    set_local_network_controls(
+        {"enabled": True, "mode": "allowlist", "allowed_domains": ["*.*"]},
+        "tier:tactical",
+    )
+    allowed = await check_tool_access(
+        mode="standard",
+        tool_name="browse_web",
+        args={"url": "https://anywhere.example/path"},
+        local_scope="tier:tactical",
+    )
+
+    set_local_network_controls(
+        {"enabled": True, "mode": "disabled", "allowed_domains": []},
+        "tier:tactical",
+    )
+    disabled = await check_tool_access(
+        mode="standard",
+        tool_name="browse_web",
+        args={"url": "https://example.com"},
+        local_scope="tier:tactical",
+    )
+
+    assert allowed.action == GateAction.ALLOW
+    assert disabled.action == GateAction.BLOCK
+    assert disabled.parameter_flags == ["network_access_disabled"]
 
 def test_custom_policy_gets_stable_scope_and_inherits_its_base_tier():
     scope = get_toolgate_scope(

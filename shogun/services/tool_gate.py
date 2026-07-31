@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 log = logging.getLogger("shogun.tool_gate")
 
@@ -49,6 +50,7 @@ _PATH_ARGUMENT_KEYS = {
 }
 _FILESYSTEM_OPERATIONS = ("read", "write", "create", "delete")
 _OUTPUT_PATH_KEYS = {"output_path", "destination_path", "output_directory"}
+_NETWORK_MODES = {"disabled", "allowlist", "full"}
 
 
 def normalize_advanced_controls(config: dict[str, Any] | None) -> dict[str, Any]:
@@ -311,17 +313,76 @@ def _load_local_filesystem_controls() -> dict[str, dict[str, Any]]:
 _local_filesystem_scopes: dict[str, dict[str, Any]] = _load_local_filesystem_controls()
 
 
+def normalize_network_controls(config: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize the shared ToolGate Internet-access policy."""
+    config = config or {}
+    if not isinstance(config, dict):
+        raise ValueError("Network controls must be an object.")
+    mode = str(config.get("mode", "allowlist")).strip().lower()
+    if mode not in _NETWORK_MODES:
+        raise ValueError("Network mode must be 'disabled', 'allowlist', or 'full'.")
+    values = config.get("allowed_domains", [])
+    if not isinstance(values, list) or len(values) > 200:
+        raise ValueError("Network controls support at most 200 allowed domains.")
+
+    domains = []
+    for index, value in enumerate(values):
+        domain = str(value).strip().lower().rstrip(".")
+        if "://" in domain:
+            domain = (urlsplit(domain).hostname or "").lower().rstrip(".")
+        if not domain or len(domain) > 253 or any(character.isspace() for character in domain):
+            raise ValueError(f"Allowed domain {index + 1} is invalid.")
+        wildcard_invalid = (
+            "*" in domain
+            and domain not in {"*", "*.*"}
+            and (not domain.startswith("*.") or "*" in domain[2:])
+        )
+        if "/" in domain or wildcard_invalid:
+            raise ValueError(f"Allowed domain {index + 1} must be a hostname or leading wildcard.")
+        if domain not in domains:
+            domains.append(domain)
+    return {
+        "enabled": bool(config.get("enabled", False)),
+        "mode": mode,
+        "allowed_domains": domains,
+    }
+
+
+def _load_local_network_controls() -> dict[str, dict[str, Any]]:
+    try:
+        payload = (
+            json.loads(_LOCAL_OVERRIDES_PATH.read_text(encoding="utf-8"))
+            if _LOCAL_OVERRIDES_PATH.exists()
+            else {}
+        )
+        scopes = payload.get("network_scopes", {}) if isinstance(payload, dict) else {}
+        if not isinstance(scopes, dict):
+            return {}
+        return {
+            str(scope): normalize_network_controls(config)
+            for scope, config in scopes.items()
+            if isinstance(config, dict)
+        }
+    except Exception as exc:
+        log.warning("[ToolGate] Failed to load network controls: %s", exc)
+        return {}
+
+
+_local_network_scopes: dict[str, dict[str, Any]] = _load_local_network_controls()
+
+
 def _persist_local_policy() -> None:
     _LOCAL_OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
     temp_path = _LOCAL_OVERRIDES_PATH.with_suffix(".tmp")
     temp_path.write_text(
         json.dumps(
             {
-                "version": 5,
+                "version": 6,
                 "scopes": _local_override_scopes,
                 "advanced_scopes": _local_advanced_scopes,
                 "detail_scopes": _local_detail_scopes,
                 "filesystem_scopes": _local_filesystem_scopes,
+                "network_scopes": _local_network_scopes,
             },
             indent=2,
         ),
@@ -431,6 +492,29 @@ def get_local_filesystem_controls(
 ) -> dict[str, Any]:
     """Return the shared advanced filesystem policy for one scope."""
     return normalize_filesystem_controls(_local_filesystem_scopes.get(scope))
+
+
+def set_local_network_controls(
+    config: dict[str, Any],
+    scope: str = _DEFAULT_LOCAL_SCOPE,
+) -> None:
+    """Persist one shared Internet-access policy for the effective scope."""
+    normalized = normalize_network_controls(config)
+    global _local_network_scopes
+    next_scopes = {key: dict(value) for key, value in _local_network_scopes.items()}
+    if normalized["enabled"] or normalized["allowed_domains"]:
+        next_scopes[scope] = normalized
+    else:
+        next_scopes.pop(scope, None)
+    _local_network_scopes = next_scopes
+    _persist_local_policy()
+
+
+def get_local_network_controls(
+    scope: str = _DEFAULT_LOCAL_SCOPE,
+) -> dict[str, Any]:
+    """Return the shared Internet-access policy for one scope."""
+    return normalize_network_controls(_local_network_scopes.get(scope))
 
 
 def get_toolgate_scope(posture: dict[str, Any]) -> dict[str, str | None]:
@@ -1008,6 +1092,63 @@ def evaluate_tool_path_controls(
     return not flags, flags
 
 
+# ── Shared Internet Access Controls ──────────────────────────────────
+
+def _network_domains(value: Any) -> list[str]:
+    """Collect HTTP(S) hostnames from arbitrarily nested tool arguments."""
+    domains: list[str] = []
+    if isinstance(value, dict):
+        for nested in value.values():
+            domains.extend(_network_domains(nested))
+    elif isinstance(value, list):
+        for nested in value:
+            domains.extend(_network_domains(nested))
+    elif isinstance(value, str) and value.strip().lower().startswith(("http://", "https://")):
+        hostname = (urlsplit(value.strip()).hostname or "").lower().rstrip(".")
+        if hostname:
+            domains.append(hostname)
+    return domains
+
+
+def _domain_is_allowed(domain: str, allowed_domains: list[str]) -> bool:
+    domain = domain.lower().rstrip(".")
+    for pattern in allowed_domains:
+        pattern = pattern.lower().rstrip(".")
+        if pattern in {"*", "*.*"}:
+            return True
+        if pattern.startswith("*."):
+            suffix = pattern[2:]
+            if domain == suffix or domain.endswith(f".{suffix}"):
+                return True
+        elif domain == pattern:
+            return True
+    return False
+
+
+def evaluate_tool_network_controls(
+    tool_name: str,
+    args: dict[str, Any],
+    local_scope: str = _DEFAULT_LOCAL_SCOPE,
+) -> tuple[bool, list[str]]:
+    """Enforce shared Internet mode and domain allowlist for network-capable calls."""
+    controls = get_local_network_controls(local_scope)
+    if not controls["enabled"] or controls["mode"] == "full":
+        return True, []
+
+    network_tool = get_tool_category(tool_name) in {"browser", "mcp"}
+    domains = sorted(set(_network_domains(args)))
+    if controls["mode"] == "disabled" and (network_tool or domains):
+        return False, ["network_access_disabled"]
+    if controls["mode"] != "allowlist":
+        return True, []
+    blocked = [
+        f"network_domain_not_allowlisted:{domain}"
+        for domain in domains
+        if not _domain_is_allowed(domain, controls["allowed_domains"])
+    ]
+    return not blocked, blocked
+
+
 # ── Campaign Preset Override Resolution ──────────────────────────────
 
 def _resolve_campaign_override(
@@ -1129,6 +1270,16 @@ async def check_tool_access(
 
     # ── 1.5. Gensui central governance override ──
     # ── 2. Parameter-aware destructive checks ──
+    network_allowed, network_flags = evaluate_tool_network_controls(tool_name, args, local_scope)
+    if not network_allowed:
+        return GateDecision(
+            action=GateAction.BLOCK,
+            reason="The shared Internet-access policy does not permit this network target.",
+            risk_level=RiskLevel.CRITICAL,
+            tool_name=tool_name,
+            parameter_flags=network_flags,
+        )
+
     param_flags = check_dangerous_parameters(tool_name, args)
     if param_flags:
         # Destructive commands → block

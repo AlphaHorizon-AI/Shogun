@@ -812,6 +812,12 @@ class ToolGateFilesystemRequest(BaseModel):
     folders: list[dict] = Field(default_factory=list)
 
 
+class ToolGateNetworkRequest(BaseModel):
+    enabled: bool = False
+    mode: str = "allowlist"
+    allowed_domains: list[str] = Field(default_factory=list)
+
+
 class ToolGateSimulateRequest(BaseModel):
     tool_name: str
     args: dict = {}
@@ -875,6 +881,7 @@ async def get_toolgate_control():
         get_gensui_overrides,
         get_local_advanced_controls,
         get_local_filesystem_controls,
+        get_local_network_controls,
         get_local_overrides,
         resolve_explicit_overrides,
     )
@@ -951,6 +958,11 @@ async def get_toolgate_control():
             },
             "filesystem_controls": {
                 **get_local_filesystem_controls(scope["key"]),
+                "editable": bool(authority["editable"]),
+                "source": "gensui" if authority["mode"] == "gensui" else "local",
+            },
+            "network_controls": {
+                **get_local_network_controls(scope["key"]),
                 "editable": bool(authority["editable"]),
                 "source": "gensui" if authority["mode"] == "gensui" else "local",
             },
@@ -1043,6 +1055,30 @@ async def update_toolgate_filesystem_controls(body: ToolGateFilesystemRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     saved = get_local_filesystem_controls(scope["key"])
     return ApiResponse(data={"scope": scope, "filesystem_controls": saved})
+
+
+@router.put("/toolgate/network", response_model=ApiResponse)
+async def update_toolgate_network_controls(body: ToolGateNetworkRequest):
+    """Replace the shared Internet mode and domain allowlist for this scope."""
+    authority = _toolgate_authority()
+    if not authority["editable"]:
+        raise HTTPException(
+            status_code=423,
+            detail="ToolGate is managed by Gensui. Edit network controls in Gensui.",
+        )
+
+    from shogun.services.tool_gate import (
+        get_local_network_controls,
+        set_local_network_controls,
+    )
+
+    _, _, _, scope = await _active_toolgate_context()
+    try:
+        set_local_network_controls(body.model_dump(), scope["key"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    saved = get_local_network_controls(scope["key"])
+    return ApiResponse(data={"scope": scope, "network_controls": saved})
 
 
 @router.put("/toolgate/advanced", response_model=ApiResponse)

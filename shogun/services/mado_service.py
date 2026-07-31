@@ -565,12 +565,30 @@ async def navigate(
 ) -> dict[str, Any]:
     """Navigate to a URL with domain validation."""
     from shogun.services.mado_hardening import permission_guard
+    from shogun.services.posture_guard import get_posture_permissions
+    from shogun.services.tool_gate import get_local_network_controls, get_toolgate_scope
 
     await permission_guard.check("mado.navigation.open_url", url=url)
-    # Domain validation
+    parsed = urlparse(url)
+    domain = parsed.hostname or ""
+
+    posture = await get_posture_permissions()
+    scope = get_toolgate_scope(posture)["key"]
+    shared_network = get_local_network_controls(str(scope))
+    if shared_network["enabled"]:
+        if shared_network["mode"] == "disabled":
+            return {"status": "blocked", "reason": "Internet access is disabled by ToolGate"}
+        if (
+            shared_network["mode"] == "allowlist"
+            and not _domain_matches(domain, shared_network["allowed_domains"])
+        ):
+            return {
+                "status": "blocked",
+                "reason": f"Domain '{domain}' is not in the ToolGate allowlist",
+            }
+
+    # Session-level restrictions can only narrow the shared ToolGate boundary.
     if domain_allowlist:
-        parsed = urlparse(url)
-        domain = parsed.hostname or ""
         if not _domain_matches(domain, domain_allowlist):
             await _emit_browser_event(
                 "browser.navigate_blocked",
@@ -1157,6 +1175,8 @@ def _domain_matches(domain: str, allowlist: list[str]) -> bool:
         pattern = pattern.lower().strip()
         domain_lower = domain.lower()
 
+        if pattern in {"*", "*.*"}:
+            return True
         if pattern.startswith("*."):
             # Wildcard: match the suffix
             suffix = pattern[2:]
