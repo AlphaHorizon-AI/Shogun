@@ -136,8 +136,10 @@ interface ToolGateData {
   pending_confirmations: Array<{
     confirm_id: string;
     tool_name: string;
+    args: Record<string, unknown>;
     risk_level: string;
     reason: string;
+    created_at: number;
   }>;
 }
 
@@ -162,6 +164,113 @@ const COMMS_LABELS: Record<string, string> = {
   allow_list_cron: 'List scheduled jobs',
   allow_manage_cron: 'Manage scheduled jobs',
 };
+
+const CAPABILITY_HELP: Record<string, Record<string, string>> = {
+  filesystem: {
+    mode: 'Sets whether files are unavailable, limited to approved locations, or accessible without path restrictions.',
+    allowed_paths: 'Lists the local folders this profile may access when filesystem mode is scoped.',
+    allow_home_access: 'Permits access to files inside the operating-system user home folder.',
+    allow_arbitrary_paths: 'Permits file operations outside explicitly approved folders.',
+  },
+  network: {
+    mode: 'Sets whether Internet access is disabled, limited to approved domains, or unrestricted.',
+    allowed_domains: 'Lists the Internet domains this profile may contact when network mode uses an allowlist.',
+    allow_arbitrary_requests: 'Permits outbound requests to destinations that are not explicitly allowlisted.',
+  },
+  shell: {
+    enabled: 'Permits tools to run operating-system commands.',
+    allowed_binaries: 'Lists the command-line programs that may be executed.',
+  },
+  skills: {
+    allow_auto_install: 'Permits required skills to be installed automatically.',
+    require_approval: 'Controls whether skill activation must pass the operator-approval safeguard.',
+    allow_untrusted: 'Permits skills that have not been marked as trusted.',
+  },
+  subagents: {
+    allow_spawn: 'Permits the Shogun to create Samurai sub-agents.',
+    max_active: 'Limits how many Samurai sub-agents may be active at the same time.',
+    allow_auto_spawn: 'Permits Samurai to be created autonomously without an explicit deployment instruction.',
+  },
+  memory: {
+    allow_write: 'Permits creating or updating persistent memories and reminder-board entries.',
+    allow_bulk_delete: 'Permits deleting multiple stored memories in one operation.',
+  },
+  comms: {
+    allow_read_email: 'Permits listing and reading email messages.',
+    allow_send_email: 'Permits sending email and performing email write operations.',
+    allow_read_calendar: 'Permits reading calendar events and schedules.',
+    allow_create_events: 'Permits creating, editing, or deleting calendar events.',
+    allow_list_cron: 'Permits listing scheduled jobs and automations.',
+    allow_manage_cron: 'Permits creating, editing, or deleting scheduled jobs.',
+  },
+  mado_browser: {
+    enabled: 'Enables Mado browser automation for this profile.',
+    allow_external_urls: 'Permits Mado to navigate beyond local and explicitly allowlisted destinations.',
+    allow_login_profiles: 'Permits Mado to use saved browser login profiles.',
+    allow_authenticated_sessions: 'Permits Mado to operate inside signed-in browser sessions.',
+    allow_file_downloads: 'Permits websites to download files through Mado.',
+    allow_file_uploads: 'Permits Mado to upload local files to websites.',
+    allow_form_submit: 'Permits Mado to submit web forms that may create external side effects.',
+    allow_headless_mode: 'Permits browser automation without a visible browser window.',
+    allow_visible_mode: 'Permits browser automation in a visible, operator-observable window.',
+    capture_screenshots: 'Permits Mado to capture screenshots for observation and verification.',
+    require_verification: 'Requires Mado to verify that the intended browser action succeeded.',
+    audit_all_actions: 'Records every Mado action in the audit log.',
+  },
+  agentflow: {
+    allow_create: 'Permits creating new AgentFlows.',
+    allow_edit: 'Permits changing the nodes, connections, or settings of existing AgentFlows.',
+    allow_activate: 'Permits activating or deactivating AgentFlows.',
+    allow_execute: 'Permits running AgentFlows.',
+    allow_save_as_template: 'Permits saving an AgentFlow as a reusable template.',
+    allow_delete: 'Permits deleting AgentFlows.',
+  },
+  flow_stack: {
+    allow_create: 'Permits creating new Flow Stacks.',
+    allow_edit: 'Permits changing the composition or settings of existing Flow Stacks.',
+    allow_activate: 'Permits activating or deactivating Flow Stacks.',
+    allow_execute: 'Permits running Flow Stacks and their nested flows.',
+    allow_save_as_template: 'Permits saving a Flow Stack as a reusable template.',
+    allow_delete: 'Permits deleting Flow Stacks.',
+  },
+  visual_intake: {
+    allow_image_intake: 'Permits images to be uploaded and processed as visual input.',
+    allow_local_vision: 'Permits visual analysis using locally hosted models.',
+    allow_cloud_vision: 'Permits visual input to be sent to configured cloud vision models.',
+    allow_ocr: 'Permits optical character recognition to extract text from images.',
+    allow_attach_to_stack: 'Permits visual inputs to be attached to Flow Stack execution context.',
+    allow_auto_memory: 'Permits visual findings to be stored automatically in memory.',
+    allow_delete: 'Permits deletion of stored visual-intake records and artifacts.',
+    retention_days: 'Sets how many days visual-intake artifacts are retained.',
+    max_upload_mb: 'Sets the maximum allowed size of one visual upload in megabytes.',
+  },
+  ide_mode: {
+    enabled: 'Enables governed IDE and coding operations for Campaign or Ronin profiles.',
+    file_read: 'Permits reading files inside an approved coding workspace.',
+    file_search: 'Permits searching filenames and file contents inside an approved workspace.',
+    file_create: 'Permits creating new files inside an approved workspace.',
+    file_patch: 'Permits editing existing files inside an approved workspace.',
+    file_delete: 'Permits deleting files inside an approved workspace.',
+    diagnostics: 'Permits reading compiler, linter, and workspace diagnostics.',
+    approved_tasks_only: 'Limits IDE work to tasks that the operator has explicitly approved.',
+    terminal_approved_only: 'Requires explicit approval before terminal commands are executed.',
+    package_install: 'Permits installing project dependencies and software packages.',
+    git_status: 'Permits inspecting Git working-tree status.',
+    git_diff: 'Permits inspecting Git changes and patches.',
+    git_branch_create: 'Permits creating Git branches.',
+    git_commit: 'Permits creating Git commits.',
+    git_push: 'Permits pushing Git commits to a remote repository.',
+    secrets_access: 'Permits access to files or values identified as secrets or credentials.',
+    require_snapshot: 'Requires a recoverable workspace snapshot before material edits.',
+    audit_all_actions: 'Records every governed IDE action in the audit log.',
+    self_verification_required: 'Requires the coding agent to test and verify its work before completion.',
+  },
+};
+
+function capabilityHelp(categoryName: string, key: string) {
+  return CAPABILITY_HELP[categoryName]?.[key]
+    || `Controls the ${key.replace(/_/g, ' ')} setting for ${categoryName.replace(/_/g, ' ')}.`;
+}
 
 const TOOL_THEMES: ToolTheme[] = [
   {
@@ -341,12 +450,63 @@ function mergePermissionDefaults(
 ) {
   const merged = structuredClone(DEFAULT_POLICY_PERMISSIONS);
   Object.entries(permissions || {}).forEach(([categoryName, values]) => {
+    if (categoryName === 'capability_decisions') {
+      merged[categoryName] = Object.fromEntries(
+        Object.entries(values || {}).map(([decisionCategory, decisions]) => [
+          decisionCategory,
+          { ...((decisions as Record<string, GateAction>) || {}) },
+        ]),
+      );
+      return;
+    }
     merged[categoryName] = {
       ...(merged[categoryName] || {}),
       ...(values || {}),
     };
   });
   return merged;
+}
+
+function capabilityEntries(permissions: Record<string, Record<string, unknown>>) {
+  return Object.entries(permissions).filter(([categoryName]) => categoryName !== 'capability_decisions');
+}
+
+function capabilityDecision(
+  permissions: Record<string, Record<string, unknown>>,
+  categoryName: string,
+  key: string,
+  value: boolean,
+): GateAction {
+  const decisions = permissions.capability_decisions as Record<string, Record<string, GateAction>> | undefined;
+  const configured = decisions?.[categoryName]?.[key];
+  return configured === 'allow' || configured === 'confirm' || configured === 'block'
+    ? configured
+    : value ? 'allow' : 'block';
+}
+
+function withCapabilityDecision(
+  permissions: Record<string, Record<string, unknown>>,
+  categoryName: string,
+  key: string,
+  action: GateAction,
+) {
+  const decisions = permissions.capability_decisions as Record<string, Record<string, GateAction>> | undefined;
+  return {
+    ...permissions,
+    [categoryName]: {
+      ...(permissions[categoryName] || {}),
+      // Confirm remains enabled at the coarse PostureGuard layer so the call
+      // can reach ToolGate and pause for the operator's decision.
+      [key]: action !== 'block',
+    },
+    capability_decisions: {
+      ...(decisions || {}),
+      [categoryName]: {
+        ...(decisions?.[categoryName] || {}),
+        [key]: action,
+      },
+    },
+  };
 }
 
 function categoryAvailability(categoryName: string, tier: string) {
@@ -393,6 +553,89 @@ function ActionBadge({ action }: { action: GateAction }) {
       {action}
     </span>
   );
+}
+
+function CapabilityDecisionControl({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: GateAction;
+  disabled: boolean;
+  onChange: (action: GateAction) => void;
+}) {
+  return (
+    <div className="inline-grid shrink-0 grid-cols-3 overflow-hidden rounded-md border border-shogun-border bg-black/25">
+      {(['allow', 'confirm', 'block'] as GateAction[]).map(action => (
+        <button
+          key={action}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(action)}
+          className={cn(
+            'border-r border-shogun-border px-2 py-1.5 text-[8px] font-bold uppercase tracking-wide transition-colors last:border-r-0 disabled:cursor-not-allowed',
+            value === action ? ACTION_STYLES[action] : 'text-shogun-subdued hover:bg-white/[0.04]',
+          )}
+        >
+          {action}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CapabilityHelp({
+  categoryName,
+  settingKey,
+  triState,
+}: {
+  categoryName: string;
+  settingKey: string;
+  triState: boolean;
+}) {
+  const description = capabilityHelp(categoryName, settingKey);
+  return (
+    <span className="group relative inline-flex shrink-0">
+      <button
+        type="button"
+        aria-label={`Help for ${settingKey.replace(/_/g, ' ')}`}
+        className="rounded-full text-shogun-subdued/70 outline-none transition-colors hover:text-shogun-blue focus-visible:text-shogun-blue"
+      >
+        <CircleHelp className="h-3.5 w-3.5" />
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-5 z-40 hidden w-72 rounded-lg border border-shogun-border bg-[#090d18] p-3 text-left text-[10px] font-normal normal-case leading-relaxed tracking-normal text-shogun-text shadow-2xl group-hover:block group-focus-within:block"
+      >
+        {description}
+        {triState && (
+          <span className="mt-2 block border-t border-shogun-border/70 pt-2 text-shogun-subdued">
+            <strong className="text-emerald-300">Allow</strong> makes it available.{' '}
+            <strong className="text-amber-300">Confirm</strong> pauses matching calls for one-time approval.{' '}
+            <strong className="text-red-300">Block</strong> makes it unavailable.
+          </span>
+        )}
+      </span>
+    </span>
+  );
+}
+
+function safeConfirmationArgs(args: Record<string, unknown>) {
+  const sensitive = /(password|passwd|token|secret|credential|api[_-]?key|authorization)/i;
+  const sanitize = (value: unknown, key = ''): unknown => {
+    if (sensitive.test(key)) return '[redacted]';
+    if (Array.isArray(value)) return value.map(item => sanitize(item));
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([itemKey, itemValue]) => [
+          itemKey,
+          sanitize(itemValue, itemKey),
+        ]),
+      );
+    }
+    return value;
+  };
+  return JSON.stringify(sanitize(args), null, 2);
 }
 
 function formatSync(value: string | null) {
@@ -454,6 +697,8 @@ export function ToolGate() {
   const [showPolicyEditor, setShowPolicyEditor] = useState(false);
   const [policyDraft, setPolicyDraft] = useState(emptyPolicyDraft);
   const [savingPolicy, setSavingPolicy] = useState(false);
+  const [resolvingConfirmation, setResolvingConfirmation] = useState<string | null>(null);
+  const [approvalClock, setApprovalClock] = useState(() => Date.now());
 
   const fetchData = async () => {
     setLoading(true);
@@ -526,6 +771,25 @@ export function ToolGate() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  useEffect(() => {
+    const refreshPending = async () => {
+      try {
+        const response = await axios.get('/api/v1/security/toolgate');
+        const pending = (response.data.data?.pending_confirmations || []) as ToolGateData['pending_confirmations'];
+        setData(current => current ? { ...current, pending_confirmations: pending } : current);
+      } catch {
+        // The main page status already reports connection failures. A polling
+        // miss should not replace useful ToolGate data with an error banner.
+      }
+    };
+    const pendingTimer = window.setInterval(refreshPending, 2500);
+    const clockTimer = window.setInterval(() => setApprovalClock(Date.now()), 1000);
+    return () => {
+      window.clearInterval(pendingTimer);
+      window.clearInterval(clockTimer);
+    };
+  }, []);
 
   const categories = useMemo(
     () => Array.from(new Set(data?.tools.map(tool => tool.category) || [])).sort(),
@@ -672,6 +936,10 @@ export function ToolGate() {
     }));
   };
 
+  const updateCapabilityDecision = (categoryName: string, key: string, action: GateAction) => {
+    setCapabilityDraft(current => withCapabilityDecision(current, categoryName, key, action));
+  };
+
   const addFilesystemFolder = () => {
     setFilesystemDraft(current => ({
       ...current,
@@ -812,6 +1080,39 @@ export function ToolGate() {
         },
       },
     }));
+  };
+
+  const updatePolicyCapabilityDecision = (categoryName: string, key: string, action: GateAction) => {
+    setPolicyDraft(current => ({
+      ...current,
+      permissions: withCapabilityDecision(current.permissions, categoryName, key, action),
+    }));
+  };
+
+  const resolvePendingConfirmation = async (confirmId: string, approved: boolean) => {
+    setResolvingConfirmation(confirmId);
+    setMessage(null);
+    try {
+      await axios.post('/api/v1/security/toolgate/confirm', {
+        confirm_id: confirmId,
+        approved,
+      });
+      setData(current => current ? {
+        ...current,
+        pending_confirmations: current.pending_confirmations.filter(item => item.confirm_id !== confirmId),
+      } : current);
+      setMessage({
+        type: 'success',
+        text: approved ? 'The pending tool call was approved.' : 'The pending tool call was denied.',
+      });
+    } catch (error: unknown) {
+      setMessage({
+        type: 'error',
+        text: errorMessage(error, 'The approval request may have expired. Refresh ToolGate and try again.'),
+      });
+    } finally {
+      setResolvingConfirmation(null);
+    }
   };
 
   const savePolicy = async (event: React.FormEvent) => {
@@ -1070,7 +1371,7 @@ export function ToolGate() {
               <h2 className="text-sm font-bold uppercase tracking-widest text-shogun-text">Capability boundaries</h2>
             </div>
             <p className="mt-1 max-w-3xl text-xs leading-relaxed text-shogun-subdued">
-              The policy ceiling for filesystem, network, applications, workflows, memory, and delegation. Runtime tool verdicts below can only narrow these capabilities.
+              Allow makes a capability available, Confirm pauses matching calls for a live human decision, and Block removes it. Per-tool and content rules below may still narrow Allow.
             </p>
           </div>
           <div className="min-w-56 rounded-lg border border-shogun-border bg-shogun-bg/70 p-3">
@@ -1115,7 +1416,7 @@ export function ToolGate() {
         )}
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {Object.entries(capabilityDraft).map(([categoryName, permissions]) => {
+          {capabilityEntries(capabilityDraft).map(([categoryName, permissions]) => {
             const availability = categoryAvailability(categoryName, data.active_tier);
             const categoryEnabled = categoryIsEnabled(categoryName, permissions);
             const categoryMuted = !availability.available || !categoryEnabled;
@@ -1164,29 +1465,23 @@ export function ToolGate() {
                   );
                   const settingDisabled = !data.capabilities.editable || dependencyDisabled;
                   return (
-                  <label
+                  <div
                     key={key}
                     className={cn(
                       'flex min-h-8 items-center justify-between gap-3 text-[10px] text-shogun-subdued transition-opacity',
                       dependencyDisabled && 'opacity-35',
                     )}
                   >
-                    <span className="capitalize">{categoryName === 'comms' ? COMMS_LABELS[key] || key.replace(/_/g, ' ') : key.replace(/_/g, ' ')}</span>
+                    <span className="flex min-w-0 items-center gap-1.5 capitalize">
+                      <span>{categoryName === 'comms' ? COMMS_LABELS[key] || key.replace(/_/g, ' ') : key.replace(/_/g, ' ')}</span>
+                      <CapabilityHelp categoryName={categoryName} settingKey={key} triState={typeof value === 'boolean'} />
+                    </span>
                     {typeof value === 'boolean' ? (
-                      <button
-                        type="button"
+                      <CapabilityDecisionControl
                         disabled={settingDisabled}
-                        onClick={() => updateCapability(categoryName, key, !value)}
-                        className={cn(
-                          'relative h-5 w-10 rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-55',
-                          value ? 'border-emerald-500/40 bg-emerald-500/20' : 'border-red-500/30 bg-red-500/10',
-                        )}
-                      >
-                        <span className={cn(
-                          'absolute top-0.5 h-4 w-4 rounded-full transition-all',
-                          value ? 'left-5 bg-emerald-400' : 'left-0.5 bg-red-400',
-                        )} />
-                      </button>
+                        value={capabilityDecision(capabilityDraft, categoryName, key, value)}
+                        onChange={action => updateCapabilityDecision(categoryName, key, action)}
+                      />
                     ) : typeof value === 'number' ? (
                       <input
                         type="number"
@@ -1224,7 +1519,7 @@ export function ToolGate() {
                         className="w-36 rounded border border-shogun-border bg-shogun-bg px-2 py-1 text-right text-[10px] text-shogun-text disabled:opacity-55"
                       />
                     )}
-                  </label>
+                  </div>
                 )})}
               </div>
             </div>
@@ -2054,28 +2349,87 @@ export function ToolGate() {
           )}
         </div>
 
-        <div className="shogun-card space-y-4">
-          <div className="flex items-center gap-2">
-            <Clock3 className="h-4 w-4 text-amber-300" />
-            <h2 className="text-sm font-bold uppercase tracking-widest text-shogun-text">Pending approvals</h2>
+        <div className={cn(
+          'shogun-card space-y-4',
+          data.pending_confirmations.length > 0 && 'border-amber-400/35 bg-amber-500/[0.035]',
+        )}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Clock3 className={cn('h-4 w-4 text-amber-300', data.pending_confirmations.length > 0 && 'animate-pulse')} />
+              <h2 className="text-sm font-bold uppercase tracking-widest text-shogun-text">Human approval</h2>
+            </div>
+            <span className={cn(
+              'rounded-md border px-2 py-1 text-[9px] font-bold uppercase tracking-widest',
+              data.pending_confirmations.length > 0
+                ? 'border-amber-400/30 bg-amber-500/10 text-amber-300'
+                : 'border-emerald-400/20 bg-emerald-500/5 text-emerald-300',
+            )}>
+              {data.pending_confirmations.length} pending
+            </span>
           </div>
           {data.pending_confirmations.length === 0 ? (
             <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-shogun-border py-10 text-center">
               <CheckCircle2 className="h-6 w-6 text-emerald-400" />
-              <p className="text-xs text-shogun-subdued">No tool calls are waiting for approval.</p>
+              <p className="text-xs text-shogun-subdued">No Confirm capability is waiting for your decision.</p>
             </div>
-          ) : data.pending_confirmations.map(item => (
-            <div key={item.confirm_id} className="rounded-lg border border-amber-500/20 bg-amber-500/[0.05] p-3">
-              <p className="font-mono text-xs font-bold text-shogun-text">{item.tool_name}</p>
-              <p className="mt-1 text-[10px] text-shogun-subdued">{item.reason}</p>
-            </div>
-          ))}
-          <button onClick={() => navigate('/chat')} className="flex items-center gap-2 text-xs font-bold text-shogun-blue hover:text-shogun-gold">
-            Resolve approvals in Chat <ChevronRight className="h-3.5 w-3.5" />
-          </button>
+          ) : data.pending_confirmations.map(item => {
+            const secondsRemaining = Math.max(
+              0,
+              Math.ceil(60 - (approvalClock / 1000 - (item.created_at || approvalClock / 1000))),
+            );
+            const resolving = resolvingConfirmation === item.confirm_id;
+            return (
+              <div key={item.confirm_id} className="rounded-lg border border-amber-500/25 bg-black/20 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-xs font-bold text-shogun-text">{item.tool_name}</p>
+                    <p className="mt-1 text-[10px] leading-relaxed text-shogun-subdued">{item.reason}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className={cn('text-[9px] font-bold uppercase tracking-widest', RISK_STYLES[item.risk_level] || 'text-amber-300')}>
+                      {item.risk_level} risk
+                    </span>
+                    <p className={cn('mt-1 font-mono text-[10px]', secondsRemaining <= 10 ? 'text-red-300' : 'text-amber-200')}>
+                      {secondsRemaining}s
+                    </p>
+                  </div>
+                </div>
+                {item.args && Object.keys(item.args).length > 0 && (
+                  <details className="mt-3 rounded-md border border-shogun-border/70 bg-shogun-bg/60 p-2">
+                    <summary className="cursor-pointer text-[9px] font-bold uppercase tracking-widest text-shogun-subdued">
+                      Review arguments
+                    </summary>
+                    <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all font-mono text-[9px] leading-relaxed text-shogun-subdued">
+                      {safeConfirmationArgs(item.args)}
+                    </pre>
+                  </details>
+                )}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={resolving || secondsRemaining === 0}
+                    onClick={() => resolvePendingConfirmation(item.confirm_id, false)}
+                    className="flex items-center justify-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-red-300 disabled:opacity-45"
+                  >
+                    {resolving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                    Deny
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resolving || secondsRemaining === 0}
+                    onClick={() => resolvePendingConfirmation(item.confirm_id, true)}
+                    className="flex items-center justify-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-300 disabled:opacity-45"
+                  >
+                    {resolving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                    Approve once
+                  </button>
+                </div>
+              </div>
+            );
+          })}
           <div className="flex gap-2 rounded-lg bg-shogun-bg/70 p-3">
             <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 text-shogun-subdued" />
-            <p className="text-[10px] leading-relaxed text-shogun-subdued">Confirmations auto-deny after 60 seconds. Every verdict and operator decision remains available in Logs.</p>
+            <p className="text-[10px] leading-relaxed text-shogun-subdued">Approval is valid for this call only. Unanswered requests auto-deny after 60 seconds, and every operator decision remains available in Logs.</p>
           </div>
         </div>
       </div>
@@ -2165,7 +2519,7 @@ export function ToolGate() {
                   These are the maximum runtime capabilities of this posture. Tool verdicts and advanced content rules may narrow them further.
                 </p>
                 <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {Object.entries(policyDraft.permissions).map(([categoryName, permissions]) => {
+                  {capabilityEntries(policyDraft.permissions).map(([categoryName, permissions]) => {
                     const availability = categoryAvailability(categoryName, policyDraft.tier);
                     const categoryEnabled = categoryIsEnabled(categoryName, permissions);
                     return (
@@ -2207,26 +2561,23 @@ export function ToolGate() {
                               policyDraft.tier,
                             );
                             return (
-                            <label
+                            <div
                               key={key}
                               className={cn(
                                 'flex min-h-8 items-center justify-between gap-3 text-[10px] text-shogun-subdued transition-opacity',
                                 settingDisabled && 'opacity-35',
                               )}
                             >
-                              <span className="capitalize">{key.replace(/_/g, ' ')}</span>
+                              <span className="flex min-w-0 items-center gap-1.5 capitalize">
+                                <span>{categoryName === 'comms' ? COMMS_LABELS[key] || key.replace(/_/g, ' ') : key.replace(/_/g, ' ')}</span>
+                                <CapabilityHelp categoryName={categoryName} settingKey={key} triState={typeof value === 'boolean'} />
+                              </span>
                               {typeof value === 'boolean' ? (
-                                <button
-                                  type="button"
+                                <CapabilityDecisionControl
                                   disabled={settingDisabled}
-                                  onClick={() => updatePolicyPermission(categoryName, key, !value)}
-                                  className={cn(
-                                    'relative h-5 w-10 rounded-full border transition-colors disabled:cursor-not-allowed',
-                                    value ? 'border-emerald-500/40 bg-emerald-500/20' : 'border-red-500/30 bg-red-500/10',
-                                  )}
-                                >
-                                  <span className={cn('absolute top-0.5 h-4 w-4 rounded-full transition-all', value ? 'left-5 bg-emerald-400' : 'left-0.5 bg-red-400')} />
-                                </button>
+                                  value={capabilityDecision(policyDraft.permissions, categoryName, key, value)}
+                                  onChange={action => updatePolicyCapabilityDecision(categoryName, key, action)}
+                                />
                               ) : typeof value === 'number' ? (
                                 <input
                                   type="number"
@@ -2260,7 +2611,7 @@ export function ToolGate() {
                                   className="w-36 rounded border border-shogun-border bg-shogun-bg px-2 py-1 text-right text-[10px] text-shogun-text"
                                 />
                               )}
-                            </label>
+                            </div>
                           )})}
                         </div>
                     </div>

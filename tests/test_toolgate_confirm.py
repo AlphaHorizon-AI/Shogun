@@ -4,6 +4,7 @@ import pytest
 
 from shogun.services.toolgate_confirm import (
     get_pending_count,
+    list_pending_confirmations,
     register_confirmation,
     resolve_confirmation,
     wait_for_confirmation,
@@ -25,3 +26,20 @@ async def test_confirmation_is_registered_before_stream_wait_begins() -> None:
     assert resolve_confirmation(confirm_id, True) is True
     assert await asyncio.wait_for(wait_for_confirmation(confirm_id), timeout=0.5) is True
     assert get_pending_count() == 0
+
+
+@pytest.mark.asyncio
+async def test_resolved_confirmation_disappears_from_operator_queue_immediately() -> None:
+    confirm_id = "operator-resolved"
+    register_confirmation(
+        confirm_id=confirm_id,
+        tool_name="send_email",
+        args={"to_address": "person@example.com"},
+        risk_level="high",
+        reason="Mail send requires approval",
+    )
+
+    assert len(list_pending_confirmations()) == 1
+    assert resolve_confirmation(confirm_id, False) is True
+    assert list_pending_confirmations() == []
+    assert await asyncio.wait_for(wait_for_confirmation(confirm_id), timeout=0.5) is False

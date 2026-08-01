@@ -150,6 +150,7 @@ def list_pending_confirmations() -> list[dict[str, Any]]:
             "created_at": entry.created_at,
         }
         for entry in sorted(_pending.values(), key=lambda item: item.created_at)
+        if not entry.event.is_set()
     ]
 
 

@@ -1,8 +1,8 @@
 {
-  "version": "1.47.54",
+  "version": "1.47.55",
   "name": "Shogun OS",
-  "build": 205,
+  "build": 206,
   "channel": "stable",
-  "released": "2026-08-01T19:03:41Z",
-  "changelog": "Add template-guided Word and Excel AgentFlows with optional one-shot examples, update the AgentFlow Operator skill, and complete ToolGate capability controls with disabled-state guidance."
+  "released": "2026-08-01T19:36:34Z",
+  "changelog": "Replace ToolGate capability toggles with Allow, Confirm, and Block decisions; add live human approval handling; and provide rollover guidance for every capability setting."
 }

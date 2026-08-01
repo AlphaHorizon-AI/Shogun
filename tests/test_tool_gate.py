@@ -45,12 +45,17 @@ def restore_toolgate_overrides(tmp_path, monkeypatch):
         scope: dict(config)
         for scope, config in tool_gate._local_network_scopes.items()
     }
+    original_capability_scopes = {
+        scope: {category: dict(settings) for category, settings in decisions.items()}
+        for scope, decisions in tool_gate._capability_decision_scopes.items()
+    }
     monkeypatch.setattr(tool_gate, "_LOCAL_OVERRIDES_PATH", tmp_path / "toolgate_overrides.json")
     tool_gate._local_override_scopes = {}
     tool_gate._local_advanced_scopes = {}
     tool_gate._local_detail_scopes = {}
     tool_gate._local_filesystem_scopes = {}
     tool_gate._local_network_scopes = {}
+    tool_gate._capability_decision_scopes = {}
     apply_gensui_overrides({})
     apply_gensui_advanced_controls({})
     yield
@@ -59,6 +64,7 @@ def restore_toolgate_overrides(tmp_path, monkeypatch):
     tool_gate._local_detail_scopes = original_detail_scopes
     tool_gate._local_filesystem_scopes = original_filesystem_scopes
     tool_gate._local_network_scopes = original_network_scopes
+    tool_gate._capability_decision_scopes = original_capability_scopes
     apply_gensui_overrides({})
     apply_gensui_advanced_controls({})
 
@@ -143,6 +149,108 @@ async def test_local_overrides_are_isolated_by_effective_policy_scope():
     assert custom_decision.action == GateAction.BLOCK
     assert tier_decision.action == GateAction.ALLOW
     assert get_local_overrides("policy:custom-a") == {"send_email": "block"}
+
+
+@pytest.mark.asyncio
+async def test_capability_confirm_reaches_toolgate_as_a_human_approval():
+    scope = get_toolgate_scope(
+        {
+            "active_tier": "campaign",
+            "active_policy_id": "custom-confirm",
+            "active_policy_name": "Confirm mail",
+            "active_policy_is_builtin": False,
+            "active_policy_tier": "campaign",
+            "active_policy_permissions": {
+                "comms": {"allow_send_email": True},
+                "capability_decisions": {
+                    "comms": {"allow_send_email": "confirm"},
+                },
+            },
+        }
+    )
+
+    decision = await check_tool_access(
+        mode="campaign",
+        tool_name="send_email",
+        args={"to_address": "person@example.com"},
+        local_scope=scope["key"],
+    )
+
+    assert decision.action == GateAction.CONFIRM
+    assert "comms.allow_send_email" in decision.reason
+
+
+@pytest.mark.asyncio
+async def test_capability_allow_does_not_weaken_tool_risk_rules():
+    scope = get_toolgate_scope(
+        {
+            "active_tier": "tactical",
+            "active_policy_id": "custom-allow",
+            "active_policy_is_builtin": False,
+            "active_policy_tier": "tactical",
+            "active_policy_permissions": {
+                "comms": {"allow_send_email": True},
+                "capability_decisions": {
+                    "comms": {"allow_send_email": "allow"},
+                },
+            },
+        }
+    )
+
+    decision = await check_tool_access(
+        mode="standard",
+        tool_name="send_email",
+        args={},
+        local_scope=scope["key"],
+    )
+
+    assert decision.action == GateAction.CONFIRM
+    assert "threshold" in decision.reason
+
+
+@pytest.mark.asyncio
+async def test_capability_block_cannot_be_relaxed_by_campaign_override():
+    scope = get_toolgate_scope(
+        {
+            "active_tier": "campaign",
+            "active_policy_id": "custom-block",
+            "active_policy_is_builtin": False,
+            "active_policy_tier": "campaign",
+            "active_policy_permissions": {
+                "comms": {"allow_send_email": False},
+                "capability_decisions": {
+                    "comms": {"allow_send_email": "block"},
+                },
+            },
+        }
+    )
+
+    decision = await check_tool_access(
+        mode="campaign",
+        tool_name="send_email",
+        args={},
+        campaign_preset={"tool_overrides": {"send_email": "allow"}},
+        local_scope=scope["key"],
+    )
+
+    assert decision.action == GateAction.BLOCK
+    assert "capability" in decision.reason.lower()
+
+
+def test_policy_permission_schema_preserves_tri_state_metadata():
+    from shogun.schemas.security import PolicyPermissions
+
+    permissions = PolicyPermissions.model_validate(
+        {
+            "memory": {"allow_write": True},
+            "capability_decisions": {
+                "memory": {"allow_write": "confirm"},
+            },
+        }
+    ).model_dump()
+
+    assert permissions["memory"]["allow_write"] is True
+    assert permissions["capability_decisions"]["memory"]["allow_write"] == "confirm"
 
 
 def test_shared_filesystem_controls_are_persisted_and_isolated_by_scope():

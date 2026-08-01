@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -70,6 +70,14 @@ class PolicyPermissions(ShogunBase):
     flow_stack: dict[str, Any] = Field(default_factory=dict)
     visual_intake: dict[str, Any] = Field(default_factory=dict)
     ide_mode: dict[str, Any] = Field(default_factory=dict)
+    # Boolean permission values remain the effective capability ceiling for
+    # compatibility with PostureGuard and existing installations.  This
+    # companion map records whether an enabled capability is automatic or
+    # requires a per-call human confirmation.
+    capability_decisions: dict[
+        str,
+        dict[str, Literal["allow", "confirm", "block"]],
+    ] = Field(default_factory=dict)
 
 
 class SecurityPolicyCreate(ShogunBase):

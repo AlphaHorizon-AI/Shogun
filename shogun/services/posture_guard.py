@@ -149,6 +149,8 @@ async def get_posture_tool_filter() -> dict[str, Any]:
         "active_policy_name": posture.get("active_policy_name"),
         "active_policy_is_builtin": posture.get("active_policy_is_builtin"),
         "active_policy_tier": posture.get("active_policy_tier"),
+        "active_policy_permissions": posture.get("active_policy_permissions"),
+        "active_custom_permissions": posture.get("active_custom_permissions"),
         "active_campaign_preset": posture.get("active_campaign_preset"),
         "comms_read_email": posture.get("comms_read_email", True),
         "comms_send_email": posture.get("comms_send_email", True),

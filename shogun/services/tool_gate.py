@@ -32,6 +32,7 @@ log = logging.getLogger("shogun.tool_gate")
 # Format: {"tool_name": "allow" | "confirm" | "block"}
 _gensui_overrides: dict[str, str] = {}
 _gensui_advanced_controls: dict[str, Any] = {"enabled": False, "rules": []}
+_capability_decision_scopes: dict[str, dict[str, dict[str, str]]] = {}
 _LOCAL_OVERRIDES_PATH = Path("data/toolgate_overrides.json")
 _DEFAULT_LOCAL_SCOPE = "global"
 _ADVANCED_ACTIONS = {"confirm", "block"}
@@ -526,20 +527,50 @@ def get_toolgate_scope(posture: dict[str, Any]) -> dict[str, str | None]:
     policy_name = posture.get("active_policy_name")
 
     if policy_id and is_builtin is False:
-        return {
+        scope = {
             "key": f"policy:{policy_id}",
             "kind": "custom_policy",
             "label": str(policy_name or "Custom policy"),
             "base_tier": base_tier,
             "policy_id": str(policy_id),
         }
-    return {
-        "key": f"tier:{base_tier}",
-        "kind": "tier",
-        "label": base_tier.upper(),
-        "base_tier": base_tier,
-        "policy_id": str(policy_id) if policy_id else None,
-    }
+    else:
+        scope = {
+            "key": f"tier:{base_tier}",
+            "kind": "tier",
+            "label": base_tier.upper(),
+            "base_tier": base_tier,
+            "policy_id": str(policy_id) if policy_id else None,
+        }
+
+    has_permission_context = (
+        "active_custom_permissions" in posture
+        or "active_policy_permissions" in posture
+    )
+    if has_permission_context:
+        permissions = (
+            posture.get("active_custom_permissions")
+            or posture.get("active_policy_permissions")
+            or {}
+        )
+        raw_decisions = permissions.get("capability_decisions", {}) if isinstance(permissions, dict) else {}
+        normalized: dict[str, dict[str, str]] = {}
+        if isinstance(raw_decisions, dict):
+            for category, settings in raw_decisions.items():
+                if not isinstance(settings, dict):
+                    continue
+                valid = {
+                    str(key): str(action)
+                    for key, action in settings.items()
+                    if action in {"allow", "confirm", "block"}
+                }
+                if valid:
+                    normalized[str(category)] = valid
+        if normalized:
+            _capability_decision_scopes[str(scope["key"])] = normalized
+        else:
+            _capability_decision_scopes.pop(str(scope["key"]), None)
+    return scope
 
 
 def calculate_capability_risk(permissions: dict[str, Any] | None) -> int:
@@ -779,6 +810,75 @@ def get_tool_category(tool_name: str) -> str:
     """Look up the category for a tool. Unknown tools default to 'unknown'."""
     entry = TOOL_RISK_REGISTRY.get(tool_name)
     return entry["category"] if entry else "unknown"
+
+
+# Capability-boundary rows that have a direct native-tool equivalent.  A
+# capability may contribute more than one ceiling (for example Mado must be
+# enabled and external navigation must be permitted).  The most restrictive
+# configured decision always wins.
+TOOL_CAPABILITY_RULES: dict[str, tuple[tuple[str, str], ...]] = {
+    "store_memory": (("memory", "allow_write"),),
+    "reminder_board_add": (("memory", "allow_write"),),
+    "reminder_board_update": (("memory", "allow_write"),),
+    "fetch_inbox": (("comms", "allow_read_email"),),
+    "read_email": (("comms", "allow_read_email"),),
+    "send_email": (("comms", "allow_send_email"),),
+    "list_calendar_events": (("comms", "allow_read_calendar"),),
+    "create_calendar_event": (("comms", "allow_create_events"),),
+    "list_cron_jobs": (("comms", "allow_list_cron"),),
+    "create_cron_job": (("comms", "allow_manage_cron"),),
+    "delete_cron_job": (("comms", "allow_manage_cron"),),
+    "spawn_samurai": (("subagents", "allow_spawn"),),
+    "browse_web": (
+        ("mado_browser", "enabled"),
+        ("mado_browser", "allow_external_urls"),
+    ),
+    "take_screenshot": (
+        ("mado_browser", "enabled"),
+        ("mado_browser", "capture_screenshots"),
+    ),
+    "ide_memory_search": (("ide_mode", "enabled"),),
+    "ide_memory_store": (("ide_mode", "enabled"),),
+    "ide_memory_reinforce": (("ide_mode", "enabled"),),
+    "set_agent_flow_status": (("agentflow", "allow_activate"),),
+    "create_agent_flow": (("agentflow", "allow_create"),),
+    "edit_agent_flow": (("agentflow", "allow_edit"),),
+    "patch_agent_flow": (("agentflow", "allow_edit"),),
+    "delete_agent_flow": (("agentflow", "allow_delete"),),
+    "create_flow_stack": (("flow_stack", "allow_create"),),
+    "edit_flow_stack": (("flow_stack", "allow_edit"),),
+    "delete_flow_stack": (("flow_stack", "allow_delete"),),
+}
+
+
+def resolve_capability_decision(
+    tool_name: str,
+    local_scope: str = _DEFAULT_LOCAL_SCOPE,
+) -> tuple[GateAction | None, str | None]:
+    """Resolve an explicit tri-state capability decision for a native tool."""
+    decisions = _capability_decision_scopes.get(local_scope, {})
+    candidates: list[tuple[str, str, GateAction]] = []
+    for category, setting in TOOL_CAPABILITY_RULES.get(tool_name, ()):
+        raw_action = decisions.get(category, {}).get(setting)
+        if raw_action:
+            try:
+                candidates.append((category, setting, GateAction(raw_action)))
+            except ValueError:
+                log.warning(
+                    "Invalid capability decision '%s' for %s.%s",
+                    raw_action,
+                    category,
+                    setting,
+                )
+    if not candidates:
+        return None, None
+    action = max((item[2] for item in candidates), key=_ACTION_RESTRICTIVENESS.get)
+    # Capability Allow opens the ceiling but never weakens the normal
+    # parameter-, risk-, campaign-, or tool-level checks that follow.
+    if action == GateAction.ALLOW:
+        return None, None
+    sources = [f"{category}.{setting}" for category, setting, item_action in candidates if item_action == action]
+    return action, f"Capability boundary ({', '.join(sources)}): {action.value}"
 
 
 # ── Mode Threshold Matrix ────────────────────────────────────────────
@@ -1206,11 +1306,14 @@ def resolve_explicit_overrides(
     """Merge explicit policy layers without allowing a weaker layer to relax a stricter one."""
     candidates: list[tuple[str, GateAction]] = []
     campaign_action = _resolve_campaign_override(tool_name, campaign_preset)
+    capability_action, capability_reason = resolve_capability_decision(tool_name, local_scope)
     local_action_str = get_local_overrides(local_scope).get(tool_name)
     gensui_action_str = _gensui_overrides.get(tool_name)
 
     if campaign_action is not None:
         candidates.append(("campaign", campaign_action))
+    if capability_action is not None:
+        candidates.append(("capability", capability_action))
     if local_action_str:
         try:
             candidates.append(("local", GateAction(local_action_str)))
@@ -1224,6 +1327,7 @@ def resolve_explicit_overrides(
 
     detail = {
         "campaign": campaign_action.value if campaign_action else None,
+        "capability": capability_action.value if capability_action else None,
         "local": local_action_str,
         "gensui": gensui_action_str,
     }
@@ -1232,7 +1336,11 @@ def resolve_explicit_overrides(
 
     action = max((candidate[1] for candidate in candidates), key=_ACTION_RESTRICTIVENESS.get)
     sources = [source for source, candidate in candidates if candidate == action]
-    reason = f"Most restrictive explicit override ({', '.join(sources)}): {action.value}"
+    reason = (
+        capability_reason
+        if sources == ["capability"] and capability_reason
+        else f"Most restrictive explicit override ({', '.join(sources)}): {action.value}"
+    )
     return action, reason, detail
 
 
