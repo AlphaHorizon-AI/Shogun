@@ -1316,30 +1316,41 @@ async def upload_flow_document(
         )
 
     # Save file
-    upload_dir = Path(settings.uploads_path) / "agent_flows" / str(flow_id)
+    # Derive every filesystem component from server-controlled values.  The
+    # persisted flow ID is authoritative, while the random storage name keeps a
+    # client-supplied filename out of the destination path entirely.
+    persisted_flow_id = getattr(flow, "id", None)
+    if not isinstance(persisted_flow_id, uuid.UUID):
+        _log.error("AgentFlow %s was loaded without a valid persisted UUID", flow_id)
+        raise HTTPException(status_code=500, detail="The AgentFlow upload could not be prepared")
+    upload_dir = Path(settings.uploads_path) / "agent_flows" / persisted_flow_id.hex
     try:
         upload_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
+        _log.exception("Could not create the AgentFlow upload directory for %s", persisted_flow_id)
         raise HTTPException(
             status_code=500,
-            detail=f"Could not create the AgentFlow upload directory: {exc}",
+            detail="Could not create the AgentFlow upload directory",
         ) from exc
 
     # Use a safe filename
     safe_name = file.filename.replace("..", "_").replace("/", "_").replace("\\", "_")
-    dest_path = upload_dir / safe_name
+    stored_name = f"{uuid.uuid4().hex}{ext}"
+    dest_path = upload_dir / stored_name
 
     content = await file.read()
     try:
         dest_path.write_bytes(content)
     except OSError as exc:
+        _log.exception("Could not save an AgentFlow upload for %s", persisted_flow_id)
         raise HTTPException(
             status_code=500,
-            detail=f"Could not save the AgentFlow upload: {exc}",
+            detail="Could not save the AgentFlow upload",
         ) from exc
 
     return ApiResponse(data={
         "filename": safe_name,
+        "stored_filename": stored_name,
         "size": len(content),
         "path": str(dest_path),
     })

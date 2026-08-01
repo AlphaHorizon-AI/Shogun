@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -1017,7 +1018,10 @@ def _filesystem_candidate(raw_value: str, kind: str = "internal") -> Path:
     candidate = Path(raw_value.strip())
     if kind == "internal" and not candidate.is_absolute():
         candidate = settings.workspace_path / candidate
-    return candidate.resolve()
+    # Normalize lexically without querying a user-selected filesystem path.  The
+    # execution layer performs a second real-path containment check immediately
+    # before any actual file operation.
+    return Path(os.path.abspath(os.fspath(candidate)))
 
 
 def _required_filesystem_operation(
@@ -1061,19 +1065,19 @@ def evaluate_tool_path_controls(
         root = _filesystem_candidate(folder["path"], folder["kind"])
         configured.append((root, folder))
 
-    candidates: list[tuple[str, Path, str]] = []
+    candidates: list[tuple[str, Path, str | None]] = []
     for key, raw_value in args.items():
         if key not in _PATH_ARGUMENT_KEYS or not isinstance(raw_value, str) or not raw_value.strip():
             continue
         candidate = _filesystem_candidate(raw_value)
-        candidates.append((key, candidate, _required_filesystem_operation(tool_name, key, candidate)))
+        candidates.append((key, candidate, None))
 
     if tool_name in {"file_transform", "file_export"}:
         from shogun.config import settings
 
         filename = Path(str(args.get("output_filename") or "transformed-output")).name
         output = (settings.workspace_path / filename).resolve()
-        candidates.append(("output_filename", output, "write" if output.exists() else "create"))
+        candidates.append(("output_filename", output, "create"))
     elif tool_name == "file_archive_extract_selected" and not args.get("output_directory"):
         from shogun.config import settings
 
@@ -1082,12 +1086,17 @@ def evaluate_tool_path_controls(
         candidates.append(("output_directory", output, "create"))
 
     flags = []
-    for key, candidate, operation in candidates:
-        allowed = any(
-            (candidate == root or root in candidate.parents) and bool(folder[operation])
+    for key, candidate, required_operation in candidates:
+        matching_folders = [
+            folder
             for root, folder in configured
-        )
-        if not allowed:
+            if candidate == root or root in candidate.parents
+        ]
+        if not matching_folders:
+            flags.append(f"filesystem_permission_denied:read:$.{key}")
+            continue
+        operation = required_operation or _required_filesystem_operation(tool_name, key, candidate)
+        if not any(bool(folder[operation]) for folder in matching_folders):
             flags.append(f"filesystem_permission_denied:{operation}:$.{key}")
     return not flags, flags
 

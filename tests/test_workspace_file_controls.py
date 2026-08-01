@@ -41,3 +41,13 @@ def test_file_safety_gate_explicit_empty_roots_denies_all_files(tmp_path: Path):
 
     with pytest.raises(FileFormatError, match="outside approved"):
         FileSafetyGate([]).validate(target)
+
+
+def test_file_safety_gate_rejects_parent_traversal_before_file_access(tmp_path: Path):
+    approved = tmp_path / "approved"
+    approved.mkdir()
+    secret = tmp_path / "secret.txt"
+    secret.write_text("restricted", encoding="utf-8")
+
+    with pytest.raises(FileFormatError, match="outside approved"):
+        FileSafetyGate([approved]).validate(approved / ".." / "secret.txt")

@@ -53,6 +53,14 @@ def test_legacy_ollama_search_markup_remains_supported():
     assert models[0]["capabilities"] == ["vision"]
 
 
+def test_page_number_is_compared_as_a_literal_value():
+    html = '<li hx-get="/search?page=12" hx-trigger="revealed"></li>'
+
+    _, has_more = _parse_ollama_search_html(html, 11)
+
+    assert has_more is True
+
+
 @pytest.mark.asyncio
 async def test_scan_accepts_ollama_home_or_models_directory(tmp_path):
     manifest = tmp_path / "models" / "manifests" / "registry.ollama.ai" / "library" / "qwen3" / "8b"

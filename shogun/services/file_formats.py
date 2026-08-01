@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import mimetypes
+import os
 import re
 import stat
 import uuid
@@ -1040,13 +1041,19 @@ class FileSafetyGate:
         self.allowed_roots = [root.resolve() for root in roots]
 
     def validate(self, path: Path, *, allow_archive: bool = False) -> list[str]:
-        resolved = path.resolve(strict=True)
-        if not resolved.is_file():
-            raise FileFormatError("The requested path is not a regular file.", "invalid_path")
-        if path.is_symlink():
-            raise FileFormatError("Symbolic-link file access is blocked.", "path_escape")
+        # Reject lexical escapes before touching the requested filesystem path.
+        # Resolve again afterwards to ensure a symlinked parent cannot escape an
+        # approved root.
+        lexical = Path(os.path.abspath(os.fspath(path)))
+        if not any(lexical == root or root in lexical.parents for root in self.allowed_roots):
+            raise FileFormatError("File is outside approved workspace/artifact directories.", "path_outside_workspace")
+        resolved = lexical.resolve(strict=True)
         if not any(resolved == root or root in resolved.parents for root in self.allowed_roots):
             raise FileFormatError("File is outside approved workspace/artifact directories.", "path_outside_workspace")
+        if not resolved.is_file():
+            raise FileFormatError("The requested path is not a regular file.", "invalid_path")
+        if lexical.is_symlink():
+            raise FileFormatError("Symbolic-link file access is blocked.", "path_escape")
         size = resolved.stat().st_size
         if size > settings.file_max_parse_bytes:
             raise FileFormatError(

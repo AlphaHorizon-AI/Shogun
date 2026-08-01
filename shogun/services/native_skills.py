@@ -2998,7 +2998,8 @@ async def execute_native_tool(
                         snooze_minutes=int(args.get("snooze_minutes", 10)),
                     )
                 except (ValueError, KeyError) as exc:
-                    return json.dumps({"status": "error", "message": str(exc)})
+                    logger.warning("Invalid Reminder Board update request", exc_info=exc)
+                    return json.dumps({"status": "error", "message": "Invalid Reminder Board update request."})
                 if not task:
                     return json.dumps({"status": "error", "message": "Reminder Board item not found."})
                 await db_session.commit()
@@ -3041,7 +3042,8 @@ async def execute_native_tool(
                     agent_id=shogun.id,
                 )
             except (ValueError, KeyError, TypeError) as exc:
-                return json.dumps({"status": "error", "message": f"Invalid Reminder Board item: {exc}"})
+                logger.warning("Invalid Reminder Board item", exc_info=exc)
+                return json.dumps({"status": "error", "message": "Invalid Reminder Board item."})
             await db_session.commit()
             return json.dumps({
                 "status": "success",

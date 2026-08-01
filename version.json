@@ -1,8 +1,8 @@
 {
-  "version": "1.47.50",
+  "version": "1.47.51",
   "name": "Shogun OS",
-  "build": 201,
+  "build": 202,
   "channel": "stable",
-  "released": "2026-08-01T14:04:51Z",
-  "changelog": "Add automatic model context detection, profile-scoped temperatures, deterministic AgentFlow seeds, and named custom profile card previews."
+  "released": "2026-08-01T14:43:12Z",
+  "changelog": "Harden AgentFlow uploads and governed file paths, remove a dynamic Ollama search regex, and prevent native-tool exception details from reaching clients."
 }

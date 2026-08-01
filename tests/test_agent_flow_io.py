@@ -21,7 +21,7 @@ async def test_agent_flow_upload_uses_configured_upload_directory(tmp_path, monk
     class FakeFlowService:
         async def get_by_id(self, requested_flow_id):
             assert requested_flow_id == flow_id
-            return object()
+            return SimpleNamespace(id=flow_id)
 
     response = await upload_flow_document(
         flow_id,
@@ -29,9 +29,13 @@ async def test_agent_flow_upload_uses_configured_upload_directory(tmp_path, monk
         FakeFlowService(),
     )
 
-    expected = upload_root / "agent_flows" / str(flow_id) / "Mapla 21.07.2026.pdf"
-    assert expected.read_bytes() == b"%PDF-1.4 test"
-    assert response.data["path"] == str(expected)
+    upload_dir = upload_root / "agent_flows" / flow_id.hex
+    stored = list(upload_dir.glob("*.pdf"))
+    assert len(stored) == 1
+    assert stored[0].read_bytes() == b"%PDF-1.4 test"
+    assert response.data["filename"] == "Mapla 21.07.2026.pdf"
+    assert response.data["stored_filename"] == stored[0].name
+    assert response.data["path"] == str(stored[0])
 
 
 @pytest.mark.asyncio

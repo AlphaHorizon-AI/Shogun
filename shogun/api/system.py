@@ -105,7 +105,15 @@ def _parse_ollama_search_html(html: str, page: int) -> tuple[list[dict[str, Any]
                 "updated": _plain_html_text(updated_match.group(1)) if updated_match else "",
             })
 
-    has_more = bool(re.search(rf'/search\?[^"\']*page={page + 1}(?:[^\d]|$)', html, re.IGNORECASE))
+    # Extract page numbers with a static expression, then compare values.  Building
+    # a regular expression from the request's ``page`` parameter would allow the
+    # caller to influence the expression evaluated against remote HTML.
+    pagination_pages = re.findall(
+        r'/search\?[^"\']*page=(\d+)(?:[^\d]|$)',
+        html,
+        re.IGNORECASE,
+    )
+    has_more = str(page + 1) in pagination_pages
     has_more = has_more or bool(re.search(r'aria-label=["\']Next Page["\']', html, re.IGNORECASE))
     return models, has_more
 
