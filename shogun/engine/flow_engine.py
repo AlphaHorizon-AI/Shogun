@@ -1316,8 +1316,16 @@ async def _exec_samurai(
         except NoEligibleModelError as exc:
             # A document can be larger than every model's single-request
             # context while still being perfectly processable in batches. Keep
-            # every other routing/policy failure authoritative.
-            if "context capacity" not in str(exc).lower() and "enough context" not in str(exc).lower():
+            # every other routing/policy failure authoritative. The router can
+            # report this either as exhausted capacity or as a missing
+            # ``long_context`` capability, depending on whether another
+            # registry model survives its capacity filter before the active
+            # profile is applied.
+            routing_error = str(exc).lower()
+            if not any(
+                marker in routing_error
+                for marker in ("context capacity", "enough context", "long_context")
+            ):
                 raise
             chunk_required = True
             try:

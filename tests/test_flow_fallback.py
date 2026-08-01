@@ -211,7 +211,15 @@ async def test_samurai_exhausts_retries_before_fallback(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_samurai_chunks_context_that_exceeds_every_single_request(monkeypatch):
+@pytest.mark.parametrize(
+    "routing_error",
+    [
+        "No enabled model has enough context capacity for this input",
+        "No eligible model found for this task. Required capabilities: chat, long_context.",
+    ],
+    ids=["capacity-exhausted", "long-context-capability"],
+)
+async def test_samurai_chunks_context_that_exceeds_every_single_request(monkeypatch, routing_error):
     monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
     route_calls: list[int] = []
     model_chain = [(object(), "chunk-model", "https://model.invalid/v1", {})]
@@ -219,7 +227,7 @@ async def test_samurai_chunks_context_that_exceeds_every_single_request(monkeypa
     async def resolve_route(*_args, **kwargs):
         route_calls.append(kwargs["context_size_estimate"])
         if len(route_calls) == 1:
-            raise NoEligibleModelError("No enabled model has enough context capacity for this input")
+            raise NoEligibleModelError(routing_error)
         return model_chain, {
             "selected_context_window": 2048,
             "selected_max_input_tokens": 1536,

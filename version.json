@@ -1,8 +1,8 @@
 {
-  "version": "1.47.47",
+  "version": "1.47.48",
   "name": "Shogun OS",
-  "build": 198,
+  "build": 199,
   "channel": "stable",
-  "released": "2026-07-31T09:02:06Z",
-  "changelog": "Add shared ToolGate Internet access modes with domain allowlists and wildcard enforcement."
+  "released": "2026-08-01T12:18:57Z",
+  "changelog": "Chunk oversized AgentFlow documents when routing reports a missing long-context model."
 }
