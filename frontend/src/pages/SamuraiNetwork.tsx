@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from '../lib/utils';
+import { resolveAgentRoutingProfile, routingProfileLabel } from '../lib/routingProfiles';
 import { useTranslation } from '../i18n';
 import { AgentFlow } from './AgentFlow';
 import { FlowStack } from './FlowStack';
@@ -116,7 +117,7 @@ export const SamuraiNetwork = () => {
         axios.get('/api/v1/agents?agent_type=samurai'),
         axios.get('/api/v1/missions'),
         axios.get('/api/v1/samurai-roles'),
-        axios.get('/api/v1/model-routing-profiles'),
+        axios.get('/api/v1/models/routing/profiles'),
       ]);
       if (agentRes.data.data)   setAgents(agentRes.data.data);
       if (missionRes.data.data) setMissions(missionRes.data.data);
@@ -258,7 +259,11 @@ export const SamuraiNetwork = () => {
   };
 
   const getRoutingName = (agent: any) =>
-    agent.routing_profile?.name || null;
+    resolveAgentRoutingProfile(agent, routingProfiles)?.name || null;
+
+  const editRoutingProfile = editAgent
+    ? resolveAgentRoutingProfile(editAgent, routingProfiles)
+    : null;
 
   const filteredAgents = agents.filter(a =>
     a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -534,7 +539,7 @@ export const SamuraiNetwork = () => {
 
                     {/* Actions */}
                     <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex min-w-[104px] items-center justify-end gap-2">
                         {agent.status === 'active' ? (
                           <button onClick={() => handleAction(agent.id, 'suspend')} className="p-1.5 hover:bg-shogun-blue/10 text-shogun-blue rounded transition-colors" title={t('samurai_network.suspend_agent')}>
                             <Pause className="w-3.5 h-3.5" />
@@ -645,13 +650,13 @@ export const SamuraiNetwork = () => {
                   <option value="">{t('samurai_network.system_default')}</option>
                   {routingProfiles.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name}{p.is_default ? ` (${t('samurai_network.default_routing')})` : ''}
+                      {routingProfileLabel(p, t('samurai_network.default_routing'))}
                     </option>
                   ))}
                 </select>
-                {editAgent.routing_profile?.name && (
+                {editRoutingProfile?.name && (
                   <p className="text-[9px] text-shogun-subdued">
-                    {t('samurai_network.current')}: <span className="text-shogun-gold font-bold">{editAgent.routing_profile.name}</span>
+                    {t('samurai_network.current')}: <span className="text-shogun-gold font-bold">{editRoutingProfile.name}</span>
                   </p>
                 )}
               </div>
@@ -821,7 +826,7 @@ export const SamuraiNetwork = () => {
                   <option value="">{t('samurai_network.system_default')}</option>
                   {routingProfiles.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name}{p.is_default ? ` (${t('samurai_network.default_routing')})` : ''}
+                      {routingProfileLabel(p, t('samurai_network.default_routing'))}
                     </option>
                   ))}
                 </select>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Activity, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Gauge, LockKeyhole, Play, Plus, RefreshCw, Route, Server, Trash2, X, Zap } from 'lucide-react';
+import { customProfileUpdate } from '../../lib/routingProfiles';
 
 type Profile = {
   id: string; name: string; description?: string; is_default: boolean;
@@ -209,18 +210,38 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       setMessage('Choose at least one model for this routing profile.');
       return;
     }
+    const pendingRename = customProfile.name === 'Custom' ? newProfileName.trim() : '';
+    if (pendingRename && profiles.some(item => item.id !== customProfile.id && item.name.toLowerCase() === pendingRename.toLowerCase())) {
+      setMessage('A routing profile with that name already exists.');
+      return;
+    }
     setBusy(activate ? 'custom-activate' : 'custom-save');
     try {
-      await axios.post(`/api/v1/models/routing/profiles/${customProfile.id}/update`, {
-        rules: [{
-          task_type: '*', primary_model_id: customModels[0], fallback_model_ids: customModels.slice(1),
-        }],
-      });
+      const update = customProfileUpdate(
+        customProfile,
+        customModels,
+        newProfileName,
+        newProfileDescription,
+      );
+      const response = pendingRename
+        ? await axios.post('/api/v1/model-routing-profiles', {
+            ...update,
+            model_settings: customProfile.model_settings || {},
+            is_default: false,
+          })
+        : await axios.post(`/api/v1/models/routing/profiles/${customProfile.id}/update`, update);
+      const saved: Profile = response.data.data;
       if (activate) {
-        await axios.post('/api/v1/models/routing/profiles/active', { profile_id: customProfile.id });
+        await axios.post('/api/v1/models/routing/profiles/active', { profile_id: saved.id });
       }
-      setMessage(`${customProfile.name} routing saved${activate ? ' and activated' : ''}.`);
+      if (pendingRename) {
+        setNewProfileName('');
+        setNewProfileDescription('');
+      }
+      setMessage(`${saved.name} routing saved${activate ? ' and activated' : ''}.`);
       await load();
+      setCustomProfileId(saved.id);
+      setCustomModels(orderedModels(saved));
     } catch (error: any) {
       setMessage(error?.response?.data?.detail || 'Routing profile could not be saved.');
     } finally { setBusy(''); }

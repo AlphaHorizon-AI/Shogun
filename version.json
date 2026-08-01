@@ -1,8 +1,8 @@
 {
-  "version": "1.47.51",
+  "version": "1.47.52",
   "name": "Shogun OS",
-  "build": 202,
+  "build": 203,
   "channel": "stable",
-  "released": "2026-08-01T14:43:12Z",
-  "changelog": "Harden AgentFlow uploads and governed file paths, remove a dynamic Ollama search regex, and prevent native-tool exception details from reaching clients."
+  "released": "2026-08-01T16:15:04Z",
+  "changelog": "Restore named custom routing profiles and visible Samurai actions, persist custom profile names, and simplify ToolGate around capability boundaries."
 }

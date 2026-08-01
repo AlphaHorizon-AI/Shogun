@@ -327,6 +327,8 @@ export function ToolGate() {
     rules: [],
   });
   const [savingAdvanced, setSavingAdvanced] = useState(false);
+  const [showPostureLibrary, setShowPostureLibrary] = useState(false);
+  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
   const [showPolicyEditor, setShowPolicyEditor] = useState(false);
   const [policyDraft, setPolicyDraft] = useState(emptyPolicyDraft);
   const [savingPolicy, setSavingPolicy] = useState(false);
@@ -763,9 +765,35 @@ export function ToolGate() {
             The enforcement layer between model intent and tool execution. Inspect the effective verdict, require human approval, or block individual capabilities.
           </p>
         </div>
-        <button onClick={fetchData} className="self-start rounded-lg border border-shogun-border bg-shogun-card p-2.5 text-shogun-subdued transition-colors hover:text-shogun-gold" title="Refresh ToolGate">
-          <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowPostureLibrary(current => !current)}
+            className={cn(
+              'rounded-lg border px-3 py-2.5 text-xs font-bold transition-colors',
+              showPostureLibrary
+                ? 'border-violet-400/35 bg-violet-500/10 text-violet-200'
+                : 'border-shogun-border bg-shogun-card text-shogun-subdued hover:text-violet-200',
+            )}
+          >
+            {showPostureLibrary ? 'Hide profiles' : 'Manage profiles'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowAdvancedControls(current => !current)}
+            className={cn(
+              'rounded-lg border px-3 py-2.5 text-xs font-bold transition-colors',
+              showAdvancedControls
+                ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-200'
+                : 'border-shogun-border bg-shogun-card text-shogun-subdued hover:text-cyan-200',
+            )}
+          >
+            {showAdvancedControls ? 'Hide advanced controls' : 'Advanced controls'}
+          </button>
+          <button onClick={fetchData} className="rounded-lg border border-shogun-border bg-shogun-card p-2.5 text-shogun-subdued transition-colors hover:text-shogun-gold" title="Refresh ToolGate">
+            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+          </button>
+        </div>
       </div>
 
       <div className={cn(
@@ -810,7 +838,7 @@ export function ToolGate() {
         </div>
       )}
 
-      <div className="shogun-card space-y-4">
+      {showPostureLibrary && <div className="shogun-card space-y-4">
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
           <div>
             <div className="flex items-center gap-2">
@@ -901,15 +929,15 @@ export function ToolGate() {
             })}
           </div>
         )}
-      </div>
+      </div>}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {[
-          { label: data.scope.kind === 'custom_policy' ? 'Custom tier' : 'Active tier', value: data.scope.label, color: 'text-shogun-gold' },
+          { label: 'Profile', value: data.scope.label, color: 'text-shogun-gold' },
           { label: 'Allow', value: counts.allow, color: 'text-emerald-400' },
           { label: 'Confirm', value: counts.confirm, color: 'text-amber-400' },
           { label: 'Block', value: counts.block, color: 'text-red-400' },
-          { label: 'Pending approval', value: data.pending_confirmations.length, color: 'text-indigo-300' },
+          { label: 'Posture overrides', value: Object.keys(data.local_overrides || {}).length, color: 'text-indigo-300' },
         ].map(card => (
           <div key={card.label} className="shogun-card">
             <p className="text-[9px] font-bold uppercase tracking-widest text-shogun-subdued">{card.label}</p>
@@ -1058,6 +1086,7 @@ export function ToolGate() {
         )}
       </div>
 
+      {showAdvancedControls && <>
       <div className="shogun-card space-y-5">
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>
@@ -1891,6 +1920,7 @@ export function ToolGate() {
           </div>
         </div>
       </div>
+      </>}
 
       {showPolicyEditor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
