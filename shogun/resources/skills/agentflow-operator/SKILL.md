@@ -1,6 +1,6 @@
 ---
 name: agentflow-operator
-description: Canonical operating guide for inspecting, creating, editing, activating, deactivating, running, and troubleshooting Shogun AgentFlows and Flow Stacks. Use for every request involving AgentFlow nodes, graphs, schedules, Telegram or Teams delivery, reusable subflows, stack orchestration, or workflow lifecycle changes.
+description: Canonical operating guide for inspecting, creating, editing, activating, deactivating, running, and troubleshooting Shogun AgentFlows and Flow Stacks. Use for every request involving AgentFlow nodes, graphs, schedules, file templates or one-shot document examples, Telegram or Teams delivery, reusable subflows, stack orchestration, or workflow lifecycle changes.
 ---
 
 # AgentFlow Operator
@@ -36,6 +36,7 @@ Treat this guide as authoritative. Read it before designing or changing any Agen
 5. Keep secrets out of node configuration. Use configured channels, providers, vault references, and workspace boundaries.
 6. Keep flows acyclic. Use `logic` handles for branches and `subflow` for reusable child flows.
 7. Validate before activation. Test manually, inspect run details, and verify the actual downstream delivery.
+8. To generate a document from an exact template, connect one `file_template` node upstream of the generating `samurai`, then connect that Samurai to an `office` create action. Do not place the template only after the Samurai.
 
 ## Node reference
 
@@ -148,12 +149,34 @@ Operate inside the configured workspace boundary.
 - Configure `path`, or `source_path` and `dest_path`; use `content_template` for writes.
 - Never target paths outside the allowed workspace. Destructive actions remain governed.
 
+### `file_template`
+
+Provide a Word or Excel output contract to a Samurai before generation and make the same template available to a downstream Files create action.
+
+- The node is source-only: it has no incoming edge and one outgoing edge.
+- Required: `template_path`, relative to the configured workspace. Supported formats are `.docx` and `.xlsx`.
+- `guidance_mode`: `structure_only` or `one_shot`.
+  - `structure_only` sends bounded layout metadata such as headings, placeholders, tables, sheets, headers, dimensions, and formulas. It does not send populated example content.
+  - `one_shot` also sends a bounded preview of existing template content as a formatting example. Treat that content as potentially sensitive because it may be sent to the selected model provider.
+- `example_handling`: `replace`, `append`, or `preserve`.
+  - `replace` is the default. Fill matching `{{placeholders}}`; when there are none, replace the template's example body/data while retaining its structure and styles.
+  - `append` retain existing example content and append the generated result.
+  - `preserve` modify placeholders only. It fails clearly when the template contains no usable placeholders.
+- The source template is immutable. Rendering always writes a new file through the downstream `office` create node.
+- Use exactly one upstream File Template per create node. Multiple upstream templates or a format mismatch fail explicitly.
+- For placeholder-driven Word templates, ask the Samurai for a JSON object whose scalar keys match placeholders, for example `{"client":"Acme","summary":"Ready"}` for `{{client}}` and `{{summary}}`.
+- For table-driven Excel templates, ask for a Markdown table or tab-separated rows whose columns match the template header.
+
 ### `office`
 
 Create or transform supported Office documents through the configured Office adapter.
 
-- Select the application/action in the UI and provide its required input/output paths and options.
+- Supported actions include `pdf_read`, `excel_read`, `excel_create`, `excel_write`, `word_read`, `word_create`, `word_replace`, `pptx_read`, and `pptx_replace`.
+- Select the action in the UI and provide its required input/output paths and options. Create actions use `output_path` as the destination folder plus `output_filename`.
+- `word_create` and `excel_create` automatically use one upstream `file_template` ancestor, even when the Samurai sits between the two nodes. Without a template ancestor, they retain standard blank-document creation behavior.
+- A Word template requires `word_create`; an Excel template requires `excel_create`.
 - Keep operations within configured folders. Outlook sending remains separately governed.
+- Office-format actions require Office App Mode. The native `pdf_read` action does not.
 
 ### `subflow`
 
@@ -195,6 +218,23 @@ Optionally branch the compiler output to an `output` node as well when an archiv
 4. Inspect again and compare.
 5. Preserve status unless the operator requested a lifecycle change.
 
+### Template-guided document generation
+
+Build:
+
+```text
+input (optional runtime data) ─┐
+                              ├─> samurai ─> office (word_create or excel_create)
+file_template ────────────────┘
+```
+
+1. Put the `.docx` or `.xlsx` template inside the configured workspace.
+2. Select `structure_only` unless populated content is necessary to demonstrate the expected result.
+3. If using `one_shot`, choose how the output handles existing example data and confirm that sending the bounded preview to the selected provider is acceptable.
+4. In the Samurai task, require content matching the template contract. Prefer matching JSON keys for placeholders or matching table columns for Excel.
+5. Configure the Files node with the create action matching the template format and a destination filename different from the template source.
+6. Run manually and inspect the new artifact. Verify that layout/styles are retained, generated data is correct, and the source template is unchanged.
+
 ### Flow Stack
 
 Create and test each child AgentFlow first. Mark children reusable, compose at least two child flows in order, lock versions unless the operator accepts latest-version drift, validate mappings, then test the parent execution tree.
@@ -214,5 +254,8 @@ Create and test each child AgentFlow first. Mark children reusable, compose at l
 - Confirm every edge endpoint exists.
 - Confirm delivery uses `channel_send`, not `output`.
 - Confirm schedule fields use the supported schedule model.
+- For template-guided creation, confirm `file_template` is upstream of the Samurai, exactly one template reaches the Files create node, and Word/Excel formats match.
+- Confirm a one-shot example does not expose sensitive content to an unintended model provider.
+- Confirm template output uses a new destination and does not overwrite the source template.
 - Confirm lifecycle status and scheduler synchronization.
 - Confirm the final inspection reflects the requested change.

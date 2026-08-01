@@ -250,6 +250,7 @@ const NODE_PALETTE = [
   { type: 'email_send',      label: 'Email Send',       icon: Mail,      color: '#e879a8', desc: 'Send email via SMTP' },
   { type: 'channel_send',    label: 'Telegram / Teams', icon: MessageSquare, color: '#38bdf8', desc: 'Send an operator message' },
   { type: 'workspace',       label: 'Workspace',        icon: FolderOpen, color: '#f59e0b', desc: 'File operations' },
+  { type: 'file_template',   label: 'File Template',    icon: Clipboard, color: '#60a5fa', desc: 'Word or Excel output contract' },
   { type: 'office',          label: 'Files',            icon: FileText, color: '#10b981', desc: 'PDF, Word, Excel, and PowerPoint files' },
   { type: 'subflow',         label: 'Subflow',          icon: Layers3, color: '#8b5cf6', desc: 'Run a reusable child flow' },
   { type: 'stack_orchestrator', label: 'Stack Orchestrator', icon: Network, color: '#c084fc', desc: 'Supervise long-running Agent Stacks' },
@@ -273,6 +274,7 @@ const nodeColors: Record<string, string> = {
   email_send: '#e879a8',
   channel_send: '#38bdf8',
   workspace: '#f59e0b',
+  file_template: '#60a5fa',
   office: '#10b981',
   subflow: '#8b5cf6',
   stack_orchestrator: '#c084fc',
@@ -291,6 +293,7 @@ const nodeIcons: Record<string, React.ElementType> = {
   email_send: Mail,
   channel_send: MessageSquare,
   workspace: FolderOpen,
+  file_template: Clipboard,
   office: FileText,
   subflow: Layers3,
   stack_orchestrator: Network,
@@ -642,6 +645,19 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             )}
           </>
         )}
+        {type === 'file_template' && (
+          <>
+            <div className="flex items-center gap-1">
+              <Clipboard className="w-2.5 h-2.5 text-[#60a5fa]/70" />
+              <span className="text-[8px] font-bold text-[#60a5fa]/80 uppercase">
+                {config.guidance_mode === 'one_shot' ? 'One-shot example' : 'Structure only'}
+              </span>
+            </div>
+            <p className="text-[9px] text-[#7a8899] truncate">
+              {config.template_path || 'Select a .docx or .xlsx template'}
+            </p>
+          </>
+        )}
         {type === 'coding' && (
           <>
             <div className="flex items-center gap-1">
@@ -689,7 +705,7 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
       </div>
 
       {/* Handles */}
-      {type !== 'input' && (
+      {!['input', 'file_template'].includes(type) && (
         <Handle
           type="target"
           position={Position.Left}
@@ -794,6 +810,7 @@ const nodeTypes: NodeTypes = {
   email_send: FlowNode,
   channel_send: FlowNode,
   workspace: FlowNode,
+  file_template: FlowNode,
   office: FlowNode,
   subflow: FlowNode,
   stack_orchestrator: FlowNode,
@@ -861,6 +878,179 @@ const edgeTypes: EdgeTypes = {
 // ═══════════════════════════════════════════════════════════════
 
 const READ_ACTIONS = ['pdf_read', 'excel_read', 'word_read', 'pptx_read'];
+
+function FileTemplateNodeFields({ config, updateConfig }: { config: Record<string, any>; updateConfig: (k: string, v: any) => void }) {
+  const [showPicker, setShowPicker] = useState(false);
+  const [treeData, setTreeData] = useState<any[]>([]);
+  const [loadingTree, setLoadingTree] = useState(false);
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const extensions = ['docx', 'xlsx'];
+
+  const openPicker = async () => {
+    setShowPicker(true);
+    setLoadingTree(true);
+    try {
+      const response = await axios.get('/api/v1/workspace/tree');
+      setTreeData(response.data?.data?.tree || response.data?.data || []);
+    } catch {
+      setTreeData([]);
+    } finally {
+      setLoadingTree(false);
+    }
+  };
+
+  const toggleDir = (path: string) => {
+    setExpandedDirs((previous) => {
+      const next = new Set(previous);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const renderTreeNode = (item: any, depth = 0): React.ReactNode => {
+    if (item.type === 'directory') {
+      const expanded = expandedDirs.has(item.path);
+      const children = item.children || [];
+      const hasTemplates = _hasMatchingFiles(children, extensions);
+      return (
+        <div key={item.path}>
+          <button
+            type="button"
+            onClick={() => toggleDir(item.path)}
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left hover:bg-[#60a5fa]/10 transition-colors',
+              !hasTemplates && 'opacity-40',
+            )}
+            style={{ paddingLeft: `${12 + depth * 16}px` }}
+          >
+            <FolderOpen className={cn('w-3.5 h-3.5', expanded ? 'text-[#60a5fa]' : 'text-[#f59e0b]/70')} />
+            <span className="text-xs text-[#c8d0d8] flex-1 truncate">{item.name}</span>
+            <span className="text-[8px] text-[#7a8899]">{expanded ? '▼' : '▶'}</span>
+          </button>
+          {expanded && children.map((child: any) => renderTreeNode(child, depth + 1))}
+        </div>
+      );
+    }
+
+    const extension = String(item.extension || '').toLowerCase();
+    const selectable = extensions.includes(extension);
+    return (
+      <button
+        type="button"
+        key={item.path}
+        disabled={!selectable}
+        onClick={() => {
+          if (!selectable) return;
+          updateConfig('template_path', item.path);
+          setShowPicker(false);
+        }}
+        className={cn(
+          'w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left transition-colors',
+          selectable ? 'hover:bg-[#60a5fa]/10 cursor-pointer' : 'opacity-30 cursor-default',
+        )}
+        style={{ paddingLeft: `${12 + depth * 16}px` }}
+      >
+        <FileText className={cn('w-3.5 h-3.5', selectable ? 'text-[#60a5fa]' : 'text-[#7a8899]/50')} />
+        <span className="text-xs text-[#c8d0d8] flex-1 truncate">{item.name}</span>
+        {selectable && <span className="text-[9px] text-[#60a5fa]">Select</span>}
+      </button>
+    );
+  };
+
+  const guidanceMode = config.guidance_mode || 'structure_only';
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Template File</label>
+        <div className="flex gap-1.5">
+          <input
+            type="text"
+            value={config.template_path || ''}
+            onChange={(event) => updateConfig('template_path', event.target.value)}
+            className="flex-1 bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#60a5fa] transition-colors outline-none"
+            placeholder="Templates/report.docx"
+          />
+          <button
+            type="button"
+            onClick={openPicker}
+            className="px-2.5 bg-[#60a5fa]/10 border border-[#60a5fa]/30 rounded-lg text-[#60a5fa] hover:bg-[#60a5fa]/20 transition-colors"
+            title="Browse workspace templates"
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <p className="text-[8px] text-[#7a8899]/60">Select a .docx or .xlsx file from the workspace. The original is never modified.</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Guidance Mode</label>
+        <select
+          value={guidanceMode}
+          onChange={(event) => updateConfig('guidance_mode', event.target.value)}
+          className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#60a5fa] transition-colors outline-none"
+        >
+          <option value="structure_only">Structure Only</option>
+          <option value="one_shot">One-Shot Example</option>
+        </select>
+        <p className="text-[8px] text-[#7a8899]/60">
+          Structure Only shares layout metadata. One-Shot also gives the Samurai a bounded preview of populated content.
+        </p>
+      </div>
+
+      {guidanceMode === 'one_shot' && (
+        <>
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Example Data in New File</label>
+            <select
+              value={config.example_handling || 'replace'}
+              onChange={(event) => updateConfig('example_handling', event.target.value)}
+              className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#60a5fa] transition-colors outline-none"
+            >
+              <option value="replace">Replace Example Data (Recommended)</option>
+              <option value="append">Keep Example and Append</option>
+              <option value="preserve">Preserve Unchanged / Fill Placeholders</option>
+            </select>
+          </div>
+          <div className="p-2.5 bg-[#f59e0b]/5 border border-[#f59e0b]/25 rounded-lg">
+            <p className="text-[8px] leading-relaxed text-[#fbbf24]/90">
+              Existing template content will be included in Samurai context and may be sent to the selected model provider.
+            </p>
+          </div>
+        </>
+      )}
+
+      <div className="p-2.5 bg-[#60a5fa]/5 border border-[#60a5fa]/20 rounded-lg">
+        <p className="text-[8px] leading-relaxed text-[#60a5fa]/85">
+          Connect <strong>File Template → Samurai → Files Create</strong>. The Samurai sees the contract before generating, and Files creates a new document from the same template.
+        </p>
+      </div>
+
+      {showPicker && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-[#0a0e1a] border border-[#1a2040] rounded-xl p-5 w-[28rem] max-h-[70vh] shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-[#c8d0d8] flex items-center gap-2">
+                <Clipboard className="w-4 h-4 text-[#60a5fa]" /> Select File Template
+              </h3>
+              <button type="button" onClick={() => setShowPicker(false)} className="p-1 hover:bg-[#1a2040] text-[#7a8899] rounded-lg">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-[9px] text-[#7a8899] mb-3">Only Word .docx and Excel .xlsx templates are selectable.</p>
+            <div className="flex-1 overflow-y-auto space-y-0.5 min-h-[200px]">
+              {loadingTree ? (
+                <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-[#60a5fa] animate-spin" /></div>
+              ) : treeData.length === 0 ? (
+                <p className="text-xs text-[#7a8899] text-center py-8">No workspace templates found</p>
+              ) : treeData.map((item) => renderTreeNode(item))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>; updateConfig: (k: string, v: any) => void }) {
   const [showPicker, setShowPicker] = useState(false);
@@ -1110,6 +1300,14 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
             className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#10b981] transition-colors outline-none resize-none"
             placeholder={'Use {{context}} for predecessor data.'}
           />
+        </div>
+      )}
+
+      {['word_create', 'excel_create'].includes(action) && (
+        <div className="p-2.5 bg-[#60a5fa]/5 border border-[#60a5fa]/20 rounded-lg">
+          <p className="text-[8px] leading-relaxed text-[#60a5fa]/85">
+            Optional: connect a <strong>File Template</strong> node upstream of the Samurai. This create action will automatically render the new file from that template.
+          </p>
         </div>
       )}
 
@@ -2972,6 +3170,10 @@ Content-Type: application/json
         )}
 
         {/* Files fields (internal node type remains "office" for compatibility) */}
+        {nodeType === 'file_template' && (
+          <FileTemplateNodeFields config={config} updateConfig={updateConfig} />
+        )}
+
         {nodeType === 'office' && (
           <FilesNodeFields config={config} updateConfig={updateConfig} />
         )}
@@ -3374,6 +3576,10 @@ export function AgentFlowCanvas({
       } : nodeType === 'office' ? {
         action: 'pdf_read',
         start_page: 1,
+      } : nodeType === 'file_template' ? {
+        template_path: '',
+        guidance_mode: 'structure_only',
+        example_handling: 'replace',
       } : {};
       const newNode: Node = {
         id: crypto.randomUUID(),

@@ -298,6 +298,7 @@ class FlowTriggerType(str, Enum):
 
 class FlowNodeType(str, Enum):
     SAMURAI = "samurai"
+    FILE_TEMPLATE = "file_template"
     SHOGUN_APPROVAL = "shogun_approval"
     LOGIC = "logic"
     INPUT = "input"

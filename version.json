@@ -1,8 +1,8 @@
 {
-  "version": "1.47.53",
+  "version": "1.47.54",
   "name": "Shogun OS",
-  "build": 204,
+  "build": 205,
   "channel": "stable",
-  "released": "2026-08-01T17:20:59Z",
-  "changelog": "Reorder the Systems and Governance navigation so Torii precedes ToolGate and the menu follows the security configuration hierarchy."
+  "released": "2026-08-01T19:03:41Z",
+  "changelog": "Add template-guided Word and Excel AgentFlows with optional one-shot examples, update the AgentFlow Operator skill, and complete ToolGate capability controls with disabled-state guidance."
 }

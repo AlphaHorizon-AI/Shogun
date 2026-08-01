@@ -378,6 +378,11 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                 for pred_id in predecessors.get(node_id, []):
                     if pred_id in node_outputs:
                         pred_outputs[pred_id] = node_outputs[pred_id]
+                template_inputs = _collect_upstream_file_templates(
+                    node_id,
+                    predecessors,
+                    node_outputs,
+                )
 
                 tasks.append(
                     _execute_single_node(
@@ -389,6 +394,7 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                         governance_context=governance_context,
                         flow_name=flow.name,
                         trigger_type=run_trigger_type,
+                        template_inputs=template_inputs,
                     )
                 )
 
@@ -487,6 +493,7 @@ async def _execute_single_node(
     governance_context: dict[str, Any] | None = None,
     flow_name: str = "Agent Flow",
     trigger_type: str = "manual",
+    template_inputs: list[dict[str, Any]] | None = None,
 ) -> Any:
     """Execute a single node and return its output."""
     node_id = str(node.id)
@@ -501,7 +508,12 @@ async def _execute_single_node(
         pred_node = node_map.get(pred_id)
         pred_label = pred_node.label if pred_node else pred_id
         if output is not None:
-            output_text = str(output)
+            if isinstance(output, dict) and output.get("__shogun_file_template__"):
+                from shogun.services.file_template import format_template_guidance
+
+                output_text = format_template_guidance(output)
+            else:
+                output_text = str(output)
             # Data-processing and delivery nodes must receive complete results.
             # Samurai handles large inputs with model-aware chunking below.
             # Keep the legacy guard only for executors that do not yet support
@@ -562,6 +574,8 @@ async def _execute_single_node(
     try:
         if node_type == "input":
             result = await _exec_input(config, context_str, run_input or {})
+        elif node_type == "file_template":
+            result = await _exec_file_template(config)
         elif node_type == "samurai":
             result = await _exec_samurai(
                 config,
@@ -619,7 +633,14 @@ async def _execute_single_node(
         elif node_type == "workspace":
             result = await _exec_workspace(config, context_str, run_id, trigger_type)
         elif node_type == "office":
-            result = await _exec_office(config, context_str, run_id, node_id, trigger_type)
+            result = await _exec_office(
+                config,
+                context_str,
+                run_id,
+                node_id,
+                trigger_type,
+                template_inputs=template_inputs,
+            )
         elif node_type == "subflow":
             result = await _exec_subflow(
                 run_id,
@@ -1591,6 +1612,41 @@ async def _exec_email_read(config: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _collect_upstream_file_templates(
+    node_id: str,
+    predecessors: dict[str, list[str]],
+    node_outputs: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Collect completed File Template payloads from all ancestors of a node."""
+    found: list[dict[str, Any]] = []
+    visited: set[str] = set()
+    pending = list(predecessors.get(node_id, []))
+    while pending:
+        ancestor_id = pending.pop()
+        if ancestor_id in visited:
+            continue
+        visited.add(ancestor_id)
+        output = node_outputs.get(ancestor_id)
+        if isinstance(output, dict) and output.get("__shogun_file_template__"):
+            found.append(output)
+        pending.extend(predecessors.get(ancestor_id, []))
+    return found
+
+
+async def _exec_file_template(config: dict[str, Any]) -> dict[str, Any]:
+    """Extract a bounded model contract from a workspace template file."""
+    from shogun.config import settings
+    from shogun.services.file_template import extract_file_template
+
+    return extract_file_template(
+        template_path=str(config.get("template_path") or ""),
+        workspace_root=settings.workspace_path,
+        guidance_mode=str(config.get("guidance_mode") or "structure_only"),
+        example_handling=str(config.get("example_handling") or "replace"),
+        max_chars=min(settings.agent_flow_document_max_chars, 12_000),
+    )
+
+
 async def _exec_calendar_read(config: dict[str, Any]) -> dict[str, Any]:
     start_date = config.get("start_date")
     end_date = config.get("end_date")
@@ -2415,6 +2471,7 @@ async def _exec_office(
     run_id: uuid.UUID | None = None,
     node_id: str | None = None,
     trigger_type: str = "manual",
+    template_inputs: list[dict[str, Any]] | None = None,
 ) -> str:
     """Files node — reads PDFs and performs Office document operations.
 
@@ -2431,6 +2488,23 @@ async def _exec_office(
 
     root = settings.workspace_path.resolve()
     root.mkdir(parents=True, exist_ok=True)
+    templates = [item for item in (template_inputs or []) if item.get("__shogun_file_template__")]
+
+    def _create_template(expected_format: str) -> dict[str, Any] | None:
+        if len(templates) > 1:
+            raise ValueError(
+                "This Files create node has multiple upstream File Template nodes. "
+                "Connect exactly one template to the Samurai that feeds this node."
+            )
+        if not templates:
+            return None
+        template = templates[0]
+        if template.get("format") != expected_format:
+            raise ValueError(
+                f"The upstream {template.get('format', 'unknown')} template does not match "
+                f"this {expected_format} create action."
+            )
+        return template
 
     def _resolve(rel: str) -> str:
         """Resolve relative workspace path to absolute string."""
@@ -2531,23 +2605,37 @@ async def _exec_office(
                 close_workbook(handle)
 
         elif action == "excel_create":
-            import openpyxl
-
             abs_out = _resolve_output(output_path, ".xlsx", "output.xlsx")
-            # Create new workbook
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = sheet_name or "Sheet1"
-            rows = _excel_rows_from_context(context_str)
-            for r_idx, cells in enumerate(rows, 1):
-                for c_idx, val in enumerate(cells, 1):
-                    ws.cell(row=r_idx, column=c_idx, value=val.strip())
-            Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
-            wb.save(abs_out)
-            wb.close()
+            template = _create_template("xlsx")
+            if template:
+                from shogun.services.file_template import render_excel_template, resolve_workspace_template
+
+                source = resolve_workspace_template(str(template.get("template_path") or ""), root)
+                rows_written = render_excel_template(
+                    source,
+                    Path(abs_out),
+                    context_str,
+                    str(template.get("example_handling") or "replace"),
+                    sheet_name or None,
+                )
+                row_summary = f"{rows_written} cells populated from template"
+            else:
+                import openpyxl
+
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                ws.title = sheet_name or "Sheet1"
+                rows = _excel_rows_from_context(context_str)
+                for r_idx, cells in enumerate(rows, 1):
+                    for c_idx, val in enumerate(cells, 1):
+                        ws.cell(row=r_idx, column=c_idx, value=val.strip())
+                Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
+                wb.save(abs_out)
+                wb.close()
+                row_summary = f"{len(rows)} rows"
             saved_path = await _record_output(abs_out)
-            log.info("[Flow/Office] excel_create: %s (%d rows)", saved_path, len(rows))
-            return f"Excel workbook created: {saved_path} ({len(rows)} rows)"
+            log.info("[Flow/Office] excel_create: %s (%s)", saved_path, row_summary)
+            return f"Excel workbook created: {saved_path} ({row_summary})"
 
         elif action == "excel_write":
             from shogun.office.adapters.excel_adapter import (
@@ -2601,21 +2689,35 @@ async def _exec_office(
                 close_document(handle)
 
         elif action == "word_create":
-            from docx import Document
-
             abs_out = _resolve_output(output_path, ".docx", "output.docx")
-            doc = Document()
-            # Use template or context as content
-            content = config.get("content_template", "") or context_str or ""
-            if config.get("content_template"):
-                content = content.replace("{{context}}", context_str)
-            for para in content.split("\n"):
-                doc.add_paragraph(para)
-            Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
-            doc.save(abs_out)
+            template = _create_template("docx")
+            if template:
+                from shogun.services.file_template import render_word_template, resolve_workspace_template
+
+                source = resolve_workspace_template(str(template.get("template_path") or ""), root)
+                populated = render_word_template(
+                    source,
+                    Path(abs_out),
+                    context_str,
+                    str(template.get("example_handling") or "replace"),
+                )
+                template_summary = f"{populated} template item(s) populated"
+            else:
+                from docx import Document
+
+                doc = Document()
+                # Use the inline text template or predecessor context as content.
+                content = config.get("content_template", "") or context_str or ""
+                if config.get("content_template"):
+                    content = content.replace("{{context}}", context_str)
+                for para in content.split("\n"):
+                    doc.add_paragraph(para)
+                Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
+                doc.save(abs_out)
+                template_summary = "standard document"
             saved_path = await _record_output(abs_out)
-            log.info("[Flow/Office] word_create: %s", saved_path)
-            return f"Word document created: {saved_path}"
+            log.info("[Flow/Office] word_create: %s (%s)", saved_path, template_summary)
+            return f"Word document created: {saved_path} ({template_summary})"
 
         elif action == "word_replace":
             from shogun.office.adapters.word_adapter import (

@@ -248,12 +248,134 @@ const DEFAULT_POLICY_PERMISSIONS: Record<string, Record<string, unknown>> = {
     allow_list_cron: true,
     allow_manage_cron: false,
   },
-  mado_browser: {},
-  agentflow: {},
-  flow_stack: {},
-  visual_intake: {},
-  ide_mode: {},
+  mado_browser: {
+    enabled: false,
+    allow_external_urls: false,
+    allow_login_profiles: false,
+    allow_authenticated_sessions: false,
+    allow_file_downloads: false,
+    allow_file_uploads: false,
+    allow_form_submit: false,
+    allow_headless_mode: true,
+    allow_visible_mode: true,
+    capture_screenshots: true,
+    require_verification: true,
+    audit_all_actions: true,
+  },
+  agentflow: {
+    allow_create: false,
+    allow_edit: false,
+    allow_activate: false,
+    allow_execute: false,
+    allow_save_as_template: false,
+    allow_delete: false,
+  },
+  flow_stack: {
+    allow_create: false,
+    allow_edit: false,
+    allow_activate: false,
+    allow_execute: false,
+    allow_save_as_template: false,
+    allow_delete: false,
+  },
+  visual_intake: {
+    allow_image_intake: true,
+    allow_local_vision: true,
+    allow_cloud_vision: false,
+    allow_ocr: true,
+    allow_attach_to_stack: true,
+    allow_auto_memory: false,
+    allow_delete: true,
+    retention_days: 30,
+    max_upload_mb: 20,
+  },
+  ide_mode: {
+    enabled: false,
+    file_read: true,
+    file_search: true,
+    file_create: true,
+    file_patch: true,
+    file_delete: false,
+    diagnostics: true,
+    approved_tasks_only: true,
+    terminal_approved_only: true,
+    package_install: false,
+    git_status: true,
+    git_diff: true,
+    git_branch_create: false,
+    git_commit: false,
+    git_push: false,
+    secrets_access: false,
+    require_snapshot: true,
+    audit_all_actions: true,
+    self_verification_required: true,
+  },
 };
+
+const TIER_RANK: Record<string, number> = {
+  shrine: 0,
+  guarded: 1,
+  tactical: 2,
+  campaign: 3,
+  ronin: 4,
+};
+
+const CATEGORY_MINIMUM_TIER: Record<string, TierType> = {
+  agentflow: 'tactical',
+  flow_stack: 'tactical',
+  ide_mode: 'campaign',
+};
+
+const CATEGORY_MASTER_SETTING: Record<string, string> = {
+  filesystem: 'mode',
+  network: 'mode',
+  shell: 'enabled',
+  subagents: 'allow_spawn',
+  mado_browser: 'enabled',
+  visual_intake: 'allow_image_intake',
+  ide_mode: 'enabled',
+};
+
+function mergePermissionDefaults(
+  permissions: Record<string, Record<string, unknown>> | null | undefined,
+) {
+  const merged = structuredClone(DEFAULT_POLICY_PERMISSIONS);
+  Object.entries(permissions || {}).forEach(([categoryName, values]) => {
+    merged[categoryName] = {
+      ...(merged[categoryName] || {}),
+      ...(values || {}),
+    };
+  });
+  return merged;
+}
+
+function categoryAvailability(categoryName: string, tier: string) {
+  const minimumTier = CATEGORY_MINIMUM_TIER[categoryName];
+  if (!minimumTier) return { available: true, reason: '' };
+  const available = (TIER_RANK[tier] ?? 0) >= TIER_RANK[minimumTier];
+  return {
+    available,
+    reason: available ? '' : `${minimumTier[0].toUpperCase()}${minimumTier.slice(1)} or higher`,
+  };
+}
+
+function categoryIsEnabled(categoryName: string, permissions: Record<string, unknown>) {
+  const masterKey = CATEGORY_MASTER_SETTING[categoryName];
+  if (!masterKey) return true;
+  const value = permissions[masterKey];
+  return masterKey === 'mode' ? value !== 'disabled' : value !== false;
+}
+
+function capabilitySettingDisabled(
+  categoryName: string,
+  key: string,
+  permissions: Record<string, unknown>,
+  tier: string,
+) {
+  if (!categoryAvailability(categoryName, tier).available) return true;
+  const masterKey = CATEGORY_MASTER_SETTING[categoryName];
+  return Boolean(masterKey && key !== masterKey && !categoryIsEnabled(categoryName, permissions));
+}
 
 const emptyPolicyDraft = (permissions = structuredClone(DEFAULT_POLICY_PERMISSIONS)) => ({
   id: null as string | null,
@@ -376,6 +498,7 @@ export function ToolGate() {
           source: 'local',
         },
       };
+      normalized.capabilities.permissions = mergePermissionDefaults(normalized.capabilities.permissions);
       setData(normalized);
       const policyRecords = (policiesResponse.data.data || []) as SecurityPolicy[];
       setPolicies(policyRecords.filter(policy => !policy.is_builtin));
@@ -654,15 +777,8 @@ export function ToolGate() {
   };
 
   const policyDefaultsForTier = (tier: TierType) => {
-    const permissions = structuredClone(DEFAULT_POLICY_PERMISSIONS);
     const preset = builtInPolicies.find(policy => policy.tier === tier);
-    Object.entries(preset?.permissions || {}).forEach(([categoryName, values]) => {
-      permissions[categoryName] = {
-        ...(permissions[categoryName] || {}),
-        ...(values || {}),
-      };
-    });
-    return permissions;
+    return mergePermissionDefaults(preset?.permissions);
   };
 
   const openEditPolicy = (policy: SecurityPolicy) => {
@@ -999,24 +1115,67 @@ export function ToolGate() {
         )}
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {Object.entries(capabilityDraft).map(([categoryName, permissions]) => (
-            <div key={categoryName} className="rounded-lg border border-shogun-border/70 bg-shogun-bg/45 p-3">
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-shogun-gold">
-                {categoryName.replace(/_/g, ' ')}
-              </p>
+          {Object.entries(capabilityDraft).map(([categoryName, permissions]) => {
+            const availability = categoryAvailability(categoryName, data.active_tier);
+            const categoryEnabled = categoryIsEnabled(categoryName, permissions);
+            const categoryMuted = !availability.available || !categoryEnabled;
+            return (
+            <div
+              key={categoryName}
+              className={cn(
+                'rounded-lg border border-shogun-border/70 bg-shogun-bg/45 p-3 transition-opacity',
+                categoryMuted && 'bg-shogun-bg/25 opacity-60 grayscale-[35%]',
+              )}
+            >
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className={cn(
+                  'text-[10px] font-bold uppercase tracking-[0.18em] text-shogun-gold',
+                  !availability.available && 'text-shogun-subdued',
+                )}>
+                  {categoryName === 'mado_browser' ? 'Browser Automation — Mado' : categoryName.replace(/_/g, ' ')}
+                </p>
+                {!availability.available ? (
+                  <span className="rounded border border-shogun-border px-1.5 py-0.5 text-[8px] font-bold uppercase text-shogun-subdued">
+                    {availability.reason}
+                  </span>
+                ) : !categoryEnabled ? (
+                  <span className="rounded border border-red-500/20 bg-red-500/5 px-1.5 py-0.5 text-[8px] font-bold uppercase text-red-300/60">
+                    Disabled
+                  </span>
+                ) : null}
+              </div>
               {categoryName === 'comms' && (
                 <p className="mb-3 text-[9px] leading-relaxed text-shogun-subdued">
                   Single authority for Comms, Mail, and Calendar. These rules also govern direct UI actions.
                 </p>
               )}
+              {categoryName === 'mado_browser' && (
+                <p className="mb-3 text-[9px] leading-relaxed text-shogun-subdued">
+                  Browser actions are also constrained by the Network boundary.
+                </p>
+              )}
               <div className="space-y-2">
-                {Object.entries(permissions || {}).map(([key, value]) => (
-                  <label key={key} className="flex min-h-8 items-center justify-between gap-3 text-[10px] text-shogun-subdued">
+                {Object.entries(permissions || {}).map(([key, value]) => {
+                  const dependencyDisabled = capabilitySettingDisabled(
+                    categoryName,
+                    key,
+                    permissions,
+                    data.active_tier,
+                  );
+                  const settingDisabled = !data.capabilities.editable || dependencyDisabled;
+                  return (
+                  <label
+                    key={key}
+                    className={cn(
+                      'flex min-h-8 items-center justify-between gap-3 text-[10px] text-shogun-subdued transition-opacity',
+                      dependencyDisabled && 'opacity-35',
+                    )}
+                  >
                     <span className="capitalize">{categoryName === 'comms' ? COMMS_LABELS[key] || key.replace(/_/g, ' ') : key.replace(/_/g, ' ')}</span>
                     {typeof value === 'boolean' ? (
                       <button
                         type="button"
-                        disabled={!data.capabilities.editable}
+                        disabled={settingDisabled}
                         onClick={() => updateCapability(categoryName, key, !value)}
                         className={cn(
                           'relative h-5 w-10 rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-55',
@@ -1031,14 +1190,14 @@ export function ToolGate() {
                     ) : typeof value === 'number' ? (
                       <input
                         type="number"
-                        disabled={!data.capabilities.editable}
+                        disabled={settingDisabled}
                         value={value}
                         onChange={event => updateCapability(categoryName, key, Number(event.target.value))}
                         className="w-20 rounded border border-shogun-border bg-shogun-bg px-2 py-1 text-right text-[10px] text-shogun-text disabled:opacity-55"
                       />
                     ) : Array.isArray(value) ? (
                       <input
-                        disabled={!data.capabilities.editable}
+                        disabled={settingDisabled}
                         value={value.join(', ')}
                         onChange={event => updateCapability(
                           categoryName,
@@ -1050,7 +1209,7 @@ export function ToolGate() {
                       />
                     ) : key === 'mode' ? (
                       <select
-                        disabled={!data.capabilities.editable}
+                        disabled={settingDisabled}
                         value={String(value)}
                         onChange={event => updateCapability(categoryName, key, event.target.value)}
                         className="rounded border border-shogun-border bg-shogun-bg px-2 py-1 text-[10px] uppercase text-shogun-text disabled:opacity-55"
@@ -1059,17 +1218,17 @@ export function ToolGate() {
                       </select>
                     ) : (
                       <input
-                        disabled={!data.capabilities.editable}
+                        disabled={settingDisabled}
                         value={String(value ?? '')}
                         onChange={event => updateCapability(categoryName, key, event.target.value)}
                         className="w-36 rounded border border-shogun-border bg-shogun-bg px-2 py-1 text-right text-[10px] text-shogun-text disabled:opacity-55"
                       />
                     )}
                   </label>
-                ))}
+                )})}
               </div>
             </div>
-          ))}
+          )})}
         </div>
 
         {data.capabilities.editable && (
@@ -2006,24 +2165,63 @@ export function ToolGate() {
                   These are the maximum runtime capabilities of this posture. Tool verdicts and advanced content rules may narrow them further.
                 </p>
                 <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {Object.entries(policyDraft.permissions).map(([categoryName, permissions]) => (
-                    <div key={categoryName} className="rounded-lg border border-shogun-border/70 bg-[#050508] p-3">
-                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-violet-300">
-                        {categoryName.replace(/_/g, ' ')}
-                      </p>
-                      {Object.keys(permissions || {}).length === 0 ? (
-                        <p className="text-[10px] italic text-shogun-subdued">Uses base-tier defaults</p>
-                      ) : (
+                  {Object.entries(policyDraft.permissions).map(([categoryName, permissions]) => {
+                    const availability = categoryAvailability(categoryName, policyDraft.tier);
+                    const categoryEnabled = categoryIsEnabled(categoryName, permissions);
+                    return (
+                    <div
+                      key={categoryName}
+                      className={cn(
+                        'rounded-lg border border-shogun-border/70 bg-[#050508] p-3',
+                        (!availability.available || !categoryEnabled) && 'bg-[#050508]/60 opacity-60 grayscale-[35%]',
+                      )}
+                    >
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <p className={cn(
+                          'text-[10px] font-bold uppercase tracking-[0.18em] text-violet-300',
+                          !availability.available && 'text-shogun-subdued',
+                        )}>
+                          {categoryName === 'mado_browser' ? 'Browser Automation — Mado' : categoryName.replace(/_/g, ' ')}
+                        </p>
+                        {!availability.available ? (
+                          <span className="rounded border border-shogun-border px-1.5 py-0.5 text-[8px] font-bold uppercase text-shogun-subdued">
+                            {availability.reason}
+                          </span>
+                        ) : !categoryEnabled ? (
+                          <span className="rounded border border-red-500/20 bg-red-500/5 px-1.5 py-0.5 text-[8px] font-bold uppercase text-red-300/60">
+                            Disabled
+                          </span>
+                        ) : null}
+                      </div>
+                      {categoryName === 'mado_browser' && (
+                        <p className="mb-3 text-[9px] leading-relaxed text-shogun-subdued">
+                          Browser actions are also constrained by the Network boundary.
+                        </p>
+                      )}
                         <div className="space-y-2">
-                          {Object.entries(permissions || {}).map(([key, value]) => (
-                            <label key={key} className="flex min-h-8 items-center justify-between gap-3 text-[10px] text-shogun-subdued">
+                          {Object.entries(permissions || {}).map(([key, value]) => {
+                            const settingDisabled = capabilitySettingDisabled(
+                              categoryName,
+                              key,
+                              permissions,
+                              policyDraft.tier,
+                            );
+                            return (
+                            <label
+                              key={key}
+                              className={cn(
+                                'flex min-h-8 items-center justify-between gap-3 text-[10px] text-shogun-subdued transition-opacity',
+                                settingDisabled && 'opacity-35',
+                              )}
+                            >
                               <span className="capitalize">{key.replace(/_/g, ' ')}</span>
                               {typeof value === 'boolean' ? (
                                 <button
                                   type="button"
+                                  disabled={settingDisabled}
                                   onClick={() => updatePolicyPermission(categoryName, key, !value)}
                                   className={cn(
-                                    'relative h-5 w-10 rounded-full border transition-colors',
+                                    'relative h-5 w-10 rounded-full border transition-colors disabled:cursor-not-allowed',
                                     value ? 'border-emerald-500/40 bg-emerald-500/20' : 'border-red-500/30 bg-red-500/10',
                                   )}
                                 >
@@ -2032,12 +2230,14 @@ export function ToolGate() {
                               ) : typeof value === 'number' ? (
                                 <input
                                   type="number"
+                                  disabled={settingDisabled}
                                   value={value}
                                   onChange={event => updatePolicyPermission(categoryName, key, Number(event.target.value))}
                                   className="w-20 rounded border border-shogun-border bg-shogun-bg px-2 py-1 text-right text-[10px] text-shogun-text"
                                 />
                               ) : Array.isArray(value) ? (
                                 <input
+                                  disabled={settingDisabled}
                                   value={value.join(', ')}
                                   onChange={event => updatePolicyPermission(categoryName, key, event.target.value.split(',').map(item => item.trim()).filter(Boolean))}
                                   placeholder="Comma-separated"
@@ -2045,6 +2245,7 @@ export function ToolGate() {
                                 />
                               ) : key === 'mode' ? (
                                 <select
+                                  disabled={settingDisabled}
                                   value={String(value)}
                                   onChange={event => updatePolicyPermission(categoryName, key, event.target.value)}
                                   className="rounded border border-shogun-border bg-shogun-bg px-2 py-1 text-[10px] uppercase text-shogun-text"
@@ -2053,17 +2254,17 @@ export function ToolGate() {
                                 </select>
                               ) : (
                                 <input
+                                  disabled={settingDisabled}
                                   value={String(value ?? '')}
                                   onChange={event => updatePolicyPermission(categoryName, key, event.target.value)}
                                   className="w-36 rounded border border-shogun-border bg-shogun-bg px-2 py-1 text-right text-[10px] text-shogun-text"
                                 />
                               )}
                             </label>
-                          ))}
+                          )})}
                         </div>
-                      )}
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
             </div>
