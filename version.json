@@ -1,8 +1,8 @@
 {
-  "version": "1.47.52",
+  "version": "1.47.53",
   "name": "Shogun OS",
-  "build": 203,
+  "build": 204,
   "channel": "stable",
-  "released": "2026-08-01T16:15:04Z",
-  "changelog": "Restore named custom routing profiles and visible Samurai actions, persist custom profile names, and simplify ToolGate around capability boundaries."
+  "released": "2026-08-01T17:20:59Z",
+  "changelog": "Reorder the Systems and Governance navigation so Torii precedes ToolGate and the menu follows the security configuration hierarchy."
 }

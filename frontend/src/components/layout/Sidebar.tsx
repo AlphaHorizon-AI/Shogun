@@ -143,18 +143,18 @@ export const Sidebar = () => {
             onClick={() => navigate('/katana')}
           />
           <NavItem
-            icon={LockKeyhole}
-            label={t('nav.toolgate', 'ToolGate')}
-            subLabel={t('nav.toolgate_sub', 'Runtime Permissions')}
-            active={location.pathname === '/toolgate'}
-            onClick={() => navigate('/toolgate')}
-          />
-          <NavItem 
             icon={Shield} 
             label={t('nav.torii', 'The Torii')} 
             subLabel={t('nav.torii_sub', 'Security Gateway')} 
             active={location.pathname === '/torii'}
             onClick={() => navigate('/torii')}
+          />
+          <NavItem
+            icon={LockKeyhole}
+            label={t('nav.toolgate', 'ToolGate')}
+            subLabel={t('nav.toolgate_sub', 'Runtime Permissions')}
+            active={location.pathname === '/toolgate'}
+            onClick={() => navigate('/toolgate')}
           />
           <NavItem 
             icon={ScrollText} 
