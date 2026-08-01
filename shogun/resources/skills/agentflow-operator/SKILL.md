@@ -49,6 +49,7 @@ Start the flow and produce its initial context.
 - Document supports three governed sources: `upload` uses the UI-managed `uploaded_file`; `workspace` uses a verified workspace-relative `workspace_path`; `attachment` uses the exact server-verified `attachment_file_id` shown in the current Comms attachment manifest. Never invent a path or file ID.
 - Scheduled: use `schedule_frequency` (`hourly`, `nightly`, `weekly`, `monthly`), `schedule_time`, `schedule_minute_offset`, `schedule_days`, or `schedule_day` as applicable. Do not place a raw cron expression in node config.
 - API/event/Nexus: set the relevant configured tool, event source/filter, or workspace/message type.
+- The Input node supports multiple outgoing edges. Every directly connected branch is triggered together and runs in the same parallel execution layer when its other dependencies are satisfied.
 
 ### `samurai`
 
@@ -153,7 +154,7 @@ Operate inside the configured workspace boundary.
 
 Provide a Word or Excel output contract to a Samurai before generation and make the same template available to a downstream Files create action.
 
-- The node is source-only: it has no incoming edge and one outgoing edge.
+- The node has an incoming trigger port and an outgoing template-contract port. Normally fan out from Input to both File Template and Samurai, then connect File Template to Samurai. This triggers template extraction while preserving the Input payload as a separate Samurai input.
 - Required: `template_path`, relative to the configured workspace. Supported formats are `.docx` and `.xlsx`.
 - `guidance_mode`: `structure_only` or `one_shot`.
   - `structure_only` sends bounded layout metadata such as headings, placeholders, tables, sheets, headers, dimensions, and formulas. It does not send populated example content.
@@ -223,9 +224,8 @@ Optionally branch the compiler output to an `output` node as well when an archiv
 Build:
 
 ```text
-input (optional runtime data) ─┐
-                              ├─> samurai ─> office (word_create or excel_create)
-file_template ────────────────┘
+input -> file_template ─┐
+  └─────────────────────┴─> samurai -> office (word_create or excel_create)
 ```
 
 1. Put the `.docx` or `.xlsx` template inside the configured workspace.

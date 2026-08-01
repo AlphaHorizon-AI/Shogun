@@ -109,6 +109,30 @@ def test_template_ancestry_reaches_downstream_create_node():
     assert flow_engine._collect_upstream_file_templates("files", predecessors, outputs) == [payload]
 
 
+def test_input_fan_out_triggers_template_and_parallel_branch_together():
+    input_id = uuid.uuid4()
+    template_id = uuid.uuid4()
+    parallel_id = uuid.uuid4()
+    samurai_id = uuid.uuid4()
+    nodes = [
+        SimpleNamespace(id=input_id),
+        SimpleNamespace(id=template_id),
+        SimpleNamespace(id=parallel_id),
+        SimpleNamespace(id=samurai_id),
+    ]
+    edges = [
+        SimpleNamespace(source_node_id=input_id, target_node_id=template_id),
+        SimpleNamespace(source_node_id=input_id, target_node_id=parallel_id),
+        SimpleNamespace(source_node_id=template_id, target_node_id=samurai_id),
+    ]
+
+    layers = flow_engine._topological_sort(nodes, edges)
+
+    assert layers[0] == [str(input_id)]
+    assert set(layers[1]) == {str(template_id), str(parallel_id)}
+    assert layers[2] == [str(samurai_id)]
+
+
 @pytest.mark.asyncio
 async def test_word_create_uses_upstream_template_and_never_changes_source(tmp_path, monkeypatch):
     from shogun.office import config as office_config

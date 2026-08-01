@@ -1481,7 +1481,7 @@ export function Katana() {
       )}
 
       {/* ── Tab bar ────────────────────────────────────────────── */}
-      <div className="flex border-b border-shogun-border overflow-x-auto">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(68px,1fr))] border-b border-shogun-border">
         {(['providers', 'tools', 'files', 'routing', 'skills', 'team', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'] as TabType[]).filter(tab => tab !== 'ide' || ['campaign', 'ronin'].includes(officePosture)).map((tab) => (
           <button
             key={tab}
@@ -1492,19 +1492,19 @@ export function Katana() {
               if (tab === 'office' && !officeStatus) fetchOfficeData();
             }}
             className={cn(
-              "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all relative",
+              "relative flex min-h-16 min-w-0 items-center justify-center break-words px-1.5 py-3 text-center text-[9px] font-bold uppercase leading-tight tracking-[0.12em] transition-all",
               activeTab === tab ? "text-shogun-blue" : "text-shogun-subdued hover:text-shogun-text"
             )}
           >
             {tab === 'providers' && t('katana.tab_cloud', 'AI Model Provider')}
             {tab === 'tools'     && t('katana.tab_tools', 'Toolbox & APIs')}
-            {tab === 'files'     && <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />File Formats</span>}
+            {tab === 'files'     && <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5"><FileText className="h-3.5 w-3.5 shrink-0" />File Formats</span>}
             {tab === 'routing'   && t('katana.tab_routing', 'Logic Routing')}
-            {tab === 'team'      && <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />{t('katana.team.tab', 'Team')}</span>}
-            {tab === 'skills'    && <span className="flex items-center gap-1.5"><Puzzle className="w-3.5 h-3.5" />Skills · Active Usage</span>}
+            {tab === 'team'      && <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5"><Users className="h-3.5 w-3.5 shrink-0" />{t('katana.team.tab', 'Team')}</span>}
+            {tab === 'skills'    && <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5"><Puzzle className="h-3.5 w-3.5 shrink-0" />Skills · Active Usage</span>}
             {tab === 'telegram'  && (
-              <span className="flex items-center gap-1.5">
-                <MessageCircle className="w-3.5 h-3.5" />
+              <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5">
+                <MessageCircle className="h-3.5 w-3.5 shrink-0" />
                 Telegram
                 {tgStatus?.connected && (
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
@@ -1512,14 +1512,14 @@ export function Katana() {
               </span>
             )}
             {tab === 'teams' && (
-              <span className="flex items-center gap-1.5">
-                <MessageCircle className="w-3.5 h-3.5" />
+              <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5">
+                <MessageCircle className="h-3.5 w-3.5 shrink-0" />
                 Microsoft Teams
               </span>
             )}
             {tab === 'mail_calendar' && (
-              <span className="flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5" />
+              <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5">
+                <Mail className="h-3.5 w-3.5 shrink-0" />
                 Mail & Calendar
                 {mailAccount?.is_active && (
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
@@ -1527,8 +1527,8 @@ export function Katana() {
               </span>
             )}
             {tab === 'office' && (
-              <span className={cn("flex items-center gap-1.5", officePosture === 'shrine' && "opacity-40")}>
-                <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span className={cn("flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5", officePosture === 'shrine' && "opacity-40")}>
+                <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" />
                 Office
                 {officeStatus?.enabled && officePosture !== 'shrine' && (
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
@@ -1536,23 +1536,23 @@ export function Katana() {
               </span>
             )}
             {tab === 'ide' && (
-              <span className="flex items-center gap-1.5"><Monitor className="w-3.5 h-3.5" /> IDE Mode</span>
+              <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5"><Monitor className="h-3.5 w-3.5 shrink-0" /> IDE Mode</span>
             )}
             {tab === 'mado'      && (
-              <span className="flex items-center gap-1.5">
-                <AppWindow className="w-3.5 h-3.5" />
+              <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5">
+                <AppWindow className="h-3.5 w-3.5 shrink-0" />
                 Mado Browser
               </span>
             )}
             {tab === 'ronin'     && (
-              <span className="flex items-center gap-1.5">
-                <Crosshair className="w-3.5 h-3.5" />
+              <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5">
+                <Crosshair className="h-3.5 w-3.5 shrink-0" />
                 Ronin Desktop
               </span>
             )}
             {tab === 'skillopt' && (
-              <span className="flex items-center gap-1.5">
-                <Cpu className="w-3.5 h-3.5" />
+              <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5">
+                <Cpu className="h-3.5 w-3.5 shrink-0" />
                 {t('katana.tab_skillopt', 'SkillOpt')}
               </span>
             )}

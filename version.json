@@ -1,8 +1,8 @@
 {
-  "version": "1.47.55",
+  "version": "1.47.56",
   "name": "Shogun OS",
-  "build": 206,
+  "build": 207,
   "channel": "stable",
-  "released": "2026-08-01T19:36:34Z",
-  "changelog": "Replace ToolGate capability toggles with Allow, Confirm, and Block decisions; add live human approval handling; and provide rollover guidance for every capability setting."
+  "released": "2026-08-01T19:58:37Z",
+  "changelog": "Add triggered File Template nodes and parallel Input fan-out to AgentFlow, update the AgentFlow Operator guidance, and show every Katana tab without horizontal scrolling."
 }

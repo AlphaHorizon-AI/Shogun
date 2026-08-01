@@ -244,13 +244,13 @@ const NODE_PALETTE = [
   { type: 'coding',          label: 'Coding',           icon: Code2,     color: '#14b8a6', desc: 'Governed IDE and programming memory' },
   { type: 'shogun_approval', label: 'Shogun Approval',  icon: Shield,    color: '#4a8cc7', desc: 'Approval gate' },
   { type: 'logic',           label: 'Logic / Decision', icon: GitBranch, color: '#a78bfa', desc: 'Branching logic' },
-  { type: 'input',           label: 'Input',            icon: LogIn,     color: '#22c55e', desc: 'Workflow start point' },
+  { type: 'input',           label: 'Input',            icon: LogIn,     color: '#22c55e', desc: 'Workflow start with parallel fan-out' },
   { type: 'output',          label: 'Output',           icon: LogOut,    color: '#f97316', desc: 'Final delivery' },
   { type: 'mado_browser',    label: 'Mado Browser',     icon: Globe,     color: '#06b6d4', desc: 'Browser automation' },
   { type: 'email_send',      label: 'Email Send',       icon: Mail,      color: '#e879a8', desc: 'Send email via SMTP' },
   { type: 'channel_send',    label: 'Telegram / Teams', icon: MessageSquare, color: '#38bdf8', desc: 'Send an operator message' },
   { type: 'workspace',       label: 'Workspace',        icon: FolderOpen, color: '#f59e0b', desc: 'File operations' },
-  { type: 'file_template',   label: 'File Template',    icon: Clipboard, color: '#60a5fa', desc: 'Word or Excel output contract' },
+  { type: 'file_template',   label: 'File Template',    icon: Clipboard, color: '#60a5fa', desc: 'Triggered Word or Excel output contract' },
   { type: 'office',          label: 'Files',            icon: FileText, color: '#10b981', desc: 'PDF, Word, Excel, and PowerPoint files' },
   { type: 'subflow',         label: 'Subflow',          icon: Layers3, color: '#8b5cf6', desc: 'Run a reusable child flow' },
   { type: 'stack_orchestrator', label: 'Stack Orchestrator', icon: Network, color: '#c084fc', desc: 'Supervise long-running Agent Stacks' },
@@ -531,10 +531,13 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
           </p>
         )}
         {type === 'input' && (
-          <div className="flex items-center gap-1">
-            <span className="text-[8px] font-bold text-[#22c55e]/80 uppercase">
-              {config.input_type || 'manual'} trigger
-            </span>
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1">
+              <span className="text-[8px] font-bold text-[#22c55e]/80 uppercase">
+                {config.input_type || 'manual'} trigger
+              </span>
+            </div>
+            <p className="text-[8px] text-[#22c55e]/55">Parallel fan-out enabled</p>
           </div>
         )}
         {type === 'output' && (
@@ -705,10 +708,11 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
       </div>
 
       {/* Handles */}
-      {!['input', 'file_template'].includes(type) && (
+      {type !== 'input' && (
         <Handle
           type="target"
           position={Position.Left}
+          isConnectable
           className="!w-2.5 !h-2.5 !border-2 !rounded-full !bg-[#0a0e1a]"
           style={{ borderColor: color }}
         />
@@ -717,9 +721,31 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
         <Handle
           type="source"
           position={Position.Right}
+          isConnectable
           className="!w-2.5 !h-2.5 !border-2 !rounded-full !bg-[#0a0e1a]"
           style={{ borderColor: color }}
         />
+      )}
+      {/* Input exposes extra ports to make parallel fan-out visible and easy to wire. */}
+      {type === 'input' && (
+        <>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="branch-top"
+            isConnectable
+            className="!w-2.5 !h-2.5 !border-2 !rounded-full !bg-[#0a0e1a]"
+            style={{ borderColor: color, top: '34%' }}
+          />
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="branch-bottom"
+            isConnectable
+            className="!w-2.5 !h-2.5 !border-2 !rounded-full !bg-[#0a0e1a]"
+            style={{ borderColor: color, top: '66%' }}
+          />
+        </>
       )}
       {/* Logic nodes get extra handles for branches */}
       {type === 'logic' && (
@@ -1022,7 +1048,7 @@ function FileTemplateNodeFields({ config, updateConfig }: { config: Record<strin
 
       <div className="p-2.5 bg-[#60a5fa]/5 border border-[#60a5fa]/20 rounded-lg">
         <p className="text-[8px] leading-relaxed text-[#60a5fa]/85">
-          Connect <strong>File Template → Samurai → Files Create</strong>. The Samurai sees the contract before generating, and Files creates a new document from the same template.
+          Connect <strong>Input → File Template</strong>, <strong>Input → Samurai</strong>, and <strong>File Template → Samurai → Files Create</strong>. The Samurai waits for both branches, preserving runtime data while applying the template contract.
         </p>
       </div>
 
