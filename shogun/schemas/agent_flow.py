@@ -236,6 +236,8 @@ class AgentFlowCreate(BaseModel):
     template_category: str | None = None
     template_source: str | None = None
     template_config: dict[str, Any] = Field(default_factory=dict)
+    seed: int | None = Field(default=None, ge=0, le=2_147_483_647)
+    seed_model_id: str | None = Field(default=None, max_length=600)
 
 
 class AgentFlowUpdate(BaseModel):
@@ -258,6 +260,8 @@ class AgentFlowUpdate(BaseModel):
     template_category: str | None = None
     template_source: str | None = None
     template_config: dict[str, Any] | None = None
+    seed: int | None = Field(default=None, ge=0, le=2_147_483_647)
+    seed_model_id: str | None = Field(default=None, max_length=600)
 
 
 class AgentFlowBulkDeleteRequest(BaseModel):
@@ -288,6 +292,8 @@ class AgentFlowResponse(ShogunBase):
     template_category: str | None = None
     template_source: str | None = None
     template_config: dict[str, Any] = Field(default_factory=dict)
+    seed: int | None = None
+    seed_model_id: str | None = None
     is_deleted: bool
     created_at: datetime
     updated_at: datetime

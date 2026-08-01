@@ -80,8 +80,8 @@ class ModelRoutingProfileService(BaseService[ModelRoutingProfile]):
         current = await self.get_by_id(record_id)
         if current is None:
             return None
-        if is_automatic_profile_name(current.name):
-            raise ValueError("Built-in routing profiles are read-only")
+        if is_automatic_profile_name(current.name) and set(kwargs) - {"model_settings"}:
+            raise ValueError("Built-in routing profiles are read-only except for profile-scoped model settings")
         if "name" in kwargs and is_automatic_profile_name(kwargs.get("name")):
             raise ValueError("Built-in routing profile names are reserved")
         if kwargs.get("is_default"):

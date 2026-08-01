@@ -14,4 +14,5 @@ class ModelRoutingProfile(Base, UUIDMixin, AuditMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     rules: Mapped[list] = mapped_column(JSONType(), nullable=False, default=list)
+    model_settings: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=dict)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

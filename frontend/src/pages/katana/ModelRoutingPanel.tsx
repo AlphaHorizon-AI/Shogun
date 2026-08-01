@@ -5,16 +5,18 @@ import { Activity, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Gauge, Lo
 type Profile = {
   id: string; name: string; description?: string; is_default: boolean;
   rules?: Array<{ task_type: string; primary_model_id: string; fallback_model_ids: string[] }>;
+  model_settings?: Record<string, { temperature?: number }>;
 };
 type RegistryModel = {
-  id: string; model_id: string; display_name: string; provider: string; connection_type: string; enabled: boolean;
+  id: string; model_id: string; display_name: string; provider_id?: string; provider: string; connection_type: string; enabled: boolean;
   capabilities: Record<string, boolean>; quality_tier: number; cost_tier: number; latency_tier: number;
   context_window: number; max_output_tokens: number; local: boolean; role_tags: string[];
   config_json: Record<string, unknown>;
 };
 type Decision = {
   selected_model: string; selected_provider: string; fallback_model?: string; reason: string;
-  fallback_models?: Array<{ model_id: string; display_name: string; provider: string }>;
+  selected_temperature?: number;
+  fallback_models?: Array<{ model_id: string; display_name: string; provider: string; temperature?: number }>;
   complexity_score: number; estimated_cost_tier: number; estimated_latency_tier: number; active_profile: string;
 };
 
@@ -118,6 +120,13 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
   const activeProfile = useMemo(() => profiles.find(item => item.is_default), [profiles]);
   const activeIsAutomatic = Boolean(activeProfile && AUTOMATIC_PROFILE_NAMES.has(activeProfile.name));
   const registryEditable = Boolean(activeProfile && !activeIsAutomatic);
+  const temperatureModels = useMemo(() => {
+    if (!activeProfile) return [];
+    if (activeIsAutomatic) return models.filter(item => item.enabled);
+    return orderedModels(activeProfile)
+      .map(id => models.find(item => item.id === id || item.model_id === id))
+      .filter((item): item is RegistryModel => Boolean(item));
+  }, [activeIsAutomatic, activeProfile, models]);
   const customProfiles = useMemo(
     () => profiles.filter(item => item.name === 'Custom' || !AUTOMATIC_PROFILE_NAMES.has(item.name)),
     [profiles],
@@ -172,6 +181,28 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
     try { await axios.post(`/api/v1/models/registry/${item.id}/test`); setMessage(`${item.display_name} is reachable.`); }
     catch (error: any) { setMessage(error?.response?.data?.detail || 'Connection test failed.'); }
     finally { setBusy(''); }
+  };
+  const setProfileTemperature = async (item: RegistryModel, temperature: number) => {
+    if (!activeProfile || !Number.isFinite(temperature)) return;
+    const clamped = Math.max(0, Math.min(2, temperature));
+    const modelSettings = {
+      ...(activeProfile.model_settings || {}),
+      [item.id]: {
+        ...(activeProfile.model_settings?.[item.id] || {}),
+        temperature: clamped,
+      },
+    };
+    setBusy(`temperature-${item.id}`);
+    try {
+      const response = await axios.post(`/api/v1/models/routing/profiles/${activeProfile.id}/update`, {
+        model_settings: modelSettings,
+      });
+      const updated: Profile = response.data.data;
+      setProfiles(current => current.map(profileItem => profileItem.id === updated.id ? updated : profileItem));
+      setMessage(`${item.display_name} temperature set to ${clamped.toFixed(2)} for ${activeProfile.name}.`);
+    } catch (error: any) {
+      setMessage(error?.response?.data?.detail || 'Profile temperature could not be saved.');
+    } finally { setBusy(''); }
   };
   const saveCustom = async (activate = false) => {
     if (!customProfile || customModels.length === 0) {
@@ -262,6 +293,9 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-2">
         {profiles.map(item => {
           const automatic = AUTOMATIC_PROFILE_NAMES.has(item.name);
+          const displayName = item.name === 'Custom' && isEditingProfiles && newProfileName.trim()
+            ? newProfileName.trim()
+            : item.name;
           const cardStyle = automatic
             ? item.is_default
               ? 'border-cyan-400/60 bg-cyan-400/10 shadow-[0_0_18px_rgba(34,211,238,0.08)]'
@@ -271,7 +305,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
               : 'border-amber-400/30 bg-amber-400/[0.06] hover:border-amber-300/70 hover:bg-amber-400/10';
           return <button key={item.id} onClick={() => chooseProfile(item)} disabled={busy === item.id}
             className={`text-left p-3 rounded-lg border transition-all ${cardStyle}`}>
-            <div className="text-xs font-bold flex items-center gap-1.5">{item.is_default && <CheckCircle2 className={`w-3.5 h-3.5 ${automatic ? 'text-cyan-300' : 'text-amber-300'}`} />}{item.name}</div>
+            <div className="text-xs font-bold flex items-center gap-1.5">{item.is_default && <CheckCircle2 className={`w-3.5 h-3.5 ${automatic ? 'text-cyan-300' : 'text-amber-300'}`} />}{displayName}</div>
             <p className="text-[9px] text-shogun-subdued mt-1 line-clamp-2">{item.description}</p>
             <span className={`mt-2 inline-block text-[8px] font-bold uppercase tracking-wider ${automatic ? 'text-cyan-300' : 'text-amber-300'}`}>
               {automatic ? 'Fixed · automatic · read-only' : 'Custom · operator-defined'}
@@ -279,6 +313,30 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
           </button>;
         })}
       </div>
+      {activeProfile && <div className="mt-4 rounded-lg border border-purple-400/20 bg-purple-400/[0.04] p-3">
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+          <div><h4 className="text-xs font-bold text-purple-200">Profile model temperatures</h4>
+            <p className="mt-1 text-[9px] text-shogun-subdued">Scoped only to <strong>{activeProfile.name}</strong>. Global model capabilities are unchanged.</p></div>
+          <span className="rounded border border-purple-400/25 px-2 py-1 text-[8px] font-bold uppercase text-purple-300">0 deterministic · 2 creative</span>
+        </div>
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {temperatureModels.map(item => {
+            const temperature = activeProfile.model_settings?.[item.id]?.temperature ?? 0.3;
+            return <label key={`${activeProfile.id}-${item.id}`} className="flex items-center gap-3 rounded border border-shogun-border bg-[#080b14] px-3 py-2">
+              <span className="min-w-0 flex-1"><strong className="block truncate text-[10px]">{item.display_name}</strong><span className="block truncate text-[8px] text-shogun-subdued">{item.provider} · {item.model_id}</span></span>
+              <input type="number" min={0} max={2} step={0.05} defaultValue={temperature}
+                disabled={busy === `temperature-${item.id}`}
+                onBlur={event => {
+                  const value = Math.max(0, Math.min(2, Number(event.currentTarget.value)));
+                  event.currentTarget.value = String(value);
+                  setProfileTemperature(item, value);
+                }}
+                className="w-20 rounded border border-purple-400/30 bg-[#050508] p-1.5 text-right font-mono text-[10px] text-purple-200 outline-none" />
+            </label>;
+          })}
+          {!temperatureModels.length && <p className="py-2 text-[10px] text-shogun-subdued">Add or enable models in this profile to configure their temperatures.</p>}
+        </div>
+      </div>}
       {isEditingProfiles && <div className="mt-5 pt-5 border-t border-amber-400/20">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
           <div><h4 className="text-sm font-bold">Named custom routing profiles</h4>
@@ -361,7 +419,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
           {models.map(item => <div key={item.id} className={`rounded-xl border p-4 transition-opacity ${item.enabled ? 'border-shogun-border bg-[#080b14]' : 'border-shogun-border/40 opacity-60'} ${registryEditable ? '' : 'opacity-70'}`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div><div className="flex items-center gap-2 flex-wrap"><span className="font-bold font-mono text-sm text-shogun-text">{item.model_id}</span><span className="text-[9px] font-bold uppercase tracking-widest border border-purple-400/30 bg-purple-500/10 text-purple-300 rounded px-1.5 py-0.5">{item.provider}</span>{item.local && <span className="text-[8px] uppercase border border-shogun-border rounded px-1.5 py-0.5">local</span>}</div>
-                <p className="font-mono text-[9px] text-shogun-subdued mt-1">{item.display_name !== item.model_id ? `${item.display_name} · ` : ''}{(item.context_window / 1000).toFixed(0)}K configured context limit</p></div>
+                <p className="font-mono text-[9px] text-shogun-subdued mt-1">{item.display_name !== item.model_id ? `${item.display_name} · ` : ''}{(item.context_window / 1000).toFixed(0)}K effective context · {item.config_json?.context_limit_mode === 'manual' ? 'manual' : 'auto'}</p></div>
               <div className="flex items-center gap-2"><button onClick={() => testModel(item)} disabled={!registryEditable} className="px-2 py-1 text-[9px] border border-shogun-border rounded hover:border-shogun-blue disabled:cursor-not-allowed disabled:opacity-35">{busy === `test-${item.id}` ? 'Testing…' : 'Test'}</button>
                 <button onClick={() => patchModel(item, { enabled: !item.enabled })} disabled={!registryEditable} aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.display_name}`} className={`w-10 h-5 rounded-full p-0.5 disabled:cursor-not-allowed disabled:opacity-35 ${item.enabled ? 'bg-green-500' : 'bg-gray-700'}`}><span className={`block w-4 h-4 bg-white rounded-full transition-transform ${item.enabled ? 'translate-x-5' : ''}`} /></button></div>
             </div>
@@ -413,7 +471,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
           {decision && <div className="mt-4 p-3 rounded-lg border border-green-400/30 bg-green-400/5">
             <p className="text-[8px] font-bold uppercase tracking-wider text-green-300/70">Primary model</p>
             <div className="font-bold text-sm text-green-300">{decision.selected_model}</div>
-            <div className="text-[9px] text-shogun-subdued">{decision.selected_provider}</div>
+            <div className="text-[9px] text-shogun-subdued">{decision.selected_provider} · temperature {(decision.selected_temperature ?? 0.3).toFixed(2)}</div>
             <div className="mt-3 grid gap-1.5">
               {(decision.fallback_models?.length
                 ? decision.fallback_models
@@ -422,7 +480,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
                   : []
               ).map((fallback, index) => <div key={`${fallback.provider}:${fallback.model_id}`} className="flex items-center justify-between gap-2 rounded border border-shogun-border bg-[#080b14] px-2 py-1.5">
                 <span className="text-[8px] font-bold uppercase text-shogun-subdued">Fallback {index + 1}</span>
-                <span className="truncate text-[9px]">{fallback.display_name || fallback.model_id}{fallback.provider ? ` · ${fallback.provider}` : ''}</span>
+                <span className="truncate text-[9px]">{fallback.display_name || fallback.model_id}{fallback.provider ? ` · ${fallback.provider}` : ''} · temp {(fallback.temperature ?? 0.3).toFixed(2)}</span>
               </div>)}
               {!decision.fallback_models?.length && !decision.fallback_model && <p className="text-[9px] text-shogun-subdued">No other eligible model is currently available.</p>}
             </div>
@@ -460,6 +518,8 @@ function TokenBudgetControls({ item, disabled, onPatch }: {
   );
   const [inputTokens, setInputTokens] = useState(initialInput);
   const [outputTokens, setOutputTokens] = useState(initialOutput);
+  const contextMode = item.config_json?.context_limit_mode === 'manual' ? 'manual' : 'auto';
+  const contextSource = String(item.config_json?.context_limit_source || 'detection_unavailable').replaceAll('_', ' ');
 
   useEffect(() => {
     setInputTokens(initialInput);
@@ -490,11 +550,15 @@ function TokenBudgetControls({ item, disabled, onPatch }: {
       config_json: configWithInput(nextInput),
     });
   };
+  const commitContextMode = (mode: 'auto' | 'manual') => {
+    if (mode === contextMode) return;
+    onPatch({ config_json: { ...(item.config_json || {}), context_limit_mode: mode } });
+  };
 
   return <div className="mb-3 rounded-lg border border-shogun-border bg-[#050508] p-3">
     <div className="flex flex-wrap items-end justify-between gap-2">
-      <label className="text-[9px] uppercase text-shogun-subdued">Operator-configured context limit
-        <input type="number" min="1024" step="1024" defaultValue={context} disabled={disabled}
+      <label className="text-[9px] uppercase text-shogun-subdued">Effective runtime context
+        <input type="number" min="1024" step="1024" defaultValue={context} disabled={disabled || contextMode === 'auto'}
           onBlur={event => {
             const value = Number(event.currentTarget.value);
             if (value >= 1024) commitContext(value);
@@ -504,9 +568,11 @@ function TokenBudgetControls({ item, disabled, onPatch }: {
       </label>
       <span className="text-[8px] text-shogun-subdued">Input + output cannot exceed {context.toLocaleString()} tokens</span>
     </div>
-    <p className="mt-2 rounded border border-amber-400/20 bg-amber-400/5 px-2 py-1.5 text-[8px] leading-relaxed text-amber-200/80">
-      Manual safety limit. Match the provider's active allocation—not the model catalog maximum. For Ollama, use the CONTEXT value from <span className="font-mono">ollama ps</span>. A value that is too high can cause truncation, timeouts, or provider errors.
-    </p>
+    <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-cyan-400/20 bg-cyan-400/5 px-2 py-1.5">
+      <button type="button" disabled={disabled} onClick={() => commitContextMode('auto')} className={`rounded px-2 py-1 text-[8px] font-bold uppercase ${contextMode === 'auto' ? 'bg-cyan-400/20 text-cyan-200' : 'text-shogun-subdued'}`}>Auto</button>
+      <button type="button" disabled={disabled} onClick={() => commitContextMode('manual')} className={`rounded px-2 py-1 text-[8px] font-bold uppercase ${contextMode === 'manual' ? 'bg-amber-400/20 text-amber-200' : 'text-shogun-subdued'}`}>Manual override</button>
+      <span className="text-[8px] text-shogun-subdued">Source: {contextSource}. Auto checks the Ollama runtime first, then model/provider metadata.</span>
+    </div>
     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
       <label className="text-[9px] uppercase text-shogun-subdued">
         <span className="flex justify-between gap-2"><span>Max input</span><strong className="font-mono text-cyan-300">{inputTokens.toLocaleString()}</strong></span>

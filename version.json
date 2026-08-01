@@ -1,8 +1,8 @@
 {
-  "version": "1.47.49",
+  "version": "1.47.50",
   "name": "Shogun OS",
-  "build": 200,
+  "build": 201,
   "channel": "stable",
-  "released": "2026-08-01T13:13:37Z",
-  "changelog": "Clarify fixed and custom routing profiles, add automatic fallback previews, and show the live Archive record count on the Overview page."
+  "released": "2026-08-01T14:04:51Z",
+  "changelog": "Add automatic model context detection, profile-scoped temperatures, deterministic AgentFlow seeds, and named custom profile card previews."
 }

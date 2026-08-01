@@ -136,6 +136,81 @@ def test_exhausted_retry_policy_is_terminal():
     assert flow_engine._failure_action_is_terminal(actions["skip"]) is False
 
 
+def test_flow_generation_settings_replace_inherited_seed():
+    context = {"flow_seed": 1, "flow_seed_model_id": "old-model"}
+    flow_engine._apply_flow_generation_settings(
+        context,
+        SimpleNamespace(seed=42, seed_model_id="provider-id:gemma4:12b"),
+    )
+    assert context["flow_seed"] == 42
+    assert context["flow_seed_model_id"] == "provider-id:gemma4:12b"
+
+
+@pytest.mark.asyncio
+async def test_model_call_applies_profile_temperature_and_matching_flow_seed(monkeypatch):
+    provider_id = uuid.uuid4()
+    provider = SimpleNamespace(id=provider_id, name="Local Ollama", provider_type="ollama")
+    calls: list[dict] = []
+
+    async def call_llm(*_args, **kwargs):
+        calls.append(kwargs)
+        return "stable response"
+
+    async def record_usage(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(flow_engine, "_call_llm", call_llm)
+    monkeypatch.setattr(flow_engine, "_record_model_usage", record_usage)
+    route_key = f"{provider_id}:gemma4:12b"
+    result = await flow_engine._call_llm_chain(
+        [{"role": "user", "content": "Repeatable work"}],
+        [(provider, "gemma4:12b", "http://localhost:11434/v1", {})],
+        timeout=30,
+        retry_count=0,
+        context="Seeded AgentFlow",
+        routing_context={
+            "request_parameters": {route_key: {"temperature": 0.1}},
+            "flow_seed": 12345,
+            "flow_seed_model_id": route_key,
+        },
+    )
+    assert result == "stable response"
+    assert calls[0]["temperature"] == 0.1
+    assert calls[0]["seed"] == 12345
+
+
+@pytest.mark.asyncio
+async def test_model_call_omits_flow_seed_when_physical_model_does_not_match(monkeypatch):
+    provider_id = uuid.uuid4()
+    provider = SimpleNamespace(id=provider_id, name="Fallback API", provider_type="openrouter")
+    calls: list[dict] = []
+
+    async def call_llm(*_args, **kwargs):
+        calls.append(kwargs)
+        return "fallback response"
+
+    async def record_usage(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(flow_engine, "_call_llm", call_llm)
+    monkeypatch.setattr(flow_engine, "_record_model_usage", record_usage)
+    route_key = f"{provider_id}:fallback-model"
+    await flow_engine._call_llm_chain(
+        [{"role": "user", "content": "Repeatable work"}],
+        [(provider, "fallback-model", "https://example.test/v1", {})],
+        timeout=30,
+        retry_count=0,
+        context="Seeded AgentFlow fallback",
+        routing_context={
+            "request_parameters": {route_key: {"temperature": 0.2}},
+            "flow_seed": 12345,
+            "flow_seed_model_id": "different-provider:different-model",
+        },
+    )
+    assert calls[0]["temperature"] == 0.2
+    assert calls[0]["seed"] is None
+
+
 @pytest.mark.asyncio
 async def test_samurai_falls_back_after_timeout(monkeypatch):
     calls: list[tuple[str, int]] = []

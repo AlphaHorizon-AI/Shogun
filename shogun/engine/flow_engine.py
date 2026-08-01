@@ -161,6 +161,7 @@ async def start_flow_run(
             raise ValueError(f"Agent Flow {flow_id} not found or deleted")
 
         effective_governance = await _root_governance_context(governance_context or {})
+        _apply_flow_generation_settings(effective_governance, flow)
         payload = _json_object(input_payload or {}, "Flow input")
         run = AgentFlowRun(
             id=run_id,
@@ -580,9 +581,9 @@ async def _execute_single_node(
         elif node_type == "coding":
             result = await _exec_coding(config, execution_context_str, governance_context or {})
         elif node_type == "shogun_approval":
-            result = await _exec_approval(config, predecessor_outputs)
+            result = await _exec_approval(config, predecessor_outputs, governance_context or {})
         elif node_type == "logic":
-            result = await _exec_logic(config, predecessor_outputs)
+            result = await _exec_logic(config, predecessor_outputs, governance_context or {})
         elif node_type == "output":
             result = await _exec_output(
                 config,
@@ -1173,7 +1174,31 @@ def _inherit_governance(parent: dict[str, Any], child_flow: AgentFlow) -> dict[s
     inherited["inherited"] = True
     inherited["child_flow_id"] = str(child_flow.id)
     inherited["child_required_tools"] = list(child_flow.required_tools or [])
+    _apply_flow_generation_settings(inherited, child_flow)
     return inherited
+
+
+def _apply_flow_generation_settings(context: dict[str, Any], flow: AgentFlow) -> None:
+    """Replace inherited generation controls with the settings of this flow."""
+    context.pop("flow_seed", None)
+    context.pop("flow_seed_model_id", None)
+    if flow.seed is not None:
+        context["flow_seed"] = int(flow.seed)
+        if flow.seed_model_id:
+            context["flow_seed_model_id"] = str(flow.seed_model_id)
+
+
+def _with_flow_generation_settings(
+    routing_context: dict[str, Any] | None,
+    governance_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Add the current flow's seed controls to a model routing decision."""
+    combined = dict(routing_context or {})
+    if (governance_context or {}).get("flow_seed") is not None:
+        combined["flow_seed"] = int(governance_context["flow_seed"])
+        if (governance_context or {}).get("flow_seed_model_id"):
+            combined["flow_seed_model_id"] = str(governance_context["flow_seed_model_id"])
+    return combined
 
 
 _FLOW_TOKEN = re.compile(r"{{\s*([^{}]+?)\s*}}")
@@ -1381,6 +1406,8 @@ async def _exec_samurai(
 
     if not model_chain:
         raise ValueError("No active LLM provider available for Samurai execution")
+
+    _routing = _with_flow_generation_settings(_routing, governance_context)
 
     max_output_tokens = _routing.get("selected_max_output_tokens") if _routing else None
     max_input_tokens = int((_routing or {}).get("selected_max_input_tokens") or 0)
@@ -1763,7 +1790,11 @@ async def _exec_channel_send(config: dict, context_str: str) -> str:
     return f"Message delivered via {', '.join(selected)}"
 
 
-async def _exec_approval(config: dict, predecessor_outputs: dict[str, Any]) -> str:
+async def _exec_approval(
+    config: dict,
+    predecessor_outputs: dict[str, Any],
+    governance_context: dict[str, Any] | None = None,
+) -> str:
     """Shogun Approval node — gate that checks approval policy."""
     approval_mode = config.get("approval_mode", "manual")
     confidence_threshold = config.get("confidence_threshold", 85)
@@ -1779,7 +1810,14 @@ async def _exec_approval(config: dict, predecessor_outputs: dict[str, Any]) -> s
     elif approval_mode == "ai_assisted":
         # Use LLM to evaluate if the output is acceptable
         async with async_session_factory() as session:
-            model_chain = await _resolve_llm_chain(session)
+            model_chain, routing_context = await _resolve_task_llm_chain(
+                session,
+                prompt=review_content[:3000],
+                task_type="final_review",
+                required_capabilities=["chat"],
+                routing_profile_id=(governance_context or {}).get("model_profile"),
+            )
+        routing_context = _with_flow_generation_settings(routing_context, governance_context)
 
         if model_chain:
             judge_messages = [
@@ -1799,6 +1837,7 @@ async def _exec_approval(config: dict, predecessor_outputs: dict[str, Any]) -> s
                 timeout=60,
                 retry_count=0,
                 context="AgentFlow approval node",
+                routing_context=routing_context,
             )
             if "REJECTED" in verdict.upper():
                 raise ValueError(f"AI review rejected: {verdict[:500]}")
@@ -1825,7 +1864,11 @@ async def _exec_approval(config: dict, predecessor_outputs: dict[str, Any]) -> s
     return f"[APPROVED]\n{review_content}"
 
 
-async def _exec_logic(config: dict, predecessor_outputs: dict[str, Any]) -> bool:
+async def _exec_logic(
+    config: dict,
+    predecessor_outputs: dict[str, Any],
+    governance_context: dict[str, Any] | None = None,
+) -> bool:
     """Logic/Decision node — evaluates condition and returns True (right) or False (bottom)."""
     condition = config.get("condition_expression", "")
 
@@ -1838,7 +1881,14 @@ async def _exec_logic(config: dict, predecessor_outputs: dict[str, Any]) -> bool
 
     # Use LLM to evaluate the condition
     async with async_session_factory() as session:
-        model_chain = await _resolve_llm_chain(session)
+        model_chain, routing_context = await _resolve_task_llm_chain(
+            session,
+            prompt=f"{condition}\n\n{context[:3000]}",
+            task_type="classification",
+            required_capabilities=["chat"],
+            routing_profile_id=(governance_context or {}).get("model_profile"),
+        )
+    routing_context = _with_flow_generation_settings(routing_context, governance_context)
 
     if not model_chain:
         # No LLM — default to True
@@ -1867,6 +1917,7 @@ async def _exec_logic(config: dict, predecessor_outputs: dict[str, Any]) -> bool
             timeout=30,
             retry_count=0,
             context="AgentFlow logic node",
+            routing_context=routing_context,
         )
         return "TRUE" in result.upper()
     except Exception:
@@ -3006,6 +3057,8 @@ async def _call_llm(
     headers: dict,
     timeout: int = 120,
     max_tokens: int | None = None,
+    temperature: float = 0.3,
+    seed: int | None = None,
 ) -> str:
     """Make a non-streaming chat completion call and return the response text."""
     url = f"{base_url.rstrip('/')}/chat/completions"
@@ -3013,10 +3066,12 @@ async def _call_llm(
         "model": model_name,
         "messages": messages,
         "stream": False,
-        "temperature": 0.3,  # Low temperature for task execution
+        "temperature": temperature,
     }
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
+    if seed is not None:
+        payload["seed"] = seed
 
     async with httpx.AsyncClient(timeout=float(timeout)) as client:
         resp = await client.post(url, headers=headers, json=payload)
@@ -3059,10 +3114,35 @@ async def _call_llm_chain(
         for attempt in range(1 + retry_count):
             started = time.perf_counter()
             try:
-                if max_tokens is None:
+                route_key = f"{getattr(_provider, 'id', '')}:{model_name}"
+                model_parameters = ((routing_context or {}).get("request_parameters") or {}).get(route_key) or {}
+                temperature = max(0.0, min(2.0, float(model_parameters.get("temperature", 0.3))))
+                configured_seed = (routing_context or {}).get("flow_seed")
+                seed_match = str((routing_context or {}).get("flow_seed_model_id") or "").strip()
+                physical_model = f"{getattr(_provider, 'id', '')}:{model_name}"
+                provider_model = f"{getattr(_provider, 'provider_type', '')}/{model_name}"
+                seed = (
+                    int(configured_seed)
+                    if configured_seed is not None
+                    and (not seed_match or seed_match in {model_name, physical_model, provider_model})
+                    else None
+                )
+                default_controls = temperature == 0.3 and seed is None
+                if max_tokens is None and default_controls:
                     result = await _call_llm(messages, model_name, base_url, headers, timeout)
-                else:
+                elif default_controls:
                     result = await _call_llm(messages, model_name, base_url, headers, timeout, max_tokens=max_tokens)
+                else:
+                    result = await _call_llm(
+                        messages,
+                        model_name,
+                        base_url,
+                        headers,
+                        timeout,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        seed=seed,
+                    )
                 await _record_model_usage(
                     _provider,
                     model_name,

@@ -74,6 +74,7 @@ import {
   Code2,
   Square,
   CheckSquare2,
+  Hash,
 } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -98,6 +99,8 @@ export interface AgentFlowData {
   flow_type: string;
   risk_tier: string;
   allow_as_subflow: boolean;
+  seed: number | null;
+  seed_model_id: string | null;
   nodes: FlowNodeData[];
   edges: FlowEdgeData[];
   created_at: string;
@@ -3031,11 +3034,24 @@ export function AgentFlowCanvas({
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [flowName, setFlowName] = useState(flow.name);
+  const [flowSeed, setFlowSeed] = useState(flow.seed === null || flow.seed === undefined ? '' : String(flow.seed));
+  const [flowSeedModelId, setFlowSeedModelId] = useState(flow.seed_model_id || '');
+  const savedSeedRef = useRef<number | null>(flow.seed ?? null);
+  const savedSeedModelRef = useRef<string | null>(flow.seed_model_id ?? null);
+  const [seedModels, setSeedModels] = useState<Array<{ id: string; model_id: string; display_name: string; provider: string; provider_id?: string }>>([]);
   const [editingName, setEditingName] = useState(false);
   const [flowStatus, setFlowStatus] = useState(flow.status);
   const [changingStatus, setChangingStatus] = useState(false);
 
   useEffect(() => setFlowStatus(flow.status), [flow.id, flow.status]);
+
+  useEffect(() => {
+    let active = true;
+    axios.get('/api/v1/models/registry')
+      .then(response => { if (active) setSeedModels(response.data?.data || []); })
+      .catch(() => { if (active) setSeedModels([]); });
+    return () => { active = false; };
+  }, [flow.id]);
 
   useEffect(() => {
     logSamuraiDiagnostic('agent_flow.canvas.mount', {
@@ -3385,9 +3401,20 @@ export function AgentFlowCanvas({
   const handleSave = useCallback(async (): Promise<boolean> => {
     setSaving(true);
     try {
-      // Update flow name if changed
-      if (flowName !== flow.name) {
-        await axios.patch(`/api/v1/agent-flows/${flow.id}`, { name: flowName });
+      const normalizedSeed = flowSeed.trim() === '' ? null : Number(flowSeed);
+      if (normalizedSeed !== null && (!Number.isInteger(normalizedSeed) || normalizedSeed < 0 || normalizedSeed > 2147483647)) {
+        window.alert('AgentFlow seed must be a whole number from 0 to 2,147,483,647.');
+        return false;
+      }
+      const normalizedSeedModel = normalizedSeed === null ? null : flowSeedModelId || null;
+      const flowPatch: Record<string, unknown> = {};
+      if (flowName !== flow.name) flowPatch.name = flowName;
+      if (normalizedSeed !== savedSeedRef.current) flowPatch.seed = normalizedSeed;
+      if (normalizedSeedModel !== savedSeedModelRef.current) flowPatch.seed_model_id = normalizedSeedModel;
+      if (Object.keys(flowPatch).length) {
+        await axios.patch(`/api/v1/agent-flows/${flow.id}`, flowPatch);
+        savedSeedRef.current = normalizedSeed;
+        savedSeedModelRef.current = normalizedSeedModel;
       }
 
       // Build graph payload
@@ -3427,7 +3454,7 @@ export function AgentFlowCanvas({
     } finally {
       setSaving(false);
     }
-  }, [flow.id, flow.name, flowName, nodes, edges, reactFlowInstance]);
+  }, [flow.id, flow.name, flowName, flowSeed, flowSeedModelId, nodes, edges, reactFlowInstance]);
 
   const handleToggleStatus = useCallback(async () => {
     if (changingStatus) return;
@@ -3693,6 +3720,25 @@ export function AgentFlowCanvas({
             </div>
 
             <div className="h-5 w-px bg-[#1a2040]" />
+
+            <div className="flex items-center gap-1.5 rounded-lg border border-[#8b5cf6]/30 bg-[#8b5cf6]/10 px-2 py-1" title="A fixed seed improves repeatability only when the model, prompt, provider, and model version also remain unchanged.">
+              <Hash className="h-3 w-3 text-[#c084fc]" />
+              <label className="flex items-center gap-1 text-[8px] font-bold uppercase text-[#aab3c2]">Seed
+                <input type="number" min={0} max={2147483647} step={1} value={flowSeed} placeholder="Off"
+                  onChange={event => { setFlowSeed(event.target.value); if (!event.target.value) setFlowSeedModelId(''); setDirty(true); }}
+                  className="w-24 rounded border border-[#8b5cf6]/30 bg-[#060810] px-1.5 py-1 text-right font-mono text-[9px] font-normal normal-case text-[#c8d0d8] outline-none" />
+              </label>
+              <select value={flowSeedModelId} disabled={!flowSeed}
+                onChange={event => { setFlowSeedModelId(event.target.value); setDirty(true); }}
+                aria-label="Apply AgentFlow seed only to model"
+                className="max-w-48 rounded border border-[#8b5cf6]/30 bg-[#060810] px-1.5 py-1 text-[8px] text-[#c8d0d8] outline-none disabled:opacity-40">
+                <option value="">Any routed model</option>
+                {seedModels.map(model => {
+                  const physicalId = model.provider_id ? `${model.provider_id}:${model.model_id}` : `${model.provider}/${model.model_id}`;
+                  return <option key={model.id} value={physicalId}>{model.display_name} · {model.provider}</option>;
+                })}
+              </select>
+            </div>
 
             <button
               type="button"

@@ -13,7 +13,7 @@ import uuid
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from shogun.db.base import AuditMixin, Base, GUID, JSONType, SoftDeleteMixin, UUIDMixin
+from shogun.db.base import GUID, AuditMixin, Base, JSONType, SoftDeleteMixin, UUIDMixin
 
 
 class AgentFlow(Base, UUIDMixin, AuditMixin, SoftDeleteMixin):
@@ -42,6 +42,8 @@ class AgentFlow(Base, UUIDMixin, AuditMixin, SoftDeleteMixin):
     template_category: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     template_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
     template_config: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=dict)
+    seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    seed_model_id: Mapped[str | None] = mapped_column(String(600), nullable=True)
 
     # Relationships
     nodes: Mapped[list[AgentFlowNode]] = relationship(

@@ -24,6 +24,7 @@ from shogun.services.model_router import (
     ModelUsageLogger,
     NoEligibleModelError,
     TaskClassifierService,
+    _ollama_context_from_show,
     configured_max_input_tokens,
     infer_tiers,
     is_concrete_model_id,
@@ -41,6 +42,56 @@ def test_configured_input_budget_is_bounded_by_context_and_output_reserve():
     assert configured_max_input_tokens(item) == 10_000
     item.config_json["max_input_tokens"] = 99_999
     assert configured_max_input_tokens(item) == 12_288
+
+
+def test_ollama_context_parser_prefers_effective_modelfile_setting():
+    payload = {
+        "parameters": "temperature 0.2\nnum_ctx 32768",
+        "model_info": {"gemma.context_length": 256000},
+    }
+    assert _ollama_context_from_show(payload) == 32_768
+    assert _ollama_context_from_show({
+        "model_info": {"gemma.context_length": 256000},
+    }) == 256_000
+
+
+@pytest.mark.asyncio
+async def test_ollama_auto_context_prefers_loaded_runtime_allocation(monkeypatch):
+    class Response:
+        is_success = True
+
+        def json(self):
+            return {"models": [{"model": "gemma4:12b", "context_length": 65536}]}
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def get(self, url):
+            assert url.endswith("/api/ps")
+            return Response()
+
+        async def post(self, *_args, **_kwargs):
+            raise AssertionError("A loaded model must not fall back to /api/show")
+
+    from shogun.services import model_router
+
+    monkeypatch.setattr(model_router.httpx, "AsyncClient", Client)
+    provider = SimpleNamespace(
+        provider_type="ollama",
+        base_url="http://127.0.0.1:11434/v1",
+        name="Local Ollama",
+    )
+    discovered = await ModelRegistryService(None)._discover_context_limits(
+        provider, ["gemma4:12b"], {}
+    )
+    assert discovered == {"gemma4:12b": (65_536, "ollama_runtime")}
 
 
 @pytest.fixture
@@ -461,6 +512,11 @@ async def test_automatic_profiles_are_read_only_but_multiple_custom_profiles_are
         await service.delete(balanced.id)
     with pytest.raises(ValueError, match="reserved"):
         await service.create(name="Premium", rules=[])
+    updated = await service.update(
+        balanced.id,
+        model_settings={"registry-model": {"temperature": 0.15}},
+    )
+    assert updated.model_settings["registry-model"]["temperature"] == 0.15
     legacy = ModelRoutingProfile(name="Quality First", rules=[])
     routing_session.add(legacy)
     await routing_session.flush()
@@ -533,10 +589,42 @@ async def test_automatic_profile_returns_primary_and_two_fallbacks(routing_sessi
             "model_id": item.model_id,
             "display_name": item.display_name,
             "provider": item.provider,
+            "temperature": 0.3,
         }
         for item in result.fallbacks
     ]
 
+
+@pytest.mark.asyncio
+async def test_profile_temperature_follows_each_routed_model(routing_session):
+    models = [
+        await _model(
+            routing_session,
+            f"temperature-candidate-{index}",
+            quality=index,
+            cost=1,
+            capabilities={"chat": True},
+        )
+        for index in range(1, 4)
+    ]
+    profiles = await ModelRoutingService(routing_session).ensure_defaults()
+    balanced = next(item for item in profiles if item.name == "Balanced")
+    balanced.model_settings = {
+        str(item.id): {"temperature": index / 10}
+        for index, item in enumerate(models, start=1)
+    }
+    await routing_session.flush()
+
+    result = await ModelRoutingService(routing_session).route(ModelRouteRequest(
+        prompt="Answer consistently",
+        task_type="simple_chat",
+        profile_override=str(balanced.id),
+    ))
+
+    expected = balanced.model_settings[str(result.selected.id)]["temperature"]
+    assert result.payload["selected_temperature"] == expected
+    for fallback, payload in zip(result.fallbacks, result.payload["fallback_models"]):
+        assert payload["temperature"] == balanced.model_settings[str(fallback.id)]["temperature"]
 
 @pytest.mark.asyncio
 async def test_custom_profile_routes_only_across_operator_selected_models(routing_session):

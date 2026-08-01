@@ -126,12 +126,19 @@ class RoutingRule(ShogunBase):
     cost_bias: str | None = None
 
 
+class RoutingModelSettings(ShogunBase):
+    """Generation controls scoped to one physical model in one profile."""
+
+    temperature: float = Field(0.3, ge=0.0, le=2.0)
+
+
 class ModelRoutingProfileCreate(ShogunBase):
     """Request body for creating a model routing profile."""
 
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     rules: list[RoutingRule] = Field(default_factory=list)
+    model_settings: dict[str, RoutingModelSettings] = Field(default_factory=dict)
     is_default: bool = False
 
 
@@ -141,6 +148,7 @@ class ModelRoutingProfileUpdate(ShogunBase):
     name: str | None = None
     description: str | None = None
     rules: list[RoutingRule] | None = None
+    model_settings: dict[str, RoutingModelSettings] | None = None
     is_default: bool | None = None
 
 
@@ -151,6 +159,7 @@ class ModelRoutingProfileResponse(ShogunBase):
     name: str
     description: str | None = None
     rules: list[RoutingRule]
+    model_settings: dict[str, RoutingModelSettings] = Field(default_factory=dict)
     is_default: bool
     created_at: datetime
     updated_at: datetime

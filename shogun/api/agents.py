@@ -1540,6 +1540,10 @@ async def _shogun_chat_internal(
                     _search_model = model_name
                     _model_supports_tools = bool((route.selected.capabilities or {}).get("tool_use"))
                     res_reason = route.payload["reason"]
+                    _temperature = max(
+                        0.0,
+                        min(2.0, float(route.payload.get("selected_temperature", _temperature))),
+                    )
                     await db.commit()
             except Exception as exc:
                 logger.info("Task-aware model routing unavailable; using legacy selection: %s", exc)

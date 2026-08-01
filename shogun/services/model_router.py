@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -316,6 +317,30 @@ def configured_max_input_tokens(item: ModelRegistryEntry) -> int:
         return available
 
 
+def _ollama_context_from_show(payload: dict[str, Any]) -> int | None:
+    """Read an effective Modelfile context, falling back to architecture metadata."""
+    parameters = str(payload.get("parameters") or "")
+    match = re.search(r"(?:^|\n)\s*num_ctx\s+(\d+)\b", parameters, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    model_info = payload.get("model_info") or {}
+    windows = [
+        int(value)
+        for key, value in model_info.items()
+        if str(key).endswith(".context_length") and str(value).isdigit()
+    ]
+    return max(windows) if windows else None
+
+
+def _profile_temperature(profile: ModelRoutingProfile, item: ModelRegistryEntry) -> float:
+    """Return the generation temperature scoped to this profile and registry model."""
+    raw = (profile.model_settings or {}).get(str(item.id)) or {}
+    try:
+        return max(0.0, min(2.0, float(raw.get("temperature", 0.3))))
+    except (TypeError, ValueError):
+        return 0.3
+
+
 @dataclass(slots=True)
 class RoutingResult:
     decision: ModelRoutingDecision | None
@@ -374,6 +399,74 @@ class ModelRegistryService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    @staticmethod
+    def _ollama_root(provider: ModelProvider) -> str:
+        base = str(provider.base_url or "http://127.0.0.1:11434").rstrip("/")
+        return base[:-3] if base.endswith("/v1") else base
+
+    async def _discover_context_limits(
+        self,
+        provider: ModelProvider,
+        model_names: list[str],
+        definitions_by_key: dict[str, ModelDefinition],
+    ) -> dict[str, tuple[int, str]]:
+        discovered: dict[str, tuple[int, str]] = {}
+        if provider.provider_type != "ollama":
+            for model_id in model_names:
+                definition = definitions_by_key.get(model_id)
+                if definition and definition.context_window:
+                    discovered[model_id] = (int(definition.context_window), "provider_catalog")
+            return discovered
+
+        if getattr(provider, "status", "connected") != "connected":
+            return discovered
+
+        root = self._ollama_root(provider)
+        try:
+            async with httpx.AsyncClient(timeout=1.5) as client:
+                running = await client.get(f"{root}/api/ps")
+                if running.is_success:
+                    for row in running.json().get("models", []):
+                        model_id = str(row.get("model") or row.get("name") or "")
+                        context = int(row.get("context_length") or 0)
+                        if model_id and context >= 1024:
+                            discovered[model_id] = (context, "ollama_runtime")
+                for model_id in model_names:
+                    if model_id in discovered:
+                        continue
+                    response = await client.post(f"{root}/api/show", json={"model": model_id})
+                    if response.is_success:
+                        context = _ollama_context_from_show(response.json())
+                        if context and context >= 1024:
+                            discovered[model_id] = (context, "ollama_model")
+        except Exception as exc:
+            log.debug("Ollama context discovery unavailable for %s: %s", provider.name, exc)
+        return discovered
+
+    @staticmethod
+    def _apply_auto_context(item: ModelRegistryEntry, detected: tuple[int, str] | None) -> None:
+        state = dict(item.config_json or {})
+        mode = str(state.get("context_limit_mode") or (
+            "auto" if state.get("context_limit_source") == "operator_default" else "manual"
+        ))
+        state["context_limit_mode"] = mode
+        if mode == "auto" and detected:
+            context, source = detected
+            item.context_window = max(1024, int(context))
+            item.max_output_tokens = min(int(item.max_output_tokens), item.context_window - 128)
+            configured_input = state.get("max_input_tokens")
+            if configured_input is not None:
+                state["max_input_tokens"] = min(
+                    int(configured_input), item.context_window - item.max_output_tokens
+                )
+            state["detected_context_window"] = item.context_window
+            state["context_limit_source"] = source
+        elif mode == "auto":
+            state["context_limit_source"] = "detection_unavailable"
+        else:
+            state["context_limit_source"] = "manual_override"
+        item.config_json = state
+
     async def sync_connected(self) -> None:
         existing = list((await self.session.execute(select(ModelRegistryEntry))).scalars().all())
         existing_map = {(str(item.provider_id), item.model_id): item for item in existing}
@@ -413,6 +506,9 @@ class ModelRegistryService:
             ))
             selected_models = set(model_names)
             provider_connected = provider.status == "connected"
+            discovered_contexts = await self._discover_context_limits(
+                provider, model_names, definitions_by_key
+            )
 
             # Provider availability is a routing constraint, not a replacement for
             # an operator's manual registry toggle. Remember the previous toggle
@@ -443,6 +539,7 @@ class ModelRegistryService:
                 definition = definitions_by_key.get(model_id)
                 if key in existing_map:
                     item = existing_map[key]
+                    self._apply_auto_context(item, discovered_contexts.get(model_id))
                     is_auto = (item.config_json or {}).get("auto_discovered")
                     # Repair registry rows created by older Katana versions.
                     # Those rows may contain ``{}`` or stale False defaults,
@@ -474,15 +571,14 @@ class ModelRegistryService:
                     quality_tier=quality,
                     cost_tier=cost,
                     latency_tier=latency,
-                    # Context is an operator-controlled runtime limit. Catalog
-                    # metadata describes an architectural maximum, not what a
-                    # local provider actually allocated on this machine.
-                    context_window=8192,
+                    context_window=(discovered_contexts.get(model_id) or (8192, "fallback"))[0],
                     local=provider.is_local,
                     role_tags=self._roles(caps, quality, provider.is_local),
                     config_json={
                         "auto_discovered": True,
-                        "context_limit_source": "operator_default",
+                        "context_limit_mode": "auto",
+                        "context_limit_source": (discovered_contexts.get(model_id) or (8192, "fallback"))[1],
+                        "detected_context_window": (discovered_contexts.get(model_id) or (8192, "fallback"))[0],
                         "provider_available": provider_connected,
                         **({"enabled_before_provider_unavailable": True} if not provider_connected else {}),
                     },
@@ -541,6 +637,18 @@ class ModelRegistryService:
             return None
         if "capabilities" in data and hasattr(data["capabilities"], "model_dump"):
             data["capabilities"] = data["capabilities"].model_dump()
+        state = dict(data.get("config_json", item.config_json) or {})
+        if state.get("context_limit_mode") == "auto" and state.get("detected_context_window"):
+            detected = max(1024, int(state["detected_context_window"]))
+            data["context_window"] = detected
+            data["max_output_tokens"] = min(
+                int(data.get("max_output_tokens", item.max_output_tokens)), detected - 128
+            )
+            if state.get("max_input_tokens") is not None:
+                state["max_input_tokens"] = min(
+                    int(state["max_input_tokens"]), detected - data["max_output_tokens"]
+                )
+            data["config_json"] = state
         self._validate_token_limits(
             int(data.get("context_window", item.context_window)),
             int(data.get("max_output_tokens", item.max_output_tokens)),
@@ -776,6 +884,7 @@ class ModelRoutingService:
             "selected_context_window": selected.context_window,
             "selected_max_input_tokens": configured_max_input_tokens(selected),
             "selected_max_output_tokens": selected.max_output_tokens,
+            "selected_temperature": _profile_temperature(profile, selected),
             "fallback_model": fallbacks[0].model_id if fallbacks else None,
             "fallback_provider": fallbacks[0].provider if fallbacks else None,
             "fallback_models": [
@@ -783,9 +892,16 @@ class ModelRoutingService:
                     "model_id": item.model_id,
                     "display_name": item.display_name,
                     "provider": item.provider,
+                    "temperature": _profile_temperature(profile, item),
                 }
                 for item in fallbacks
             ],
+            "request_parameters": {
+                f"{item.provider_id}:{item.model_id}": {
+                    "temperature": _profile_temperature(profile, item),
+                }
+                for item in [selected, *fallbacks]
+            },
             "reason": reason,
             "estimated_cost_tier": selected.cost_tier,
             "estimated_latency_tier": selected.latency_tier,
