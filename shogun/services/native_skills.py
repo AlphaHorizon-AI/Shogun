@@ -4610,12 +4610,11 @@ async def _execute_office_tool(name: str, args: dict[str, Any], db_session=None)
             if artifact.format_id not in {"xlsx", "excel"} and not str(artifact.path).lower().endswith(".xlsx"):
                 return json.dumps({"status": "error", "message": "The attached file is not an .xlsx workbook."})
 
-            attachment_path = _Path(artifact.path)
-            FileSafetyGate().validate(attachment_path)
+            attachment_path, _ = FileSafetyGate().resolve(_Path(artifact.path))
             from shogun.office.adapters.excel_adapter import get_workbook_metadata, open_workbook
 
-            handle = open_workbook(str(attachment_path.resolve()))
-            canonical_path = str(attachment_path.resolve())
+            handle = open_workbook(str(attachment_path))
+            canonical_path = str(attachment_path)
             _open_handles[canonical_path] = handle
             meta = get_workbook_metadata(handle)
             meta["file_path"] = canonical_path

@@ -51,3 +51,18 @@ def test_file_safety_gate_rejects_parent_traversal_before_file_access(tmp_path: 
 
     with pytest.raises(FileFormatError, match="outside approved"):
         FileSafetyGate([approved]).validate(approved / ".." / "secret.txt")
+
+
+def test_file_safety_gate_rejects_symbolic_links(tmp_path: Path):
+    approved = tmp_path / "approved"
+    approved.mkdir()
+    secret = tmp_path / "secret.txt"
+    secret.write_text("restricted", encoding="utf-8")
+    link = approved / "linked.txt"
+    try:
+        link.symlink_to(secret)
+    except OSError:
+        pytest.skip("Creating symbolic links is not permitted on this platform")
+
+    with pytest.raises(FileFormatError, match="Symbolic-link"):
+        FileSafetyGate([approved]).validate(link)

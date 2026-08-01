@@ -1040,35 +1040,68 @@ class FileSafetyGate:
         )
         self.allowed_roots = [root.resolve() for root in roots]
 
-    def validate(self, path: Path, *, allow_archive: bool = False) -> list[str]:
-        # Reject lexical escapes before touching the requested filesystem path.
-        # Resolve again afterwards to ensure a symlinked parent cannot escape an
-        # approved root.
+    def resolve(self, path: Path, *, allow_archive: bool = False) -> tuple[Path, list[str]]:
+        """Return an approved existing file without dereferencing a client path.
+
+        Directory entries are walked from a trusted root. The requested path is
+        used only for lexical comparison, never as an operand of a filesystem
+        call. This also blocks symlinks in every path component.
+        """
         lexical = Path(os.path.abspath(os.fspath(path)))
-        if not any(lexical == root or root in lexical.parents for root in self.allowed_roots):
+        matched: tuple[Path, Path] | None = None
+        for root in self.allowed_roots:
+            try:
+                relative = lexical.relative_to(root)
+            except ValueError:
+                continue
+            matched = (root, relative)
+            break
+        if matched is None:
             raise FileFormatError("File is outside approved workspace/artifact directories.", "path_outside_workspace")
-        resolved = lexical.resolve(strict=True)
-        if not any(resolved == root or root in resolved.parents for root in self.allowed_roots):
-            raise FileFormatError("File is outside approved workspace/artifact directories.", "path_outside_workspace")
-        if not resolved.is_file():
+
+        root, relative = matched
+        current = root
+        final_entry: os.DirEntry[str] | None = None
+        for component in relative.parts:
+            if component in {"", ".", ".."}:
+                raise FileFormatError("The requested path is invalid.", "invalid_path")
+            try:
+                with os.scandir(current) as entries:
+                    expected = os.path.normcase(component)
+                    final_entry = next(
+                        (entry for entry in entries if os.path.normcase(entry.name) == expected),
+                        None,
+                    )
+            except OSError as exc:
+                raise FileFormatError("The requested path could not be accessed.", "invalid_path") from exc
+            if final_entry is None:
+                raise FileFormatError("The requested path does not exist.", "invalid_path")
+            if final_entry.is_symlink():
+                raise FileFormatError("Symbolic-link file access is blocked.", "path_escape")
+            current = Path(final_entry.path)
+
+        if final_entry is None or not final_entry.is_file(follow_symlinks=False):
             raise FileFormatError("The requested path is not a regular file.", "invalid_path")
-        if lexical.is_symlink():
-            raise FileFormatError("Symbolic-link file access is blocked.", "path_escape")
-        size = resolved.stat().st_size
+        size = final_entry.stat(follow_symlinks=False).st_size
         if size > settings.file_max_parse_bytes:
             raise FileFormatError(
                 f"File exceeds the {settings.file_max_parse_bytes:,}-byte parsing limit.", "file_too_large"
             )
-        if resolved.suffix.lower() in BLOCKED_BINARY_EXTENSIONS:
+        if current.suffix.lower() in BLOCKED_BINARY_EXTENSIONS:
             raise FileFormatError(
                 "Executable or high-risk binary formats are metadata-only and blocked from parsing.",
                 "blocked_file_type",
             )
         warnings = []
-        if resolved.suffix.lower() in SCRIPT_EXTENSIONS:
+        if current.suffix.lower() in SCRIPT_EXTENSIONS:
             warnings.append("Executable script content is read-only; file handling will never execute it.")
-        if resolved.name.lower() in {".env", "id_rsa", "id_ed25519"}:
+        if current.name.lower() in {".env", "id_rsa", "id_ed25519"}:
             warnings.append("Protected/secret-like filename detected; preview content will be masked.")
+        return current, warnings
+
+    def validate(self, path: Path, *, allow_archive: bool = False) -> list[str]:
+        """Validate a file path while preserving the legacy warnings-only API."""
+        _, warnings = self.resolve(path, allow_archive=allow_archive)
         return warnings
 
 
@@ -1095,7 +1128,7 @@ class FileFormatService:
         self, path: str | None = None, file_id: uuid.UUID | None = None, mime_type: str | None = None
     ) -> dict[str, Any]:
         target = await self._path(path, file_id)
-        warnings = self.safety.validate(target, allow_archive=True)
+        target, warnings = self.safety.resolve(target, allow_archive=True)
         result = registry.detect(target, mime_type)
         await self._audit(
             "file.format.detected",
@@ -1113,7 +1146,7 @@ class FileFormatService:
         mime_type: str | None = None,
     ) -> dict[str, Any]:
         target = await self._path(path, file_id)
-        safety_warnings = self.safety.validate(target, allow_archive=True)
+        target, safety_warnings = self.safety.resolve(target, allow_archive=True)
         detection = registry.detect(target, mime_type)
         adapter = registry.get(detection.detected_format)
         await self._audit("file.inspect.started", f"Inspecting {target.name}", target, detection.detected_format)
@@ -1162,7 +1195,7 @@ class FileFormatService:
         self, query: str, path: str | None = None, file_id: uuid.UUID | None = None, limit: int = 100
     ) -> dict[str, Any]:
         target = await self._path(path, file_id)
-        self.safety.validate(target)
+        target, _ = self.safety.resolve(target)
         detection = registry.detect(target)
         result = registry.get(detection.detected_format).query(target, query, limit)
         event_id = await self._audit("file.query.executed", f"Queried {target.name}", target, detection.detected_format)
@@ -1195,7 +1228,7 @@ class FileFormatService:
         an LLM context window.
         """
         target = await self._path(path, file_id)
-        warnings = self.safety.validate(target)
+        target, warnings = self.safety.resolve(target)
         detection = registry.detect(target)
         format_id = detection.detected_format
         # Ordinary chat callers still request a conservative 40k-100k limit.
@@ -1372,7 +1405,7 @@ class FileFormatService:
         **reference: Any,
     ) -> dict[str, Any]:
         target = await self._path(reference.get("path"), reference.get("file_id"))
-        self.safety.validate(target)
+        target, _ = self.safety.resolve(target)
         detection = registry.detect(target)
         output_root = settings.workspace_path.resolve()
         output_root.mkdir(parents=True, exist_ok=True)
@@ -1441,7 +1474,7 @@ class FileFormatService:
         if settings.file_archive_requires_approval and not approved:
             raise FileFormatError("Archive extraction requires explicit approval.", "approval_required")
         target = await self._path(reference.get("path"), reference.get("file_id"))
-        self.safety.validate(target, allow_archive=True)
+        target, _ = self.safety.resolve(target, allow_archive=True)
         if registry.detect(target).detected_format != "zip":
             raise FileFormatError("Selected file is not a ZIP archive.", "wrong_format")
         output_root = (

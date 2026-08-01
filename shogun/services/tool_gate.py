@@ -1027,14 +1027,13 @@ def _filesystem_candidate(raw_value: str, kind: str = "internal") -> Path:
 def _required_filesystem_operation(
     tool_name: str,
     key: str,
-    candidate: Path,
 ) -> str:
     if tool_name == "workspace_delete":
         return "delete"
     if tool_name == "workspace_mkdir":
         return "create"
     if tool_name == "workspace_write" or key in _OUTPUT_PATH_KEYS:
-        return "write" if candidate.exists() else "create"
+        return "write"
     return "read"
 
 
@@ -1095,9 +1094,21 @@ def evaluate_tool_path_controls(
         if not matching_folders:
             flags.append(f"filesystem_permission_denied:read:$.{key}")
             continue
-        operation = required_operation or _required_filesystem_operation(tool_name, key, candidate)
-        if not any(bool(folder[operation]) for folder in matching_folders):
-            flags.append(f"filesystem_permission_denied:{operation}:$.{key}")
+        operations = (
+            ("write", "create")
+            if required_operation is None and tool_name == "workspace_write"
+            else (required_operation or _required_filesystem_operation(tool_name, key),)
+        )
+        missing_operation = next(
+            (
+                operation
+                for operation in operations
+                if not any(bool(folder[operation]) for folder in matching_folders)
+            ),
+            None,
+        )
+        if missing_operation:
+            flags.append(f"filesystem_permission_denied:{missing_operation}:$.{key}")
     return not flags, flags
 
 

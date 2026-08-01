@@ -270,6 +270,41 @@ async def test_shared_filesystem_controls_enforce_operations_per_folder(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_workspace_write_requires_create_and_overwrite_permissions(tmp_path, monkeypatch):
+    from shogun.config import settings
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setattr(settings, "workspace_path", workspace)
+    set_local_filesystem_controls(
+        {
+            "enabled": True,
+            "folders": [
+                {
+                    "path": ".",
+                    "kind": "internal",
+                    "read": True,
+                    "write": False,
+                    "create": True,
+                    "delete": False,
+                },
+            ],
+        },
+        "tier:tactical",
+    )
+
+    decision = await check_tool_access(
+        mode="standard",
+        tool_name="workspace_write",
+        args={"path": "new-report.txt"},
+        local_scope="tier:tactical",
+    )
+
+    assert decision.action == GateAction.BLOCK
+    assert decision.parameter_flags == ["filesystem_permission_denied:write:$.path"]
+
+
+@pytest.mark.asyncio
 async def test_file_transform_requires_input_read_and_output_create(tmp_path, monkeypatch):
     from shogun.config import settings
 
