@@ -1,8 +1,8 @@
 {
-  "version": "1.47.48",
+  "version": "1.47.49",
   "name": "Shogun OS",
-  "build": 199,
+  "build": 200,
   "channel": "stable",
-  "released": "2026-08-01T12:18:57Z",
-  "changelog": "Chunk oversized AgentFlow documents when routing reports a missing long-context model."
+  "released": "2026-08-01T13:13:37Z",
+  "changelog": "Clarify fixed and custom routing profiles, add automatic fallback previews, and show the live Archive record count on the Overview page."
 }

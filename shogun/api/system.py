@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from shogun.api.deps import (
     get_agent_service,
+    get_memory_service,
     get_mission_service,
     get_security_service,
 )
@@ -18,6 +19,7 @@ from shogun.db.models.mission import Mission
 from shogun.engine.vector_store import get_vector_store
 from shogun.schemas.common import ApiResponse
 from shogun.services.agent_service import AgentService
+from shogun.services.memory_service import MemoryService
 from shogun.services.mission_service import MissionService
 from shogun.services.security_service import SecurityService
 
@@ -211,6 +213,7 @@ async def get_system_metrics():
 async def get_overview(
     agent_svc: AgentService = Depends(get_agent_service),
     mission_svc: MissionService = Depends(get_mission_service),
+    memory_svc: MemoryService = Depends(get_memory_service),
     security_svc: SecurityService = Depends(get_security_service),
 ):
     """Return overview dashboard payload."""
@@ -253,6 +256,8 @@ async def get_overview(
 
     from shogun.services.startup_notices import list_startup_notices
 
+    knowledge_volume = await memory_svc.count_active_records()
+
     return ApiResponse(
         success=True,
         data={
@@ -267,6 +272,7 @@ async def get_overview(
                 "status": "active"
             },
             "security_posture": {"tier": security_tier},
+            "knowledge_volume": knowledge_volume,
             "active_samurai": active_samurai_list,
             "recent_events": [
                 {"type": "security", "message": "Unauthorized access attempt blocked", "timestamp": "2 mins ago"},

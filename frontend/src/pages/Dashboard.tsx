@@ -24,6 +24,7 @@ import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
 import { HarakiriModal } from '../components/HarakiriModal';
 import { useTranslation } from '../i18n';
+import { formatRecordCount } from '../lib/formatRecordCount';
 
 interface StartupWarning {
   id: string;
@@ -203,7 +204,7 @@ export const Dashboard = () => {
         />
         <StatCard 
           title={t('dashboard.database', 'Knowledge Vol.')} 
-          value={`${data?.knowledge_volume?.toLocaleString() || '1,248'} ${t('dashboard.records', 'Records')}`} 
+          value={`${formatRecordCount(data?.knowledge_volume)} ${t('dashboard.records', 'Records')}`}
           status={data?.system_health?.qdrant === 'healthy' ? t('dashboard.lattice_indexed', 'Lattice Indexed') : (data?.system_health?.qdrant || t('dashboard.indexed', 'indexed'))} 
           icon={Server} 
           colorClass={data?.system_health?.qdrant === 'healthy' ? "text-green-500" : "text-red-500"}

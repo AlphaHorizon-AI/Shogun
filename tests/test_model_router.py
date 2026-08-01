@@ -461,10 +461,81 @@ async def test_automatic_profiles_are_read_only_but_multiple_custom_profiles_are
         await service.delete(balanced.id)
     with pytest.raises(ValueError, match="reserved"):
         await service.create(name="Premium", rules=[])
+    legacy = ModelRoutingProfile(name="Quality First", rules=[])
+    routing_session.add(legacy)
+    await routing_session.flush()
+    with pytest.raises(ValueError, match="read-only"):
+        await service.update(legacy.id, rules=[])
 
     finance = await service.create(name="Finance", rules=[])
     engineering = await service.create(name="Engineering", rules=[])
     assert finance.id != engineering.id
+
+
+@pytest.mark.asyncio
+async def test_legacy_fixed_profile_uses_automatic_strategy_and_ignores_placeholder_rule(routing_session):
+    models = [
+        await _model(
+            routing_session,
+            f"legacy-fixed-candidate-{index}",
+            quality=index,
+            cost=index,
+            capabilities={"chat": True},
+        )
+        for index in range(1, 5)
+    ]
+    legacy = ModelRoutingProfile(
+        name="Quality First",
+        rules=[{
+            "task_type": "*",
+            "primary_model_id": "00000000-0000-0000-0000-000000000000",
+            "fallback_model_ids": [],
+        }],
+    )
+    routing_session.add(legacy)
+    await routing_session.flush()
+
+    result = await ModelRoutingService(routing_session).route(ModelRouteRequest(
+        prompt="Review a difficult decision",
+        task_type="complex_reasoning",
+        profile_override=str(legacy.id),
+    ))
+
+    assert result.selected in models
+    assert len(result.fallbacks) == 2
+    assert result.payload["active_profile"] == "quality_first"
+
+
+@pytest.mark.asyncio
+async def test_automatic_profile_returns_primary_and_two_fallbacks(routing_session):
+    models = [
+        await _model(
+            routing_session,
+            f"automatic-candidate-{index}",
+            quality=index,
+            cost=index,
+            capabilities={"chat": True, "coding": True},
+        )
+        for index in range(1, 5)
+    ]
+
+    result = await ModelRoutingService(routing_session).route(ModelRouteRequest(
+        prompt="Implement the requested change",
+        task_type="coding_edit",
+        profile_override="balanced",
+    ))
+
+    assert result.selected in models
+    assert len(result.fallbacks) == 2
+    assert len({result.selected.id, *(item.id for item in result.fallbacks)}) == 3
+    assert result.payload["fallback_models"] == [
+        {
+            "model_id": item.model_id,
+            "display_name": item.display_name,
+            "provider": item.provider,
+        }
+        for item in result.fallbacks
+    ]
 
 
 @pytest.mark.asyncio

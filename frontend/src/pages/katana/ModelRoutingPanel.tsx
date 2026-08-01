@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Activity, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Edit2, Gauge, Play, Plus, RefreshCw, Route, Server, Trash2, X, Zap } from 'lucide-react';
+import { Activity, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Gauge, LockKeyhole, Play, Plus, RefreshCw, Route, Server, Trash2, X, Zap } from 'lucide-react';
 
 type Profile = {
   id: string; name: string; description?: string; is_default: boolean;
@@ -14,6 +14,7 @@ type RegistryModel = {
 };
 type Decision = {
   selected_model: string; selected_provider: string; fallback_model?: string; reason: string;
+  fallback_models?: Array<{ model_id: string; display_name: string; provider: string }>;
   complexity_score: number; estimated_cost_tier: number; estimated_latency_tier: number; active_profile: string;
 };
 
@@ -55,7 +56,10 @@ const TIER_OPTIONS = {
 } as const;
 
 const COMPLEXITY_LABELS = ['Simple', 'Routine', 'Involved', 'Complex', 'Expert'];
-const AUTOMATIC_PROFILE_NAMES = new Set(['Ultra Economy', 'Economy', 'Balanced', 'High Capability', 'Premium']);
+const AUTOMATIC_PROFILE_NAMES = new Set([
+  'Balanced (Default)', 'Quality First', 'Cost Optimized',
+  'Ultra Economy', 'Economy', 'Balanced', 'High Capability', 'Premium',
+]);
 
 const orderedModels = (profile?: Profile): string[] => {
   const rule = profile?.rules?.find(item => item.task_type === '*') || profile?.rules?.[0];
@@ -112,6 +116,8 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
   useEffect(() => { load(); }, []);
 
   const activeProfile = useMemo(() => profiles.find(item => item.is_default), [profiles]);
+  const activeIsAutomatic = Boolean(activeProfile && AUTOMATIC_PROFILE_NAMES.has(activeProfile.name));
+  const registryEditable = Boolean(activeProfile && !activeIsAutomatic);
   const customProfiles = useMemo(
     () => profiles.filter(item => item.name === 'Custom' || !AUTOMATIC_PROFILE_NAMES.has(item.name)),
     [profiles],
@@ -133,7 +139,26 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
     } catch (error: any) { setMessage(error?.response?.data?.detail || 'Profile could not be activated.'); }
     finally { setBusy(''); }
   };
+  const chooseProfile = async (item: Profile) => {
+    const automatic = AUTOMATIC_PROFILE_NAMES.has(item.name);
+    if (automatic) {
+      if (isEditingProfiles) onEditProfiles?.();
+    } else {
+      selectCustomProfile(item.id);
+      if (!isEditingProfiles) onEditProfiles?.();
+    }
+    await setActive(item);
+    if (!automatic) selectCustomProfile(item.id);
+  };
+  const toggleCustomCreator = () => {
+    if (!isEditingProfiles) {
+      setNewProfileName('');
+      setNewProfileDescription('');
+    }
+    onEditProfiles?.();
+  };
   const patchModel = async (item: RegistryModel, patch: Partial<RegistryModel>) => {
+    if (!registryEditable) return;
     setBusy(item.id);
     try {
       const response = await axios.patch(`/api/v1/models/registry/${item.id}`, patch);
@@ -185,9 +210,10 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
         is_default: false,
       });
       const created: Profile = response.data.data;
+      await axios.post('/api/v1/models/routing/profiles/active', { profile_id: created.id });
       setNewProfileName('');
       setNewProfileDescription('');
-      setMessage(`${created.name} created. Select its models and save it.`);
+      setMessage(`${created.name} created and activated. Select its models and save it.`);
       await load();
       setCustomProfileId(created.id);
       setCustomModels([]);
@@ -227,36 +253,43 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
         <div><h3 className="font-bold flex items-center gap-2"><Route className="w-5 h-5 text-purple-400" /> Model Routing Profiles</h3>
           <p className="text-xs text-shogun-subdued mt-1">Built-in profiles choose models automatically from capability, cost, speed, and task requirements. Custom profiles use your exact model order.</p></div>
         <div className="flex items-center gap-2">
-          <div className="px-3 py-2 rounded-lg border border-purple-400/30 bg-purple-400/10 text-xs"><span className="text-shogun-subdued">Active </span><strong className="text-purple-300">{activeProfile?.name || 'Balanced'}</strong></div>
-          {onEditProfiles && <button onClick={onEditProfiles} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-colors ${isEditingProfiles ? 'border-purple-400 bg-purple-400/15 text-purple-300' : 'border-shogun-border text-shogun-subdued hover:border-purple-400/40 hover:text-purple-300'}`}>
-            <Edit2 className="w-3.5 h-3.5" /> {isEditingProfiles ? 'Close custom editor' : 'Manage custom profiles'}
+          <div className={`px-3 py-2 rounded-lg border text-xs ${activeIsAutomatic ? 'border-cyan-400/30 bg-cyan-400/10' : 'border-amber-400/30 bg-amber-400/10'}`}><span className="text-shogun-subdued">Active </span><strong className={activeIsAutomatic ? 'text-cyan-300' : 'text-amber-300'}>{activeProfile?.name || 'Balanced'}</strong></div>
+          {onEditProfiles && <button onClick={toggleCustomCreator} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-colors ${isEditingProfiles ? 'border-amber-400 bg-amber-400/15 text-amber-300' : 'border-amber-400/40 text-amber-300 hover:border-amber-300 hover:bg-amber-400/10'}`}>
+            {isEditingProfiles ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />} {isEditingProfiles ? 'Close custom editor' : 'Create custom profile'}
           </button>}
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-2">
         {profiles.map(item => {
           const automatic = AUTOMATIC_PROFILE_NAMES.has(item.name);
-          return <button key={item.id} onClick={() => setActive(item)} disabled={busy === item.id}
-            className={`text-left p-3 rounded-lg border transition-all ${item.is_default ? 'border-purple-400 bg-purple-400/15' : 'border-shogun-border hover:border-purple-400/40'}`}>
-            <div className="text-xs font-bold flex items-center gap-1.5">{item.is_default && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />}{item.name}</div>
+          const cardStyle = automatic
+            ? item.is_default
+              ? 'border-cyan-400/60 bg-cyan-400/10 shadow-[0_0_18px_rgba(34,211,238,0.08)]'
+              : 'border-shogun-border bg-[#080b14] hover:border-cyan-400/40 hover:bg-cyan-400/5'
+            : item.is_default
+              ? 'border-amber-300/70 bg-amber-400/15 shadow-[0_0_18px_rgba(251,191,36,0.12)]'
+              : 'border-amber-400/30 bg-amber-400/[0.06] hover:border-amber-300/70 hover:bg-amber-400/10';
+          return <button key={item.id} onClick={() => chooseProfile(item)} disabled={busy === item.id}
+            className={`text-left p-3 rounded-lg border transition-all ${cardStyle}`}>
+            <div className="text-xs font-bold flex items-center gap-1.5">{item.is_default && <CheckCircle2 className={`w-3.5 h-3.5 ${automatic ? 'text-cyan-300' : 'text-amber-300'}`} />}{item.name}</div>
             <p className="text-[9px] text-shogun-subdued mt-1 line-clamp-2">{item.description}</p>
-            <span className={`mt-2 inline-block text-[8px] font-bold uppercase tracking-wider ${automatic ? 'text-cyan-300' : 'text-purple-300'}`}>
-              {automatic ? 'Automatic · read-only' : 'Custom · operator-defined'}
+            <span className={`mt-2 inline-block text-[8px] font-bold uppercase tracking-wider ${automatic ? 'text-cyan-300' : 'text-amber-300'}`}>
+              {automatic ? 'Fixed · automatic · read-only' : 'Custom · operator-defined'}
             </span>
           </button>;
         })}
       </div>
-      {isEditingProfiles && <div className="mt-5 pt-5 border-t border-purple-400/20">
+      {isEditingProfiles && <div className="mt-5 pt-5 border-t border-amber-400/20">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
           <div><h4 className="text-sm font-bold">Named custom routing profiles</h4>
             <p className="text-[10px] text-shogun-subdued mt-1">Create focused profiles such as Finance or Engineering. Each profile keeps its own strict primary and fallback model order.</p></div>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => saveCustom(false)} disabled={!customProfile || busy !== '' || customModels.length === 0}
-              className="px-3 py-2 rounded border border-purple-400/40 hover:bg-purple-400/10 disabled:opacity-40 text-[10px] font-bold">
+              className="px-3 py-2 rounded border border-amber-400/40 hover:bg-amber-400/10 disabled:opacity-40 text-[10px] font-bold">
               {busy === 'custom-save' ? 'Saving…' : 'Save profile'}
             </button>
             <button onClick={() => saveCustom(true)} disabled={!customProfile || busy !== '' || customModels.length === 0}
-              className="px-3 py-2 rounded bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-[10px] font-bold">
+              className="px-3 py-2 rounded bg-amber-500 text-black hover:bg-amber-400 disabled:opacity-40 text-[10px] font-bold">
               {busy === 'custom-activate' ? 'Saving…' : 'Save & activate'}
             </button>
           </div>
@@ -276,7 +309,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
             </label>
           </div>
           <div className="flex items-end gap-1">
-            <button onClick={createCustomProfile} disabled={!newProfileName.trim() || busy !== ''} title="Create named profile" className="h-[34px] px-3 rounded border border-purple-400/40 text-purple-300 hover:bg-purple-400/10 disabled:opacity-40"><Plus className="w-4 h-4" /></button>
+            <button onClick={createCustomProfile} disabled={!newProfileName.trim() || busy !== ''} title="Create clean custom profile" className="h-[34px] px-3 rounded border border-amber-400/40 text-amber-300 hover:bg-amber-400/10 disabled:opacity-40"><Plus className="w-4 h-4" /></button>
             <button onClick={deleteCustomProfile} disabled={!customProfile || customProfile.name === 'Custom' || customProfile.is_default || busy !== ''} title={customProfile?.is_default ? 'Activate another profile before deleting this one' : 'Delete named profile'} className="h-[34px] px-3 rounded border border-red-400/30 text-red-400 hover:bg-red-400/10 disabled:opacity-30"><Trash2 className="w-4 h-4" /></button>
           </div>
         </div>
@@ -286,9 +319,9 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
             {models.filter(item => item.enabled).map(item => {
               const selected = customModels.includes(item.id);
               return <button key={item.id} onClick={() => setCustomModels(current => selected ? current.filter(id => id !== item.id) : [...current, item.id])}
-                className={`w-full flex items-center justify-between gap-2 rounded p-2 text-left text-xs border ${selected ? 'border-purple-400/50 bg-purple-400/10' : 'border-transparent hover:border-shogun-border'}`}>
+                className={`w-full flex items-center justify-between gap-2 rounded p-2 text-left text-xs border ${selected ? 'border-amber-400/50 bg-amber-400/10' : 'border-transparent hover:border-shogun-border'}`}>
                 <span className="truncate"><strong>{item.display_name}</strong><span className="ml-2 text-[9px] text-shogun-subdued">{item.provider}</span></span>
-                {selected && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+                {selected && <CheckCircle2 className="w-3.5 h-3.5 text-amber-300 shrink-0" />}
               </button>;
             })}
           </div>
@@ -297,7 +330,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
               const item = models.find(model => model.id === id);
               if (!item) return null;
               return <div key={id} className="flex items-center gap-2 rounded bg-[#080b14] border border-shogun-border p-2">
-                <span className="w-16 text-[8px] font-bold uppercase text-purple-300">{index === 0 ? 'Primary' : `Fallback ${index}`}</span>
+                <span className="w-16 text-[8px] font-bold uppercase text-amber-300">{index === 0 ? 'Primary' : `Fallback ${index}`}</span>
                 <span className="text-xs flex-1 truncate">{item.display_name}</span>
                 <button disabled={index === 0} onClick={() => setCustomModels(current => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}><ChevronUp className="w-3.5 h-3.5" /></button>
                 <button disabled={index === customModels.length - 1} onClick={() => setCustomModels(current => { const next = [...current]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}><ChevronDown className="w-3.5 h-3.5" /></button>
@@ -312,29 +345,38 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
     </div>
 
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-      <div className="xl:col-span-2 shogun-card">
-        <div className="flex items-center justify-between mb-4"><div><h4 className="font-bold flex items-center gap-2"><Server className="w-4 h-4 text-shogun-blue" /> Model Capability Registry</h4>
-          <p className="text-[10px] text-shogun-subdued mt-1">Describe what each connected model can do, how capable it is, what it costs, and how quickly it responds. The router uses these as eligibility and preference signals.</p></div><button onClick={load}><RefreshCw className="w-4 h-4" /></button></div>
+      <div className={`xl:col-span-2 shogun-card transition-colors ${registryEditable ? 'border-amber-400/25' : ''}`}>
+        <div className="flex items-start justify-between gap-3 mb-3"><div><h4 className="font-bold flex items-center gap-2"><Server className="w-4 h-4 text-shogun-blue" /> Model Capability Registry</h4>
+          <p className="text-[10px] text-shogun-subdued mt-1">Describe what each connected model can do, how capable it is, what it costs, and how quickly it responds. The router uses these as eligibility and preference signals.</p></div><button onClick={load} title="Refresh model registry"><RefreshCw className="w-4 h-4" /></button></div>
+        <div className={`mb-4 flex items-start gap-2 rounded-lg border px-3 py-2 ${registryEditable ? 'border-amber-400/30 bg-amber-400/[0.07]' : 'border-cyan-400/20 bg-cyan-400/[0.05]'}`}>
+          {registryEditable ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /> : <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />}
+          <div>
+            <p className={`text-[10px] font-bold uppercase tracking-wider ${registryEditable ? 'text-amber-300' : 'text-cyan-300'}`}>{registryEditable ? 'Custom profile · editing enabled' : 'Automatic profile · registry locked'}</p>
+            <p className="mt-0.5 text-[9px] leading-relaxed text-shogun-subdued">{registryEditable
+              ? `${activeProfile?.name || 'Custom'} uses your model settings and exact primary/fallback order.`
+              : `${activeProfile?.name || 'Balanced'} ranks eligible models for each task and chooses one primary plus up to two fallbacks automatically.`}</p>
+          </div>
+        </div>
         <div className="space-y-3 max-h-[560px] overflow-y-auto pr-1">
-          {models.map(item => <div key={item.id} className={`rounded-xl border p-4 ${item.enabled ? 'border-shogun-border bg-[#080b14]' : 'border-shogun-border/40 opacity-60'}`}>
+          {models.map(item => <div key={item.id} className={`rounded-xl border p-4 transition-opacity ${item.enabled ? 'border-shogun-border bg-[#080b14]' : 'border-shogun-border/40 opacity-60'} ${registryEditable ? '' : 'opacity-70'}`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div><div className="flex items-center gap-2 flex-wrap"><span className="font-bold font-mono text-sm text-shogun-text">{item.model_id}</span><span className="text-[9px] font-bold uppercase tracking-widest border border-purple-400/30 bg-purple-500/10 text-purple-300 rounded px-1.5 py-0.5">{item.provider}</span>{item.local && <span className="text-[8px] uppercase border border-shogun-border rounded px-1.5 py-0.5">local</span>}</div>
                 <p className="font-mono text-[9px] text-shogun-subdued mt-1">{item.display_name !== item.model_id ? `${item.display_name} · ` : ''}{(item.context_window / 1000).toFixed(0)}K configured context limit</p></div>
-              <div className="flex items-center gap-2"><button onClick={() => testModel(item)} className="px-2 py-1 text-[9px] border border-shogun-border rounded hover:border-shogun-blue">{busy === `test-${item.id}` ? 'Testing…' : 'Test'}</button>
-                <button onClick={() => patchModel(item, { enabled: !item.enabled })} className={`w-10 h-5 rounded-full p-0.5 ${item.enabled ? 'bg-green-500' : 'bg-gray-700'}`}><span className={`block w-4 h-4 bg-white rounded-full transition-transform ${item.enabled ? 'translate-x-5' : ''}`} /></button></div>
+              <div className="flex items-center gap-2"><button onClick={() => testModel(item)} disabled={!registryEditable} className="px-2 py-1 text-[9px] border border-shogun-border rounded hover:border-shogun-blue disabled:cursor-not-allowed disabled:opacity-35">{busy === `test-${item.id}` ? 'Testing…' : 'Test'}</button>
+                <button onClick={() => patchModel(item, { enabled: !item.enabled })} disabled={!registryEditable} aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.display_name}`} className={`w-10 h-5 rounded-full p-0.5 disabled:cursor-not-allowed disabled:opacity-35 ${item.enabled ? 'bg-green-500' : 'bg-gray-700'}`}><span className={`block w-4 h-4 bg-white rounded-full transition-transform ${item.enabled ? 'translate-x-5' : ''}`} /></button></div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 my-3">
               {(['quality_tier','cost_tier','latency_tier'] as const).map(key => {
                 const selected = TIER_OPTIONS[key].find(option => option.value === item[key]) || TIER_OPTIONS[key][2];
                 return <label key={key} className="text-[9px] uppercase text-shogun-subdued">{key.replace('_tier','')}
-                  <select value={item[key]} onChange={event => patchModel(item, { [key]: Number(event.target.value) })} className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-1.5 text-xs normal-case">
+                  <select value={item[key]} disabled={!registryEditable} onChange={event => patchModel(item, { [key]: Number(event.target.value) })} className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-1.5 text-xs normal-case disabled:cursor-not-allowed disabled:opacity-50">
                     {TIER_OPTIONS[key].map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                   <span className="block mt-1 text-[8px] normal-case leading-tight text-shogun-subdued/70">{selected.help}</span>
                 </label>;
               })}
             </div>
-            <TokenBudgetControls item={item} disabled={busy === item.id} onPatch={patch => patchModel(item, patch)} />
+            <TokenBudgetControls item={item} disabled={!registryEditable || busy === item.id} onPatch={patch => patchModel(item, patch)} />
             {usage.by_model?.[`${item.provider}:${item.model_id}`] && (() => {
               const modelUsage = usage.by_model[`${item.provider}:${item.model_id}`];
               const peakPercent = Math.min(100, Number(modelUsage.peak_context_percent || 0));
@@ -351,9 +393,9 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
                 <p className="mt-1 text-[8px] text-shogun-subdued/70">Estimated context use: {modelUsage.average_context_percent}% average · {Number(modelUsage.peak_input_tokens).toLocaleString()} tokens peak</p>
               </div>;
             })()}
-            <p className="text-[8px] uppercase tracking-wider text-shogun-subdued mb-1.5">Supported task capabilities — click to enable or disable</p>
-            <div className="flex flex-wrap gap-1.5">{CAPS.map(cap => <button key={cap} onClick={() => patchModel(item, { capabilities: { ...item.capabilities, [cap]: !item.capabilities?.[cap] } })}
-              className={`text-[8px] uppercase px-2 py-1 rounded border ${item.capabilities?.[cap] ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-300' : 'border-shogun-border text-shogun-subdued'}`}>{CAP_LABELS[cap]}</button>)}</div>
+            <p className="text-[8px] uppercase tracking-wider text-shogun-subdued mb-1.5">{registryEditable ? 'Supported task capabilities — click to enable or disable' : 'Supported task capabilities — read-only for fixed profiles'}</p>
+            <div className="flex flex-wrap gap-1.5">{CAPS.map(cap => <button key={cap} disabled={!registryEditable} onClick={() => patchModel(item, { capabilities: { ...item.capabilities, [cap]: !item.capabilities?.[cap] } })}
+              className={`text-[8px] uppercase px-2 py-1 rounded border disabled:cursor-not-allowed disabled:opacity-50 ${item.capabilities?.[cap] ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-300' : 'border-shogun-border text-shogun-subdued'}`}>{CAP_LABELS[cap]}</button>)}</div>
             <div className="mt-2 flex flex-wrap gap-1">{(item.role_tags || []).map(tag => <span key={tag} className="rounded bg-purple-400/10 px-1.5 py-0.5 text-[8px] uppercase text-purple-300">{tag}</span>)}</div>
           </div>)}
           {!models.length && <p className="text-sm text-shogun-subdued text-center py-8">Connect a model provider to populate the registry.</p>}
@@ -368,7 +410,25 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
             <div className="flex flex-wrap gap-1">{CAPS.map(cap => <button key={cap} onClick={() => setRequirements(current => current.includes(cap) ? current.filter(item => item !== cap) : [...current, cap])} className={`text-[8px] border rounded px-1.5 py-1 ${requirements.includes(cap) ? 'border-shogun-gold text-shogun-gold' : 'border-shogun-border text-shogun-subdued'}`}>{CAP_LABELS[cap]}</button>)}</div>
             <button onClick={preview} disabled={busy === 'preview'} className="w-full flex items-center justify-center gap-2 p-2 rounded bg-purple-600 hover:bg-purple-500 font-bold text-xs"><Play className="w-3.5 h-3.5" /> Preview route</button>
           </div>
-          {decision && <div className="mt-4 p-3 rounded-lg border border-green-400/30 bg-green-400/5"><div className="font-bold text-sm text-green-300">{decision.selected_model}</div><div className="text-[9px] text-shogun-subdued">{decision.selected_provider} · fallback {decision.fallback_model || 'none'}</div><p className="text-[10px] mt-2 leading-relaxed">{decision.reason}</p><div className="flex flex-wrap gap-3 mt-2 text-[8px] uppercase text-shogun-subdued"><span>{COMPLEXITY_LABELS[Math.max(1, Math.min(5, decision.complexity_score)) - 1]} task</span><span>{TIER_OPTIONS.cost_tier.find(option => option.value === decision.estimated_cost_tier)?.label || 'Unknown cost'}</span><span>{TIER_OPTIONS.latency_tier.find(option => option.value === decision.estimated_latency_tier)?.label || 'Unknown speed'}</span></div></div>}
+          {decision && <div className="mt-4 p-3 rounded-lg border border-green-400/30 bg-green-400/5">
+            <p className="text-[8px] font-bold uppercase tracking-wider text-green-300/70">Primary model</p>
+            <div className="font-bold text-sm text-green-300">{decision.selected_model}</div>
+            <div className="text-[9px] text-shogun-subdued">{decision.selected_provider}</div>
+            <div className="mt-3 grid gap-1.5">
+              {(decision.fallback_models?.length
+                ? decision.fallback_models
+                : decision.fallback_model
+                  ? [{ model_id: decision.fallback_model, display_name: decision.fallback_model, provider: '' }]
+                  : []
+              ).map((fallback, index) => <div key={`${fallback.provider}:${fallback.model_id}`} className="flex items-center justify-between gap-2 rounded border border-shogun-border bg-[#080b14] px-2 py-1.5">
+                <span className="text-[8px] font-bold uppercase text-shogun-subdued">Fallback {index + 1}</span>
+                <span className="truncate text-[9px]">{fallback.display_name || fallback.model_id}{fallback.provider ? ` · ${fallback.provider}` : ''}</span>
+              </div>)}
+              {!decision.fallback_models?.length && !decision.fallback_model && <p className="text-[9px] text-shogun-subdued">No other eligible model is currently available.</p>}
+            </div>
+            <p className="text-[10px] mt-3 leading-relaxed">{decision.reason}</p>
+            <div className="flex flex-wrap gap-3 mt-2 text-[8px] uppercase text-shogun-subdued"><span>{COMPLEXITY_LABELS[Math.max(1, Math.min(5, decision.complexity_score)) - 1]} task</span><span>{TIER_OPTIONS.cost_tier.find(option => option.value === decision.estimated_cost_tier)?.label || 'Unknown cost'}</span><span>{TIER_OPTIONS.latency_tier.find(option => option.value === decision.estimated_latency_tier)?.label || 'Unknown speed'}</span></div>
+          </div>}
         </div>
         <div className="shogun-card"><h4 className="font-bold flex items-center gap-2 mb-3"><Activity className="w-4 h-4 text-green-400" /> Usage</h4><div className="grid grid-cols-2 gap-2 text-center">
           <Metric icon={<Zap className="w-3 h-3" />} label="Events" value={usage.events || 0} /><Metric icon={<Gauge className="w-3 h-3" />} label="Avg latency" value={`${usage.average_latency_ms || 0} ms`} />

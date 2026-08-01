@@ -90,11 +90,24 @@ DEFAULT_PROFILES = {
 }
 
 AUTOMATIC_PROFILE_KEYS = frozenset(key for key in DEFAULT_PROFILES if key != "custom")
+LEGACY_AUTOMATIC_PROFILE_ALIASES = {
+    "balanced_default": "balanced",
+    "quality_first": "high_capability",
+    "cost_optimized": "economy",
+}
+
+
+def automatic_profile_key(name: str | None) -> str | None:
+    """Return the canonical heuristic strategy for a protected profile."""
+    key = _slug(str(name or ""))
+    if key in AUTOMATIC_PROFILE_KEYS:
+        return key
+    return LEGACY_AUTOMATIC_PROFILE_ALIASES.get(key)
 
 
 def is_automatic_profile_name(name: str | None) -> bool:
     """Return whether a profile is one of the protected heuristic presets."""
-    return _slug(str(name or "")) in AUTOMATIC_PROFILE_KEYS
+    return automatic_profile_key(name) is not None
 
 SIMPLE_TYPES = {"simple_chat", "classification", "extraction", "memory_write", "memory_retrieval"}
 MODERATE_TYPES = {"summarization", "productivity_task", "browser_task", "skill_selection", "context_compaction"}
@@ -613,9 +626,11 @@ class ModelRoutingService:
     async def route(self, request: ModelRouteRequest, *, persist: bool = True) -> RoutingResult:
         profile = await self.active_profile(request.profile_override)
         profile_key = _slug(profile.name)
+        automatic_strategy = automatic_profile_key(profile.name)
+        strategy_key = automatic_strategy or profile_key
         config = read_routing_config()
         if (
-            profile_key == "premium"
+            strategy_key == "premium"
             and config.get("require_user_approval_for_premium")
             and not request.metadata.get("premium_approved")
         ):
@@ -688,14 +703,18 @@ class ModelRoutingService:
             for item in candidates
             if all((item.capabilities or {}).get(capability, False) for capability in requirements)
         ]
-        preferred_ids = self._expanded_preferences(
-            self._legacy_preference(profile, task_type),
-            registry_items,
+        preferred_ids = (
+            []
+            if automatic_strategy
+            else self._expanded_preferences(
+                self._legacy_preference(profile, task_type),
+                registry_items,
+            )
         )
-        # Any profile with an explicit model order is a strict, named custom
-        # profile (for example Finance or Engineering).  Built-in heuristic
-        # profiles have no rules and continue to consider every eligible model.
-        is_custom_profile = profile_key == "custom" or profile_key not in DEFAULT_PROFILES
+        # Named custom profiles use their explicit order as a strict routing
+        # boundary. Built-in heuristic profiles consider every eligible model;
+        # legacy placeholder rules are intentionally ignored.
+        is_custom_profile = automatic_strategy is None
         if is_custom_profile or preferred_ids:
             if not preferred_ids:
                 raise NoEligibleModelError(f"{profile.name} routing has no models configured.")
@@ -719,8 +738,8 @@ class ModelRoutingService:
                 allow_connected_fallback=requirements == {"chat"} and not is_custom_profile,
             )
         profile_config = {
-            **DEFAULT_PROFILES.get(profile_key, DEFAULT_PROFILES["balanced"]),
-            **(config.get("profiles", {}).get(profile_key) or {}),
+            **DEFAULT_PROFILES.get(strategy_key, DEFAULT_PROFILES["balanced"]),
+            **(config.get("profiles", {}).get(strategy_key) or {}),
         }
         max_cost = int(profile_config.get("max_cost_tier", 5))
         if budget_exceeded and budget.get("on_exceed") == "downgrade":
@@ -759,6 +778,14 @@ class ModelRoutingService:
             "selected_max_output_tokens": selected.max_output_tokens,
             "fallback_model": fallbacks[0].model_id if fallbacks else None,
             "fallback_provider": fallbacks[0].provider if fallbacks else None,
+            "fallback_models": [
+                {
+                    "model_id": item.model_id,
+                    "display_name": item.display_name,
+                    "provider": item.provider,
+                }
+                for item in fallbacks
+            ],
             "reason": reason,
             "estimated_cost_tier": selected.cost_tier,
             "estimated_latency_tier": selected.latency_tier,

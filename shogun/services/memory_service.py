@@ -14,11 +14,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.config import settings
 from shogun.db.models.memory_record import MemoryRecord
+from shogun.db.models.programming_memory import ProgrammingMemory
 from shogun.engine.memory_salience import (
     ScoredMemory,
     compute_decayed_relevance,
@@ -54,6 +55,14 @@ class MemoryService(BaseService[MemoryRecord]):
 
     def __init__(self, session: AsyncSession):
         super().__init__(MemoryRecord, session)
+
+    async def count_active_records(self) -> int:
+        """Count all operator-visible, non-archived Archive records."""
+        memory_count = await self.session.scalar(
+            select(func.count(MemoryRecord.id)).where(MemoryRecord.is_archived.is_(False))
+        )
+        programming_count = await self.session.scalar(select(func.count(ProgrammingMemory.id)))
+        return int(memory_count or 0) + int(programming_count or 0)
 
     # ── Create with dual-write ──────────────────────────────────
 
