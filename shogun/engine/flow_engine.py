@@ -527,6 +527,16 @@ async def _execute_single_node(
     if config.get("context_injection"):
         context_str += f"\n\n[Additional Context]:\n{config['context_injection']}"
 
+    # A Samurai instruction attachment is the node's prompt, not extra
+    # context. Resolve it before skill selection so routing, governed native
+    # reads, and the model all see the same authoritative instruction.
+    if node_type == "samurai" and config.get("instruction_file"):
+        config = {
+            **config,
+            "task_description": await _resolve_samurai_task_description(config),
+            "_instruction_file_resolved": True,
+        }
+
     # Order 9: node-level skill activation. Compact briefs influence model
     # execution but never extend the node's tool or posture permissions. Keep
     # private instructions separate from predecessor content so deterministic
@@ -1269,7 +1279,7 @@ async def _exec_samurai(
     progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
 ) -> str:
     """Samurai node — delegates task to LLM using agent's routing profile."""
-    task_description = config.get("task_description", "")
+    task_description = await _resolve_samurai_task_description(config)
     expected_output = config.get("expected_output", "")
     agent_id = config.get("agent_id")
     routing_profile_id = (governance_context or {}).get("model_profile") or config.get("routing_profile_id")
@@ -1555,6 +1565,66 @@ async def _exec_samurai(
         max_tokens=max_output_tokens,
         routing_context=_routing,
     )
+
+
+async def _resolve_samurai_task_description(config: dict[str, Any]) -> str:
+    """Return the Samurai prompt, replacing typed text with an attached file.
+
+    Instruction attachments are server-created AgentFlow uploads. Keeping the
+    allowed root fixed prevents a manually edited flow configuration from
+    turning this convenience feature into an arbitrary filesystem read.
+    """
+    typed_prompt = str(config.get("task_description") or "")
+    instruction_file = config.get("instruction_file")
+    if not instruction_file:
+        return typed_prompt
+    if config.get("_instruction_file_resolved"):
+        return typed_prompt
+    if not isinstance(instruction_file, dict):
+        raise ValueError("Samurai instruction file configuration is invalid")
+
+    from pathlib import Path
+
+    from shogun.config import settings
+    from shogun.services.file_formats import FileFormatService
+
+    filename = str(instruction_file.get("filename") or "instruction file").strip()
+    raw_path = str(instruction_file.get("path") or "").strip()
+    if not raw_path:
+        if instruction_file.get("error"):
+            raise ValueError(
+                f"The Samurai instruction file '{filename}' did not upload successfully. "
+                "Remove it and upload the file again."
+            )
+        raise ValueError("Samurai node has no uploaded instruction file")
+
+    file_path = Path(raw_path).resolve()
+    upload_root = (Path(settings.uploads_path) / "agent_flows").resolve()
+    try:
+        file_path.relative_to(upload_root)
+    except ValueError as exc:
+        raise ValueError("Samurai instruction file must be an AgentFlow upload") from exc
+
+    allowed_extensions = {".pdf", ".docx", ".md"}
+    if file_path.suffix.lower() not in allowed_extensions:
+        raise ValueError("Samurai instruction files must be PDF, Word (.docx), or Markdown (.md)")
+    if not file_path.is_file():
+        raise FileNotFoundError(f"Samurai instruction file not found: {filename}")
+
+    payload = await FileFormatService(allowed_roots=[upload_root]).read(
+        path=str(file_path),
+        max_chars=settings.agent_flow_document_max_chars,
+    )
+    content = str(payload.get("content") or "")
+    if not content.strip():
+        raise ValueError(f"Samurai instruction file '{filename}' contained no readable text")
+    if payload.get("truncated"):
+        raise ValueError(
+            f"Samurai instruction file '{filename}' exceeds the AgentFlow extraction safety limit "
+            f"of {settings.agent_flow_document_max_chars:,} characters. Split the instructions "
+            "or increase SHOGUN_AGENT_FLOW_DOCUMENT_MAX_CHARS."
+        )
+    return content
 
 
 def _split_model_context(text: str, max_chars: int) -> list[str]:

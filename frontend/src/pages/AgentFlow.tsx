@@ -474,7 +474,14 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
       <div className="px-3 py-2 space-y-1">
         {type === 'samurai' && (
           <>
-            {config.task_description && (
+            {config.instruction_file?.path ? (
+              <div className="flex items-center gap-1">
+                <Paperclip className="w-2.5 h-2.5 text-[#d4a017]/70" />
+                <span className="truncate text-[8px] font-bold text-[#d4a017]/80">
+                  {config.instruction_file.filename || 'Instruction file'}
+                </span>
+              </div>
+            ) : config.task_description && (
               <p className="text-[9px] text-[#7a8899] line-clamp-2">{config.task_description}</p>
             )}
             {config.routing_profile_name && (
@@ -483,7 +490,7 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
                 <span className="text-[8px] font-bold text-[#d4a017]/80">{config.routing_profile_name}</span>
               </div>
             )}
-            {!config.task_description && !config.routing_profile_name && (
+            {!config.instruction_file?.path && !config.task_description && !config.routing_profile_name && (
               <p className="text-[9px] text-[#7a8899]/50 italic">Configure task...</p>
             )}
           </>
@@ -1463,6 +1470,122 @@ function JsonConfigEditor({
 }
 
 
+function SamuraiInstructionUpload({
+  flowId,
+  value,
+  onChange,
+}: {
+  flowId: string;
+  value: Record<string, any> | null | undefined;
+  onChange: (value: Record<string, any> | null) => void;
+}) {
+  const upload = async (file: File) => {
+    const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+    if (!['.pdf', '.docx', '.md'].includes(extension)) {
+      onChange({
+        filename: file.name,
+        size: file.size,
+        path: '',
+        error: 'Use a PDF, Word (.docx), or Markdown (.md) file',
+      });
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const response = await axios.post(`/api/v1/agent-flows/${flowId}/upload`, formData);
+      const uploaded = response.data?.data;
+      onChange({
+        filename: uploaded?.filename || file.name,
+        size: uploaded?.size ?? file.size,
+        path: uploaded?.path || '',
+      });
+    } catch (error: any) {
+      onChange({
+        filename: file.name,
+        size: file.size,
+        path: '',
+        error: error?.response?.data?.detail || 'Upload failed',
+      });
+    }
+  };
+
+  const chooseFile = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.docx,.md';
+    input.onchange = (event: any) => {
+      const file = event.target.files?.[0];
+      if (file) void upload(file);
+    };
+    input.click();
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-[#7a8899]">
+        <Paperclip className="h-3 w-3" /> Instruction File
+        <span className="font-normal normal-case tracking-normal text-[#d4a017]/70">(Optional)</span>
+      </label>
+      <div
+        className={cn(
+          "cursor-pointer rounded-xl border-2 border-dashed p-3 text-center transition-all duration-200",
+          "hover:border-[#d4a017]/50 hover:bg-[#d4a017]/5",
+          value?.path
+            ? "border-[#d4a017]/35 bg-[#d4a017]/5"
+            : value
+              ? "border-[#ef4444]/40 bg-[#ef4444]/5"
+              : "border-[#1a2040] bg-[#0a0e1a]",
+        )}
+        onClick={chooseFile}
+        onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); }}
+        onDrop={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const file = event.dataTransfer.files?.[0];
+          if (file) void upload(file);
+        }}
+      >
+        {value ? (
+          <div className="space-y-1">
+            <FileText className={cn("mx-auto h-6 w-6", value.path ? "text-[#d4a017]" : "text-[#ef4444]")} />
+            <p className={cn("truncate text-[10px] font-bold", value.path ? "text-[#c8d0d8]" : "text-[#ef4444]")}>
+              {value.filename}
+            </p>
+            {value.path ? (
+              <p className="text-[8px] text-[#7a8899]">
+                {Number.isFinite(Number(value.size)) ? `${(Number(value.size) / 1024).toFixed(1)} KB · ` : ''}
+                Replaces the typed task prompt
+              </p>
+            ) : (
+              <p className="text-[9px] font-bold text-[#ef4444]/80">
+                {value.error || 'Upload failed'} — click to retry
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={(event) => { event.stopPropagation(); onChange(null); }}
+              className="text-[8px] font-bold uppercase tracking-wider text-[#ef4444] hover:text-[#ef4444]/80"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-1.5 py-1">
+            <Upload className="mx-auto h-6 w-6 text-[#555]" />
+            <p className="text-[10px] font-bold text-[#7a8899]">Drag & drop or click to attach</p>
+            <p className="text-[8px] text-[#555]">PDF, Word (.docx), or Markdown (.md)</p>
+          </div>
+        )}
+      </div>
+      <p className="text-[8px] leading-relaxed text-[#7a8899]">
+        When attached, the extracted file text is the complete Samurai instruction. The typed task below is retained but not sent.
+      </p>
+    </div>
+  );
+}
+
+
 function NodeInspector({
   node,
   onUpdate,
@@ -1595,13 +1718,25 @@ function NodeInspector({
               </p>
             </div>
 
+            <SamuraiInstructionUpload
+              flowId={flowId}
+              value={config.instruction_file}
+              onChange={(value) => updateConfig('instruction_file', value)}
+            />
+
             <div className="space-y-1.5">
-              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Task Description</label>
+              <label className="flex items-center justify-between gap-2 text-[9px] font-bold uppercase tracking-widest text-[#7a8899]">
+                <span>Task Description</span>
+                {config.instruction_file?.path && (
+                  <span className="normal-case tracking-normal text-[#d4a017]">Replaced by file</span>
+                )}
+              </label>
               <textarea
                 value={config.task_description || ''}
                 onChange={(e) => updateConfig('task_description', e.target.value)}
+                disabled={Boolean(config.instruction_file?.path)}
                 rows={3}
-                className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#d4a017] transition-colors outline-none resize-y min-h-[60px]"
+                className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#d4a017] transition-colors outline-none resize-y min-h-[60px] disabled:cursor-not-allowed disabled:opacity-45"
                 placeholder="Describe what this Samurai should do..."
               />
             </div>

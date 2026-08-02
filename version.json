@@ -1,8 +1,8 @@
 {
-  "version": "1.47.56",
+  "version": "1.47.57",
   "name": "Shogun OS",
-  "build": 207,
+  "build": 208,
   "channel": "stable",
-  "released": "2026-08-01T19:58:37Z",
-  "changelog": "Add triggered File Template nodes and parallel Input fan-out to AgentFlow, update the AgentFlow Operator guidance, and show every Katana tab without horizontal scrolling."
+  "released": "2026-08-02T17:05:55Z",
+  "changelog": "Allow Samurai nodes to use uploaded PDF, Word, or Markdown instruction files as a complete replacement for the typed task prompt."
 }

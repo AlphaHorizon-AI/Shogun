@@ -210,6 +210,89 @@ async def test_samurai_node_receives_complete_predecessor_document(monkeypatch):
     assert "[...truncated...]" not in captured["context"]
 
 
+@pytest.mark.asyncio
+async def test_samurai_instruction_file_replaces_typed_prompt(tmp_path, monkeypatch):
+    upload_root = tmp_path / "uploads"
+    instruction = upload_root / "agent_flows" / uuid.uuid4().hex / "instruction.md"
+    instruction.parent.mkdir(parents=True)
+    instruction.write_text("Follow only these attached instructions.", encoding="utf-8")
+    monkeypatch.setattr(settings, "uploads_path", upload_root)
+
+    resolved = await flow_engine._resolve_samurai_task_description(
+        {
+            "task_description": "This typed prompt must not be used.",
+            "instruction_file": {
+                "filename": "operator-instructions.md",
+                "path": str(instruction),
+            },
+        }
+    )
+
+    assert resolved == "Follow only these attached instructions."
+    assert "typed prompt" not in resolved
+
+
+@pytest.mark.asyncio
+async def test_samurai_execution_resolves_instruction_before_dispatch(tmp_path, monkeypatch):
+    upload_root = tmp_path / "uploads"
+    instruction = upload_root / "agent_flows" / uuid.uuid4().hex / "instruction.md"
+    instruction.parent.mkdir(parents=True)
+    instruction.write_text("Attached Samurai task", encoding="utf-8")
+    monkeypatch.setattr(settings, "uploads_path", upload_root)
+
+    captured: dict[str, object] = {}
+
+    async def update_state(*_args, **_kwargs):
+        return None
+
+    async def execute_samurai(config, _context, _governance, **_kwargs):
+        captured["config"] = config
+        return "done"
+
+    monkeypatch.setattr(flow_engine, "_update_node_state", update_state)
+    monkeypatch.setattr(flow_engine, "_exec_samurai", execute_samurai)
+    monkeypatch.setattr(flow_engine, "_finalize_node_skills", update_state)
+    monkeypatch.setattr(flow_engine, "_node_uses_active_skill_context", lambda *_args: False)
+
+    node = SimpleNamespace(
+        id=uuid.uuid4(),
+        flow_id=uuid.uuid4(),
+        node_type="samurai",
+        label="Attached instructions",
+        config={
+            "task_description": "Old typed task",
+            "instruction_file": {
+                "filename": "instruction.md",
+                "path": str(instruction),
+            },
+        },
+    )
+
+    result = await flow_engine._execute_single_node(uuid.uuid4(), node, {}, {})
+
+    assert result == "done"
+    dispatched = captured["config"]
+    assert isinstance(dispatched, dict)
+    assert dispatched["task_description"] == "Attached Samurai task"
+    assert dispatched["_instruction_file_resolved"] is True
+
+
+@pytest.mark.asyncio
+async def test_samurai_instruction_file_cannot_read_outside_flow_uploads(tmp_path, monkeypatch):
+    upload_root = tmp_path / "uploads"
+    outside = tmp_path / "outside.md"
+    outside.write_text("must not be read", encoding="utf-8")
+    monkeypatch.setattr(settings, "uploads_path", upload_root)
+
+    with pytest.raises(ValueError, match="must be an AgentFlow upload"):
+        await flow_engine._resolve_samurai_task_description(
+            {
+                "task_description": "fallback",
+                "instruction_file": {"filename": outside.name, "path": str(outside)},
+            }
+        )
+
+
 def test_legacy_failure_sentinels_are_real_failures():
     with pytest.raises(RuntimeError, match="Office App Mode is disabled"):
         flow_engine._validated_node_result("[BLOCKED] Office App Mode is disabled")
