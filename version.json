@@ -1,8 +1,8 @@
 {
-  "version": "1.47.63",
+  "version": "1.47.64",
   "name": "Shogun OS",
-  "build": 214,
+  "build": 215,
   "channel": "stable",
-  "released": "2026-08-06T08:54:38Z",
-  "changelog": "Make upstream Excel templates automatically enforce structured Samurai matrix output without prompt-specific wording."
+  "released": "2026-08-06T09:00:08Z",
+  "changelog": "Brand the desktop app title as Shogun AFM and use the Shogun logo for its window icon."
 }
