@@ -524,7 +524,10 @@ async def _execute_single_node(
             # chunking and could otherwise overrun a single model request.
             if node_type in {"coding", "mado_browser"}:
                 output_text = _truncate(output_text, 4000)
-            labelled_output = f"[Output from '{pred_label}']:\n{output_text}"
+            if is_fixed_context:
+                labelled_output = f"[Reference-only template from '{pred_label}']:\n{output_text}"
+            else:
+                labelled_output = f"[Output from '{pred_label}']:\n{output_text}"
             context_parts.append(labelled_output)
             (fixed_context_parts if is_fixed_context else chunkable_context_parts).append(labelled_output)
     context_str = "\n\n".join(context_parts) if context_parts else ""
@@ -1343,6 +1346,12 @@ async def _exec_samurai(
 
     # Resolve agent persona
     agent_persona = "You are a Samurai agent executing a task in an automated workflow."
+    if "[POPULATED ONE-SHOT EXAMPLE]" in fixed_context_str:
+        agent_persona += (
+            " Populated file-template examples are reference-only demonstrations of structure and formatting."
+            " Never treat their records or values as factual input. Generate business data only from the"
+            " non-template runtime inputs supplied for this execution."
+        )
     async with async_session_factory() as session:
         from shogun.services.model_router import NoEligibleModelError, configured_max_input_tokens
 

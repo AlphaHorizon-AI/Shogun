@@ -1,8 +1,8 @@
 {
-  "version": "1.47.60",
+  "version": "1.47.61",
   "name": "Shogun OS",
-  "build": 211,
+  "build": 212,
   "channel": "stable",
-  "released": "2026-08-06T07:41:46Z",
-  "changelog": "Resolve high-severity dependency findings in the Tenshu and Gensui frontends and the Microsoft Teams bridge."
+  "released": "2026-08-06T08:10:43Z",
+  "changelog": "Keep one-shot templates reference-only and replace example rows with data extracted from runtime inputs."
 }

@@ -84,6 +84,9 @@ def format_template_guidance(payload: dict[str, Any]) -> str:
         f"Output handling: {payload.get('example_handling', 'replace')}",
         "Generate the requested content so it fits this exact template contract. Do not output the template itself.",
         "Return only the content/data that should be inserted into the new file.",
+        "Treat the template as a reference-only output contract, never as a factual data source.",
+        "Use non-template runtime inputs as the sole source of business records and values.",
+        "Do not copy populated template values unless the same value is independently present in the runtime input.",
         "",
         str(payload.get("contract") or ""),
     ]
@@ -100,7 +103,9 @@ def format_template_guidance(payload: dict[str, Any]) -> str:
             [
                 "",
                 "[POPULATED ONE-SHOT EXAMPLE]",
-                "Use the following existing content as a formatting example, not as factual input for the new result:",
+                "Use the following existing content only to learn layout, ordering, and formatting.",
+                "These example records are non-authoritative. Do not reproduce them unless they are "
+                "independently supported by the runtime input:",
                 str(payload["example"]),
             ]
         )
@@ -172,12 +177,15 @@ def render_excel_template(
             template_headers = [ws.cell(header_row, col).value for col in range(1, logical_width + 1)]
             rows = parse_excel_rows(content, template_headers=template_headers)
             if start_cell:
-                changed += _write_excel_rows_at(ws, rows, start_cell)
-            elif render_mode == "adaptive":
-                changed += _append_excel_rows(ws, rows)
+                changed += _write_excel_rows_at(
+                    ws,
+                    rows,
+                    start_cell,
+                    replace_existing=handling == "replace" and changed == 0,
+                )
             elif handling == "replace" and changed == 0:
                 changed += _replace_excel_example_rows(ws, rows)
-            elif handling == "append":
+            elif handling == "append" or render_mode == "adaptive":
                 changed += _append_excel_rows(ws, rows)
         wb.save(str(output))
         return changed
@@ -731,7 +739,12 @@ def _append_excel_rows(ws: Any, rows: list[list[Any]]) -> int:
     return changed
 
 
-def _write_excel_rows_at(ws: Any, rows: list[list[Any]], start_cell: str) -> int:
+def _write_excel_rows_at(
+    ws: Any,
+    rows: list[list[Any]],
+    start_cell: str,
+    replace_existing: bool = False,
+) -> int:
     if not rows:
         return 0
     from openpyxl.utils import coordinate_to_tuple, get_column_letter
@@ -744,6 +757,14 @@ def _write_excel_rows_at(ws: Any, rows: list[list[Any]], start_cell: str) -> int
         raise ValueError(f"Invalid template data start cell '{start_cell}'. Use a cell such as A4.") from exc
     width = max(len(row) for row in rows)
     end_column = start_column + width - 1
+    if replace_existing:
+        existing_end, logical_width = _excel_meaningful_bounds(ws)
+        clear_end_column = max(logical_width, end_column)
+        for row_index in range(start_row, existing_end + 1):
+            for column in range(start_column, clear_end_column + 1):
+                cell = ws.cell(row_index, column)
+                if not (isinstance(cell.value, str) and cell.value.startswith("=")):
+                    cell.value = None
     destination = (
         f"{get_column_letter(start_column)}{start_row}:"
         f"{get_column_letter(end_column)}{start_row + len(rows) - 1}"

@@ -75,7 +75,7 @@ def test_excel_manifest_and_adaptive_render_ignore_formatting_only_rows(tmp_path
         source,
         output,
         '[["Generated", "200", 2]]',
-        "replace",
+        "append",
         "Plan",
         render_mode="adaptive",
     )
@@ -114,7 +114,9 @@ def test_word_template_structure_and_one_shot_are_explicit(tmp_path):
     guidance = format_template_guidance(one_shot)
     assert "[POPULATED ONE-SHOT EXAMPLE]" in guidance
     assert "Example conclusion" in guidance
-    assert "not as factual input" in guidance
+    assert "example records are non-authoritative" in guidance
+    assert "reference-only output contract" in guidance
+    assert "sole source of business records" in guidance
 
 
 def test_word_template_render_creates_copy_and_replaces_json_placeholders(tmp_path):
@@ -204,6 +206,73 @@ def test_excel_one_shot_replace_preserves_template_and_styles(tmp_path):
         assert rendered["Orders"]["A2"].font.bold is True
     finally:
         original.close()
+        rendered.close()
+
+
+def test_excel_one_shot_replace_overrides_adaptive_placement(tmp_path):
+    source = tmp_path / "source.xlsx"
+    output = tmp_path / "Output" / "result.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Orders"
+    ws.append(["Item", "Quantity"])
+    ws.append(["EXAMPLE-A", 100])
+    ws.append(["EXAMPLE-B", 200])
+    wb.save(source)
+    wb.close()
+
+    changed = render_excel_template(
+        source,
+        output,
+        '[["SOURCE-A", 12]]',
+        "replace",
+        "Orders",
+        render_mode="adaptive",
+    )
+
+    assert changed == 2
+    rendered = openpyxl.load_workbook(output)
+    try:
+        assert rendered["Orders"]["A2"].value == "SOURCE-A"
+        assert rendered["Orders"]["B2"].value == 12
+        assert rendered["Orders"]["A3"].value is None
+        assert rendered["Orders"]["B3"].value is None
+    finally:
+        rendered.close()
+
+
+def test_excel_anchored_replace_clears_remaining_example_rows(tmp_path):
+    source = tmp_path / "source.xlsx"
+    output = tmp_path / "Output" / "result.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Orders"
+    ws.append(["Report title", None])
+    ws.append(["Item", "Quantity"])
+    ws.append([None, None])
+    ws.append(["EXAMPLE-A", 100])
+    ws.append(["EXAMPLE-B", 200])
+    wb.save(source)
+    wb.close()
+
+    changed = render_excel_template(
+        source,
+        output,
+        '[["SOURCE-A", 12]]',
+        "replace",
+        "Orders",
+        start_cell="A4",
+        render_mode="adaptive",
+    )
+
+    assert changed == 2
+    rendered = openpyxl.load_workbook(output)
+    try:
+        assert rendered["Orders"]["A4"].value == "SOURCE-A"
+        assert rendered["Orders"]["B4"].value == 12
+        assert rendered["Orders"]["A5"].value is None
+        assert rendered["Orders"]["B5"].value is None
+    finally:
         rendered.close()
 
 
