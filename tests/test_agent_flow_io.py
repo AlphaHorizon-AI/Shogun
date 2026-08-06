@@ -571,6 +571,39 @@ def test_structured_chunk_matrix_rejects_markdown_summary():
         )
 
 
+def test_excel_template_contract_enforces_matrix_without_prompt_wording():
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+"""
+
+    merged = flow_engine._merge_structured_chunk_matrices(
+        ['[["A", 1], ["B", 2]]'],
+        "Extract all relevant records from the source document.",
+        fixed_context,
+        {},
+    )
+
+    assert __import__("json").loads(merged) == [["A", 1], ["B", 2]]
+
+
+def test_excel_template_contract_rejects_summary_without_prompt_wording():
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+"""
+
+    with pytest.raises(ValueError, match="two-dimensional JSON array"):
+        flow_engine._merge_structured_chunk_matrices(
+            ["| Item | Quantity |\n| --- | --- |\n| A | 1 |"],
+            "Extract all relevant records from the source document.",
+            fixed_context,
+            {},
+        )
+
+
 def test_model_context_splitting_preserves_source_units():
     text = "prefix\n" + "".join(
         f"--- Page {index} ---\n" + (str(index) * 700) + "\n"

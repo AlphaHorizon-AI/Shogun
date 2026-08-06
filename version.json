@@ -1,8 +1,8 @@
 {
-  "version": "1.47.62",
+  "version": "1.47.63",
   "name": "Shogun OS",
-  "build": 213,
+  "build": 214,
   "channel": "stable",
-  "released": "2026-08-06T08:30:41Z",
-  "changelog": "Enforce structured Excel extraction contracts, chunk large matrix jobs reliably, and preserve multi-row template headers."
+  "released": "2026-08-06T08:54:38Z",
+  "changelog": "Make upstream Excel templates automatically enforce structured Samurai matrix output without prompt-specific wording."
 }

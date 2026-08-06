@@ -1469,9 +1469,10 @@ async def _exec_samurai(
         context_window = int((_routing or {}).get("selected_context_window") or 8192)
         max_input_tokens = max(1024, context_window - int(max_output_tokens or 2048))
 
-    contract_text = f"{task_description}\n{config.get('expected_output', '')}"
-    requires_matrix_output = bool(
-        re.search(r"two[- ]dimensional array|2d array|array of arrays", contract_text, re.IGNORECASE)
+    requires_matrix_output = _requires_structured_matrix_output(
+        task_description,
+        str(config.get("expected_output") or ""),
+        fixed_context_str,
     )
     primary_chain_item = model_chain[0]
     primary_provider = (
@@ -1493,6 +1494,19 @@ async def _exec_samurai(
             fixed_message += f"\n\n--- FIXED TEMPLATE AND WORKFLOW CONTEXT ---\n{fixed_context_str}"
         if expected_output:
             fixed_message += f"\n\n--- EXPECTED OUTPUT FORMAT ---\n{expected_output}"
+        if requires_matrix_output:
+            width_match = re.search(r'"logical_columns"\s*:\s*(\d+)', fixed_context_str)
+            width_rule = (
+                f" Every row must contain exactly {width_match.group(1)} values."
+                if width_match
+                else " Every row must match the Excel template's complete column count."
+            )
+            fixed_message += (
+                "\n\n--- RUNTIME EXCEL OUTPUT CONTRACT ---\n"
+                "Return only one valid JSON two-dimensional array. Each inner array is one Excel row;"
+                f" each value is one cell.{width_rule} Do not return Markdown, headings, commentary,"
+                " summaries, objects, or code fences."
+            )
         fixed_tokens = max(1, len(fixed_message) // 4) + 256
         chunk_token_budget = max_input_tokens - fixed_tokens
         if chunk_token_budget < 512:
@@ -1737,8 +1751,11 @@ def _merge_structured_chunk_matrices(
     config: dict[str, Any],
 ) -> str | None:
     """Combine independently generated 2D-array chunks into one validated matrix."""
-    contract_text = f"{task_description}\n{config.get('expected_output', '')}"
-    if not re.search(r"two[- ]dimensional array|2d array|array of arrays", contract_text, re.IGNORECASE):
+    if not _requires_structured_matrix_output(
+        task_description,
+        str(config.get("expected_output") or ""),
+        fixed_context,
+    ):
         return None
 
     from shogun.services.file_template import parse_excel_rows
@@ -1780,6 +1797,23 @@ def _merge_structured_chunk_matrices(
         deduplicate,
     )
     return json.dumps(rows, ensure_ascii=False, default=str)
+
+
+def _requires_structured_matrix_output(
+    task_description: str,
+    expected_output: str,
+    fixed_context: str,
+) -> bool:
+    """Require a row matrix for explicit contracts or upstream Excel templates."""
+    contract_text = f"{task_description}\n{expected_output}"
+    if re.search(r"two[- ]dimensional array|2d array|array of arrays", contract_text, re.IGNORECASE):
+        return True
+    if "[FILE TEMPLATE CONTRACT]" not in fixed_context:
+        return False
+    return bool(
+        re.search(r"^Format:\s*xlsx\s*$", fixed_context, re.IGNORECASE | re.MULTILINE)
+        or re.search(r'"kind"\s*:\s*"excel"', fixed_context, re.IGNORECASE)
+    )
 
 
 _SAMURAI_NATIVE_READ_TOOLS = ("fetch_inbox", "list_calendar_events")
