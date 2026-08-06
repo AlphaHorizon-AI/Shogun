@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../lib/routerCompat';
 import { 
   Mail, RefreshCw, Send, Trash2, Plus, 
   ChevronLeft, ChevronRight, AlertCircle, ShieldAlert, 

@@ -22,7 +22,7 @@ import {
   Zap,
 } from 'lucide-react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../lib/routerCompat';
 import { HarakiriModal } from '../components/HarakiriModal';
 import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';

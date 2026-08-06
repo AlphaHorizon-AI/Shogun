@@ -23,7 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../lib/routerCompat';
 import { cn } from '../lib/utils';
 
 type GateAction = 'allow' | 'confirm' | 'block';

@@ -49,7 +49,7 @@ import {
   Users,
 } from "lucide-react";
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../lib/routerCompat';
 import { cn } from '../lib/utils';
 import { setSafeObjectPath } from '../lib/safeObjectPath';
 import { useTranslation } from '../i18n';

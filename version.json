@@ -1,8 +1,8 @@
 {
-  "version": "1.47.66",
+  "version": "1.47.67",
   "name": "Shogun OS",
-  "build": 217,
+  "build": 218,
   "channel": "stable",
-  "released": "2026-08-06T11:57:00Z",
-  "changelog": "Clarify custom model routing with ordered primary and fallback models plus per-model temperature controls."
+  "released": "2026-08-06T12:05:45Z",
+  "changelog": "Resolve React Router security advisories in Shogun and Gensui while preserving existing navigation behavior."
 }

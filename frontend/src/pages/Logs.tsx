@@ -5,7 +5,7 @@ import {
   Zap, Link2, CheckCircle2, XCircle, X, Scale, Eye, AlertOctagon
 } from "lucide-react";
 import axios from 'axios';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from '../lib/routerCompat';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
 

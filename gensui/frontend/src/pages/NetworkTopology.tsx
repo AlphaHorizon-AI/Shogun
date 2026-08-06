@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../lib/routerCompat';
 import { Network, Radar, AlertTriangle, HelpCircle, Loader2, Shield, Maximize2, ZoomIn, ZoomOut, Globe } from 'lucide-react';
 import api from '../lib/api';
 import { useTranslation } from '../i18n';

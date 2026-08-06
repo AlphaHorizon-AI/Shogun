@@ -77,7 +77,7 @@ import {
   Hash,
 } from 'lucide-react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../lib/routerCompat';
 import { cn } from '../lib/utils';
 import { logSamuraiDiagnostic } from '../lib/samuraiDiagnostics';
 import { useTemplateCatalog } from '../i18n/templateCatalog';

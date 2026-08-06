@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../lib/routerCompat';
 import axios from 'axios';
 import { Eye, EyeOff } from 'lucide-react';
 import api from '../lib/api';

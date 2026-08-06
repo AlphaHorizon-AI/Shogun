@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../lib/routerCompat';
 import { 
   Calendar, ChevronLeft, ChevronRight, Plus, Trash2, Edit3, 
   Clock, MapPin, X, RefreshCw, ShieldAlert, AlertCircle, Settings

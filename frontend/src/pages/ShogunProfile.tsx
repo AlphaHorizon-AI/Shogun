@@ -23,7 +23,8 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import axios from 'axios';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import { useNavigate } from '../lib/routerCompat';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
 

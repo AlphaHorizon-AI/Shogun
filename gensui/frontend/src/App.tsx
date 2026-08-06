@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Switch, Route, Redirect } from 'react-router-dom';
 import { I18nProvider } from './i18n';
 import { isAuthenticated } from './lib/auth';
 import Layout from './components/layout/Layout';
@@ -20,42 +20,34 @@ import FleetAudit from './pages/FleetAudit';
 import Identity from './pages/Identity';
 import ToolGate from './pages/ToolGate';
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  return isAuthenticated() ? <>{children}</> : <Navigate to="/login" replace />;
+function ProtectedPage({ children }: { children: React.ReactNode }) {
+  return isAuthenticated() ? <Layout>{children}</Layout> : <Redirect to="/login" />;
 }
 
 export default function App() {
   return (
     <I18nProvider>
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Dashboard />} />
-          <Route path="fleet" element={<Fleet />} />
-          <Route path="fleet/:id" element={<ShogunDetail />} />
-          <Route path="network" element={<NetworkTopology />} />
-          <Route path="groups" element={<Groups />} />
-          <Route path="postures" element={<Postures />} />
-          <Route path="toolgate" element={<ToolGate />} />
-          <Route path="harakiri" element={<HarakiriControl />} />
-          <Route path="activity" element={<ActivityMonitor />} />
-          <Route path="audit" element={<AuditLog />} />
-          <Route path="alerts" element={<Alerts />} />
-          <Route path="enrollment" element={<Enrollment />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="guide" element={<Guide />} />
-          <Route path="fleet-audit" element={<FleetAudit />} />
-          <Route path="identity" element={<Identity />} />
-        </Route>
-      </Routes>
+      <Switch>
+        <Route path="/login" render={() => <Login />} />
+        <Route exact path="/" render={() => <ProtectedPage><Dashboard /></ProtectedPage>} />
+        <Route exact path="/fleet" render={() => <ProtectedPage><Fleet /></ProtectedPage>} />
+        <Route path="/fleet/:id" render={() => <ProtectedPage><ShogunDetail /></ProtectedPage>} />
+        <Route path="/network" render={() => <ProtectedPage><NetworkTopology /></ProtectedPage>} />
+        <Route path="/groups" render={() => <ProtectedPage><Groups /></ProtectedPage>} />
+        <Route path="/postures" render={() => <ProtectedPage><Postures /></ProtectedPage>} />
+        <Route path="/toolgate" render={() => <ProtectedPage><ToolGate /></ProtectedPage>} />
+        <Route path="/harakiri" render={() => <ProtectedPage><HarakiriControl /></ProtectedPage>} />
+        <Route path="/activity" render={() => <ProtectedPage><ActivityMonitor /></ProtectedPage>} />
+        <Route path="/audit" render={() => <ProtectedPage><AuditLog /></ProtectedPage>} />
+        <Route path="/alerts" render={() => <ProtectedPage><Alerts /></ProtectedPage>} />
+        <Route path="/enrollment" render={() => <ProtectedPage><Enrollment /></ProtectedPage>} />
+        <Route path="/settings" render={() => <ProtectedPage><Settings /></ProtectedPage>} />
+        <Route path="/guide" render={() => <ProtectedPage><Guide /></ProtectedPage>} />
+        <Route path="/fleet-audit" render={() => <ProtectedPage><FleetAudit /></ProtectedPage>} />
+        <Route path="/identity" render={() => <ProtectedPage><Identity /></ProtectedPage>} />
+        <Route render={() => <Redirect to="/" />} />
+      </Switch>
     </BrowserRouter>
     </I18nProvider>
   );
