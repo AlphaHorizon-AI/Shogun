@@ -1,8 +1,8 @@
 {
-  "version": "1.47.59",
+  "version": "1.47.60",
   "name": "Shogun OS",
-  "build": 210,
+  "build": 211,
   "channel": "stable",
-  "released": "2026-08-06T07:20:58Z",
-  "changelog": "Keep individual AgentFlow duplicate and delete actions visible and accessible across remote-control and touch-like pointer environments."
+  "released": "2026-08-06T07:41:46Z",
+  "changelog": "Resolve high-severity dependency findings in the Tenshu and Gensui frontends and the Microsoft Teams bridge."
 }
