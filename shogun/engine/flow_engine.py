@@ -40,6 +40,11 @@ from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_router import ModelRegistryEntry
 from shogun.db.models.model_routing import ModelRoutingProfile
 from shogun.services.provider_credentials import provider_api_key
+from shogun.services.tool_calling_profiles import (
+    infer_tool_calling_profile,
+    normalize_native_tool_calls,
+    normalize_text_tool_calls,
+)
 
 log = logging.getLogger("shogun.flow_engine")
 
@@ -1474,6 +1479,14 @@ async def _exec_samurai(
         str(config.get("expected_output") or ""),
         fixed_context_str,
     )
+    matrix_width_match = re.search(r'"logical_columns"\s*:\s*(\d+)', fixed_context_str)
+    if not matrix_width_match:
+        matrix_width_match = re.search(
+            r"exactly\s+(\d+)\s+values",
+            f"{task_description}\n{expected_output}",
+            re.IGNORECASE,
+        )
+    expected_matrix_width = int(matrix_width_match.group(1)) if matrix_width_match else None
     primary_chain_item = model_chain[0]
     primary_provider = (
         primary_chain_item[0]
@@ -1483,7 +1496,7 @@ async def _exec_samurai(
     is_local_model = bool(getattr(primary_provider, "is_local", False)) or getattr(
         primary_provider, "provider_type", ""
     ) in {"ollama", "lmstudio", "local"}
-    practical_matrix_tokens = min(max_input_tokens, 4096 if is_local_model else 16_384)
+    practical_matrix_tokens = min(max_input_tokens, 2048 if is_local_model else 16_384)
     matrix_chunk_required = bool(
         requires_matrix_output and context_str and len(context_str) // 4 > practical_matrix_tokens
     )
@@ -1495,10 +1508,9 @@ async def _exec_samurai(
         if expected_output:
             fixed_message += f"\n\n--- EXPECTED OUTPUT FORMAT ---\n{expected_output}"
         if requires_matrix_output:
-            width_match = re.search(r'"logical_columns"\s*:\s*(\d+)', fixed_context_str)
             width_rule = (
-                f" Every row must contain exactly {width_match.group(1)} values."
-                if width_match
+                f" Every row must contain exactly {expected_matrix_width} values."
+                if expected_matrix_width is not None
                 else " Every row must match the Excel template's complete column count."
             )
             fixed_message += (
@@ -1519,20 +1531,29 @@ async def _exec_samurai(
         # chunks so a 12B model is less likely to spend the entire node timeout
         # on one request. Timed-out chunks are bisected again below.
         if is_local_model:
-            chunk_token_budget = min(chunk_token_budget, 4096)
+            chunk_token_budget = min(chunk_token_budget, 2048 if requires_matrix_output else 4096)
+        chunk_max_output_tokens = max_output_tokens
+        if is_local_model and requires_matrix_output:
+            chunk_max_output_tokens = min(int(max_output_tokens or 8192), 8192)
         requested_local_chunk_timeout = int(config.get("local_chunk_timeout") or 600)
         local_chunk_timeout = max(60, min(requested_local_chunk_timeout, 1800))
         chunk_call_timeout = max(timeout, local_chunk_timeout) if is_local_model else timeout
         chunks = _split_model_context(context_str, chunk_token_budget * 4)
         total_characters = max(1, sum(len(chunk) for chunk in chunks))
         completed_characters = 0
+        initial_progress_characters = max(1, (total_characters + 99) // 100)
         outputs: list[str] = []
 
         async def report_progress(completed: int) -> None:
             if not progress_callback:
                 return
             try:
-                await progress_callback(completed, total_characters)
+                visible_completed = (
+                    total_characters
+                    if completed >= total_characters
+                    else max(completed, initial_progress_characters)
+                )
+                await progress_callback(visible_completed, total_characters)
             except Exception as exc:
                 log.warning("Could not persist AgentFlow node progress: %s", exc)
 
@@ -1552,18 +1573,32 @@ async def _exec_samurai(
                     + json.dumps(native_read_context, default=str, ensure_ascii=False)
                 )
             try:
-                output = await _call_llm_chain(
-                    [
-                        {"role": "system", "content": agent_persona},
-                        {"role": "user", "content": chunk_message},
-                    ],
-                    model_chain,
-                    timeout=chunk_call_timeout,
-                    retry_count=retry_count,
-                    context=f"AgentFlow Samurai node {label.lower()}",
-                    max_tokens=max_output_tokens,
-                    routing_context=_routing,
-                )
+                messages = [
+                    {"role": "system", "content": agent_persona},
+                    {"role": "user", "content": chunk_message},
+                ]
+                if requires_matrix_output:
+                    rows = await _call_llm_chain_rows(
+                        messages,
+                        model_chain,
+                        timeout=chunk_call_timeout,
+                        retry_count=max(1, retry_count),
+                        context=f"AgentFlow Samurai node {label.lower()}",
+                        expected_width=expected_matrix_width,
+                        max_tokens=chunk_max_output_tokens,
+                        routing_context=_routing,
+                    )
+                    output = json.dumps(rows, ensure_ascii=False, default=str)
+                else:
+                    output = await _call_llm_chain(
+                        messages,
+                        model_chain,
+                        timeout=chunk_call_timeout,
+                        retry_count=retry_count,
+                        context=f"AgentFlow Samurai node {label.lower()}",
+                        max_tokens=chunk_max_output_tokens,
+                        routing_context=_routing,
+                    )
                 completed_characters = min(total_characters, completed_characters + len(chunk))
                 await report_progress(completed_characters)
                 return [output]
@@ -1609,18 +1644,32 @@ async def _exec_samurai(
             return merged
         return "\n".join(outputs)
 
-    output = await _call_llm_chain(
-        [
-            {"role": "system", "content": agent_persona},
-            {"role": "user", "content": user_message},
-        ],
-        model_chain,
-        timeout=timeout,
-        retry_count=retry_count,
-        context="AgentFlow Samurai node",
-        max_tokens=max_output_tokens,
-        routing_context=_routing,
-    )
+    messages = [
+        {"role": "system", "content": agent_persona},
+        {"role": "user", "content": user_message},
+    ]
+    if requires_matrix_output:
+        rows = await _call_llm_chain_rows(
+            messages,
+            model_chain,
+            timeout=timeout,
+            retry_count=max(1, retry_count),
+            context="AgentFlow Samurai node",
+            expected_width=expected_matrix_width,
+            max_tokens=max_output_tokens,
+            routing_context=_routing,
+        )
+        output = json.dumps(rows, ensure_ascii=False, default=str)
+    else:
+        output = await _call_llm_chain(
+            messages,
+            model_chain,
+            timeout=timeout,
+            retry_count=retry_count,
+            context="AgentFlow Samurai node",
+            max_tokens=max_output_tokens,
+            routing_context=_routing,
+        )
     merged = _merge_structured_chunk_matrices([output], task_description, fixed_context_str, config)
     return merged if merged is not None else output
 
@@ -1760,6 +1809,7 @@ def _merge_structured_chunk_matrices(
 
     from shogun.services.file_template import parse_excel_rows
 
+    contract_text = f"{task_description}\n{config.get('expected_output') or ''}\n{fixed_context}"
     width_match = re.search(r'"logical_columns"\s*:\s*(\d+)', fixed_context)
     if not width_match:
         width_match = re.search(r"exactly\s+(\d+)\s+values", contract_text, re.IGNORECASE)
@@ -3419,6 +3469,290 @@ async def _call_llm(
             raise ValueError("LLM returned empty content")
 
         return content
+
+
+_AGENTFLOW_ROWS_TOOL_NAME = "agentflow_submit_rows"
+
+
+def _agentflow_rows_tool(expected_width: int | None) -> dict[str, Any]:
+    width_text = (
+        f" Each row must contain exactly {expected_width} cell values."
+        if expected_width is not None
+        else " Each row must contain one value per destination column."
+    )
+    return {
+        "type": "function",
+        "function": {
+            "name": _AGENTFLOW_ROWS_TOOL_NAME,
+            "description": (
+                "Submit every extracted spreadsheet row from the current document chunk."
+                + width_text
+                + " This operation cannot access files or choose an output path."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rows": {
+                        "type": "array",
+                        "description": "Two-dimensional array: outer items are rows, inner items are cell values.",
+                        "items": {"type": "array", "items": {}},
+                    }
+                },
+                "required": ["rows"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def _validate_agentflow_rows(arguments: dict[str, Any], expected_width: int | None) -> list[list[Any]]:
+    rows = arguments.get("rows")
+    if not isinstance(rows, list):
+        raise ValueError("agentflow_submit_rows requires a rows array")
+    validated: list[list[Any]] = []
+    invalid: list[tuple[int, int]] = []
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, list):
+            raise ValueError(f"agentflow_submit_rows row {index} is not an array")
+        if expected_width is not None and len(row) != expected_width:
+            invalid.append((index, len(row)))
+        validated.append(row)
+    if invalid:
+        detail = ", ".join(f"row {row} has {width}" for row, width in invalid[:6])
+        raise ValueError(
+            f"agentflow_submit_rows requires exactly {expected_width} values per row; {detail}"
+        )
+    return validated
+
+
+def _text_tool_messages(messages: list[dict], expected_width: int | None) -> list[dict]:
+    width_rule = (
+        f"Every inner array MUST contain exactly {expected_width} values."
+        if expected_width is not None
+        else "Every inner array must contain one value per destination column."
+    )
+    protocol = (
+        "\n\n--- SHOGUN STRUCTURED TOOL PROTOCOL ---\n"
+        "Do not answer with prose or Markdown. Submit the extracted rows by returning exactly:\n"
+        '<tool_call>{"tool":"agentflow_submit_rows","arguments":{"rows":[["cell 1","cell 2"]]}}</tool_call>\n'
+        f"{width_rule} Include every relevant record in this chunk. Use an empty rows array only when "
+        "the chunk contains no relevant records."
+    )
+    prepared = [dict(message) for message in messages]
+    if prepared and prepared[-1].get("role") == "user":
+        prepared[-1]["content"] = str(prepared[-1].get("content") or "") + protocol
+    else:
+        prepared.append({"role": "user", "content": protocol})
+    return prepared
+
+
+async def _call_llm_rows(
+    messages: list[dict],
+    model_name: str,
+    base_url: str,
+    headers: dict,
+    *,
+    profile: dict[str, Any],
+    expected_width: int | None,
+    timeout: int,
+    max_tokens: int | None,
+    temperature: float,
+    seed: int | None,
+) -> tuple[list[list[Any]], str, str]:
+    """Request rows through the model's persisted tool transport.
+
+    The operation is deliberately an internal structured-output sink. It does
+    not grant filesystem or Office authority; those remain separate governed
+    AgentFlow nodes.
+    """
+    mode = str(profile.get("mode") or "text")
+    request_messages = messages if mode == "native" else _text_tool_messages(messages, expected_width)
+    payload: dict[str, Any] = {
+        "model": model_name,
+        "messages": request_messages,
+        "stream": False,
+        "temperature": temperature,
+    }
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
+    if seed is not None:
+        payload["seed"] = seed
+    if mode == "native":
+        payload["tools"] = [_agentflow_rows_tool(expected_width)]
+        payload["tool_choice"] = {
+            "type": "function",
+            "function": {"name": _AGENTFLOW_ROWS_TOOL_NAME},
+        }
+
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    async with httpx.AsyncClient(timeout=float(timeout)) as client:
+        response = await client.post(url, headers=headers, json=payload)
+    if response.status_code >= 400 and mode == "native" and "tool_choice" in payload:
+        # Some OpenAI-compatible servers implement native tools but not forced
+        # function choice. A second native attempt distinguishes that case
+        # from models that do not support the tools field at all.
+        payload.pop("tool_choice", None)
+        async with httpx.AsyncClient(timeout=float(timeout)) as client:
+            response = await client.post(url, headers=headers, json=payload)
+    if response.status_code >= 400:
+        # A model/provider may claim native support while rejecting the tools
+        # field. Retry the same bounded operation through Shogun's text adapter.
+        if mode == "native" and bool(profile.get("fallback_enabled", True)):
+            fallback = dict(profile)
+            fallback["mode"] = "text"
+            fallback["adapter_id"] = "shogun_text_v1"
+            return await _call_llm_rows(
+                messages,
+                model_name,
+                base_url,
+                headers,
+                profile=fallback,
+                expected_width=expected_width,
+                timeout=timeout,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                seed=seed,
+            )
+        raise ValueError(f"LLM API error {response.status_code}: {response.text[:500]}")
+
+    data = response.json()
+    calls = normalize_native_tool_calls(data) if mode == "native" else []
+    choices = data.get("choices") or []
+    message = choices[0].get("message", {}) if choices else data.get("message", {})
+    content = message.get("content", "") if isinstance(message, dict) else ""
+    if isinstance(content, list):
+        content = "\n".join(
+            str(part.get("text") or "") for part in content if isinstance(part, dict)
+        )
+    if not calls:
+        calls = normalize_text_tool_calls(str(content or ""), {_AGENTFLOW_ROWS_TOOL_NAME})
+    call = next((item for item in calls if item.get("tool") == _AGENTFLOW_ROWS_TOOL_NAME), None)
+    if not call:
+        # Backward-compatible final fallback for models that follow the row
+        # contract but omit the canonical tool wrapper. The strict parser and
+        # width validator still convert textual JSON into governed values
+        # before Office receives anything.
+        try:
+            from shogun.services.file_template import parse_excel_rows
+
+            parsed_rows = parse_excel_rows(str(content or ""), require_structured_json=True)
+            rows = _validate_agentflow_rows({"rows": parsed_rows}, expected_width)
+            return rows, json.dumps(rows, ensure_ascii=False, default=str), mode
+        except Exception as parse_error:
+            raise ValueError(
+                "The model did not submit rows through agentflow_submit_rows or valid JSON rows"
+            ) from parse_error
+    rows = _validate_agentflow_rows(call.get("arguments") or {}, expected_width)
+    return rows, json.dumps(rows, ensure_ascii=False, default=str), mode
+
+
+async def _call_llm_chain_rows(
+    messages: list[dict],
+    model_chain: list[tuple[ModelProvider, str, str, dict]],
+    *,
+    timeout: int,
+    retry_count: int,
+    context: str,
+    expected_width: int | None,
+    max_tokens: int | None,
+    routing_context: dict[str, Any] | None,
+) -> list[list[Any]]:
+    """Call routed models until one returns a validated canonical row matrix."""
+    last_error: Exception | None = None
+    last_provider: ModelProvider | None = None
+    last_model = "unknown-model"
+    input_characters = len(json.dumps(messages, ensure_ascii=False, default=str))
+    profiles = (routing_context or {}).get("tool_calling_profiles") or {}
+    registry_ids = (routing_context or {}).get("tool_calling_registry_ids") or {}
+    for provider, model_name, base_url, headers in model_chain:
+        last_provider = provider
+        last_model = model_name
+        route_key = f"{getattr(provider, 'id', '')}:{model_name}"
+        profile = profiles.get(route_key) or infer_tool_calling_profile(
+            model_name,
+            str(getattr(provider, "provider_type", "")),
+        )
+        parameters = ((routing_context or {}).get("request_parameters") or {}).get(route_key) or {}
+        temperature = max(0.0, min(2.0, float(parameters.get("temperature", 0.1))))
+        configured_seed = (routing_context or {}).get("flow_seed")
+        seed = int(configured_seed) if configured_seed is not None else None
+        for attempt in range(1 + retry_count):
+            started = time.perf_counter()
+            try:
+                rows, usage_output, used_mode = await _call_llm_rows(
+                    messages,
+                    model_name,
+                    base_url,
+                    headers,
+                    profile=profile,
+                    expected_width=expected_width,
+                    timeout=timeout,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    seed=seed,
+                )
+                await _record_model_usage(
+                    provider,
+                    model_name,
+                    messages,
+                    usage_output,
+                    time.perf_counter() - started,
+                    routing_context,
+                    None,
+                    success=True,
+                )
+                if profile.get("mode") == "native" and used_mode == "text" and registry_ids.get(route_key):
+                    try:
+                        from shogun.services.model_router import ModelRegistryService
+
+                        async with async_session_factory() as repair_session:
+                            item = await repair_session.get(
+                                ModelRegistryEntry,
+                                uuid.UUID(str(registry_ids[route_key])),
+                            )
+                            if item:
+                                await ModelRegistryService(repair_session).mark_tool_calling_fallback(
+                                    item,
+                                    "Native AgentFlow tool request was rejected; Shogun text adapter succeeded.",
+                                )
+                                await repair_session.commit()
+                    except Exception as repair_error:
+                        log.warning("Could not persist AgentFlow tool-profile fallback: %s", repair_error)
+                return rows
+            except Exception as exc:
+                last_error = exc
+                await _record_model_usage(
+                    provider,
+                    model_name,
+                    messages,
+                    "",
+                    time.perf_counter() - started,
+                    routing_context,
+                    None,
+                    success=False,
+                    error=str(exc),
+                )
+                log.warning(
+                    "%s structured tool call failed for %s (attempt %d/%d): %s",
+                    context,
+                    model_name,
+                    attempt + 1,
+                    1 + retry_count,
+                    exc,
+                )
+                if attempt < retry_count:
+                    await asyncio.sleep(2**attempt)
+    if last_error is None:
+        raise ValueError(f"{context} failed without a model response")
+    provider_name = getattr(last_provider, "name", None) or "unknown-provider"
+    raise ModelCallError(
+        context=context,
+        provider=str(provider_name),
+        model=last_model,
+        timeout=timeout,
+        cause=last_error,
+        input_characters=input_characters,
+    ) from last_error
 
 
 async def _call_llm_chain(

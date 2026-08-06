@@ -1,8 +1,8 @@
 {
-  "version": "1.47.64",
+  "version": "1.47.65",
   "name": "Shogun OS",
-  "build": 215,
+  "build": 216,
   "channel": "stable",
-  "released": "2026-08-06T09:00:08Z",
-  "changelog": "Brand the desktop app title as Shogun AFM and use the Shogun logo for its window icon."
+  "released": "2026-08-06T11:35:47Z",
+  "changelog": "Add model-specific tool-calling profiles with native AgentFlow structured-output support and governed fallback."
 }

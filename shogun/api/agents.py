@@ -1518,6 +1518,8 @@ async def _shogun_chat_internal(
         _search_model: str | None = None
         provider_name: str | None = None
         res_reason = "primary_agent_model"
+        _tool_calling_profile: dict[str, Any] | None = None
+        _selected_registry_id: str | None = None
 
         async for db in get_db():
             # Prefer the governed task-aware router. Keep the legacy selection
@@ -1539,6 +1541,9 @@ async def _shogun_chat_internal(
                     provider_name = route.selected.display_name
                     _search_model = model_name
                     _model_supports_tools = bool((route.selected.capabilities or {}).get("tool_use"))
+                    from shogun.services.tool_calling_profiles import stored_or_inferred_profile
+                    _tool_calling_profile = stored_or_inferred_profile(route.selected)
+                    _selected_registry_id = str(route.selected.id)
                     res_reason = route.payload["reason"]
                     _temperature = max(
                         0.0,
@@ -1702,6 +1707,26 @@ async def _shogun_chat_internal(
                 logger.info(f"[Shogun] Model '{model_name}' overridden to NO tool support (known non-tool-calling model)")
 
         logger.info(f"[Shogun] Model tool support: {_model_supports_tools} (provider: {provider.provider_type if provider else 'none'})")
+
+        # Katana's persisted per-model adapter is authoritative over the
+        # legacy provider heuristic above. Old installations receive a
+        # deterministic profile and Shogun text fallback immediately.
+        if _tool_calling_profile is None:
+            from shogun.services.tool_calling_profiles import infer_tool_calling_profile
+            _tool_calling_profile = infer_tool_calling_profile(
+                model_name or "",
+                provider.provider_type if provider else "",
+                tool_capability=_model_supports_tools,
+            )
+        _model_supports_tools = _tool_calling_profile.get("mode") == "native"
+        logger.info(
+            "[Shogun] Tool-calling profile: adapter=%s mode=%s status=%s source=%s model=%s",
+            _tool_calling_profile.get("adapter_id"),
+            _tool_calling_profile.get("mode"),
+            _tool_calling_profile.get("status"),
+            _tool_calling_profile.get("source"),
+            model_name,
+        )
 
         # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ EVENT: Model Selected ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
         try:
@@ -2406,6 +2431,26 @@ BEHAVIOUR:
                                 _tool_retry_used = True
                                 _retry_without_tools = True
                                 _model_supports_tools = False
+                                if _selected_registry_id:
+                                    try:
+                                        from shogun.db.models.model_router import ModelRegistryEntry
+                                        from shogun.services.model_router import ModelRegistryService
+                                        async for _repair_db in get_db():
+                                            _registry_item = await _repair_db.get(
+                                                ModelRegistryEntry,
+                                                uuid.UUID(_selected_registry_id),
+                                            )
+                                            if _registry_item:
+                                                _tool_calling_profile = await ModelRegistryService(
+                                                    _repair_db
+                                                ).mark_tool_calling_fallback(_registry_item, err)
+                                                await _repair_db.commit()
+                                            break
+                                    except Exception as _profile_exc:
+                                        logger.warning(
+                                            "Could not persist runtime tool-profile fallback: %s",
+                                            _profile_exc,
+                                        )
                                 # Strip any tool-related messages so the model gets a clean conversation
                                 messages = [m for m in messages if m.get("role") not in ("tool",) and "tool_calls" not in m]
 

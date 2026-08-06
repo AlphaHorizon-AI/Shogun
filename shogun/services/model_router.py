@@ -21,6 +21,14 @@ from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_router import ModelRegistryEntry, ModelRoutingDecision, ModelUsageEvent
 from shogun.db.models.model_routing import ModelRoutingProfile
 from shogun.schemas.model_router import ModelRouteRequest, ModelUsageCreate
+from shogun.services.provider_credentials import provider_api_key
+from shogun.services.tool_calling_profiles import (
+    PROFILE_KEY,
+    infer_tool_calling_profile,
+    persist_profile,
+    probe_tool_calling_profile,
+    stored_or_inferred_profile,
+)
 
 log = logging.getLogger(__name__)
 
@@ -443,6 +451,55 @@ class ModelRegistryService:
             log.debug("Ollama context discovery unavailable for %s: %s", provider.name, exc)
         return discovered
 
+    async def _discover_tool_profiles(
+        self,
+        provider: ModelProvider,
+        model_names: list[str],
+    ) -> dict[str, dict[str, Any]]:
+        """Passively detect each model's wire format without invoking inference."""
+        if provider.provider_type != "ollama" or provider.status != "connected":
+            return {
+                model_id: infer_tool_calling_profile(model_id, provider.provider_type)
+                for model_id in model_names
+            }
+
+        root = self._ollama_root(provider)
+        discovered: dict[str, dict[str, Any]] = {}
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                for model_id in model_names:
+                    response = await client.post(f"{root}/api/show", json={"model": model_id})
+                    metadata = response.json() if response.is_success else {}
+                    discovered[model_id] = infer_tool_calling_profile(
+                        model_id,
+                        provider.provider_type,
+                        metadata=metadata,
+                    )
+        except Exception as exc:
+            log.debug("Ollama tool metadata discovery unavailable for %s: %s", provider.name, exc)
+        for model_id in model_names:
+            discovered.setdefault(
+                model_id,
+                infer_tool_calling_profile(model_id, provider.provider_type),
+            )
+        return discovered
+
+    @staticmethod
+    def _apply_tool_profile(item: ModelRegistryEntry, detected: dict[str, Any]) -> None:
+        """Repair stale rows while preserving a successful explicit probe."""
+        current = (item.config_json or {}).get(PROFILE_KEY)
+        current_status = current.get("status") if isinstance(current, dict) else None
+        current_source = current.get("source") if isinstance(current, dict) else None
+        fingerprint_changed = (
+            not isinstance(current, dict)
+            or current.get("metadata_fingerprint") != detected.get("metadata_fingerprint")
+        )
+        if current_source == "operator" or current_status == "verified":
+            persist_profile(item, current)
+            return
+        if not current or fingerprint_changed or current_status in {"inferred", "detected", "fallback"}:
+            persist_profile(item, detected)
+
     @staticmethod
     def _apply_auto_context(item: ModelRegistryEntry, detected: tuple[int, str] | None) -> None:
         state = dict(item.config_json or {})
@@ -509,6 +566,7 @@ class ModelRegistryService:
             discovered_contexts = await self._discover_context_limits(
                 provider, model_names, definitions_by_key
             )
+            discovered_tool_profiles = await self._discover_tool_profiles(provider, model_names)
 
             # Provider availability is a routing constraint, not a replacement for
             # an operator's manual registry toggle. Remember the previous toggle
@@ -557,6 +615,7 @@ class ModelRegistryService:
                             provider.provider_type,
                             definition,
                         )
+                    self._apply_tool_profile(item, discovered_tool_profiles[model_id])
                     continue
                 caps = registry_capabilities(model_id, provider.provider_type, definition)
                 quality, cost, latency = infer_tiers(model_id, provider.is_local)
@@ -581,6 +640,7 @@ class ModelRegistryService:
                         "detected_context_window": (discovered_contexts.get(model_id) or (8192, "fallback"))[0],
                         "provider_available": provider_connected,
                         **({"enabled_before_provider_unavailable": True} if not provider_connected else {}),
+                        PROFILE_KEY: discovered_tool_profiles[model_id],
                     },
                 )
                 self.session.add(item)
@@ -621,6 +681,14 @@ class ModelRegistryService:
     async def create(self, data: dict[str, Any]) -> ModelRegistryEntry:
         if "capabilities" in data and hasattr(data["capabilities"], "model_dump"):
             data["capabilities"] = data["capabilities"].model_dump()
+        state = dict(data.get("config_json") or {})
+        if PROFILE_KEY not in state:
+            state[PROFILE_KEY] = infer_tool_calling_profile(
+                str(data.get("model_id") or ""),
+                str(data.get("provider") or ""),
+                tool_capability=(data.get("capabilities") or {}).get("tool_use"),
+            )
+            data["config_json"] = state
         self._validate_token_limits(
             int(data.get("context_window", 8192)),
             int(data.get("max_output_tokens", 4096)),
@@ -630,6 +698,60 @@ class ModelRegistryService:
         self.session.add(item)
         await self.session.flush()
         return item
+
+    async def verify_tool_calling(
+        self,
+        item: ModelRegistryEntry,
+        provider: ModelProvider,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        defaults = {
+            "ollama": "http://127.0.0.1:11434",
+            "lmstudio": "http://127.0.0.1:1234/v1",
+            "local": "http://127.0.0.1:1234/v1",
+            "openai": "https://api.openai.com/v1",
+            "openrouter": "https://openrouter.ai/api/v1",
+            "google": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "anthropic": "https://api.anthropic.com/v1",
+        }
+        base_url = str(provider.base_url or defaults.get(provider.provider_type, "")).rstrip("/")
+        if not base_url:
+            raise ValueError("The provider has no chat-completions base URL configured.")
+        profile, result = await probe_tool_calling_profile(
+            provider=provider.provider_type,
+            base_url=base_url,
+            model_id=item.model_id,
+            api_key=provider_api_key(provider.config),
+        )
+        persist_profile(item, profile)
+        await self.session.flush()
+        return profile, result
+
+    async def mark_tool_calling_fallback(
+        self,
+        item: ModelRegistryEntry,
+        error: str,
+    ) -> dict[str, Any]:
+        current = stored_or_inferred_profile(item)
+        fallback = infer_tool_calling_profile(
+            item.model_id,
+            item.provider,
+            tool_capability=True,
+        )
+        fallback.update({
+            "adapter_id": "shogun_text_v1",
+            "mode": "text",
+            "request_schema": "shogun.prompt_tools.v1",
+            "response_schema": "shogun.tool_call_text.v1",
+            "result_schema": "shogun.tool_result_text.v1",
+            "status": "fallback",
+            "source": "runtime_repair",
+            "confidence": max(0.9, float(current.get("confidence") or 0)),
+            "last_tested_at": datetime.now(timezone.utc).isoformat(),
+            "last_error": str(error)[:500],
+        })
+        persist_profile(item, fallback)
+        await self.session.flush()
+        return fallback
 
     async def update(self, item_id: uuid.UUID, data: dict[str, Any]) -> ModelRegistryEntry | None:
         item = await self.session.get(ModelRegistryEntry, item_id)
@@ -900,6 +1022,14 @@ class ModelRoutingService:
                 f"{item.provider_id}:{item.model_id}": {
                     "temperature": _profile_temperature(profile, item),
                 }
+                for item in [selected, *fallbacks]
+            },
+            "tool_calling_profiles": {
+                f"{item.provider_id}:{item.model_id}": stored_or_inferred_profile(item)
+                for item in [selected, *fallbacks]
+            },
+            "tool_calling_registry_ids": {
+                f"{item.provider_id}:{item.model_id}": str(item.id)
                 for item in [selected, *fallbacks]
             },
             "reason": reason,

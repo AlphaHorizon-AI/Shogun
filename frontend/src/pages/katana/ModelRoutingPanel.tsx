@@ -20,6 +20,12 @@ type Decision = {
   fallback_models?: Array<{ model_id: string; display_name: string; provider: string; temperature?: number }>;
   complexity_score: number; estimated_cost_tier: number; estimated_latency_tier: number; active_profile: string;
 };
+type ToolCallingProfile = {
+  version: number; adapter_id: string; mode: 'native' | 'text' | 'unsupported';
+  request_schema: string; response_schema: string; result_schema: string;
+  status: 'verified' | 'detected' | 'inferred' | 'fallback' | 'unsupported';
+  source: string; confidence: number; last_tested_at?: string | null; last_error?: string | null;
+};
 
 const TASKS = ['simple_chat', 'summarization', 'planning', 'complex_reasoning', 'coding_plan', 'coding_edit',
   'test_failure_analysis', 'visual_understanding', 'browser_task', 'desktop_task', 'self_verification',
@@ -182,6 +188,20 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
     try { await axios.post(`/api/v1/models/registry/${item.id}/test`); setMessage(`${item.display_name} is reachable.`); }
     catch (error: any) { setMessage(error?.response?.data?.detail || 'Connection test failed.'); }
     finally { setBusy(''); }
+  };
+  const verifyToolCalling = async (item: RegistryModel) => {
+    setBusy(`tools-${item.id}`);
+    try {
+      const response = await axios.post(`/api/v1/models/registry/${item.id}/tool-calling/test`);
+      const updated: RegistryModel = response.data.data.model;
+      const profileData: ToolCallingProfile = response.data.data.profile;
+      setModels(current => current.map(model => model.id === item.id ? updated : model));
+      setMessage(profileData.mode === 'native'
+        ? `${item.display_name} verified native tool calling.`
+        : `${item.display_name} will use Shogun's governed tool-calling fallback.`);
+    } catch (error: any) {
+      setMessage(error?.response?.data?.detail || 'Tool-calling verification failed.');
+    } finally { setBusy(''); }
   };
   const setProfileTemperature = async (item: RegistryModel, temperature: number) => {
     if (!activeProfile || !Number.isFinite(temperature)) return;
@@ -441,7 +461,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div><div className="flex items-center gap-2 flex-wrap"><span className="font-bold font-mono text-sm text-shogun-text">{item.model_id}</span><span className="text-[9px] font-bold uppercase tracking-widest border border-purple-400/30 bg-purple-500/10 text-purple-300 rounded px-1.5 py-0.5">{item.provider}</span>{item.local && <span className="text-[8px] uppercase border border-shogun-border rounded px-1.5 py-0.5">local</span>}</div>
                 <p className="font-mono text-[9px] text-shogun-subdued mt-1">{item.display_name !== item.model_id ? `${item.display_name} · ` : ''}{(item.context_window / 1000).toFixed(0)}K effective context · {item.config_json?.context_limit_mode === 'manual' ? 'manual' : 'auto'}</p></div>
-              <div className="flex items-center gap-2"><button onClick={() => testModel(item)} disabled={!registryEditable} className="px-2 py-1 text-[9px] border border-shogun-border rounded hover:border-shogun-blue disabled:cursor-not-allowed disabled:opacity-35">{busy === `test-${item.id}` ? 'Testing…' : 'Test'}</button>
+              <div className="flex items-center gap-2"><button onClick={() => verifyToolCalling(item)} disabled={busy === `tools-${item.id}`} className="px-2 py-1 text-[9px] border border-purple-400/40 text-purple-300 rounded hover:bg-purple-400/10 disabled:cursor-not-allowed disabled:opacity-35">{busy === `tools-${item.id}` ? 'Verifying…' : 'Verify tools'}</button><button onClick={() => testModel(item)} disabled={!registryEditable} className="px-2 py-1 text-[9px] border border-shogun-border rounded hover:border-shogun-blue disabled:cursor-not-allowed disabled:opacity-35">{busy === `test-${item.id}` ? 'Testing…' : 'Test'}</button>
                 <button onClick={() => patchModel(item, { enabled: !item.enabled })} disabled={!registryEditable} aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.display_name}`} className={`w-10 h-5 rounded-full p-0.5 disabled:cursor-not-allowed disabled:opacity-35 ${item.enabled ? 'bg-green-500' : 'bg-gray-700'}`}><span className={`block w-4 h-4 bg-white rounded-full transition-transform ${item.enabled ? 'translate-x-5' : ''}`} /></button></div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 my-3">
@@ -456,6 +476,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
               })}
             </div>
             <TokenBudgetControls item={item} disabled={!registryEditable || busy === item.id} onPatch={patch => patchModel(item, patch)} />
+            <ToolCallingStatus item={item} />
             {usage.by_model?.[`${item.provider}:${item.model_id}`] && (() => {
               const modelUsage = usage.by_model[`${item.provider}:${item.model_id}`];
               const peakPercent = Math.min(100, Number(modelUsage.peak_context_percent || 0));
@@ -521,6 +542,31 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
 
 function Metric({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string | number }) {
   return <div className="rounded-lg border border-shogun-border p-2"><div className="flex items-center justify-center gap-1 text-[8px] uppercase text-shogun-subdued">{icon}{label}</div><div className="font-bold text-sm mt-1">{value}</div></div>;
+}
+
+function ToolCallingStatus({ item }: { item: RegistryModel }) {
+  const profile = item.config_json?.tool_calling_profile as ToolCallingProfile | undefined;
+  const mode = profile?.mode || 'text';
+  const status = profile?.status || 'fallback';
+  const color = mode === 'native'
+    ? 'border-emerald-400/30 bg-emerald-400/[0.06] text-emerald-300'
+    : mode === 'text'
+      ? 'border-amber-400/30 bg-amber-400/[0.06] text-amber-300'
+      : 'border-red-400/30 bg-red-400/[0.06] text-red-300';
+  const label = mode === 'native' ? 'Native tool calling' : mode === 'text' ? 'Shogun fallback' : 'Tools unsupported';
+  return <div className={`mb-3 rounded-lg border p-2.5 ${color}`}>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <span className="text-[9px] font-bold uppercase tracking-wider">{label} · {status}</span>
+      <span className="text-[8px] font-mono opacity-75">{profile?.adapter_id || 'shogun_text_v1'}</span>
+    </div>
+    <p className="mt-1 text-[8px] leading-relaxed opacity-70">
+      {profile
+        ? `${profile.request_schema} → ${profile.response_schema} · source ${profile.source} · ${Math.round((profile.confidence || 0) * 100)}% confidence`
+        : 'Legacy model entry. Refresh the registry to create its persisted tool-calling profile.'}
+    </p>
+    {profile?.last_tested_at && <p className="mt-1 text-[8px] opacity-60">Last tested {new Date(profile.last_tested_at).toLocaleString()}</p>}
+    {profile?.last_error && <p className="mt-1 text-[8px] text-red-300/80">{profile.last_error}</p>}
+  </div>;
 }
 
 function TokenBudgetControls({ item, disabled, onPatch }: {

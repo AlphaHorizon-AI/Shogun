@@ -334,7 +334,7 @@ async def test_samurai_chunks_context_that_exceeds_every_single_request(monkeypa
     assert len(prompts) > 1
     assert all("do not summarize, sample, or omit" in prompt for prompt in prompts)
     assert result == "\n".join(f"row-{index}" for index in range(1, len(prompts) + 1))
-    assert progress[0] == 0
+    assert progress[0] == 1
     assert progress[-1] == 100
     assert progress == sorted(progress)
 
@@ -481,6 +481,60 @@ async def test_samurai_uses_configurable_local_document_chunk_timeout(
     )
 
     assert timeouts and set(timeouts) == {expected_timeout}
+
+
+@pytest.mark.asyncio
+async def test_local_excel_matrix_uses_smaller_chunks_bounded_output_and_visible_progress(monkeypatch):
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Local Ollama",
+        provider_type="ollama",
+        is_local=True,
+        config={},
+    )
+
+    async def resolve_route(*_args, **_kwargs):
+        return [(provider, "gemma-test", "http://localhost:11434/v1", {})], {
+            "selected_context_window": 262_144,
+            "selected_max_input_tokens": 196_608,
+            "selected_max_output_tokens": 65_536,
+        }
+
+    calls: list[dict] = []
+
+    async def call_rows(messages, *_args, **kwargs):
+        calls.append({"message": messages[-1]["content"], "max_tokens": kwargs["max_tokens"]})
+        return [["A", 1]]
+
+    progress: list[tuple[int, int]] = []
+
+    async def record_progress(completed, total):
+        progress.append((completed, total))
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
+
+    source = "\n\n".join("record " + ("x" * 1000) for _ in range(24))
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+"""
+
+    result = await flow_engine._exec_samurai(
+        {"task_description": "Extract every source record."},
+        source,
+        fixed_context_str=fixed_context,
+        progress_callback=record_progress,
+    )
+
+    assert len(calls) >= 3
+    assert {call["max_tokens"] for call in calls} == {8192}
+    assert all(len(call["message"]) < 12_000 for call in calls)
+    assert progress[0][0] > 0
+    assert progress[-1][0] == progress[-1][1]
+    assert __import__("json").loads(result) == [["A", 1]] * len(calls)
 
 
 @pytest.mark.asyncio

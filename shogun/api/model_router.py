@@ -30,6 +30,7 @@ from shogun.services.model_router import (
 )
 from shogun.services.model_service import ModelRoutingProfileService
 from shogun.services.provider_credentials import provider_api_key
+from shogun.services.tool_calling_profiles import profile_catalog_payload
 
 router = APIRouter(prefix="/models", tags=["Model Router"])
 
@@ -166,6 +167,42 @@ async def test_registry(model_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     except Exception as exc:
         raise HTTPException(502, f"Model connection test failed: {exc}") from exc
     return ApiResponse(data={"status": "connected", "model_id": item.model_id, "provider": item.provider})
+
+
+@router.get("/registry/tool-calling/profiles", response_model=ApiResponse)
+async def tool_calling_profiles():
+    """Return Shogun's canonical tool-call schema and installed adapters."""
+    return ApiResponse(data=profile_catalog_payload())
+
+
+@router.post("/registry/{model_id}/tool-calling/test", response_model=ApiResponse)
+async def test_tool_calling(model_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Verify a model with a harmless echo-call formatting probe."""
+    item = await db.get(ModelRegistryEntry, model_id)
+    if not item or not item.provider_id:
+        raise HTTPException(404, "Connected registry model not found.")
+    from shogun.db.models.model_provider import ModelProvider
+
+    provider = await db.get(ModelProvider, item.provider_id)
+    if not provider or provider.status != "connected":
+        raise HTTPException(409, "Model provider is not connected.")
+    try:
+        profile, result = await ModelRegistryService(db).verify_tool_calling(item, provider)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    await db.commit()
+    await ModelRoutingService._audit(
+        "model.registry.tool_calling_tested",
+        f"Tool-calling profile tested: {item.model_id} ({profile['mode']})",
+        model_used=item.model_id,
+        provider_used=item.provider,
+        detail={
+            "adapter_id": profile["adapter_id"],
+            "status": profile["status"],
+            "success": bool(result.get("success")),
+        },
+    )
+    return ApiResponse(data={"profile": profile, "probe": result, "model": _registry_response(item)})
 
 
 @router.post("/route", response_model=ApiResponse)
