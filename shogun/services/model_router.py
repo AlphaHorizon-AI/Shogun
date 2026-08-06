@@ -1015,6 +1015,9 @@ class ModelRoutingService:
                     "display_name": item.display_name,
                     "provider": item.provider,
                     "temperature": _profile_temperature(profile, item),
+                    "context_window": item.context_window,
+                    "max_input_tokens": configured_max_input_tokens(item),
+                    "max_output_tokens": item.max_output_tokens,
                 }
                 for item in fallbacks
             ],

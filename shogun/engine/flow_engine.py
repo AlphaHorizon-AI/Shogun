@@ -14,6 +14,7 @@ Supports parallel execution of independent sibling nodes.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -111,6 +112,83 @@ def _validated_node_result(result: Any) -> Any:
         if re.match(r"^\[(?:ERROR|BLOCKED)\]", message, re.IGNORECASE):
             raise RuntimeError(message)
     return result
+
+
+def _template_contract_without_example(fixed_context: str) -> str:
+    """Keep schema/format guidance while removing populated reference rows."""
+    return str(fixed_context or "").split("[POPULATED ONE-SHOT EXAMPLE]", 1)[0].strip()
+
+
+def _representative_document_sample(context: str, max_characters: int = 16_000) -> str:
+    """Return bounded samples from across a document for mapping-plan inference."""
+    text = str(context or "")
+    if len(text) <= max_characters:
+        return text
+    first = max_characters // 2
+    middle = max_characters // 4
+    last = max_characters - first - middle
+    midpoint = max(first, (len(text) // 2) - (middle // 2))
+    return (
+        "[SOURCE SAMPLE: BEGINNING]\n"
+        + text[:first]
+        + "\n\n[SOURCE SAMPLE: MIDDLE]\n"
+        + text[midpoint:midpoint + middle]
+        + "\n\n[SOURCE SAMPLE: END]\n"
+        + text[-last:]
+    )
+
+
+def _samurai_checkpoint_path(config: dict[str, Any]) -> Path | None:
+    flow_id = re.sub(r"[^A-Za-z0-9_-]", "", str(config.get("_flow_id") or ""))
+    node_id = re.sub(r"[^A-Za-z0-9_-]", "", str(config.get("_node_id") or ""))
+    if not flow_id or not node_id:
+        return None
+    from shogun.config import settings
+
+    return settings.workspace_path.resolve() / ".shogun" / "agentflow-checkpoints" / flow_id / f"{node_id}.json"
+
+
+def _load_samurai_checkpoint(config: dict[str, Any], fingerprint: str) -> dict[str, Any]:
+    target = _samurai_checkpoint_path(config)
+    if not target or not target.is_file():
+        return {"version": 1, "fingerprint": fingerprint, "outputs": {}}
+    try:
+        payload = json.loads(target.read_text(encoding="utf-8"))
+        if payload.get("version") == 1 and payload.get("fingerprint") == fingerprint:
+            payload["outputs"] = dict(payload.get("outputs") or {})
+            return payload
+    except Exception as exc:
+        log.warning("Ignoring unreadable Samurai checkpoint %s: %s", target, exc)
+    return {"version": 1, "fingerprint": fingerprint, "outputs": {}}
+
+
+def _save_samurai_checkpoint(config: dict[str, Any], payload: dict[str, Any]) -> None:
+    target = _samurai_checkpoint_path(config)
+    if not target:
+        return
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # Concurrent scheduled runs can share a flow/node fingerprint. Merge
+        # completed batches instead of letting the last writer discard work
+        # checkpointed by another run.
+        if target.is_file():
+            try:
+                current = json.loads(target.read_text(encoding="utf-8"))
+                if current.get("fingerprint") == payload.get("fingerprint"):
+                    merged_outputs = dict(current.get("outputs") or {})
+                    merged_outputs.update(payload.get("outputs") or {})
+                    payload = {**current, **payload, "outputs": merged_outputs}
+            except Exception:
+                pass
+        run_suffix = re.sub(r"[^A-Za-z0-9_-]", "", str(config.get("_run_id") or "runtime"))
+        temporary = target.with_name(f"{target.name}.{run_suffix}.tmp")
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        temporary.replace(target)
+    except Exception as exc:
+        log.warning("Could not persist Samurai checkpoint %s: %s", target, exc)
 
 
 def _node_failure_action(config: dict[str, Any]) -> str:
@@ -607,7 +685,12 @@ async def _execute_single_node(
             result = await _exec_file_template(config)
         elif node_type == "samurai":
             result = await _exec_samurai(
-                config,
+                {
+                    **config,
+                    "_flow_id": str(node.flow_id),
+                    "_node_id": node_id,
+                    "_run_id": str(run_id),
+                },
                 chunkable_context_str,
                 governance_context or {},
                 fixed_context_str=fixed_context_str,
@@ -1292,6 +1375,64 @@ def _json_object(value: Any, label: str) -> dict[str, Any]:
     return result
 
 
+async def _infer_template_mapping_plan(
+    *,
+    task_description: str,
+    fixed_context: str,
+    source_context: str,
+    agent_persona: str,
+    model_chain: list[tuple[ModelProvider, str, str, dict]],
+    routing_context: dict[str, Any] | None,
+    expected_width: int | None,
+    timeout: int,
+    max_tokens: int | None,
+) -> list[list[Any]] | None:
+    """Infer destination-column logic once instead of rediscovering it per chunk.
+
+    The returned matrix is executable guidance, not business data. Each row is
+    ``[destination index, destination column, source evidence, rule]``. A
+    malformed or incomplete plan is non-fatal; the established direct mapping
+    path remains available as a compatibility fallback.
+    """
+    if "[POPULATED ONE-SHOT EXAMPLE]" not in fixed_context:
+        return None
+    sample = _representative_document_sample(source_context)
+    prompt = (
+        "Create a reusable mapping plan for this document-to-template transformation. "
+        "The populated template is reference-only: learn its layout and logic, but never copy its "
+        "business values. Runtime source data is the sole source of output records.\n\n"
+        f"--- TRANSFORMATION INSTRUCTIONS ---\n{task_description}\n\n"
+        f"--- TEMPLATE CONTRACT AND REFERENCE EXAMPLE ---\n{fixed_context}\n\n"
+        f"--- REPRESENTATIVE RUNTIME SOURCE SAMPLES ---\n{sample}\n\n"
+        "Submit a two-dimensional planning matrix only. Each planning row must contain exactly four values: "
+        "[zero-based destination column index, destination column name, source field/evidence, mapping or "
+        "normalization rule]. Include one planning row for every destination column, in destination order. "
+        "Do not submit any source business record or example value as an output row."
+    )
+    try:
+        rows = await _call_llm_chain_rows(
+            [
+                {"role": "system", "content": agent_persona},
+                {"role": "user", "content": prompt},
+            ],
+            model_chain,
+            timeout=timeout,
+            retry_count=0,
+            context="AgentFlow Samurai transformation planning",
+            expected_width=4,
+            max_tokens=min(int(max_tokens or 4096), 4096),
+            routing_context=routing_context,
+        )
+        if expected_width is not None and len(rows) != expected_width:
+            raise ValueError(
+                f"mapping plan returned {len(rows)} destination columns; template requires {expected_width}"
+            )
+        return rows
+    except Exception as exc:
+        log.warning("Transformation planning was unavailable; using direct chunk mapping: %s", exc)
+        return None
+
+
 async def _exec_samurai(
     config: dict,
     context_str: str,
@@ -1349,6 +1490,32 @@ async def _exec_samurai(
     if expected_output:
         user_message += f"\n\n--- EXPECTED OUTPUT FORMAT ---\n{expected_output}"
 
+    # Decide whether this is a template-backed bulk transformation before
+    # routing. Routing the entire 300-page source first can incorrectly remove
+    # otherwise useful fallback models whose context is ample for an
+    # individual chunk. The chunk executor performs its own bounded routing.
+    requires_matrix_output = _requires_structured_matrix_output(
+        task_description,
+        str(config.get("expected_output") or ""),
+        fixed_context_str,
+    )
+    matrix_width_match = re.search(r'"logical_columns"\s*:\s*(\d+)', fixed_context_str)
+    if not matrix_width_match:
+        matrix_width_match = re.search(
+            r"exactly\s+(\d+)\s+values",
+            f"{task_description}\n{expected_output}",
+            re.IGNORECASE,
+        )
+    expected_matrix_width = int(matrix_width_match.group(1)) if matrix_width_match else None
+    template_backed_output = "[FILE TEMPLATE CONTRACT]" in fixed_context_str
+    planned_matrix_chunking = bool(
+        requires_matrix_output and context_str and len(context_str) // 4 > 4096
+    )
+    planned_template_chunking = bool(
+        template_backed_output and context_str and len(context_str) // 4 > 8192
+    )
+    planned_document_chunking = planned_matrix_chunking or planned_template_chunking
+
     # Resolve agent persona
     agent_persona = "You are a Samurai agent executing a task in an automated workflow."
     if "[POPULATED ONE-SHOT EXAMPLE]" in fixed_context_str:
@@ -1389,14 +1556,32 @@ async def _exec_samurai(
             "retry_count": retry_count,
             "risk_level": config.get("risk_level", "low"),
         }
-        chunk_required = False
+        chunk_required = planned_document_chunking
         try:
-            model_chain, _routing = await _resolve_task_llm_chain(
-                session,
-                prompt=user_message,
-                context_size_estimate=max(1, len(user_message) // 4),
-                **route_options,
-            )
+            if planned_document_chunking:
+                # Select the configured primary/fallback chain for the size of
+                # a practical batch, not for the unchunked source document.
+                # This preserves smaller-context cloud fallbacks for later
+                # chunk-level routing.
+                route_prompt = "\n\n".join(
+                    part for part in (task_description, fixed_context_str, expected_output) if part
+                )
+                model_chain, _routing = await _resolve_task_llm_chain(
+                    session,
+                    prompt=route_prompt,
+                    context_size_estimate=min(
+                        4096 if requires_matrix_output else 8192,
+                        max(1, len(route_prompt) // 4),
+                    ),
+                    **route_options,
+                )
+            else:
+                model_chain, _routing = await _resolve_task_llm_chain(
+                    session,
+                    prompt=user_message,
+                    context_size_estimate=max(1, len(user_message) // 4),
+                    **route_options,
+                )
         except NoEligibleModelError as exc:
             # A document can be larger than every model's single-request
             # context while still being perfectly processable in batches. Keep
@@ -1474,19 +1659,6 @@ async def _exec_samurai(
         context_window = int((_routing or {}).get("selected_context_window") or 8192)
         max_input_tokens = max(1024, context_window - int(max_output_tokens or 2048))
 
-    requires_matrix_output = _requires_structured_matrix_output(
-        task_description,
-        str(config.get("expected_output") or ""),
-        fixed_context_str,
-    )
-    matrix_width_match = re.search(r'"logical_columns"\s*:\s*(\d+)', fixed_context_str)
-    if not matrix_width_match:
-        matrix_width_match = re.search(
-            r"exactly\s+(\d+)\s+values",
-            f"{task_description}\n{expected_output}",
-            re.IGNORECASE,
-        )
-    expected_matrix_width = int(matrix_width_match.group(1)) if matrix_width_match else None
     primary_chain_item = model_chain[0]
     primary_provider = (
         primary_chain_item[0]
@@ -1502,9 +1674,53 @@ async def _exec_samurai(
     )
 
     if context_str and (chunk_required or matrix_chunk_required or len(user_message) // 4 > max_input_tokens):
+        checkpoint_fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "task": task_description,
+                    "expected_output": expected_output,
+                    "template": fixed_context_str,
+                    "source": context_str,
+                    "routing_profile_id": routing_profile_id,
+                    "local_matrix_chunk_tokens": config.get("local_matrix_chunk_tokens"),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        checkpoint = _load_samurai_checkpoint(config, checkpoint_fingerprint)
+        mapping_plan = checkpoint.get("mapping_plan")
+        if "[POPULATED ONE-SHOT EXAMPLE]" in fixed_context_str and not isinstance(mapping_plan, list):
+            mapping_plan = await _infer_template_mapping_plan(
+                task_description=task_description,
+                fixed_context=fixed_context_str,
+                source_context=context_str,
+                agent_persona=agent_persona,
+                model_chain=model_chain,
+                routing_context=_routing,
+                expected_width=expected_matrix_width,
+                timeout=timeout,
+                max_tokens=max_output_tokens,
+            )
+            if mapping_plan:
+                checkpoint["mapping_plan"] = mapping_plan
+                checkpoint["updated_at"] = datetime.now(timezone.utc).isoformat()
+                _save_samurai_checkpoint(config, checkpoint)
         fixed_message = task_description
-        if fixed_context_str:
-            fixed_message += f"\n\n--- FIXED TEMPLATE AND WORKFLOW CONTEXT ---\n{fixed_context_str}"
+        compact_template_context = _template_contract_without_example(fixed_context_str)
+        if compact_template_context:
+            fixed_message += (
+                "\n\n--- FIXED TEMPLATE OUTPUT CONTRACT ---\n"
+                f"{compact_template_context}"
+            )
+        if mapping_plan:
+            fixed_message += (
+                "\n\n--- APPROVED TRANSFORMATION PLAN ---\n"
+                + json.dumps(mapping_plan, ensure_ascii=False, default=str)
+                + "\nApply this plan to runtime source records. The plan describes mapping logic only; "
+                "it contains no authoritative business rows."
+            )
         if expected_output:
             fixed_message += f"\n\n--- EXPECTED OUTPUT FORMAT ---\n{expected_output}"
         if requires_matrix_output:
@@ -1531,7 +1747,28 @@ async def _exec_samurai(
         # chunks so a 12B model is less likely to spend the entire node timeout
         # on one request. Timed-out chunks are bisected again below.
         if is_local_model:
-            chunk_token_budget = min(chunk_token_budget, 2048 if requires_matrix_output else 4096)
+            if requires_matrix_output:
+                configured_batch_tokens = max(
+                    1024,
+                    min(int(config.get("local_matrix_chunk_tokens") or 8192), 32_768),
+                )
+                # Preserve every configured fallback that can accept the
+                # compact fixed prompt plus a source batch. The router payload
+                # carries these capacities so a large primary model does not
+                # accidentally create chunks that exclude a smaller fallback.
+                fallback_inputs = [
+                    int(item.get("max_input_tokens") or 0)
+                    for item in ((_routing or {}).get("fallback_models") or [])
+                    if int(item.get("max_input_tokens") or 0) > 0
+                ]
+                if fallback_inputs:
+                    configured_batch_tokens = min(
+                        configured_batch_tokens,
+                        max(1024, min(fallback_inputs) - fixed_tokens),
+                    )
+                chunk_token_budget = min(chunk_token_budget, configured_batch_tokens)
+            else:
+                chunk_token_budget = min(chunk_token_budget, 8192)
         chunk_max_output_tokens = max_output_tokens
         if is_local_model and requires_matrix_output:
             chunk_max_output_tokens = min(int(max_output_tokens or 8192), 8192)
@@ -1539,6 +1776,9 @@ async def _exec_samurai(
         local_chunk_timeout = max(60, min(requested_local_chunk_timeout, 1800))
         chunk_call_timeout = max(timeout, local_chunk_timeout) if is_local_model else timeout
         chunks = _split_model_context(context_str, chunk_token_budget * 4)
+        if checkpoint.get("total_chunks") not in {None, len(chunks)}:
+            checkpoint["outputs"] = {}
+        checkpoint["total_chunks"] = len(chunks)
         total_characters = max(1, sum(len(chunk) for chunk in chunks))
         completed_characters = 0
         initial_progress_characters = max(1, (total_characters + 99) // 100)
@@ -1577,27 +1817,51 @@ async def _exec_samurai(
                     {"role": "system", "content": agent_persona},
                     {"role": "user", "content": chunk_message},
                 ]
+                chunk_chain = model_chain
+                chunk_routing = _routing
+                # Eligibility must be evaluated against this actual batch.
+                # The previous implementation froze a chain selected for the
+                # complete document, which silently removed smaller-context
+                # fallback models even after the source had been chunked.
+                try:
+                    async with async_session_factory() as chunk_session:
+                        chunk_chain, chunk_routing = await _resolve_task_llm_chain(
+                            chunk_session,
+                            prompt=chunk_message,
+                            context_size_estimate=max(1, len(chunk_message) // 4),
+                            **route_options,
+                        )
+                    chunk_routing = _with_flow_generation_settings(
+                        chunk_routing,
+                        governance_context,
+                    )
+                except Exception as route_error:
+                    log.warning(
+                        "%s could not refresh chunk-level routing; using the established chain: %s",
+                        label,
+                        route_error,
+                    )
                 if requires_matrix_output:
                     rows = await _call_llm_chain_rows(
                         messages,
-                        model_chain,
+                        chunk_chain,
                         timeout=chunk_call_timeout,
                         retry_count=max(1, retry_count),
                         context=f"AgentFlow Samurai node {label.lower()}",
                         expected_width=expected_matrix_width,
                         max_tokens=chunk_max_output_tokens,
-                        routing_context=_routing,
+                        routing_context=chunk_routing,
                     )
                     output = json.dumps(rows, ensure_ascii=False, default=str)
                 else:
                     output = await _call_llm_chain(
                         messages,
-                        model_chain,
+                        chunk_chain,
                         timeout=chunk_call_timeout,
                         retry_count=retry_count,
                         context=f"AgentFlow Samurai node {label.lower()}",
                         max_tokens=chunk_max_output_tokens,
-                        routing_context=_routing,
+                        routing_context=chunk_routing,
                     )
                 completed_characters = min(total_characters, completed_characters + len(chunk))
                 await report_progress(completed_characters)
@@ -1636,8 +1900,21 @@ async def _exec_samurai(
                     )
                 return recovered
 
+        checkpoint_outputs = dict(checkpoint.get("outputs") or {})
         for index, chunk in enumerate(chunks, start=1):
-            outputs.extend(await process_chunk(chunk, f"chunk {index}/{len(chunks)}"))
+            checkpoint_key = str(index)
+            cached_output = checkpoint_outputs.get(checkpoint_key)
+            if isinstance(cached_output, list) and all(isinstance(item, str) for item in cached_output):
+                outputs.extend(cached_output)
+                completed_characters = min(total_characters, completed_characters + len(chunk))
+                await report_progress(completed_characters)
+                continue
+            chunk_outputs = await process_chunk(chunk, f"chunk {index}/{len(chunks)}")
+            outputs.extend(chunk_outputs)
+            checkpoint_outputs[checkpoint_key] = chunk_outputs
+            checkpoint["outputs"] = checkpoint_outputs
+            checkpoint["updated_at"] = datetime.now(timezone.utc).isoformat()
+            _save_samurai_checkpoint(config, checkpoint)
         await report_progress(total_characters)
         merged = _merge_structured_chunk_matrices(outputs, task_description, fixed_context_str, config)
         if merged is not None:
@@ -3624,26 +3901,57 @@ async def _call_llm_rows(
         content = "\n".join(
             str(part.get("text") or "") for part in content if isinstance(part, dict)
         )
-    if not calls:
-        calls = normalize_text_tool_calls(str(content or ""), {_AGENTFLOW_ROWS_TOOL_NAME})
-    call = next((item for item in calls if item.get("tool") == _AGENTFLOW_ROWS_TOOL_NAME), None)
-    if not call:
-        # Backward-compatible final fallback for models that follow the row
-        # contract but omit the canonical tool wrapper. The strict parser and
-        # width validator still convert textual JSON into governed values
-        # before Office receives anything.
-        try:
+    try:
+        if not calls:
+            calls = normalize_text_tool_calls(str(content or ""), {_AGENTFLOW_ROWS_TOOL_NAME})
+        call = next((item for item in calls if item.get("tool") == _AGENTFLOW_ROWS_TOOL_NAME), None)
+        if not call:
+            # Backward-compatible final fallback for models that follow the row
+            # contract but omit the canonical tool wrapper. The strict parser and
+            # width validator still convert textual JSON into governed values
+            # before Office receives anything.
             from shogun.services.file_template import parse_excel_rows
 
             parsed_rows = parse_excel_rows(str(content or ""), require_structured_json=True)
             rows = _validate_agentflow_rows({"rows": parsed_rows}, expected_width)
-            return rows, json.dumps(rows, ensure_ascii=False, default=str), mode
-        except Exception as parse_error:
-            raise ValueError(
-                "The model did not submit rows through agentflow_submit_rows or valid JSON rows"
-            ) from parse_error
-    rows = _validate_agentflow_rows(call.get("arguments") or {}, expected_width)
-    return rows, json.dumps(rows, ensure_ascii=False, default=str), mode
+        else:
+            rows = _validate_agentflow_rows(call.get("arguments") or {}, expected_width)
+        return rows, json.dumps(rows, ensure_ascii=False, default=str), mode
+    except Exception as parse_error:
+        # A successful HTTP response does not prove that native tool calling
+        # succeeded. Local and OpenAI-compatible models sometimes answer with
+        # prose, malformed arguments, or an unsupported call envelope. Treat
+        # that as a transport failure and use the persisted Shogun adapter just
+        # as we do when the provider rejects the tools field outright.
+        if mode == "native" and bool(profile.get("fallback_enabled", True)):
+            compact_content = re.sub(r"\s+", " ", str(content or "")).strip()
+            structural_preview = re.sub(r"[A-Za-z0-9]", "x", compact_content)[:160]
+            log.warning(
+                "Native AgentFlow row response from %s was structurally invalid; "
+                "retrying with Shogun text adapter (content_length=%d, structural_preview=%r): %s",
+                model_name,
+                len(compact_content),
+                structural_preview,
+                parse_error,
+            )
+            fallback = dict(profile)
+            fallback["mode"] = "text"
+            fallback["adapter_id"] = "shogun_text_v1"
+            return await _call_llm_rows(
+                messages,
+                model_name,
+                base_url,
+                headers,
+                profile=fallback,
+                expected_width=expected_width,
+                timeout=timeout,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                seed=seed,
+            )
+        raise ValueError(
+            "The model did not submit rows through agentflow_submit_rows or valid JSON rows"
+        ) from parse_error
 
 
 async def _call_llm_chain_rows(
@@ -3713,7 +4021,8 @@ async def _call_llm_chain_rows(
                             if item:
                                 await ModelRegistryService(repair_session).mark_tool_calling_fallback(
                                     item,
-                                    "Native AgentFlow tool request was rejected; Shogun text adapter succeeded.",
+                                    "Native AgentFlow tool request failed or returned an invalid structure; "
+                                    "Shogun text adapter succeeded.",
                                 )
                                 await repair_session.commit()
                     except Exception as repair_error:

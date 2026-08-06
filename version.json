@@ -1,8 +1,8 @@
 {
-  "version": "1.47.67",
+  "version": "1.47.68",
   "name": "Shogun OS",
-  "build": 218,
+  "build": 219,
   "channel": "stable",
-  "released": "2026-08-06T12:05:45Z",
-  "changelog": "Resolve React Router security advisories in Shogun and Gensui while preserving existing navigation behavior."
+  "released": "2026-08-06T12:51:59Z",
+  "changelog": "Redesign AgentFlow document-to-template execution with reusable mapping plans, adaptive batching, chunk-aware model fallback, and resumable checkpoints."
 }

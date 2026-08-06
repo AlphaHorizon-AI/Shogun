@@ -590,6 +590,9 @@ async def test_automatic_profile_returns_primary_and_two_fallbacks(routing_sessi
             "display_name": item.display_name,
             "provider": item.provider,
             "temperature": 0.3,
+            "context_window": item.context_window,
+            "max_input_tokens": configured_max_input_tokens(item),
+            "max_output_tokens": item.max_output_tokens,
         }
         for item in result.fallbacks
     ]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from types import SimpleNamespace
 
@@ -376,7 +377,10 @@ async def test_samurai_chunking_survives_stale_registry_chat_gate(monkeypatch):
         "\n\n".join("record " + ("x" * 1000) for _ in range(50)),
     )
 
-    assert route_calls == 2
+    # The compatibility chain is established once, then eligibility is
+    # refreshed for each actual chunk. A stale registry still falls back to
+    # the established connected provider chain.
+    assert route_calls == 2 + len(prompts)
     assert len(prompts) > 1
     assert result.startswith("mapped-row")
 
@@ -484,7 +488,7 @@ async def test_samurai_uses_configurable_local_document_chunk_timeout(
 
 
 @pytest.mark.asyncio
-async def test_local_excel_matrix_uses_smaller_chunks_bounded_output_and_visible_progress(monkeypatch):
+async def test_local_excel_matrix_uses_adaptive_batches_bounded_output_and_visible_progress(monkeypatch):
     monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
     provider = SimpleNamespace(
         id=uuid.uuid4(),
@@ -529,12 +533,160 @@ Format: xlsx
         progress_callback=record_progress,
     )
 
-    assert len(calls) >= 3
+    # The adaptive executor no longer forces tiny 2K-token batches. This
+    # fixture fits into one safe local batch.
+    assert len(calls) == 1
     assert {call["max_tokens"] for call in calls} == {8192}
-    assert all(len(call["message"]) < 12_000 for call in calls)
+    assert all(len(call["message"]) < 40_000 for call in calls)
     assert progress[0][0] > 0
     assert progress[-1][0] == progress[-1][1]
     assert __import__("json").loads(result) == [["A", 1]] * len(calls)
+
+
+@pytest.mark.asyncio
+async def test_one_shot_template_is_planned_once_and_example_is_not_repeated_per_chunk(monkeypatch):
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Local Ollama",
+        provider_type="ollama",
+        is_local=True,
+        config={},
+    )
+
+    async def resolve_route(*_args, **_kwargs):
+        return [
+            (provider, "gemma-test", "http://localhost:11434/v1", {}),
+            (
+                SimpleNamespace(id=uuid.uuid4(), name="Cloud", provider_type="openrouter"),
+                "cloud-test",
+                "https://cloud.invalid/v1",
+                {},
+            ),
+        ], {
+            "selected_context_window": 32_768,
+            "selected_max_input_tokens": 24_576,
+            "selected_max_output_tokens": 4_096,
+            "fallback_models": [{"model_id": "cloud-test", "max_input_tokens": 8_192}],
+        }
+
+    prompts: list[str] = []
+    chain_sizes: list[int] = []
+
+    async def call_rows(messages, chain, *_args, **_kwargs):
+        prompt = messages[-1]["content"]
+        prompts.append(prompt)
+        chain_sizes.append(len(chain))
+        if "Create a reusable mapping plan" in prompt:
+            return [
+                [0, "Item", "source item", "copy exactly"],
+                [1, "Quantity", "source quantity", "parse as number"],
+            ]
+        return [["A", 1]]
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
+
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+[POPULATED ONE-SHOT EXAMPLE]
+REFERENCE-ONLY-VALUE | 99
+"""
+    source = "\n\n".join("record " + ("x" * 1000) for _ in range(30))
+
+    result = await flow_engine._exec_samurai(
+        {"task_description": "Extract every source record.", "local_matrix_chunk_tokens": 2048},
+        source,
+        fixed_context_str=fixed_context,
+    )
+
+    planning_prompts = [item for item in prompts if "Create a reusable mapping plan" in item]
+    extraction_prompts = [item for item in prompts if "CONTEXT FROM PREVIOUS STEPS (chunk" in item]
+    assert len(planning_prompts) == 1
+    assert extraction_prompts
+    assert all("REFERENCE-ONLY-VALUE" not in item for item in extraction_prompts)
+    assert all("APPROVED TRANSFORMATION PLAN" in item for item in extraction_prompts)
+    assert all(size == 2 for size in chain_sizes)
+    assert __import__("json").loads(result) == [["A", 1]] * len(extraction_prompts)
+
+
+@pytest.mark.asyncio
+async def test_samurai_resumes_completed_matrix_chunks_from_checkpoint(monkeypatch, tmp_path):
+    from shogun.config import settings
+
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Local Ollama",
+        provider_type="ollama",
+        is_local=True,
+        config={},
+    )
+
+    async def resolve_route(*_args, **_kwargs):
+        return [(provider, "gemma-test", "http://localhost:11434/v1", {})], {
+            "selected_context_window": 32_768,
+            "selected_max_input_tokens": 24_576,
+            "selected_max_output_tokens": 4_096,
+        }
+
+    calls: list[str] = []
+    fail_second_chunk = True
+
+    async def call_rows(messages, *_args, **_kwargs):
+        nonlocal fail_second_chunk
+        prompt = messages[-1]["content"]
+        label = next(
+            (item for item in re.findall(r"chunk \d+/\d+", prompt) if item),
+            "unknown",
+        )
+        calls.append(label)
+        if label.startswith("chunk 2/") and fail_second_chunk:
+            fail_second_chunk = False
+            raise flow_engine.ModelCallError(
+                context="AgentFlow Samurai node chunk 2",
+                provider="Local Ollama",
+                model="gemma-test",
+                timeout=300,
+                cause=ValueError("temporary invalid structured response"),
+                input_characters=len(prompt),
+            )
+        return [[label, 1]]
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
+
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+"""
+    source = "\n\n".join(f"record {index} " + ("x" * 1000) for index in range(30))
+    config = {
+        "task_description": "Extract every source record.",
+        "local_matrix_chunk_tokens": 1024,
+        "_flow_id": "flow-checkpoint-test",
+        "_node_id": "node-checkpoint-test",
+    }
+
+    with pytest.raises(flow_engine.ModelCallError):
+        await flow_engine._exec_samurai(config, source, fixed_context_str=fixed_context)
+
+    result = await flow_engine._exec_samurai(config, source, fixed_context_str=fixed_context)
+
+    assert sum(item.startswith("chunk 1/") for item in calls) == 1
+    assert len(__import__("json").loads(result)) >= 2
+    checkpoint = (
+        tmp_path
+        / ".shogun"
+        / "agentflow-checkpoints"
+        / "flow-checkpoint-test"
+        / "node-checkpoint-test.json"
+    )
+    assert checkpoint.is_file()
 
 
 @pytest.mark.asyncio

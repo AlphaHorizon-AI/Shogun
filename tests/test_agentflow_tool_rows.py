@@ -128,6 +128,51 @@ async def test_native_rejection_uses_shogun_text_adapter(monkeypatch):
     assert "SHOGUN STRUCTURED TOOL PROTOCOL" in _FakeAsyncClient.requests[2]["messages"][-1]["content"]
 
 
+@pytest.mark.asyncio
+async def test_native_semantic_failure_uses_shogun_text_adapter(monkeypatch):
+    _FakeAsyncClient.responses = [
+        httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "I extracted the requested records."}}]},
+        ),
+        httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '<tool_call>{"tool":"agentflow_submit_rows","arguments":'
+                                '{"rows":[["A","B"],["C","D"]]}}</tool_call>'
+                            )
+                        }
+                    }
+                ]
+            },
+        ),
+    ]
+    monkeypatch.setattr(flow_engine.httpx, "AsyncClient", _FakeAsyncClient)
+
+    rows, _, mode = await flow_engine._call_llm_rows(
+        [{"role": "user", "content": "Extract the rows"}],
+        "gemma4:e4b",
+        "http://localhost:11434/v1",
+        {},
+        profile={"mode": "native", "fallback_enabled": True},
+        expected_width=2,
+        timeout=10,
+        max_tokens=1000,
+        temperature=0,
+        seed=None,
+    )
+
+    assert rows == [["A", "B"], ["C", "D"]]
+    assert mode == "text"
+    assert "tools" in _FakeAsyncClient.requests[0]
+    assert "tools" not in _FakeAsyncClient.requests[1]
+    assert "SHOGUN STRUCTURED TOOL PROTOCOL" in _FakeAsyncClient.requests[1]["messages"][-1]["content"]
+
+
 def test_agentflow_tool_rejects_wrong_destination_width():
     with pytest.raises(ValueError, match="exactly 3 values"):
         flow_engine._validate_agentflow_rows({"rows": [["A", "B"]]}, 3)
