@@ -1469,7 +1469,25 @@ async def _exec_samurai(
         context_window = int((_routing or {}).get("selected_context_window") or 8192)
         max_input_tokens = max(1024, context_window - int(max_output_tokens or 2048))
 
-    if context_str and (chunk_required or len(user_message) // 4 > max_input_tokens):
+    contract_text = f"{task_description}\n{config.get('expected_output', '')}"
+    requires_matrix_output = bool(
+        re.search(r"two[- ]dimensional array|2d array|array of arrays", contract_text, re.IGNORECASE)
+    )
+    primary_chain_item = model_chain[0]
+    primary_provider = (
+        primary_chain_item[0]
+        if isinstance(primary_chain_item, (list, tuple)) and primary_chain_item
+        else primary_chain_item
+    )
+    is_local_model = bool(getattr(primary_provider, "is_local", False)) or getattr(
+        primary_provider, "provider_type", ""
+    ) in {"ollama", "lmstudio", "local"}
+    practical_matrix_tokens = min(max_input_tokens, 4096 if is_local_model else 16_384)
+    matrix_chunk_required = bool(
+        requires_matrix_output and context_str and len(context_str) // 4 > practical_matrix_tokens
+    )
+
+    if context_str and (chunk_required or matrix_chunk_required or len(user_message) // 4 > max_input_tokens):
         fixed_message = task_description
         if fixed_context_str:
             fixed_message += f"\n\n--- FIXED TEMPLATE AND WORKFLOW CONTEXT ---\n{fixed_context_str}"
@@ -1482,10 +1500,6 @@ async def _exec_samurai(
                 "The selected model's input allocation is too small for this Samurai task. "
                 "Increase Max input or reduce Max output in Katana."
             )
-        primary_provider = model_chain[0][0]
-        is_local_model = bool(getattr(primary_provider, "is_local", False)) or getattr(
-            primary_provider, "provider_type", ""
-        ) in {"ollama", "lmstudio", "local"}
         # A model's theoretical context window is not a practical batch size,
         # especially for CPU/GPU-constrained local inference. Bound local
         # chunks so a 12B model is less likely to spend the entire node timeout
@@ -1581,7 +1595,7 @@ async def _exec_samurai(
             return merged
         return "\n".join(outputs)
 
-    return await _call_llm_chain(
+    output = await _call_llm_chain(
         [
             {"role": "system", "content": agent_persona},
             {"role": "user", "content": user_message},
@@ -1593,6 +1607,8 @@ async def _exec_samurai(
         max_tokens=max_output_tokens,
         routing_context=_routing,
     )
+    merged = _merge_structured_chunk_matrices([output], task_description, fixed_context_str, config)
+    return merged if merged is not None else output
 
 
 async def _resolve_samurai_task_description(config: dict[str, Any]) -> str:
@@ -1733,7 +1749,7 @@ def _merge_structured_chunk_matrices(
     expected_width = int(width_match.group(1)) if width_match else None
     rows: list[list[Any]] = []
     for output_index, output in enumerate(outputs, 1):
-        parsed = parse_excel_rows(output)
+        parsed = parse_excel_rows(output, require_structured_json=True)
         if expected_width is not None:
             invalid = [(index + 1, len(row)) for index, row in enumerate(parsed) if len(row) != expected_width]
             if invalid:

@@ -172,9 +172,9 @@ def render_excel_template(
             if changed == 0:
                 raise ValueError("Preserve unchanged requires at least one {{placeholder}} in the Excel template.")
         else:
-            header_row = _template_header_row(ws)
             _, logical_width = _excel_meaningful_bounds(ws)
-            template_headers = [ws.cell(header_row, col).value for col in range(1, logical_width + 1)]
+            data_start_row = _template_data_start_row(ws)
+            template_headers = _template_column_headers(ws, data_start_row, logical_width)
             rows = parse_excel_rows(content, template_headers=template_headers)
             if start_cell:
                 changed += _write_excel_rows_at(
@@ -184,7 +184,7 @@ def render_excel_template(
                     replace_existing=handling == "replace" and changed == 0,
                 )
             elif handling == "replace" and changed == 0:
-                changed += _replace_excel_example_rows(ws, rows)
+                changed += _replace_excel_example_rows(ws, rows, data_start_row=data_start_row)
             elif handling == "append" or render_mode == "adaptive":
                 changed += _append_excel_rows(ws, rows)
         wb.save(str(output))
@@ -618,7 +618,12 @@ def _structured_rows(documents: list[Any], template_headers: list[Any] | None) -
     raise ValueError("Structured Excel rows must consistently be arrays or objects; mixed row types were received.")
 
 
-def parse_excel_rows(context: str, template_headers: list[Any] | None = None) -> list[list[Any]]:
+def parse_excel_rows(
+    context: str,
+    template_headers: list[Any] | None = None,
+    *,
+    require_structured_json: bool = False,
+) -> list[list[Any]]:
     """Normalize model output into typed worksheet rows.
 
     Supports JSON arrays/objects (including fenced, chunked, and double-serialized
@@ -629,6 +634,10 @@ def parse_excel_rows(context: str, template_headers: list[Any] | None = None) ->
     documents = _json_documents(content)
     if documents is not None:
         return _structured_rows(documents, template_headers)
+    if require_structured_json:
+        raise ValueError(
+            "Expected a valid two-dimensional JSON array, but the model returned textual or Markdown output."
+        )
 
     lines = content.strip().splitlines() if content.strip() else []
     markdown_rows: list[list[str]] = []
@@ -646,8 +655,19 @@ def parse_excel_rows(context: str, template_headers: list[Any] | None = None) ->
                 continue
             markdown_rows.append(cells)
     if saw_separator and markdown_rows:
-        return markdown_rows
-    return [line.split("\t") for line in lines]
+        rows = markdown_rows
+    else:
+        rows = [line.split("\t") for line in lines]
+    if template_headers is not None:
+        expected_width = len(template_headers)
+        invalid = [(index + 1, len(row)) for index, row in enumerate(rows) if len(row) != expected_width]
+        if invalid:
+            sample = ", ".join(f"row {row}: {width}" for row, width in invalid[:8])
+            raise ValueError(
+                f"Excel rows must contain exactly {expected_width} values; {sample}. "
+                "Return the structured matrix required by the template instead of a summary table."
+            )
+    return rows
 
 
 def _rows_from_context(context: str) -> list[list[Any]]:
@@ -659,6 +679,44 @@ def _template_header_row(ws: Any) -> int:
         if any(ws.cell(row_index, column).value not in (None, "") for column in range(1, ws.max_column + 1)):
             return row_index
     return 1
+
+
+def _template_data_start_row(ws: Any) -> int:
+    """Infer where generated records begin while preserving multi-row headers.
+
+    Wide planning templates commonly use a primary header followed by a sparse
+    units/sub-header row. Treat those short, sparse string rows as part of the
+    header and place replacement data at the first record-like row. Operators
+    can still override this inference with the File Template data-start cell.
+    """
+    header_row = _template_header_row(ws)
+    meaningful_end, logical_width = _excel_meaningful_bounds(ws)
+    for row_index in range(header_row + 1, meaningful_end + 1):
+        values = [ws.cell(row_index, column).value for column in range(1, logical_width + 1)]
+        populated = [value for value in values if value not in (None, "")]
+        if not populated:
+            continue
+        sparse_limit = max(1, logical_width // 2)
+        short_strings = all(isinstance(value, str) and len(value.strip()) <= 32 for value in populated)
+        if len(populated) <= sparse_limit and short_strings:
+            continue
+        return row_index
+    return header_row + 1
+
+
+def _template_column_headers(ws: Any, data_start_row: int, logical_width: int) -> list[Any]:
+    """Return one stable header value per column across a multi-row header."""
+    header_row = _template_header_row(ws)
+    headers: list[Any] = []
+    for column in range(1, logical_width + 1):
+        value = None
+        for row_index in range(header_row, max(header_row + 1, data_start_row)):
+            candidate = ws.cell(row_index, column).value
+            if candidate not in (None, ""):
+                value = candidate
+                break
+        headers.append(value)
+    return headers
 
 
 def _copy_row_style(ws: Any, source_row: int, target_row: int, width: int) -> None:
@@ -677,22 +735,29 @@ def _clean_excel_value(value: Any) -> Any:
     return value.strip() if isinstance(value, str) else value
 
 
-def _replace_excel_example_rows(ws: Any, rows: list[list[Any]]) -> int:
+def _replace_excel_example_rows(
+    ws: Any,
+    rows: list[list[Any]],
+    *,
+    data_start_row: int | None = None,
+) -> int:
     if not rows:
         return 0
-    header_row = _template_header_row(ws)
     existing_end, logical_width = _excel_meaningful_bounds(ws)
-    template_headers = [str(ws.cell(header_row, col).value or "").strip() for col in range(1, logical_width + 1)]
+    start_row = data_start_row or _template_data_start_row(ws)
+    template_headers = [
+        str(value or "").strip()
+        for value in _template_column_headers(ws, start_row, logical_width)
+    ]
     if rows and [_clean_excel_value(cell) for cell in rows[0]][: len(template_headers)] == template_headers:
         rows = rows[1:]
-    start_row = header_row + 1
     for row_index in range(start_row, existing_end + 1):
         for column in range(1, logical_width + 1):
             cell = ws.cell(row_index, column)
             if not (isinstance(cell.value, str) and cell.value.startswith("=")):
                 cell.value = None
     width = max([logical_width, *(len(row) for row in rows)])
-    style_row = start_row if start_row <= existing_end else header_row
+    style_row = start_row if start_row <= existing_end else max(1, start_row - 1)
     changed = 0
     if rows:
         from openpyxl.utils import get_column_letter

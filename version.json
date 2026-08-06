@@ -1,8 +1,8 @@
 {
-  "version": "1.47.61",
+  "version": "1.47.62",
   "name": "Shogun OS",
-  "build": 212,
+  "build": 213,
   "channel": "stable",
-  "released": "2026-08-06T08:10:43Z",
-  "changelog": "Keep one-shot templates reference-only and replace example rows with data extracted from runtime inputs."
+  "released": "2026-08-06T08:30:41Z",
+  "changelog": "Enforce structured Excel extraction contracts, chunk large matrix jobs reliably, and preserve multi-row template headers."
 }

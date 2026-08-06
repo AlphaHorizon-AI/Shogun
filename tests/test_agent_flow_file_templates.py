@@ -95,6 +95,20 @@ def test_excel_template_matrix_width_is_validated():
         parse_excel_rows('[["A", "B"]]', template_headers=["One", "Two", "Three"])
 
 
+def test_excel_markdown_summary_width_is_validated_against_template():
+    payload = "| Item | Quantity |\n| --- | --- |\n| A | 2 |"
+
+    with pytest.raises(ValueError, match="exactly 3 values"):
+        parse_excel_rows(payload, template_headers=["Description", "Item", "Quantity"])
+
+
+def test_excel_matrix_contract_rejects_markdown_even_when_width_matches():
+    payload = "| Item | Quantity |\n| --- | --- |\n| A | 2 |"
+
+    with pytest.raises(ValueError, match="two-dimensional JSON array"):
+        parse_excel_rows(payload, require_structured_json=True)
+
+
 def test_word_template_structure_and_one_shot_are_explicit(tmp_path):
     template = tmp_path / "report.docx"
     doc = Document()
@@ -237,6 +251,43 @@ def test_excel_one_shot_replace_overrides_adaptive_placement(tmp_path):
         assert rendered["Orders"]["B2"].value == 12
         assert rendered["Orders"]["A3"].value is None
         assert rendered["Orders"]["B3"].value is None
+    finally:
+        rendered.close()
+
+
+def test_excel_one_shot_replace_preserves_sparse_secondary_header_row(tmp_path):
+    source = tmp_path / "source.xlsx"
+    output = tmp_path / "Output" / "result.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Plan"
+    ws.append([None, "Artikel-Nr", "Fertigungsauftrag", "Stk.", "Month"])
+    ws.append([None, None, "Nr.", "Qty", None])
+    ws.append(["EXAMPLE", 100, 200, 1, None])
+    wb.save(source)
+    wb.close()
+
+    changed = render_excel_template(
+        source,
+        output,
+        '[["SOURCE", 140006, 20164555, 20, ""]]',
+        "replace",
+        "Plan",
+        render_mode="adaptive",
+    )
+
+    assert changed == 5
+    rendered = openpyxl.load_workbook(output)
+    try:
+        assert rendered["Plan"]["C2"].value == "Nr."
+        assert rendered["Plan"]["D2"].value == "Qty"
+        assert [rendered["Plan"].cell(3, column).value for column in range(1, 6)] == [
+            "SOURCE",
+            140006,
+            20164555,
+            20,
+            None,
+        ]
     finally:
         rendered.close()
 

@@ -561,6 +561,16 @@ def test_structured_chunk_matrices_are_validated_and_deduplicated():
     assert __import__("json").loads(merged) == [["A", 1, ""], ["B", 2, ""]]
 
 
+def test_structured_chunk_matrix_rejects_markdown_summary():
+    with pytest.raises(ValueError, match="two-dimensional JSON array"):
+        flow_engine._merge_structured_chunk_matrices(
+            ["| Item | Quantity |\n| --- | --- |\n| A | 1 |"],
+            "Return only one valid two-dimensional array.",
+            '[MACHINE-READABLE TEMPLATE MANIFEST]\n{"logical_columns": 2}',
+            {},
+        )
+
+
 def test_model_context_splitting_preserves_source_units():
     text = "prefix\n" + "".join(
         f"--- Page {index} ---\n" + (str(index) * 700) + "\n"
