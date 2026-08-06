@@ -1,8 +1,8 @@
 {
-  "version": "1.47.57",
+  "version": "1.47.58",
   "name": "Shogun OS",
-  "build": 208,
+  "build": 209,
   "channel": "stable",
-  "released": "2026-08-02T17:05:55Z",
-  "changelog": "Allow Samurai nodes to use uploaded PDF, Word, or Markdown instruction files as a complete replacement for the typed task prompt."
+  "released": "2026-08-06T07:08:59Z",
+  "changelog": "Preserve structured AgentFlow data through chunking and reliably render generic Excel and Word template outputs."
 }

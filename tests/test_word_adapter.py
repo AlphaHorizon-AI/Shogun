@@ -80,6 +80,25 @@ def test_create_document_from_text_can_append(tmp_path):
     assert read_text(handle) == "Side et\nSide to"
 
 
+def test_read_text_includes_word_tables_in_document_order(tmp_path):
+    path = tmp_path / "table.docx"
+    document = Document()
+    document.add_paragraph("Before")
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Item"
+    table.cell(0, 1).text = "Quantity"
+    table.cell(1, 0).text = "A"
+    table.cell(1, 1).text = "2"
+    document.add_paragraph("After")
+    document.save(path)
+
+    text = read_text(open_document(str(path)))
+
+    assert text.index("Before") < text.index("[Word table]") < text.index("After")
+    assert "Item\tQuantity" in text
+    assert "A\t2" in text
+
+
 def test_create_from_text_tool_is_exposed():
     names = {
         tool["function"]["name"]

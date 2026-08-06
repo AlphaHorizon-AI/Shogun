@@ -503,7 +503,9 @@ async def _execute_single_node(
     node_type = node.node_type
 
     # Build context string from predecessor outputs
-    context_parts = []
+    context_parts: list[str] = []
+    chunkable_context_parts: list[str] = []
+    fixed_context_parts: list[str] = []
     for pred_id, output in predecessor_outputs.items():
         pred_node = node_map.get(pred_id)
         pred_label = pred_node.label if pred_node else pred_id
@@ -512,20 +514,28 @@ async def _execute_single_node(
                 from shogun.services.file_template import format_template_guidance
 
                 output_text = format_template_guidance(output)
+                is_fixed_context = True
             else:
                 output_text = str(output)
+                is_fixed_context = False
             # Data-processing and delivery nodes must receive complete results.
             # Samurai handles large inputs with model-aware chunking below.
             # Keep the legacy guard only for executors that do not yet support
             # chunking and could otherwise overrun a single model request.
             if node_type in {"coding", "mado_browser"}:
                 output_text = _truncate(output_text, 4000)
-            context_parts.append(f"[Output from '{pred_label}']:\n{output_text}")
+            labelled_output = f"[Output from '{pred_label}']:\n{output_text}"
+            context_parts.append(labelled_output)
+            (fixed_context_parts if is_fixed_context else chunkable_context_parts).append(labelled_output)
     context_str = "\n\n".join(context_parts) if context_parts else ""
+    chunkable_context_str = "\n\n".join(chunkable_context_parts)
+    fixed_context_str = "\n\n".join(fixed_context_parts)
 
     # Additional context injection from config
     if config.get("context_injection"):
-        context_str += f"\n\n[Additional Context]:\n{config['context_injection']}"
+        injected = f"[Additional Context]:\n{config['context_injection']}"
+        context_str = f"{context_str}\n\n{injected}" if context_str else injected
+        fixed_context_str = f"{fixed_context_str}\n\n{injected}" if fixed_context_str else injected
 
     # A Samurai instruction attachment is the node's prompt, not extra
     # context. Resolve it before skill selection so routing, governed native
@@ -578,6 +588,7 @@ async def _execute_single_node(
             active_skill_run_ids = [str(item["active_skill_run_id"]) for item in activation["active_skills"]]
             if activation["context_block"]:
                 execution_context_str += f"\n\n{activation['context_block']}"
+                fixed_context_str += f"\n\n{activation['context_block']}"
         except Exception as exc:
             logging.getLogger("shogun.flow").warning("Active skill selection skipped: %s", exc)
 
@@ -589,8 +600,9 @@ async def _execute_single_node(
         elif node_type == "samurai":
             result = await _exec_samurai(
                 config,
-                execution_context_str,
+                chunkable_context_str,
                 governance_context or {},
+                fixed_context_str=fixed_context_str,
                 progress_callback=lambda completed, total: _update_node_progress(
                     run_id,
                     node_id,
@@ -1277,6 +1289,7 @@ async def _exec_samurai(
     context_str: str,
     governance_context: dict[str, Any] | None = None,
     progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
+    fixed_context_str: str = "",
 ) -> str:
     """Samurai node — delegates task to LLM using agent's routing profile."""
     task_description = await _resolve_samurai_task_description(config)
@@ -1314,9 +1327,10 @@ async def _exec_samurai(
             )
 
     # Build the prompt
+    combined_context = "\n\n".join(part for part in (fixed_context_str, context_str) if part)
     user_message = task_description
-    if context_str:
-        user_message = f"{task_description}\n\n--- CONTEXT FROM PREVIOUS STEPS ---\n{context_str}"
+    if combined_context:
+        user_message = f"{task_description}\n\n--- CONTEXT FROM PREVIOUS STEPS ---\n{combined_context}"
     if native_read_context:
         user_message += (
             "\n\n--- GOVERNED NATIVE READ RESULTS ---\n"
@@ -1447,8 +1461,12 @@ async def _exec_samurai(
         max_input_tokens = max(1024, context_window - int(max_output_tokens or 2048))
 
     if context_str and (chunk_required or len(user_message) // 4 > max_input_tokens):
-        fixed_text = user_message.replace(context_str, "", 1)
-        fixed_tokens = max(1, len(fixed_text) // 4) + 256
+        fixed_message = task_description
+        if fixed_context_str:
+            fixed_message += f"\n\n--- FIXED TEMPLATE AND WORKFLOW CONTEXT ---\n{fixed_context_str}"
+        if expected_output:
+            fixed_message += f"\n\n--- EXPECTED OUTPUT FORMAT ---\n{expected_output}"
+        fixed_tokens = max(1, len(fixed_message) // 4) + 256
         chunk_token_budget = max_input_tokens - fixed_tokens
         if chunk_token_budget < 512:
             raise ValueError(
@@ -1486,7 +1504,7 @@ async def _exec_samurai(
         async def process_chunk(chunk: str, label: str, split_depth: int = 0) -> list[str]:
             nonlocal completed_characters
             chunk_message = (
-                f"{task_description}\n\n"
+                f"{fixed_message}\n\n"
                 f"--- CONTEXT FROM PREVIOUS STEPS ({label}) ---\n{chunk}\n\n"
                 "Process every relevant record in this chunk. Return only the requested structured "
                 "data for this chunk; do not summarize, sample, or omit repeated records."
@@ -1496,8 +1514,6 @@ async def _exec_samurai(
                     "\n\n--- GOVERNED NATIVE READ RESULTS ---\n"
                     + json.dumps(native_read_context, default=str, ensure_ascii=False)
                 )
-            if expected_output:
-                chunk_message += f"\n\n--- EXPECTED OUTPUT FORMAT ---\n{expected_output}"
             try:
                 output = await _call_llm_chain(
                     [
@@ -1551,6 +1567,9 @@ async def _exec_samurai(
         for index, chunk in enumerate(chunks, start=1):
             outputs.extend(await process_chunk(chunk, f"chunk {index}/{len(chunks)}"))
         await report_progress(total_characters)
+        merged = _merge_structured_chunk_matrices(outputs, task_description, fixed_context_str, config)
+        if merged is not None:
+            return merged
         return "\n".join(outputs)
 
     return await _call_llm_chain(
@@ -1628,10 +1647,44 @@ async def _resolve_samurai_task_description(config: dict[str, Any]) -> str:
 
 
 def _split_model_context(text: str, max_chars: int) -> list[str]:
-    """Split long predecessor context without dropping or duplicating text."""
+    """Split long context at source boundaries without dropping or duplicating text."""
     limit = max(1000, int(max_chars))
     if len(text) <= limit:
         return [text]
+    material_starts = [match.start() for match in re.finditer(r"(?m)^\s*Sachnummer\s*:\s*", text)]
+    if len(material_starts) > 1:
+        source_units = []
+        for index, start in enumerate(material_starts):
+            unit_start = 0 if index == 0 else start
+            unit_end = material_starts[index + 1] if index + 1 < len(material_starts) else len(text)
+            source_units.append(text[unit_start:unit_end])
+    else:
+        marker = re.compile(r"(?m)(?=^--- (?:Page \d+|Excel row \d+|Slide \d+) ---\s*$)")
+        source_units = [unit for unit in marker.split(text) if unit]
+    if len(source_units) > 1:
+        chunks: list[str] = []
+        current_units: list[str] = []
+        current_length = 0
+        for unit in source_units:
+            if len(unit) > limit:
+                if current_units:
+                    chunks.append("".join(current_units))
+                    current_units = []
+                    current_length = 0
+                if unit != text:
+                    chunks.extend(_split_model_context(unit, limit))
+                else:
+                    chunks.extend(unit[index:index + limit] for index in range(0, len(unit), limit))
+                continue
+            if current_units and current_length + len(unit) > limit:
+                chunks.append("".join(current_units))
+                current_units = []
+                current_length = 0
+            current_units.append(unit)
+            current_length += len(unit)
+        if current_units:
+            chunks.append("".join(current_units))
+        return chunks
     chunks: list[str] = []
     current = ""
     for part in re.split(r"(\n\n+)", text):
@@ -1650,6 +1703,58 @@ def _split_model_context(text: str, max_chars: int) -> list[str]:
     if current:
         chunks.append(current)
     return chunks
+
+
+def _merge_structured_chunk_matrices(
+    outputs: list[str],
+    task_description: str,
+    fixed_context: str,
+    config: dict[str, Any],
+) -> str | None:
+    """Combine independently generated 2D-array chunks into one validated matrix."""
+    contract_text = f"{task_description}\n{config.get('expected_output', '')}"
+    if not re.search(r"two[- ]dimensional array|2d array|array of arrays", contract_text, re.IGNORECASE):
+        return None
+
+    from shogun.services.file_template import parse_excel_rows
+
+    width_match = re.search(r'"logical_columns"\s*:\s*(\d+)', fixed_context)
+    if not width_match:
+        width_match = re.search(r"exactly\s+(\d+)\s+values", contract_text, re.IGNORECASE)
+    expected_width = int(width_match.group(1)) if width_match else None
+    rows: list[list[Any]] = []
+    for output_index, output in enumerate(outputs, 1):
+        parsed = parse_excel_rows(output)
+        if expected_width is not None:
+            invalid = [(index + 1, len(row)) for index, row in enumerate(parsed) if len(row) != expected_width]
+            if invalid:
+                details = ", ".join(f"row {row} has {width}" for row, width in invalid[:6])
+                raise ValueError(
+                    f"Samurai chunk {output_index} violated the {expected_width}-column template contract: {details}."
+                )
+        rows.extend(parsed)
+
+    deduplicate = bool(config.get("deduplicate_rows")) or bool(
+        re.search(r"(?:do not create|remove|without) duplicate", task_description, re.IGNORECASE)
+    )
+    if deduplicate:
+        unique_rows: list[list[Any]] = []
+        seen: set[str] = set()
+        for row in rows:
+            signature = json.dumps(row, ensure_ascii=False, sort_keys=True, default=str)
+            if signature not in seen:
+                seen.add(signature)
+                unique_rows.append(row)
+        rows = unique_rows
+
+    log.info(
+        "Merged %d structured Samurai chunk output(s) into %d validated row(s), width=%s, deduplicated=%s",
+        len(outputs),
+        len(rows),
+        expected_width or "variable",
+        deduplicate,
+    )
+    return json.dumps(rows, ensure_ascii=False, default=str)
 
 
 _SAMURAI_NATIVE_READ_TOOLS = ("fetch_inbox", "list_calendar_events")
@@ -1708,13 +1813,16 @@ async def _exec_file_template(config: dict[str, Any]) -> dict[str, Any]:
     from shogun.config import settings
     from shogun.services.file_template import extract_file_template
 
-    return extract_file_template(
+    payload = extract_file_template(
         template_path=str(config.get("template_path") or ""),
         workspace_root=settings.workspace_path,
         guidance_mode=str(config.get("guidance_mode") or "structure_only"),
         example_handling=str(config.get("example_handling") or "replace"),
         max_chars=min(settings.agent_flow_document_max_chars, 12_000),
     )
+    payload["render_mode"] = str(config.get("render_mode") or "adaptive")
+    payload["data_start_cell"] = str(config.get("data_start_cell") or "").strip()
+    return payload
 
 
 async def _exec_calendar_read(config: dict[str, Any]) -> dict[str, Any]:
@@ -2511,28 +2619,11 @@ async def _exec_workspace(
         return f"[ERROR] Workspace '{action}' failed: {str(exc)[:500]}"
 
 
-def _excel_rows_from_context(context: str) -> list[list[str]]:
-    """Convert TSV or a model-produced Markdown table into worksheet rows."""
-    lines = context.strip().splitlines() if context.strip() else []
-    markdown_rows: list[list[str]] = []
-    saw_separator = False
-    for line in lines:
-        stripped = line.strip()
-        if not (stripped.startswith("|") and stripped.endswith("|")):
-            continue
-        cells = [cell.strip() for cell in stripped[1:-1].split("|")]
-        if cells and all(re.fullmatch(r":?-{3,}:?", cell.replace(" ", "")) for cell in cells):
-            saw_separator = True
-            continue
-        if cells:
-            # Chunked extraction commonly repeats the same table header. Keep
-            # one header while retaining every data record.
-            if markdown_rows and cells == markdown_rows[0]:
-                continue
-            markdown_rows.append(cells)
-    if saw_separator and markdown_rows:
-        return markdown_rows
-    return [line.split("\t") for line in lines]
+def _excel_rows_from_context(context: str) -> list[list[Any]]:
+    """Normalize model output into typed worksheet rows."""
+    from shogun.services.file_template import parse_excel_rows
+
+    return parse_excel_rows(context)
 
 
 async def _exec_office(
@@ -2687,18 +2778,27 @@ async def _exec_office(
                     context_str,
                     str(template.get("example_handling") or "replace"),
                     sheet_name or None,
+                    str(template.get("data_start_cell") or "") or None,
+                    str(template.get("render_mode") or "adaptive"),
                 )
                 row_summary = f"{rows_written} cells populated from template"
             else:
                 import openpyxl
+                from shogun.office.adapters.excel_adapter import log_excel_payload_shape
 
                 wb = openpyxl.Workbook()
                 ws = wb.active
                 ws.title = sheet_name or "Sheet1"
                 rows = _excel_rows_from_context(context_str)
+                if rows:
+                    from openpyxl.utils import get_column_letter
+
+                    width = max(len(row) for row in rows)
+                    destination = f"A1:{get_column_letter(width)}{len(rows)}"
+                    log_excel_payload_shape("excel_create", ws.title, destination, rows)
                 for r_idx, cells in enumerate(rows, 1):
                     for c_idx, val in enumerate(cells, 1):
-                        ws.cell(row=r_idx, column=c_idx, value=val.strip())
+                        ws.cell(row=r_idx, column=c_idx, value=val.strip() if isinstance(val, str) else val)
                 Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
                 wb.save(abs_out)
                 wb.close()
@@ -2723,14 +2823,11 @@ async def _exec_office(
             )
             handle = open_workbook(abs_in)
             try:
-                # Parse context as 2D data
-                lines = context_str.strip().split("\n") if context_str.strip() else []
-                data = []
-                for line in lines:
-                    data.append(line.split("\t"))
+                data = _excel_rows_from_context(context_str)
                 if data:
                     target_sheet = sheet_name or handle.workbook.sheetnames[0]
-                    write_range(handle, target_sheet, 1, 1, data)
+                    start_range = str(config.get("start_range") or "A1").strip() or "A1"
+                    write_range(handle, target_sheet, start_range, data)
                 Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
                 save_as(handle, abs_out)
                 saved_path = await _record_output(abs_out)
@@ -2770,6 +2867,7 @@ async def _exec_office(
                     Path(abs_out),
                     context_str,
                     str(template.get("example_handling") or "replace"),
+                    str(template.get("render_mode") or "adaptive"),
                 )
                 template_summary = f"{populated} template item(s) populated"
             else:

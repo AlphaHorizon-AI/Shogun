@@ -1300,17 +1300,31 @@ class FileFormatService:
                 finally:
                     close_document(handle)
             elif format_id in {"xlsx", "excel"} or (format_id == "office" and target.suffix.lower() == ".xlsx"):
-                from shogun.office.adapters.excel_adapter import close_workbook, list_sheets, open_workbook, read_used_range
+                from shogun.office.adapters.excel_adapter import (
+                    close_workbook,
+                    list_sheets,
+                    open_workbook,
+                    read_used_range,
+                )
 
                 handle = open_workbook(str(target))
                 try:
                     sheets = list_sheets(handle)
                     selected = sheet or (sheets[0] if sheets else None)
                     if not selected:
-                        content = []
+                        rows = []
                     else:
-                        content = read_used_range(handle, selected)[: settings.file_max_rows_preview]
-                    metadata = {"sheets": sheets, "selected_sheet": selected}
+                        rows = read_used_range(handle, selected)
+                    content = "\n\n".join(
+                        f"--- Excel row {index} ---\n{json.dumps(row, ensure_ascii=False, default=str)}"
+                        for index, row in enumerate(rows, 1)
+                    )
+                    metadata = {
+                        "sheets": sheets,
+                        "selected_sheet": selected,
+                        "row_count": len(rows),
+                        "column_count": max((len(row) for row in rows), default=0),
+                    }
                 finally:
                     close_workbook(handle)
             elif format_id in {"pptx", "powerpoint"} or (format_id == "office" and target.suffix.lower() == ".pptx"):
@@ -1348,7 +1362,12 @@ class FileFormatService:
         if truncated:
             serialized = serialized[:limit]
             warnings.append(f"Content was truncated to {limit:,} characters for safe chat use.")
-        event_id = await self._audit("file.read.completed", f"Read bounded content from {target.name}", target, format_id)
+        event_id = await self._audit(
+            "file.read.completed",
+            f"Read bounded content from {target.name}",
+            target,
+            format_id,
+        )
         return {
             "status": "success",
             "file_id": str(file_id) if file_id else None,

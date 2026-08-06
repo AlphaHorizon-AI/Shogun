@@ -9,7 +9,6 @@ Placeholder convention: ``{{key}}`` — standard mustache style.
 from __future__ import annotations
 
 import logging
-import re
 import time
 from pathlib import Path
 from typing import Any
@@ -63,10 +62,22 @@ def close_document(handle: WordDocumentHandle) -> None:
 
 
 def read_text(handle: WordDocumentHandle) -> str:
-    """Read the full text content of the document."""
+    """Read paragraphs and tables in their document order."""
     doc = handle.document
-    paragraphs = [p.text for p in doc.paragraphs]
-    return "\n".join(paragraphs)
+    from docx.oxml.table import CT_Tbl
+    from docx.oxml.text.paragraph import CT_P
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    blocks: list[str] = []
+    for child in doc.element.body.iterchildren():
+        if isinstance(child, CT_P):
+            blocks.append(Paragraph(child, doc).text)
+        elif isinstance(child, CT_Tbl):
+            table = Table(child, doc)
+            rows = ["\t".join(cell.text.strip() for cell in row.cells) for row in table.rows]
+            blocks.append("[Word table]\n" + "\n".join(rows))
+    return "\n".join(blocks)
 
 
 def read_pages(

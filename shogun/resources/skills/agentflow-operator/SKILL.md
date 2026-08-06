@@ -163,10 +163,15 @@ Provide a Word or Excel output contract to a Samurai before generation and make 
   - `replace` is the default. Fill matching `{{placeholders}}`; when there are none, replace the template's example body/data while retaining its structure and styles.
   - `append` retain existing example content and append the generated result.
   - `preserve` modify placeholders only. It fails clearly when the template contains no usable placeholders.
+- `render_mode`: `adaptive` (default) or `strict`.
+  - `adaptive` measures cells containing real values, ignores formatting-only used ranges, and appends after meaningful template content.
+  - `strict` retains the legacy replace/append placement rules.
+- `data_start_cell`: optional Excel anchor such as `A4`. When present, it overrides automatic placement.
 - The source template is immutable. Rendering always writes a new file through the downstream `office` create node.
 - Use exactly one upstream File Template per create node. Multiple upstream templates or a format mismatch fail explicitly.
 - For placeholder-driven Word templates, ask the Samurai for a JSON object whose scalar keys match placeholders, for example `{"client":"Acme","summary":"Ready"}` for `{{client}}` and `{{summary}}`.
-- For table-driven Excel templates, ask for a Markdown table or tab-separated rows whose columns match the template header.
+- For table-driven Excel templates, prefer one valid two-dimensional JSON array. Every inner array must match the manifest's `logical_columns` width. Chunked document runs merge these matrices before rendering.
+- For repeating Word tables, adaptive rendering accepts a two-dimensional JSON array and retains the first template row as the header.
 
 ### `office`
 

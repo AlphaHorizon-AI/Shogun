@@ -1031,6 +1031,33 @@ function FileTemplateNodeFields({ config, updateConfig }: { config: Record<strin
         </p>
       </div>
 
+      <div className="space-y-1.5">
+        <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Rendering Mode</label>
+        <select
+          value={config.render_mode || 'adaptive'}
+          onChange={(event) => updateConfig('render_mode', event.target.value)}
+          className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#60a5fa] transition-colors outline-none"
+        >
+          <option value="adaptive">Adaptive Placement (Recommended)</option>
+          <option value="strict">Strict Template Placement</option>
+        </select>
+        <p className="text-[8px] text-[#7a8899]/60">
+          Adaptive placement ignores formatting-only blank rows and appends after meaningful template content.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Data Start Cell (Optional)</label>
+        <input
+          type="text"
+          value={config.data_start_cell || ''}
+          onChange={(event) => updateConfig('data_start_cell', event.target.value)}
+          className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#60a5fa] transition-colors outline-none"
+          placeholder="Auto (for example A4)"
+        />
+        <p className="text-[8px] text-[#7a8899]/60">When set, output begins exactly at this cell.</p>
+      </div>
+
       {guidanceMode === 'one_shot' && (
         <>
           <div className="space-y-1.5">
@@ -1291,6 +1318,20 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
             className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#10b981] transition-colors outline-none"
             placeholder="Sheet1"
           />
+        </div>
+      )}
+
+      {action === 'excel_write' && (
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Start Cell / Range</label>
+          <input
+            type="text"
+            value={config.start_range || ''}
+            onChange={(e) => updateConfig('start_range', e.target.value)}
+            className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#10b981] transition-colors outline-none"
+            placeholder="A1"
+          />
+          <p className="text-[8px] text-[#7a8899]/60">The top-left destination cell, for example A2.</p>
         </div>
       )}
 
@@ -3741,6 +3782,8 @@ export function AgentFlowCanvas({
         template_path: '',
         guidance_mode: 'structure_only',
         example_handling: 'replace',
+        render_mode: 'adaptive',
+        data_start_cell: '',
       } : {};
       const newNode: Node = {
         id: crypto.randomUUID(),

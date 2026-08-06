@@ -211,6 +211,55 @@ async def test_samurai_node_receives_complete_predecessor_document(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_samurai_receives_template_as_fixed_context(monkeypatch):
+    captured: dict[str, str] = {}
+
+    async def update_state(*_args, **_kwargs):
+        return None
+
+    async def execute_samurai(_config, context, _governance, **kwargs):
+        captured["context"] = context
+        captured["fixed"] = kwargs.get("fixed_context_str", "")
+        return "done"
+
+    monkeypatch.setattr(flow_engine, "_update_node_state", update_state)
+    monkeypatch.setattr(flow_engine, "_exec_samurai", execute_samurai)
+    monkeypatch.setattr(flow_engine, "_finalize_node_skills", update_state)
+    monkeypatch.setattr(flow_engine, "_node_uses_active_skill_context", lambda *_args: False)
+    template_id = str(uuid.uuid4())
+    document_id = str(uuid.uuid4())
+    node = SimpleNamespace(
+        id=uuid.uuid4(),
+        flow_id=uuid.uuid4(),
+        node_type="samurai",
+        label="Extract",
+        config={"task_description": "Extract"},
+    )
+    template = {
+        "__shogun_file_template__": True,
+        "template_path": "Templates/output.xlsx",
+        "format": "xlsx",
+        "contract": "22 columns",
+        "manifest": {"logical_columns": 22},
+    }
+
+    await flow_engine._execute_single_node(
+        uuid.uuid4(),
+        node,
+        {document_id: "PDF DATA", template_id: template},
+        {
+            document_id: SimpleNamespace(label="Input PDF"),
+            template_id: SimpleNamespace(label="Template"),
+        },
+    )
+
+    assert "PDF DATA" in captured["context"]
+    assert "FILE TEMPLATE CONTRACT" not in captured["context"]
+    assert "FILE TEMPLATE CONTRACT" in captured["fixed"]
+    assert '"logical_columns": 22' in captured["fixed"]
+
+
+@pytest.mark.asyncio
 async def test_samurai_instruction_file_replaces_typed_prompt(tmp_path, monkeypatch):
     upload_root = tmp_path / "uploads"
     instruction = upload_root / "agent_flows" / uuid.uuid4().hex / "instruction.md"
@@ -453,3 +502,90 @@ async def test_excel_create_converts_markdown_table_to_columns(tmp_path, monkeyp
         ("140000", "26", "21.07.2026"),
         ("140006", "3", "21.07.2026"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_excel_write_places_two_dimensional_json_in_a2_c3(tmp_path, monkeypatch, caplog):
+    import logging
+
+    import openpyxl
+
+    from shogun.office import config as office_config
+
+    source = tmp_path / "Input" / "target.xlsx"
+    source.parent.mkdir(parents=True)
+    workbook = openpyxl.Workbook()
+    workbook.active.title = "Sheet1"
+    workbook.save(source)
+    workbook.close()
+
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    monkeypatch.setattr(office_config, "load_office_config", lambda: SimpleNamespace(enabled=True))
+    caplog.set_level(logging.INFO, logger="shogun.office.adapters.excel")
+
+    result = await flow_engine._exec_office(
+        {
+            "action": "excel_write",
+            "input_path": "Input/target.xlsx",
+            "output_path": "Output/result.xlsx",
+            "sheet_name": "Sheet1",
+            "start_range": "A2",
+        },
+        '```json\n[["TEST-A","TEST-B","TEST-C"],["TEST-D","TEST-E","TEST-F"]]\n```',
+    )
+
+    written = openpyxl.load_workbook(tmp_path / "Output" / "result.xlsx", read_only=True)
+    try:
+        assert [[written["Sheet1"].cell(row, col).value for col in range(1, 4)] for row in range(2, 4)] == [
+            ["TEST-A", "TEST-B", "TEST-C"],
+            ["TEST-D", "TEST-E", "TEST-F"],
+        ]
+    finally:
+        written.close()
+    assert "Output/result.xlsx" in result
+    assert "runtime_type=list" in caplog.text
+    assert "first_is_array=True" in caplog.text
+    assert "rows=2" in caplog.text
+    assert "range=A2" in caplog.text
+
+
+def test_structured_chunk_matrices_are_validated_and_deduplicated():
+    merged = flow_engine._merge_structured_chunk_matrices(
+        ['[["A", 1, ""]]', '[["A", 1, ""], ["B", 2, ""]]'],
+        "Return only one valid two-dimensional array. Do not create duplicate rows.",
+        '[MACHINE-READABLE TEMPLATE MANIFEST]\n{"logical_columns": 3}',
+        {},
+    )
+
+    assert merged is not None
+    assert __import__("json").loads(merged) == [["A", 1, ""], ["B", 2, ""]]
+
+
+def test_model_context_splitting_preserves_source_units():
+    text = "prefix\n" + "".join(
+        f"--- Page {index} ---\n" + (str(index) * 700) + "\n"
+        for index in range(1, 5)
+    )
+
+    chunks = flow_engine._split_model_context(text, 1200)
+
+    assert "".join(chunks) == text
+    assert all(chunk.count("--- Page") <= 2 for chunk in chunks)
+
+
+def test_model_context_keeps_material_continuation_pages_together():
+    first_material = (
+        "--- Page 1 ---\nSachnummer : 140000\n"
+        + ("A" * 450)
+        + "\n--- Page 2 ---\ncontinuation without a new material\n"
+        + ("B" * 350)
+    )
+    second_material = "\n--- Page 3 ---\nSachnummer : 140006\n" + ("C" * 700)
+    text = "[Document]\n" + first_material + second_material
+
+    chunks = flow_engine._split_model_context(text, 1000)
+
+    assert "".join(chunks) == text
+    first_chunk = next(chunk for chunk in chunks if "Sachnummer : 140000" in chunk)
+    assert "continuation without a new material" in first_chunk
+    assert "Sachnummer : 140006" not in first_chunk

@@ -36,6 +36,25 @@ def service(tmp_path: Path) -> FileFormatService:
 
 
 @pytest.mark.asyncio
+async def test_excel_read_is_not_limited_to_preview_row_count(tmp_path):
+    import openpyxl
+
+    path = tmp_path / "large.xlsx"
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    for index in range(1, 151):
+        sheet.append([f"ROW-{index}", index])
+    workbook.save(path)
+    workbook.close()
+
+    result = await service(tmp_path).read(path=str(path), max_chars=200_000)
+
+    assert result["metadata"]["row_count"] == 150
+    assert "--- Excel row 150 ---" in result["content"]
+    assert '"ROW-150"' in result["content"]
+
+
+@pytest.mark.asyncio
 async def test_content_detection_overrides_wrong_json_extension(tmp_path):
     path = tmp_path / "payload.txt"
     path.write_text('{"customers": [{"name": "A"}]}', encoding="utf-8")

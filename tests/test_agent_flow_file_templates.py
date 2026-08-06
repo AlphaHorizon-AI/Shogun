@@ -1,5 +1,6 @@
 import uuid
 from copy import copy
+from datetime import datetime
 from types import SimpleNamespace
 
 import openpyxl
@@ -12,9 +13,86 @@ from shogun.services.file_template import (
     TEMPLATE_MARKER,
     extract_file_template,
     format_template_guidance,
+    parse_excel_rows,
     render_excel_template,
     render_word_template,
 )
+
+
+def test_excel_json_object_rows_follow_template_column_order():
+    payload = """```json
+[{"Amount": 20, "Item": "140006", "2026-07-01": 10},
+ {"Item": "140023", "2026-07-01": 5, "Amount": 12}]
+```"""
+
+    rows = parse_excel_rows(
+        payload,
+        template_headers=[None, "Item", "Amount", datetime(2026, 7, 1)],
+    )
+
+    assert rows == [[None, "140006", 20, 10], [None, "140023", 12, 5]]
+
+
+def test_excel_chunked_and_individually_serialized_json_rows_are_decoded():
+    payload = """[Output from 'Extract & Map Data']:
+```json
+["{\\"Item\\":\\"A\\",\\"Amount\\":1}"]
+```
+```json
+[{"Item":"B","Amount":2}]
+```"""
+
+    rows = parse_excel_rows(payload, template_headers=["Item", "Amount"])
+
+    assert rows == [["A", 1], ["B", 2]]
+
+
+def test_excel_incomplete_structured_json_is_rejected():
+    with pytest.raises(ValueError, match="incomplete or truncated"):
+        parse_excel_rows('```json\n[["A", "B"]')
+
+
+def test_excel_manifest_and_adaptive_render_ignore_formatting_only_rows(tmp_path):
+    source = tmp_path / "source.xlsx"
+    output = tmp_path / "Output" / "result.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Plan"
+    ws.append(["Description", "Item", "Quantity"])
+    ws.append([None, "Nr.", "Stk."])
+    ws.append(["Existing", "100", 1])
+    ws["A100"].fill = openpyxl.styles.PatternFill(fill_type="solid", fgColor="FFFF00")
+    wb.save(source)
+    wb.close()
+
+    payload = extract_file_template("source.xlsx", tmp_path)
+    sheet = payload["manifest"]["sheets"][0]
+    assert sheet["logical_range"] == "A1:C3"
+    assert sheet["logical_columns"] == 3
+    assert sheet["suggested_append_cell"] == "A4"
+
+    changed = render_excel_template(
+        source,
+        output,
+        '[["Generated", "200", 2]]',
+        "replace",
+        "Plan",
+        render_mode="adaptive",
+    )
+    assert changed == 3
+    rendered = openpyxl.load_workbook(output)
+    try:
+        assert rendered["Plan"]["A3"].value == "Existing"
+        assert rendered["Plan"]["A4"].value == "Generated"
+        assert rendered["Plan"]["C4"].value == 2
+        assert rendered["Plan"]["A100"].value is None
+    finally:
+        rendered.close()
+
+
+def test_excel_template_matrix_width_is_validated():
+    with pytest.raises(ValueError, match="exactly 3 values"):
+        parse_excel_rows('[["A", "B"]]', template_headers=["One", "Two", "Three"])
 
 
 def test_word_template_structure_and_one_shot_are_explicit(tmp_path):
@@ -60,6 +138,34 @@ def test_word_template_render_creates_copy_and_replaces_json_placeholders(tmp_pa
     rendered = "\n".join(p.text for p in Document(output).paragraphs)
     assert "Client: Acme" in rendered
     assert "Summary: Ready" in rendered
+
+
+def test_word_adaptive_render_populates_repeating_table_rows(tmp_path):
+    source = tmp_path / "source.docx"
+    output = tmp_path / "Output" / "result.docx"
+    document = Document()
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Item"
+    table.cell(0, 1).text = "Quantity"
+    table.cell(1, 0).text = "Example"
+    table.cell(1, 1).text = "1"
+    document.save(source)
+
+    changed = render_word_template(
+        source,
+        output,
+        '[["A", 2], ["B", 3]]',
+        "replace",
+        render_mode="adaptive",
+    )
+
+    rendered = Document(output)
+    assert changed == 4
+    assert [[cell.text for cell in row.cells] for row in rendered.tables[0].rows] == [
+        ["Item", "Quantity"],
+        ["A", "2"],
+        ["B", "3"],
+    ]
 
 
 def test_excel_one_shot_replace_preserves_template_and_styles(tmp_path):

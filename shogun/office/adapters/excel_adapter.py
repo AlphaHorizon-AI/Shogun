@@ -16,12 +16,44 @@ All operations:
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from pathlib import Path
 from typing import Any
 
 log = logging.getLogger("shogun.office.adapters.excel")
+
+
+def log_excel_payload_shape(
+    action: str,
+    sheet_name: str,
+    range_str: str,
+    values: Any,
+) -> None:
+    """Log safe structural diagnostics without exposing the full dataset."""
+    is_array = isinstance(values, list)
+    first = values[0] if is_array and values else None
+    columns = [len(row) if isinstance(row, (list, tuple)) else 1 for row in values] if is_array else []
+    sample = json.dumps(values[:2] if is_array else values, ensure_ascii=False, default=str)
+    if len(sample) > 500:
+        sample = sample[:497] + "..."
+    log.info(
+        "Excel payload action=%s parameters=[worksheet,range,values] worksheet=%s range=%s "
+        "runtime_type=%s is_array=%s first_type=%s first_is_array=%s first_is_object=%s "
+        "rows=%d columns_per_row=%s sample=%s",
+        action,
+        sheet_name,
+        range_str,
+        type(values).__name__,
+        is_array,
+        type(first).__name__ if first is not None else "none",
+        isinstance(first, (list, tuple)),
+        isinstance(first, dict),
+        len(values) if is_array else 0,
+        columns[:20],
+        sample,
+    )
 
 
 # ── Workbook Handle ──────────────────────────────────────────────────
@@ -183,6 +215,7 @@ def write_range(
         from openpyxl.utils import coordinate_to_tuple
         min_row, min_col = coordinate_to_tuple(range_str)
 
+    log_excel_payload_shape("excel_write_range", sheet_name, range_str, values)
     for row_idx, row_data in enumerate(values):
         for col_idx, value in enumerate(row_data):
             ws.cell(row=min_row + row_idx, column=min_col + col_idx, value=value)
