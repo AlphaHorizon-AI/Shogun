@@ -4824,7 +4824,8 @@ function FlowListView({
                 }
               }}
               className={cn(
-                "shogun-card !p-0 text-left hover:border-[#4a8cc7]/40 transition-all group relative overflow-hidden cursor-pointer",
+                "shogun-card !p-0 text-left hover:border-[#4a8cc7]/40 transition-all group relative overflow-visible cursor-pointer",
+                menuOpen === flow.id && "z-20",
                 selectionMode && selectedIds.has(flow.id) && "border-[#d4a017]/70 bg-[#d4a017]/5 ring-1 ring-[#d4a017]/30"
               )}
             >
@@ -4859,23 +4860,31 @@ function FlowListView({
                   </div>
                   {!selectionMode && <div className="relative">
                     <button
+                      type="button"
+                      aria-label={`Actions for ${flow.name}`}
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen === flow.id}
                       onClick={(e) => {
                         e.stopPropagation();
                         setMenuOpen(menuOpen === flow.id ? null : flow.id);
                       }}
-                      className="p-1.5 hover:bg-[#1a2040] rounded-lg text-[#7a8899] hover:text-[#c8d0d8] transition-colors opacity-0 group-hover:opacity-100"
+                      className="shrink-0 rounded-lg border border-[#1a2040] bg-[#0a0e1a]/70 p-1.5 text-[#7a8899] opacity-100 transition-colors hover:bg-[#1a2040] hover:text-[#c8d0d8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4a8cc7]/70"
                     >
-                      <MoreVertical className="w-3.5 h-3.5" />
+                      <MoreVertical className="w-4 h-4" />
                     </button>
                     {menuOpen === flow.id && (
-                      <div className="absolute right-0 top-8 z-10 w-36 bg-[#0e1225] border border-[#1a2040] rounded-lg shadow-xl overflow-hidden">
+                      <div role="menu" className="absolute right-0 top-9 z-30 w-36 bg-[#0e1225] border border-[#1a2040] rounded-lg shadow-xl overflow-hidden">
                         <button
+                          type="button"
+                          role="menuitem"
                           onClick={(e) => { e.stopPropagation(); onDuplicate(flow.id); setMenuOpen(null); }}
                           className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-[#7a8899] hover:bg-[#1a2040] hover:text-[#c8d0d8] transition-colors"
                         >
                           <Copy className="w-3 h-3" /> Duplicate
                         </button>
                         <button
+                          type="button"
+                          role="menuitem"
                           onClick={(e) => { e.stopPropagation(); onDelete(flow.id); setMenuOpen(null); }}
                           className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-red-400 hover:bg-red-500/10 transition-colors"
                         >

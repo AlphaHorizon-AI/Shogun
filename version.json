@@ -1,8 +1,8 @@
 {
-  "version": "1.47.58",
+  "version": "1.47.59",
   "name": "Shogun OS",
-  "build": 209,
+  "build": 210,
   "channel": "stable",
-  "released": "2026-08-06T07:08:59Z",
-  "changelog": "Preserve structured AgentFlow data through chunking and reliably render generic Excel and Word template outputs."
+  "released": "2026-08-06T07:20:58Z",
+  "changelog": "Keep individual AgentFlow duplicate and delete actions visible and accessible across remote-control and touch-like pointer environments."
 }
