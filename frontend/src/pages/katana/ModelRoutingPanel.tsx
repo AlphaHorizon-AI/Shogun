@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Activity, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Gauge, LockKeyhole, Play, Plus, RefreshCw, Route, Server, Trash2, X, Zap } from 'lucide-react';
+import { Activity, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Gauge, GripVertical, LockKeyhole, Play, Plus, RefreshCw, Route, Server, Trash2, X, Zap } from 'lucide-react';
 import { customProfileUpdate } from '../../lib/routingProfiles';
 
 type Profile = {
@@ -77,6 +77,10 @@ const orderedModels = (profile?: Profile): string[] => {
     : [];
 };
 
+const temperaturesFor = (profile?: Profile): Record<string, number> => Object.fromEntries(
+  Object.entries(profile?.model_settings || {}).map(([id, settings]) => [id, settings.temperature ?? 0.3]),
+);
+
 type ModelRoutingPanelProps = {
   isEditingProfiles?: boolean;
   onEditProfiles?: () => void;
@@ -95,6 +99,8 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
   const [requirements, setRequirements] = useState<string[]>(['coding', 'tool_use']);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [customModels, setCustomModels] = useState<string[]>([]);
+  const [customTemperatures, setCustomTemperatures] = useState<Record<string, number>>({});
+  const [draggedModelId, setDraggedModelId] = useState('');
   const [customProfileId, setCustomProfileId] = useState('');
   const [newProfileName, setNewProfileName] = useState('');
   const [newProfileDescription, setNewProfileDescription] = useState('');
@@ -108,16 +114,22 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       ]);
       const loadedProfiles: Profile[] = profilesRes.data.data || [];
       setProfiles(loadedProfiles);
-      setModels(registryRes.data.data || []);
+      const loadedModels: RegistryModel[] = registryRes.data.data || [];
+      setModels(loadedModels);
       setUsage(usageRes.data.data || {});
       const active = (profilesRes.data.data || []).find((item: Profile) => item.is_default);
       if (active) setProfile(active.id);
       const editableProfiles = loadedProfiles.filter(item => item.name === 'Custom' || !AUTOMATIC_PROFILE_NAMES.has(item.name));
       const selected = editableProfiles.find(item => item.id === customProfileId)
+        || editableProfiles.find(item => item.is_default)
         || editableProfiles.find(item => item.name === 'Custom')
         || editableProfiles[0];
       setCustomProfileId(selected?.id || '');
-      setCustomModels(orderedModels(selected));
+      setCustomModels(orderedModels(selected)
+        .map(id => loadedModels.find(model => model.id === id || model.model_id === id))
+        .filter((item): item is RegistryModel => Boolean(item?.enabled))
+        .map(item => item.id));
+      setCustomTemperatures(temperaturesFor(selected));
     } catch (error: any) {
       setMessage(error?.response?.data?.detail || 'Model routing data could not be loaded.');
     } finally { setLoading(false); }
@@ -127,13 +139,6 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
   const activeProfile = useMemo(() => profiles.find(item => item.is_default), [profiles]);
   const activeIsAutomatic = Boolean(activeProfile && AUTOMATIC_PROFILE_NAMES.has(activeProfile.name));
   const registryEditable = Boolean(activeProfile && !activeIsAutomatic);
-  const temperatureModels = useMemo(() => {
-    if (!activeProfile) return [];
-    if (activeIsAutomatic) return models.filter(item => item.enabled);
-    return orderedModels(activeProfile)
-      .map(id => models.find(item => item.id === id || item.model_id === id))
-      .filter((item): item is RegistryModel => Boolean(item));
-  }, [activeIsAutomatic, activeProfile, models]);
   const customProfiles = useMemo(
     () => profiles.filter(item => item.name === 'Custom' || !AUTOMATIC_PROFILE_NAMES.has(item.name)),
     [profiles],
@@ -145,7 +150,11 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
   const selectCustomProfile = (profileId: string) => {
     const selected = customProfiles.find(item => item.id === profileId);
     setCustomProfileId(profileId);
-    setCustomModels(orderedModels(selected));
+    setCustomModels(orderedModels(selected)
+      .map(id => models.find(model => model.id === id || model.model_id === id))
+      .filter((item): item is RegistryModel => Boolean(item?.enabled))
+      .map(item => item.id));
+    setCustomTemperatures(temperaturesFor(selected));
   };
   const setActive = async (item: Profile) => {
     setBusy(item.id);
@@ -179,6 +188,14 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
     try {
       const response = await axios.patch(`/api/v1/models/registry/${item.id}`, patch);
       setModels(current => current.map(model => model.id === item.id ? response.data.data : model));
+      if (patch.enabled === false) {
+        setCustomModels(current => current.filter(id => id !== item.id));
+        setCustomTemperatures(current => {
+          const next = { ...current };
+          delete next[item.id];
+          return next;
+        });
+      }
       setMessage(`${item.display_name} updated.`);
     } catch (error: any) { setMessage(error?.response?.data?.detail || 'Model metadata could not be updated.'); }
     finally { setBusy(''); }
@@ -203,27 +220,17 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       setMessage(error?.response?.data?.detail || 'Tool-calling verification failed.');
     } finally { setBusy(''); }
   };
-  const setProfileTemperature = async (item: RegistryModel, temperature: number) => {
-    if (!activeProfile || !Number.isFinite(temperature)) return;
-    const clamped = Math.max(0, Math.min(2, temperature));
-    const modelSettings = {
-      ...(activeProfile.model_settings || {}),
-      [item.id]: {
-        ...(activeProfile.model_settings?.[item.id] || {}),
-        temperature: clamped,
-      },
-    };
-    setBusy(`temperature-${item.id}`);
-    try {
-      const response = await axios.post(`/api/v1/models/routing/profiles/${activeProfile.id}/update`, {
-        model_settings: modelSettings,
-      });
-      const updated: Profile = response.data.data;
-      setProfiles(current => current.map(profileItem => profileItem.id === updated.id ? updated : profileItem));
-      setMessage(`${item.display_name} temperature set to ${clamped.toFixed(2)} for ${activeProfile.name}.`);
-    } catch (error: any) {
-      setMessage(error?.response?.data?.detail || 'Profile temperature could not be saved.');
-    } finally { setBusy(''); }
+  const moveCustomModel = (modelId: string, targetId: string) => {
+    if (!modelId || modelId === targetId) return;
+    setCustomModels(current => {
+      const from = current.indexOf(modelId);
+      const to = current.indexOf(targetId);
+      if (from < 0 || to < 0) return current;
+      const next = [...current];
+      next.splice(from, 1);
+      next.splice(to, 0, modelId);
+      return next;
+    });
   };
   const saveCustom = async (activate = false) => {
     if (!customProfile || customModels.length === 0) {
@@ -243,13 +250,17 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
         newProfileName,
         newProfileDescription,
       );
+      const modelSettings = Object.fromEntries(customModels.map(id => [id, {
+        ...(customProfile.model_settings?.[id] || {}),
+        temperature: customTemperatures[id] ?? customProfile.model_settings?.[id]?.temperature ?? 0.3,
+      }]));
       const response = pendingRename
         ? await axios.post('/api/v1/model-routing-profiles', {
             ...update,
-            model_settings: customProfile.model_settings || {},
+            model_settings: modelSettings,
             is_default: false,
           })
-        : await axios.post(`/api/v1/models/routing/profiles/${customProfile.id}/update`, update);
+        : await axios.post(`/api/v1/models/routing/profiles/${customProfile.id}/update`, { ...update, model_settings: modelSettings });
       const saved: Profile = response.data.data;
       if (activate) {
         await axios.post('/api/v1/models/routing/profiles/active', { profile_id: saved.id });
@@ -262,6 +273,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       await load();
       setCustomProfileId(saved.id);
       setCustomModels(orderedModels(saved));
+      setCustomTemperatures(temperaturesFor(saved));
     } catch (error: any) {
       setMessage(error?.response?.data?.detail || 'Routing profile could not be saved.');
     } finally { setBusy(''); }
@@ -289,6 +301,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       await load();
       setCustomProfileId(created.id);
       setCustomModels([]);
+      setCustomTemperatures({});
     } catch (error: any) {
       setMessage(error?.response?.data?.detail || 'Routing profile could not be created.');
     } finally { setBusy(''); }
@@ -354,34 +367,10 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
           </button>;
         })}
       </div>
-      {activeProfile && <div className="mt-4 rounded-lg border border-purple-400/20 bg-purple-400/[0.04] p-3">
-        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-          <div><h4 className="text-xs font-bold text-purple-200">Profile model temperatures</h4>
-            <p className="mt-1 text-[9px] text-shogun-subdued">Scoped only to <strong>{activeProfile.name}</strong>. Global model capabilities are unchanged.</p></div>
-          <span className="rounded border border-purple-400/25 px-2 py-1 text-[8px] font-bold uppercase text-purple-300">0 deterministic · 2 creative</span>
-        </div>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-          {temperatureModels.map(item => {
-            const temperature = activeProfile.model_settings?.[item.id]?.temperature ?? 0.3;
-            return <label key={`${activeProfile.id}-${item.id}`} className="flex items-center gap-3 rounded border border-shogun-border bg-[#080b14] px-3 py-2">
-              <span className="min-w-0 flex-1"><strong className="block truncate text-[10px]">{item.display_name}</strong><span className="block truncate text-[8px] text-shogun-subdued">{item.provider} · {item.model_id}</span></span>
-              <input type="number" min={0} max={2} step={0.05} defaultValue={temperature}
-                disabled={busy === `temperature-${item.id}`}
-                onBlur={event => {
-                  const value = Math.max(0, Math.min(2, Number(event.currentTarget.value)));
-                  event.currentTarget.value = String(value);
-                  setProfileTemperature(item, value);
-                }}
-                className="w-20 rounded border border-purple-400/30 bg-[#050508] p-1.5 text-right font-mono text-[10px] text-purple-200 outline-none" />
-            </label>;
-          })}
-          {!temperatureModels.length && <p className="py-2 text-[10px] text-shogun-subdued">Add or enable models in this profile to configure their temperatures.</p>}
-        </div>
-      </div>}
-      {isEditingProfiles && <div className="mt-5 pt-5 border-t border-amber-400/20">
+      {(isEditingProfiles || !activeIsAutomatic) && <div className="mt-5 pt-5 border-t border-amber-400/20">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-          <div><h4 className="text-sm font-bold">Named custom routing profiles</h4>
-            <p className="text-[10px] text-shogun-subdued mt-1">Create focused profiles such as Finance or Engineering. Each profile keeps its own strict primary and fallback model order.</p></div>
+          <div><h4 className="text-sm font-bold">Primary & fallback model order</h4>
+            <p className="text-[10px] text-shogun-subdued mt-1">Choose enabled models, then drag them into routing order. The first is primary; every model below it is the next fallback. Temperature belongs to that model in this profile.</p></div>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => saveCustom(false)} disabled={!customProfile || busy !== '' || customModels.length === 0}
               className="px-3 py-2 rounded border border-amber-400/40 hover:bg-amber-400/10 disabled:opacity-40 text-[10px] font-bold">
@@ -414,29 +403,51 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
         </div>
         {customProfile ? <>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <div className="max-h-44 overflow-y-auto rounded-lg border border-shogun-border p-2 space-y-1">
+          <div className="max-h-64 overflow-y-auto rounded-lg border border-shogun-border p-2 space-y-1">
+            <p className="px-2 pb-1 text-[8px] font-bold uppercase tracking-wider text-shogun-subdued">Available enabled models</p>
             {models.filter(item => item.enabled).map(item => {
               const selected = customModels.includes(item.id);
-              return <button key={item.id} onClick={() => setCustomModels(current => selected ? current.filter(id => id !== item.id) : [...current, item.id])}
+              return <button key={item.id} onClick={() => {
+                setCustomModels(current => selected ? current.filter(id => id !== item.id) : [...current, item.id]);
+                if (!selected) setCustomTemperatures(current => ({ ...current, [item.id]: current[item.id] ?? 0.3 }));
+              }}
                 className={`w-full flex items-center justify-between gap-2 rounded p-2 text-left text-xs border ${selected ? 'border-amber-400/50 bg-amber-400/10' : 'border-transparent hover:border-shogun-border'}`}>
                 <span className="truncate"><strong>{item.display_name}</strong><span className="ml-2 text-[9px] text-shogun-subdued">{item.provider}</span></span>
                 {selected && <CheckCircle2 className="w-3.5 h-3.5 text-amber-300 shrink-0" />}
               </button>;
             })}
           </div>
-          <div className="rounded-lg border border-shogun-border p-2 space-y-1">
+          <div className="rounded-lg border border-amber-400/25 bg-amber-400/[0.03] p-2 space-y-1">
+            <div className="flex items-center justify-between px-2 pb-1">
+              <p className="text-[8px] font-bold uppercase tracking-wider text-amber-300">Routing order</p>
+              <p className="text-[8px] text-shogun-subdued">Temperature: 0 deterministic · 2 creative</p>
+            </div>
             {customModels.map((id, index) => {
               const item = models.find(model => model.id === id);
               if (!item) return null;
-              return <div key={id} className="flex items-center gap-2 rounded bg-[#080b14] border border-shogun-border p-2">
-                <span className="w-16 text-[8px] font-bold uppercase text-amber-300">{index === 0 ? 'Primary' : `Fallback ${index}`}</span>
-                <span className="text-xs flex-1 truncate">{item.display_name}</span>
-                <button disabled={index === 0} onClick={() => setCustomModels(current => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}><ChevronUp className="w-3.5 h-3.5" /></button>
-                <button disabled={index === customModels.length - 1} onClick={() => setCustomModels(current => { const next = [...current]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}><ChevronDown className="w-3.5 h-3.5" /></button>
-                <button onClick={() => setCustomModels(current => current.filter(value => value !== id))}><X className="w-3.5 h-3.5 text-red-400" /></button>
+              const temperature = customTemperatures[id] ?? customProfile.model_settings?.[id]?.temperature ?? 0.3;
+              return <div key={id} draggable onDragStart={() => setDraggedModelId(id)} onDragEnd={() => setDraggedModelId('')}
+                onDragOver={event => event.preventDefault()} onDrop={() => { moveCustomModel(draggedModelId, id); setDraggedModelId(''); }}
+                className={`flex items-center gap-2 rounded bg-[#080b14] border p-2 transition-colors ${draggedModelId === id ? 'border-amber-300/70 opacity-60' : 'border-shogun-border hover:border-amber-400/40'}`}>
+                <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-shogun-subdued" aria-label="Drag to reorder" />
+                <span className="w-16 shrink-0 text-[8px] font-bold uppercase text-amber-300">{index === 0 ? 'Primary' : `Fallback ${index}`}</span>
+                <span className="min-w-0 flex-1"><strong className="block truncate text-xs">{item.display_name}</strong><span className="block truncate text-[8px] text-shogun-subdued">{item.provider} · {item.model_id}</span></span>
+                <label className="flex shrink-0 items-center gap-1 text-[8px] uppercase text-shogun-subdued">Temp
+                  <input type="number" min={0} max={2} step={0.05} value={temperature}
+                    onChange={event => {
+                      const value = Math.max(0, Math.min(2, Number(event.currentTarget.value)));
+                      setCustomTemperatures(current => ({ ...current, [id]: value }));
+                    }}
+                    className="w-16 rounded border border-purple-400/30 bg-[#050508] p-1.5 text-right font-mono text-[10px] text-purple-200 outline-none" />
+                </label>
+                <div className="flex shrink-0 items-center">
+                  <button title="Move up" disabled={index === 0} onClick={() => setCustomModels(current => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })} className="disabled:opacity-25"><ChevronUp className="w-3.5 h-3.5" /></button>
+                  <button title="Move down" disabled={index === customModels.length - 1} onClick={() => setCustomModels(current => { const next = [...current]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })} className="disabled:opacity-25"><ChevronDown className="w-3.5 h-3.5" /></button>
+                  <button title="Remove from profile" onClick={() => setCustomModels(current => current.filter(value => value !== id))}><X className="w-3.5 h-3.5 text-red-400" /></button>
+                </div>
               </div>;
             })}
-            {!customModels.length && <p className="text-[10px] text-shogun-subdued text-center py-6">Select models from the registry.</p>}
+            {!customModels.length && <p className="text-[10px] text-shogun-subdued text-center py-6">Choose at least one enabled model. The first selected model becomes Primary.</p>}
           </div>
         </div>
         </> : <p className="text-[10px] text-shogun-subdued py-4">Create a named profile to configure its model order.</p>}

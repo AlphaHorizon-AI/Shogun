@@ -1,8 +1,8 @@
 {
-  "version": "1.47.65",
+  "version": "1.47.66",
   "name": "Shogun OS",
-  "build": 216,
+  "build": 217,
   "channel": "stable",
-  "released": "2026-08-06T11:35:47Z",
-  "changelog": "Add model-specific tool-calling profiles with native AgentFlow structured-output support and governed fallback."
+  "released": "2026-08-06T11:57:00Z",
+  "changelog": "Clarify custom model routing with ordered primary and fallback models plus per-model temperature controls."
 }
