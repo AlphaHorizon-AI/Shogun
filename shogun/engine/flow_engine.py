@@ -2752,6 +2752,8 @@ async def _exec_file_template(config: dict[str, Any]) -> dict[str, Any]:
         guidance_mode=str(config.get("guidance_mode") or "structure_only"),
         example_handling=str(config.get("example_handling") or "replace"),
         max_chars=min(settings.agent_flow_document_max_chars, 12_000),
+        merge_key_columns=config.get("merge_key_columns"),
+        merge_preserve_columns=config.get("merge_preserve_columns"),
     )
     payload["render_mode"] = str(config.get("render_mode") or "adaptive")
     payload["data_start_cell"] = str(config.get("data_start_cell") or "").strip()
@@ -3713,6 +3715,9 @@ async def _exec_office(
                     sheet_name or None,
                     str(template.get("data_start_cell") or "") or None,
                     str(template.get("render_mode") or "adaptive"),
+                    str(template.get("guidance_mode") or "structure_only"),
+                    template.get("merge_key_columns"),
+                    template.get("merge_preserve_columns"),
                 )
                 row_summary = f"{rows_written} cells populated from template"
             else:

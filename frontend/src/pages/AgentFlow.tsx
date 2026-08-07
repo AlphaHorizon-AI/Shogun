@@ -660,7 +660,11 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             <div className="flex items-center gap-1">
               <Clipboard className="w-2.5 h-2.5 text-[#60a5fa]/70" />
               <span className="text-[8px] font-bold text-[#60a5fa]/80 uppercase">
-                {config.guidance_mode === 'one_shot' ? 'One-shot example' : 'Structure only'}
+                {config.guidance_mode === 'one_shot'
+                  ? 'One-shot example'
+                  : config.guidance_mode === 'baseline_merge'
+                    ? 'Baseline merge'
+                    : 'Structure only'}
               </span>
             </div>
             <p className="text-[9px] text-[#7a8899] truncate">
@@ -917,7 +921,8 @@ function FileTemplateNodeFields({ config, updateConfig }: { config: Record<strin
   const [treeData, setTreeData] = useState<any[]>([]);
   const [loadingTree, setLoadingTree] = useState(false);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
-  const extensions = ['docx', 'xlsx'];
+  const guidanceMode = config.guidance_mode || 'structure_only';
+  const extensions = guidanceMode === 'baseline_merge' ? ['xlsx'] : ['docx', 'xlsx'];
 
   const openPicker = async () => {
     setShowPicker(true);
@@ -991,7 +996,6 @@ function FileTemplateNodeFields({ config, updateConfig }: { config: Record<strin
     );
   };
 
-  const guidanceMode = config.guidance_mode || 'structure_only';
   return (
     <>
       <div className="space-y-1.5">
@@ -1025,26 +1029,30 @@ function FileTemplateNodeFields({ config, updateConfig }: { config: Record<strin
         >
           <option value="structure_only">Structure Only</option>
           <option value="one_shot">One-Shot Example</option>
+          <option value="baseline_merge">Authoritative Baseline / Master Workbook</option>
         </select>
         <p className="text-[8px] text-[#7a8899]/60">
-          Structure Only shares layout metadata. One-Shot also gives the Samurai a bounded preview of populated content.
+          Structure Only shares layout metadata. One-Shot shares a bounded example. Baseline Merge keeps existing Excel
+          records authoritative and deterministically replaces only matching runtime entities.
         </p>
       </div>
 
-      <div className="space-y-1.5">
-        <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Rendering Mode</label>
-        <select
-          value={config.render_mode || 'adaptive'}
-          onChange={(event) => updateConfig('render_mode', event.target.value)}
-          className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#60a5fa] transition-colors outline-none"
-        >
-          <option value="adaptive">Adaptive Placement (Recommended)</option>
-          <option value="strict">Strict Template Placement</option>
-        </select>
-        <p className="text-[8px] text-[#7a8899]/60">
-          Adaptive placement ignores formatting-only blank rows and appends after meaningful template content.
-        </p>
-      </div>
+      {guidanceMode !== 'baseline_merge' && (
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Rendering Mode</label>
+          <select
+            value={config.render_mode || 'adaptive'}
+            onChange={(event) => updateConfig('render_mode', event.target.value)}
+            className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#60a5fa] transition-colors outline-none"
+          >
+            <option value="adaptive">Adaptive Placement (Recommended)</option>
+            <option value="strict">Strict Template Placement</option>
+          </select>
+          <p className="text-[8px] text-[#7a8899]/60">
+            Adaptive placement ignores formatting-only blank rows and appends after meaningful template content.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Data Start Cell (Optional)</label>
@@ -1075,6 +1083,43 @@ function FileTemplateNodeFields({ config, updateConfig }: { config: Record<strin
           <div className="p-2.5 bg-[#f59e0b]/5 border border-[#f59e0b]/25 rounded-lg">
             <p className="text-[8px] leading-relaxed text-[#fbbf24]/90">
               Existing template content will be included in Samurai context and may be sent to the selected model provider.
+            </p>
+          </div>
+        </>
+      )}
+
+      {guidanceMode === 'baseline_merge' && (
+        <>
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Entity Key Columns</label>
+            <input
+              type="text"
+              value={config.merge_key_columns || ''}
+              onChange={(event) => updateConfig('merge_key_columns', event.target.value)}
+              className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#60a5fa] transition-colors outline-none"
+              placeholder="Auto-detect, or e.g. B / Artikel-Nr"
+            />
+            <p className="text-[8px] text-[#7a8899]/60">
+              Rows sharing this entity key are replaced as one group. Use comma-separated letters or header names.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Preserve Baseline Columns</label>
+            <input
+              type="text"
+              value={config.merge_preserve_columns || ''}
+              onChange={(event) => updateConfig('merge_preserve_columns', event.target.value)}
+              className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#60a5fa] transition-colors outline-none"
+              placeholder="Optional, e.g. G:J / Customer, Owner"
+            />
+            <p className="text-[8px] text-[#7a8899]/60">
+              Blank runtime cells in these columns inherit the best matching baseline row; nonblank runtime values win.
+            </p>
+          </div>
+          <div className="p-2.5 bg-[#22c55e]/5 border border-[#22c55e]/25 rounded-lg">
+            <p className="text-[8px] leading-relaxed text-[#86efac]/90">
+              Baseline rows are hidden from the model. The Files node preserves unrelated entities, replaces every row
+              belonging to an incoming entity, and appends new entities without modifying the source workbook.
             </p>
           </div>
         </>
@@ -3784,6 +3829,8 @@ export function AgentFlowCanvas({
         example_handling: 'replace',
         render_mode: 'adaptive',
         data_start_cell: '',
+        merge_key_columns: '',
+        merge_preserve_columns: '',
       } : {};
       const newNode: Node = {
         id: crypto.randomUUID(),

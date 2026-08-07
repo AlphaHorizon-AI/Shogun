@@ -19,6 +19,8 @@ log = logging.getLogger("shogun.file_template")
 TEMPLATE_MARKER = "__shogun_file_template__"
 SUPPORTED_TEMPLATE_SUFFIXES = {".docx", ".xlsx"}
 _PLACEHOLDER_RE = re.compile(r"{{\s*([A-Za-z0-9_.-]+)\s*}}")
+_EXCEL_COLUMN_RE = re.compile(r"^[A-Za-z]{1,3}$")
+_BASELINE_MODE = "baseline_merge"
 
 
 def resolve_workspace_template(template_path: str, workspace_root: Path) -> Path:
@@ -48,9 +50,15 @@ def extract_file_template(
     guidance_mode: str = "structure_only",
     example_handling: str = "replace",
     max_chars: int = 12_000,
+    merge_key_columns: str | list[str] | None = None,
+    merge_preserve_columns: str | list[str] | None = None,
 ) -> dict[str, Any]:
     """Build a bounded template contract for the Samurai and Files node."""
-    mode = guidance_mode if guidance_mode in {"structure_only", "one_shot"} else "structure_only"
+    mode = (
+        guidance_mode
+        if guidance_mode in {"structure_only", "one_shot", _BASELINE_MODE}
+        else "structure_only"
+    )
     handling = example_handling if example_handling in {"replace", "append", "preserve"} else "replace"
     source = resolve_workspace_template(template_path, workspace_root)
     relative = source.relative_to(workspace_root.resolve()).as_posix()
@@ -64,6 +72,11 @@ def extract_file_template(
         manifest = _excel_template_manifest(source)
         file_format = "xlsx"
 
+    if mode == _BASELINE_MODE and file_format != "xlsx":
+        raise ValueError("Authoritative baseline merge currently requires an Excel (.xlsx) workbook.")
+    if mode == _BASELINE_MODE:
+        manifest = _baseline_safe_excel_manifest(manifest)
+
     return {
         TEMPLATE_MARKER: True,
         "template_path": relative,
@@ -73,26 +86,59 @@ def extract_file_template(
         "contract": contract[:max_chars],
         "example": example[:max_chars] if mode == "one_shot" else "",
         "manifest": manifest,
+        "authoritative_baseline": mode == _BASELINE_MODE,
+        "merge_strategy": "replace_matching_groups" if mode == _BASELINE_MODE else None,
+        "merge_key_columns": _split_column_references(merge_key_columns),
+        "merge_preserve_columns": _split_column_references(merge_preserve_columns),
     }
 
 
 def format_template_guidance(payload: dict[str, Any]) -> str:
     """Format a template payload as a precise model-facing output contract."""
     mode = payload.get("guidance_mode", "structure_only")
+    mode_label = {
+        "one_shot": "one-shot example",
+        _BASELINE_MODE: "authoritative baseline/master workbook",
+    }.get(str(mode), "structure only")
+    handling_label = (
+        "deterministic baseline entity-group merge"
+        if mode == _BASELINE_MODE
+        else str(payload.get("example_handling", "replace"))
+    )
     lines = [
         "[FILE TEMPLATE CONTRACT]",
         f"Template: {payload.get('template_path', '')}",
         f"Format: {payload.get('format', '')}",
-        f"Guidance mode: {'one-shot example' if mode == 'one_shot' else 'structure only'}",
-        f"Output handling: {payload.get('example_handling', 'replace')}",
+        f"Guidance mode: {mode_label}",
+        f"Output handling: {handling_label}",
         "Generate the requested content so it fits this exact template contract. Do not output the template itself.",
         "Return only the content/data that should be inserted into the new file.",
-        "Treat the template as a reference-only output contract, never as a factual data source.",
-        "Use non-template runtime inputs as the sole source of business records and values.",
-        "Do not copy populated template values unless the same value is independently present in the runtime input.",
         "",
         str(payload.get("contract") or ""),
     ]
+    if mode == _BASELINE_MODE:
+        lines[6:6] = [
+            "The workbook is an authoritative downstream baseline, not an extraction source.",
+            "Extract only records and changes supported by non-template runtime inputs.",
+            "Do not reproduce, summarize, or copy baseline rows in the model response.",
+            "The Files node will deterministically replace matching entity groups while preserving "
+            "unrelated baseline rows.",
+            "Return one complete structured row matrix containing only runtime-derived rows.",
+        ]
+        key_columns = payload.get("merge_key_columns") or ["auto-detect"]
+        preserve_columns = payload.get("merge_preserve_columns") or []
+        lines[11:11] = [
+            f"Baseline entity key columns: {', '.join(str(item) for item in key_columns)}",
+            "Baseline-only columns preserved when runtime cells are blank: "
+            + (", ".join(str(item) for item in preserve_columns) or "none"),
+        ]
+    else:
+        lines[6:6] = [
+            "Treat the template as a reference-only output contract, never as a factual data source.",
+            "Use non-template runtime inputs as the sole source of business records and values.",
+            "Do not copy populated template values unless the same value is independently present "
+            "in the runtime input.",
+        ]
     if payload.get("manifest"):
         lines.extend(
             [
@@ -159,6 +205,9 @@ def render_excel_template(
     sheet_name: str | None = None,
     start_cell: str | None = None,
     render_mode: str = "strict",
+    guidance_mode: str = "structure_only",
+    merge_key_columns: str | list[str] | None = None,
+    merge_preserve_columns: str | list[str] | None = None,
 ) -> int:
     """Copy an Excel template and populate the copy. Returns written cell count."""
     import openpyxl
@@ -171,7 +220,23 @@ def render_excel_template(
         replacements = _context_replacements(content)
         changed = _replace_excel_placeholders(ws, replacements)
 
-        if handling == "preserve":
+        if guidance_mode == _BASELINE_MODE:
+            _, logical_width = _excel_meaningful_bounds(ws)
+            data_start_row = _template_data_start_row(ws)
+            if start_cell:
+                data_start_row = _baseline_data_start_row(start_cell)
+            template_headers = _template_column_headers(ws, data_start_row, logical_width)
+            rows = parse_excel_rows(content, template_headers=template_headers)
+            changed += _merge_excel_baseline_rows(
+                ws,
+                rows,
+                data_start_row=data_start_row,
+                logical_width=logical_width,
+                template_headers=template_headers,
+                key_references=merge_key_columns,
+                preserve_references=merge_preserve_columns,
+            )
+        elif handling == "preserve":
             if changed == 0:
                 raise ValueError("Preserve unchanged requires at least one {{placeholder}} in the Excel template.")
         else:
@@ -309,12 +374,14 @@ def _excel_template_manifest(path: Path) -> dict[str, Any]:
         sheets = []
         for ws in wb.worksheets:
             logical_rows, logical_columns = _excel_meaningful_bounds(ws)
+            data_start_row = _template_data_start_row(ws)
             sheets.append(
                 {
                     "name": ws.title,
                     "logical_range": f"A1:{get_column_letter(logical_columns)}{logical_rows}",
                     "logical_rows": logical_rows,
                     "logical_columns": logical_columns,
+                    "data_start_row": data_start_row,
                     "suggested_append_cell": f"A{logical_rows + 1}",
                     "preview_rows": [
                         [_manifest_scalar(ws.cell(row, column).value) for column in range(1, logical_columns + 1)]
@@ -329,6 +396,32 @@ def _excel_template_manifest(path: Path) -> dict[str, Any]:
         return {"kind": "excel", "sheets": sheets}
     finally:
         wb.close()
+
+
+def _baseline_safe_excel_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Remove populated business rows from the model-facing baseline manifest."""
+    sanitized = copy(manifest)
+    sanitized["sheets"] = []
+    for raw_sheet in manifest.get("sheets") or []:
+        sheet = dict(raw_sheet)
+        data_start_row = max(1, int(sheet.get("data_start_row") or 1))
+        sheet["preview_rows"] = list(sheet.get("preview_rows") or [])[: data_start_row - 1]
+        sheet["baseline_rows_hidden_from_model"] = max(
+            0,
+            int(sheet.get("logical_rows") or 0) - data_start_row + 1,
+        )
+        sanitized["sheets"].append(sheet)
+    return sanitized
+
+
+def _split_column_references(references: str | list[str] | None) -> list[str]:
+    if references is None:
+        return []
+    if isinstance(references, str):
+        values = re.split(r"[,;\n]+", references)
+    else:
+        values = [str(item) for item in references]
+    return [value.strip() for value in values if value and value.strip()]
 
 
 def _manifest_scalar(value: Any) -> Any:
@@ -742,6 +835,320 @@ def _template_column_headers(ws: Any, data_start_row: int, logical_width: int) -
                 break
         headers.append(value)
     return headers
+
+
+def _baseline_data_start_row(start_cell: str) -> int:
+    from openpyxl.utils import coordinate_to_tuple
+
+    try:
+        row, column = coordinate_to_tuple(str(start_cell).strip().upper())
+    except Exception as exc:
+        raise ValueError(f"Invalid baseline data start cell '{start_cell}'. Use a cell such as A3.") from exc
+    if column != 1:
+        raise ValueError(
+            "Authoritative baseline merge currently requires the data matrix to start in column A."
+        )
+    return int(row)
+
+
+def _resolve_baseline_columns(
+    references: str | list[str] | None,
+    headers: list[Any],
+    logical_width: int,
+    *,
+    purpose: str,
+) -> list[int]:
+    """Resolve Excel letters, ranges, or header names to zero-based columns."""
+    from openpyxl.utils import column_index_from_string
+
+    tokens = _split_column_references(references)
+    if not tokens and purpose == "key":
+        return _infer_baseline_key_columns(headers)
+    if not tokens:
+        return []
+
+    canonical_headers = [_canonical_excel_key(value) for value in headers]
+    resolved: list[int] = []
+    for token in tokens:
+        if ":" in token:
+            start, end = (part.strip() for part in token.split(":", 1))
+            if not (_EXCEL_COLUMN_RE.fullmatch(start) and _EXCEL_COLUMN_RE.fullmatch(end)):
+                raise ValueError(
+                    f"Invalid baseline {purpose} column range '{token}'. Use Excel letters such as G:J."
+                )
+            start_index = column_index_from_string(start.upper()) - 1
+            end_index = column_index_from_string(end.upper()) - 1
+            if start_index > end_index:
+                start_index, end_index = end_index, start_index
+            candidates = list(range(start_index, end_index + 1))
+        elif _EXCEL_COLUMN_RE.fullmatch(token):
+            candidates = [column_index_from_string(token.upper()) - 1]
+        else:
+            canonical = _canonical_excel_key(token)
+            candidates = [index for index, header in enumerate(canonical_headers) if header == canonical]
+            if not candidates:
+                raise ValueError(
+                    f"Baseline {purpose} column '{token}' does not match an Excel column or template header."
+                )
+            if len(candidates) > 1:
+                raise ValueError(
+                    f"Baseline {purpose} header '{token}' is ambiguous. Use its Excel column letter instead."
+                )
+        for index in candidates:
+            if not 0 <= index < logical_width:
+                raise ValueError(
+                    f"Baseline {purpose} column '{token}' is outside the template's {logical_width} columns."
+                )
+            if index not in resolved:
+                resolved.append(index)
+    return resolved
+
+
+def _infer_baseline_key_columns(headers: list[Any]) -> list[int]:
+    exact_names = {
+        "id",
+        "identifier",
+        "key",
+        "item",
+        "item id",
+        "item number",
+        "item no",
+        "article",
+        "article id",
+        "article number",
+        "artikel",
+        "artikel-nr",
+        "artikel nr",
+        "sachnummer",
+        "material",
+        "material number",
+    }
+    canonical = [_canonical_excel_key(value) for value in headers]
+    for index, header in enumerate(canonical):
+        if header in exact_names:
+            return [index]
+    for index, header in enumerate(canonical):
+        if any(marker in header for marker in (" identifier", " id", "number", "nummer", "-nr")):
+            return [index]
+    raise ValueError(
+        "Authoritative baseline merge could not identify an entity key column. "
+        "Set Entity Key Columns in the File Template node (for example B or Artikel-Nr)."
+    )
+
+
+def _baseline_row_key(values: list[Any], key_columns: list[int]) -> tuple[str, ...] | None:
+    key = tuple(_canonical_excel_key(values[index] if index < len(values) else None) for index in key_columns)
+    return key if all(key) else None
+
+
+def _best_baseline_row(
+    incoming: list[Any],
+    candidates: list[tuple[int, list[Any]]],
+    key_columns: list[int],
+    preserve_columns: list[int],
+) -> tuple[int, list[Any]] | None:
+    """Select the most similar baseline row without using preserved lookup cells as evidence."""
+    if not candidates:
+        return None
+    ignored = set(key_columns) | set(preserve_columns)
+
+    def score(candidate: tuple[int, list[Any]]) -> tuple[int, int, int]:
+        row_index, values = candidate
+        matches = 0
+        conflicts = 0
+        for index, value in enumerate(incoming):
+            if index in ignored or value in (None, ""):
+                continue
+            baseline_value = values[index] if index < len(values) else None
+            if baseline_value in (None, ""):
+                continue
+            if _canonical_excel_key(value) == _canonical_excel_key(baseline_value):
+                matches += 1
+            else:
+                conflicts += 1
+        return matches, -conflicts, -row_index
+
+    return max(candidates, key=score)
+
+
+def _strip_excel_header_row(rows: list[list[Any]], headers: list[Any]) -> list[list[Any]]:
+    if not rows:
+        return []
+    normalized_header = [_canonical_excel_key(value) for value in headers]
+    first = [_canonical_excel_key(value) for value in rows[0]]
+    return rows[1:] if first == normalized_header else rows
+
+
+def _capture_excel_row_formats(ws: Any, start_row: int, end_row: int, width: int) -> dict[int, Any]:
+    formats: dict[int, Any] = {}
+    for row_index in range(start_row, end_row + 1):
+        formats[row_index] = {
+            "height": ws.row_dimensions[row_index].height,
+            "hidden": ws.row_dimensions[row_index].hidden,
+            "styles": [copy(ws.cell(row_index, column)._style) for column in range(1, width + 1)],
+        }
+    return formats
+
+
+def _apply_excel_row_format(ws: Any, target_row: int, source_format: Any, width: int) -> None:
+    if not source_format:
+        return
+    ws.row_dimensions[target_row].height = source_format.get("height")
+    ws.row_dimensions[target_row].hidden = source_format.get("hidden", False)
+    styles = source_format.get("styles") or []
+    for column in range(1, min(width, len(styles)) + 1):
+        ws.cell(target_row, column)._style = copy(styles[column - 1])
+
+
+def _merge_excel_baseline_rows(
+    ws: Any,
+    rows: list[list[Any]],
+    *,
+    data_start_row: int,
+    logical_width: int,
+    template_headers: list[Any],
+    key_references: str | list[str] | None,
+    preserve_references: str | list[str] | None,
+) -> int:
+    """Replace matching entity groups while keeping unrelated authoritative rows."""
+    incoming_rows = _strip_excel_header_row(rows, template_headers)
+    if not incoming_rows:
+        raise ValueError(
+            "Authoritative baseline merge received no runtime rows. "
+            "The baseline was left untouched; inspect the Samurai extraction output."
+        )
+    key_columns = _resolve_baseline_columns(
+        key_references,
+        template_headers,
+        logical_width,
+        purpose="key",
+    )
+    preserve_columns = _resolve_baseline_columns(
+        preserve_references,
+        template_headers,
+        logical_width,
+        purpose="preserve",
+    )
+    if set(key_columns).intersection(preserve_columns):
+        raise ValueError("Baseline entity key columns cannot also be preserve-only columns.")
+
+    invalid_rows = [
+        index + 1
+        for index, values in enumerate(incoming_rows)
+        if _baseline_row_key(values, key_columns) is None
+    ]
+    if invalid_rows:
+        sample = ", ".join(str(index) for index in invalid_rows[:8])
+        raise ValueError(
+            "Authoritative baseline merge requires a value in every entity key column; "
+            f"runtime row(s) {sample} have an empty key."
+        )
+
+    existing_end, _ = _excel_meaningful_bounds(ws)
+    baseline_rows = [
+        (
+            row_index,
+            [ws.cell(row_index, column).value for column in range(1, logical_width + 1)],
+        )
+        for row_index in range(data_start_row, existing_end + 1)
+    ]
+    baseline_groups: dict[tuple[str, ...], list[tuple[int, list[Any]]]] = {}
+    for row_index, values in baseline_rows:
+        key = _baseline_row_key(values, key_columns)
+        if key is not None:
+            baseline_groups.setdefault(key, []).append((row_index, values))
+
+    incoming_groups: dict[tuple[str, ...], list[list[Any]]] = {}
+    for raw_values in incoming_rows:
+        values = list(raw_values[:logical_width])
+        values.extend([None] * (logical_width - len(values)))
+        key = _baseline_row_key(values, key_columns)
+        assert key is not None
+        incoming_groups.setdefault(key, []).append(values)
+
+    def merged_group(key: tuple[str, ...]) -> list[tuple[list[Any], int | None]]:
+        candidates = baseline_groups.get(key, [])
+        result: list[tuple[list[Any], int | None]] = []
+        for raw_values in incoming_groups[key]:
+            values = list(raw_values)
+            matched = _best_baseline_row(values, candidates, key_columns, preserve_columns)
+            source_row: int | None
+            if matched:
+                source_row, baseline_values = matched
+                for index in preserve_columns:
+                    if values[index] in (None, "") and baseline_values[index] not in (None, ""):
+                        values[index] = baseline_values[index]
+            else:
+                source_row = candidates[0][0] if candidates else None
+            result.append((values, source_row))
+        return result
+
+    final_rows: list[tuple[list[Any], int | None]] = []
+    emitted: set[tuple[str, ...]] = set()
+    for row_index, values in baseline_rows:
+        key = _baseline_row_key(values, key_columns)
+        if key in incoming_groups:
+            if key not in emitted:
+                final_rows.extend(merged_group(key))
+                emitted.add(key)
+            continue
+        final_rows.append((values, row_index))
+    for key in incoming_groups:
+        if key not in emitted:
+            final_rows.extend(merged_group(key))
+            emitted.add(key)
+
+    format_end = max(existing_end, data_start_row)
+    row_formats = _capture_excel_row_formats(ws, data_start_row, format_end, logical_width)
+    for row_index in range(data_start_row, max(existing_end, data_start_row + len(final_rows) - 1) + 1):
+        for column in range(1, logical_width + 1):
+            ws.cell(row_index, column).value = None
+
+    fallback_format = row_formats.get(data_start_row)
+    for offset, (values, source_row) in enumerate(final_rows):
+        target_row = data_start_row + offset
+        source_format = row_formats.get(source_row or -1, fallback_format)
+        _apply_excel_row_format(ws, target_row, source_format, logical_width)
+        for column, value in enumerate(values, 1):
+            ws.cell(target_row, column, value=_clean_excel_value(value))
+
+    from openpyxl.utils import get_column_letter
+
+    from shogun.office.adapters.excel_adapter import log_excel_payload_shape
+
+    destination = (
+        f"A{data_start_row}:{get_column_letter(logical_width)}"
+        f"{data_start_row + len(final_rows) - 1}"
+    )
+    log_excel_payload_shape("excel_baseline_merge", ws.title, destination, incoming_rows)
+    _resize_excel_tables(ws, data_start_row, len(final_rows))
+    log.info(
+        "[Flow/FileTemplate] authoritative baseline merge: sheet=%s keys=%s "
+        "incoming_rows=%d replaced_entities=%d baseline_rows=%d final_rows=%d preserve_columns=%s",
+        ws.title,
+        [index + 1 for index in key_columns],
+        len(incoming_rows),
+        len(set(incoming_groups).intersection(baseline_groups)),
+        len(baseline_rows),
+        len(final_rows),
+        [index + 1 for index in preserve_columns],
+    )
+    return len(final_rows) * logical_width
+
+
+def _resize_excel_tables(ws: Any, data_start_row: int, row_count: int) -> None:
+    if not row_count:
+        return
+    from openpyxl.utils import get_column_letter, range_boundaries
+
+    final_row = data_start_row + row_count - 1
+    for table in ws.tables.values():
+        min_col, min_row, max_col, max_row = range_boundaries(table.ref)
+        if min_row < data_start_row <= max_row + 1:
+            table.ref = (
+                f"{get_column_letter(min_col)}{min_row}:"
+                f"{get_column_letter(max_col)}{final_row}"
+            )
 
 
 def _copy_row_style(ws: Any, source_row: int, target_row: int, width: int) -> None:

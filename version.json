@@ -1,8 +1,8 @@
 {
-  "version": "1.47.69",
+  "version": "1.47.70",
   "name": "Shogun OS",
-  "build": 220,
+  "build": 221,
   "channel": "stable",
-  "released": "2026-08-07T09:05:15Z",
-  "changelog": "Harden AgentFlow file transformations with validated structured extraction, partial-row recovery, adaptive model fallback, safe context ceilings, and explicit Excel worksheet targeting."
+  "released": "2026-08-07T11:30:47Z",
+  "changelog": "Add authoritative AgentFlow baseline workbook merging with deterministic entity replacement, preserve configured columns, and resolve the frontend js-yaml security advisory."
 }

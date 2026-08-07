@@ -183,6 +183,111 @@ def test_word_template_structure_and_one_shot_are_explicit(tmp_path):
     assert "sole source of business records" in guidance
 
 
+def test_excel_authoritative_baseline_contract_hides_business_rows(tmp_path):
+    template = tmp_path / "master.xlsx"
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Master"
+    worksheet.append(["Description", "Item ID", "Quantity"])
+    worksheet.append(["PRIVATE BASELINE VALUE", "A-100", 12])
+    workbook.save(template)
+    workbook.close()
+
+    payload = extract_file_template(
+        "master.xlsx",
+        tmp_path,
+        "baseline_merge",
+        merge_key_columns="B",
+        merge_preserve_columns="A",
+    )
+    guidance = format_template_guidance(payload)
+
+    assert payload["authoritative_baseline"] is True
+    assert payload["merge_strategy"] == "replace_matching_groups"
+    assert payload["merge_key_columns"] == ["B"]
+    assert payload["merge_preserve_columns"] == ["A"]
+    assert payload["example"] == ""
+    assert payload["manifest"]["sheets"][0]["preview_rows"] == [
+        ["Description", "Item ID", "Quantity"]
+    ]
+    assert "PRIVATE BASELINE VALUE" not in guidance
+    assert "authoritative downstream baseline" in guidance
+    assert "Do not reproduce" in guidance
+
+
+def test_excel_authoritative_baseline_replaces_entity_groups_and_preserves_lookup_columns(tmp_path):
+    source = tmp_path / "master.xlsx"
+    output = tmp_path / "Output" / "merged.xlsx"
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Plan"
+    worksheet.append(["Description", "Item ID", "Order ID", "Quantity", "Owner", "Comment"])
+    worksheet.append(["Article A", "A", "O1", 1, "Alice", "Master note"])
+    worksheet.append(["Article A", "A", "O2", 2, "Bob", "Old order"])
+    worksheet.append(["Article B", "B", "O9", 9, "Carol", "Unrelated"])
+    bold_font = copy(worksheet["A2"].font)
+    bold_font.bold = True
+    worksheet["A2"].font = bold_font
+    workbook.save(source)
+    workbook.close()
+
+    changed = render_excel_template(
+        source,
+        output,
+        """[["Article A", "A", "O1", 10, "", ""],
+                 ["Article A", "A", "O3", 3, "", ""],
+                 ["Article C", "C", "O7", 7, "Dana", "New"]]""",
+        "replace",
+        "Plan",
+        render_mode="adaptive",
+        guidance_mode="baseline_merge",
+        merge_key_columns="Item ID",
+        merge_preserve_columns="E:F",
+    )
+
+    assert changed == 24
+    rendered = openpyxl.load_workbook(output)
+    original = openpyxl.load_workbook(source)
+    try:
+        values = [
+            [rendered["Plan"].cell(row, column).value for column in range(1, 7)]
+            for row in range(2, 6)
+        ]
+        assert values == [
+            ["Article A", "A", "O1", 10, "Alice", "Master note"],
+            ["Article A", "A", "O3", 3, "Alice", "Master note"],
+            ["Article B", "B", "O9", 9, "Carol", "Unrelated"],
+            ["Article C", "C", "O7", 7, "Dana", "New"],
+        ]
+        assert rendered["Plan"]["A2"].font.bold is True
+        assert original["Plan"]["D2"].value == 1
+        assert original["Plan"]["A5"].value is None
+    finally:
+        rendered.close()
+        original.close()
+
+
+def test_excel_authoritative_baseline_rejects_runtime_rows_without_entity_key(tmp_path):
+    source = tmp_path / "master.xlsx"
+    output = tmp_path / "result.xlsx"
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    worksheet.append(["Description", "Item ID", "Quantity"])
+    worksheet.append(["Existing", "A", 1])
+    workbook.save(source)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="empty key"):
+        render_excel_template(
+            source,
+            output,
+            '[["Missing key", "", 2]]',
+            "replace",
+            guidance_mode="baseline_merge",
+            merge_key_columns="B",
+        )
+
+
 def test_word_template_render_creates_copy_and_replaces_json_placeholders(tmp_path):
     source = tmp_path / "source.docx"
     output = tmp_path / "Output" / "result.docx"
@@ -439,6 +544,58 @@ async def test_word_create_uses_upstream_template_and_never_changes_source(tmp_p
     assert "Word document created" in result
     assert "{{customer}}" in Document(template).paragraphs[0].text
     assert "Customer: Acme" in Document(tmp_path / "Output" / "brief.docx").paragraphs[0].text
+
+
+@pytest.mark.asyncio
+async def test_excel_create_applies_upstream_authoritative_baseline_contract(tmp_path, monkeypatch):
+    from shogun.office import config as office_config
+
+    template = tmp_path / "Templates" / "master.xlsx"
+    template.parent.mkdir(parents=True)
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Plan"
+    worksheet.append(["Item ID", "Order ID", "Quantity", "Owner"])
+    worksheet.append(["A", "O1", 1, "Alice"])
+    worksheet.append(["B", "O2", 2, "Bob"])
+    workbook.save(template)
+    workbook.close()
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    monkeypatch.setattr(office_config, "load_office_config", lambda: SimpleNamespace(enabled=True))
+
+    template_payload = extract_file_template(
+        "Templates/master.xlsx",
+        tmp_path,
+        "baseline_merge",
+        merge_key_columns="A",
+        merge_preserve_columns="D",
+    )
+    result = await flow_engine._exec_office(
+        {
+            "action": "excel_create",
+            "output_path": "Output",
+            "output_filename": "result.xlsx",
+            "sheet_name": "Plan",
+        },
+        '[["A", "O1", 10, ""], ["C", "O3", 3, "Carol"]]',
+        run_id=uuid.uuid4(),
+        trigger_type="manual",
+        template_inputs=[template_payload],
+    )
+
+    assert "Excel workbook created" in result
+    rendered = openpyxl.load_workbook(tmp_path / "Output" / "result.xlsx")
+    try:
+        assert [
+            [rendered["Plan"].cell(row, column).value for column in range(1, 5)]
+            for row in range(2, 5)
+        ] == [
+            ["A", "O1", 10, "Alice"],
+            ["B", "O2", 2, "Bob"],
+            ["C", "O3", 3, "Carol"],
+        ]
+    finally:
+        rendered.close()
 
 
 def test_template_path_must_stay_in_workspace(tmp_path):
