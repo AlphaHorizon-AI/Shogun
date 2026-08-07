@@ -95,6 +95,56 @@ def test_excel_template_matrix_width_is_validated():
         parse_excel_rows('[["A", "B"]]', template_headers=["One", "Two", "Three"])
 
 
+def test_excel_missing_sheet_uses_only_template_sheet_with_warning(tmp_path, caplog):
+    source = tmp_path / "source.xlsx"
+    output = tmp_path / "result.xlsx"
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Production Plan"
+    worksheet.append(["Item", "Quantity"])
+    workbook.save(source)
+    workbook.close()
+
+    caplog.set_level("WARNING", logger="shogun.file_template")
+    changed = render_excel_template(
+        source,
+        output,
+        '[["A", 2]]',
+        "append",
+        "Advanced Output",
+        render_mode="adaptive",
+    )
+
+    assert changed == 2
+    assert "using the template's only worksheet" in caplog.text
+    rendered = openpyxl.load_workbook(output)
+    try:
+        assert rendered["Production Plan"]["A2"].value == "A"
+        assert rendered["Production Plan"]["B2"].value == 2
+    finally:
+        rendered.close()
+
+
+def test_excel_missing_sheet_rejects_ambiguous_multi_sheet_template(tmp_path):
+    source = tmp_path / "source.xlsx"
+    output = tmp_path / "result.xlsx"
+    workbook = openpyxl.Workbook()
+    workbook.active.title = "First"
+    workbook.create_sheet("Second")
+    workbook.save(source)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="Available worksheets: 'First', 'Second'"):
+        render_excel_template(
+            source,
+            output,
+            '[["A"]]',
+            "append",
+            "Missing",
+            render_mode="adaptive",
+        )
+
+
 def test_excel_markdown_summary_width_is_validated_against_template():
     payload = "| Item | Quantity |\n| --- | --- |\n| A | 2 |"
 

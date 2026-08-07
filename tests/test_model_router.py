@@ -26,6 +26,8 @@ from shogun.services.model_router import (
     TaskClassifierService,
     _ollama_context_from_show,
     configured_max_input_tokens,
+    effective_context_window,
+    effective_max_output_tokens,
     infer_tiers,
     is_concrete_model_id,
     legacy_provider_name_model_id,
@@ -42,6 +44,48 @@ def test_configured_input_budget_is_bounded_by_context_and_output_reserve():
     assert configured_max_input_tokens(item) == 10_000
     item.config_json["max_input_tokens"] = 99_999
     assert configured_max_input_tokens(item) == 12_288
+
+
+def test_manual_context_budget_is_clamped_to_detected_runtime_ceiling():
+    item = SimpleNamespace(
+        context_window=250_000,
+        max_output_tokens=52_224,
+        config_json={
+            "context_limit_mode": "manual",
+            "detected_context_window": 131_072,
+            "max_input_tokens": 197_776,
+        },
+    )
+
+    assert effective_context_window(item) == 131_072
+    assert configured_max_input_tokens(item) == 78_848
+
+
+def test_manual_context_discovery_is_persisted_without_rewriting_operator_value():
+    item = SimpleNamespace(
+        context_window=250_000,
+        max_output_tokens=52_224,
+        config_json={"context_limit_mode": "manual", "max_input_tokens": 197_776},
+    )
+
+    ModelRegistryService._apply_auto_context(item, (131_072, "ollama_model"))
+
+    assert item.context_window == 250_000
+    assert item.config_json["detected_context_window"] == 131_072
+    assert item.config_json["detected_context_source"] == "ollama_model"
+    assert item.config_json["context_limit_source"] == "manual_override"
+    assert configured_max_input_tokens(item) == 78_848
+
+
+def test_stale_output_reserve_is_clamped_to_runtime_ceiling():
+    item = SimpleNamespace(
+        context_window=250_000,
+        max_output_tokens=200_000,
+        config_json={"detected_context_window": 131_072},
+    )
+
+    assert effective_max_output_tokens(item) == 130_944
+    assert configured_max_input_tokens(item) == 128
 
 
 def test_ollama_context_parser_prefers_effective_modelfile_setting():

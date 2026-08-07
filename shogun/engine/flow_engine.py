@@ -95,6 +95,115 @@ class ModelCallError(RuntimeError):
         self.estimated_input_tokens = max(1, input_characters // 4)
 
 
+class IncompleteMatrixOutputError(ValueError):
+    """Raised when a structured extraction is validly shaped but visibly incomplete."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        candidate_rows: list[list[Any]] | None = None,
+        minimum_rows: int = 0,
+    ) -> None:
+        super().__init__(message)
+        self.candidate_rows = [list(row) for row in (candidate_rows or [])]
+        self.minimum_rows = max(0, int(minimum_rows))
+
+
+class MalformedMatrixOutputError(ValueError):
+    """Raised when a model response cannot be decoded as the required row matrix."""
+
+
+_FLOW_ARTIFACT_MARKER = "__shogun_flow_artifact__"
+
+
+def _flow_artifact_descriptor(
+    node: AgentFlowNode | Any | None,
+    output: Any,
+) -> dict[str, Any]:
+    """Describe an upstream result without duplicating its potentially large payload.
+
+    AgentFlow model consumers receive the full predecessor content through the
+    established context channel.  This manifest gives the model stable type and
+    provenance information so it can reason about files as artifacts instead of
+    guessing their role from a formatted string.
+    """
+    config = dict(getattr(node, "config", None) or {})
+    node_type = str(getattr(node, "node_type", "") or "unknown")
+    label = str(getattr(node, "label", "") or node_type)
+    action = str(config.get("action") or "")
+    kind = node_type
+    role = "input"
+    source_path = str(
+        config.get("input_path")
+        or config.get("file_path")
+        or config.get("path")
+        or ""
+    )
+    if isinstance(output, dict) and output.get("__shogun_file_template__"):
+        kind = str(output.get("format") or "template")
+        role = "template"
+        source_path = str(output.get("template_path") or source_path)
+    elif node_type == "office":
+        kind = {
+            "pdf_read": "pdf",
+            "excel_read": "xlsx",
+            "word_read": "docx",
+            "pptx_read": "pptx",
+        }.get(action, action or "office")
+    content_length = len(output) if isinstance(output, str) else None
+    return {
+        _FLOW_ARTIFACT_MARKER: True,
+        "node_id": str(getattr(node, "id", "") or ""),
+        "label": label,
+        "node_type": node_type,
+        "kind": kind,
+        "role": role,
+        "source_path": source_path,
+        "content_characters": content_length,
+    }
+
+
+def _downstream_output_contracts(
+    node_id: str,
+    edge_by_source: dict[str, list[tuple[str, str | None]]],
+    node_map: dict[str, AgentFlowNode],
+) -> list[dict[str, Any]]:
+    """Return direct, non-secret output constraints visible to a Samurai node."""
+    contracts: list[dict[str, Any]] = []
+    for target_id, _handle in edge_by_source.get(node_id, []):
+        target = node_map.get(target_id)
+        if not target:
+            continue
+        config = dict(target.config or {})
+        node_type = str(target.node_type or "")
+        action = str(config.get("action") or "")
+        if node_type not in {"office", "output", "workspace"}:
+            continue
+        contracts.append(
+            {
+                "node_id": target_id,
+                "label": str(target.label or node_type),
+                "node_type": node_type,
+                "action": action,
+                "format": (
+                    "xlsx"
+                    if action in {"excel_create", "excel_write"}
+                    else "docx"
+                    if action in {"word_create", "word_replace"}
+                    else "pptx"
+                    if action in {"pptx_create", "pptx_replace"}
+                    else str(config.get("format") or "")
+                ),
+                "sheet_name": str(config.get("sheet_name") or ""),
+                "start_range": str(config.get("start_range") or config.get("data_start_cell") or ""),
+                "output_path": str(config.get("output_path") or ""),
+                "output_filename": str(config.get("output_filename") or ""),
+            }
+        )
+    return contracts
+
+
 def _error_message(error: Exception) -> str:
     """Return a useful message even for exceptions such as an empty ReadTimeout."""
     message = str(error).strip()
@@ -478,6 +587,11 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                         flow_name=flow.name,
                         trigger_type=run_trigger_type,
                         template_inputs=template_inputs,
+                        downstream_contracts=_downstream_output_contracts(
+                            node_id,
+                            edge_by_source,
+                            node_map,
+                        ),
                     )
                 )
 
@@ -577,6 +691,7 @@ async def _execute_single_node(
     flow_name: str = "Agent Flow",
     trigger_type: str = "manual",
     template_inputs: list[dict[str, Any]] | None = None,
+    downstream_contracts: list[dict[str, Any]] | None = None,
 ) -> Any:
     """Execute a single node and return its output."""
     node_id = str(node.id)
@@ -589,10 +704,12 @@ async def _execute_single_node(
     context_parts: list[str] = []
     chunkable_context_parts: list[str] = []
     fixed_context_parts: list[str] = []
+    input_artifacts: list[dict[str, Any]] = []
     for pred_id, output in predecessor_outputs.items():
         pred_node = node_map.get(pred_id)
         pred_label = pred_node.label if pred_node else pred_id
         if output is not None:
+            input_artifacts.append(_flow_artifact_descriptor(pred_node, output))
             if isinstance(output, dict) and output.get("__shogun_file_template__"):
                 from shogun.services.file_template import format_template_guidance
 
@@ -690,6 +807,8 @@ async def _execute_single_node(
                     "_flow_id": str(node.flow_id),
                     "_node_id": node_id,
                     "_run_id": str(run_id),
+                    "_input_artifacts": input_artifacts,
+                    "_output_contracts": list(downstream_contracts or []),
                 },
                 chunkable_context_str,
                 governance_context or {},
@@ -1487,6 +1606,26 @@ async def _exec_samurai(
             + "\nUse these results to complete the task. Do not claim that the reads failed or request "
             "another tool call; the tools have already been executed by the flow runtime."
         )
+    input_artifacts = [
+        item
+        for item in (config.get("_input_artifacts") or [])
+        if isinstance(item, dict) and item.get(_FLOW_ARTIFACT_MARKER)
+    ]
+    output_contracts = [item for item in (config.get("_output_contracts") or []) if isinstance(item, dict)]
+    if input_artifacts:
+        user_message += (
+            "\n\n--- FLOW INPUT ARTIFACT MANIFEST ---\n"
+            + json.dumps(input_artifacts, ensure_ascii=False, default=str)
+            + "\nThe complete content of these artifacts is supplied in the preceding context. "
+            "Treat templates as reference-only and runtime inputs as the sole source of business data."
+        )
+    if output_contracts:
+        user_message += (
+            "\n\n--- GOVERNED DOWNSTREAM OUTPUT CONTRACT ---\n"
+            + json.dumps(output_contracts, ensure_ascii=False, default=str)
+            + "\nReturn the typed content required by this downstream node. Do not write, rename, or "
+            "save the destination file yourself; the downstream node exclusively owns that side effect."
+        )
     if expected_output:
         user_message += f"\n\n--- EXPECTED OUTPUT FORMAT ---\n{expected_output}"
 
@@ -1494,7 +1633,12 @@ async def _exec_samurai(
     # routing. Routing the entire 300-page source first can incorrectly remove
     # otherwise useful fallback models whose context is ample for an
     # individual chunk. The chunk executor performs its own bounded routing.
-    requires_matrix_output = _requires_structured_matrix_output(
+    downstream_excel_output = any(
+        item.get("action") in {"excel_create", "excel_write"}
+        or item.get("format") == "xlsx"
+        for item in output_contracts
+    )
+    requires_matrix_output = downstream_excel_output or _requires_structured_matrix_output(
         task_description,
         str(config.get("expected_output") or ""),
         fixed_context_str,
@@ -1507,15 +1651,6 @@ async def _exec_samurai(
             re.IGNORECASE,
         )
     expected_matrix_width = int(matrix_width_match.group(1)) if matrix_width_match else None
-    template_backed_output = "[FILE TEMPLATE CONTRACT]" in fixed_context_str
-    planned_matrix_chunking = bool(
-        requires_matrix_output and context_str and len(context_str) // 4 > 4096
-    )
-    planned_template_chunking = bool(
-        template_backed_output and context_str and len(context_str) // 4 > 8192
-    )
-    planned_document_chunking = planned_matrix_chunking or planned_template_chunking
-
     # Resolve agent persona
     agent_persona = "You are a Samurai agent executing a task in an automated workflow."
     if "[POPULATED ONE-SHOT EXAMPLE]" in fixed_context_str:
@@ -1556,32 +1691,18 @@ async def _exec_samurai(
             "retry_count": retry_count,
             "risk_level": config.get("risk_level", "low"),
         }
-        chunk_required = planned_document_chunking
+        # Prefer one bounded model turn when the selected route can hold the
+        # complete request. This is the same interaction model users expect
+        # from a chat with attachments. Chunking is a capacity/performance
+        # fallback, not the default merely because an Excel template exists.
+        chunk_required = False
         try:
-            if planned_document_chunking:
-                # Select the configured primary/fallback chain for the size of
-                # a practical batch, not for the unchunked source document.
-                # This preserves smaller-context cloud fallbacks for later
-                # chunk-level routing.
-                route_prompt = "\n\n".join(
-                    part for part in (task_description, fixed_context_str, expected_output) if part
-                )
-                model_chain, _routing = await _resolve_task_llm_chain(
-                    session,
-                    prompt=route_prompt,
-                    context_size_estimate=min(
-                        4096 if requires_matrix_output else 8192,
-                        max(1, len(route_prompt) // 4),
-                    ),
-                    **route_options,
-                )
-            else:
-                model_chain, _routing = await _resolve_task_llm_chain(
-                    session,
-                    prompt=user_message,
-                    context_size_estimate=max(1, len(user_message) // 4),
-                    **route_options,
-                )
+            model_chain, _routing = await _resolve_task_llm_chain(
+                session,
+                prompt=user_message,
+                context_size_estimate=max(1, len(user_message) // 4),
+                **route_options,
+            )
         except NoEligibleModelError as exc:
             # A document can be larger than every model's single-request
             # context while still being perfectly processable in batches. Keep
@@ -1668,12 +1789,37 @@ async def _exec_samurai(
     is_local_model = bool(getattr(primary_provider, "is_local", False)) or getattr(
         primary_provider, "provider_type", ""
     ) in {"ollama", "lmstudio", "local"}
-    practical_matrix_tokens = min(max_input_tokens, 2048 if is_local_model else 16_384)
-    matrix_chunk_required = bool(
-        requires_matrix_output and context_str and len(context_str) // 4 > practical_matrix_tokens
+    local_batch_limit = max(
+        1024,
+        min(
+            int(
+                (
+                    config.get("local_matrix_chunk_tokens")
+                    if requires_matrix_output
+                    else config.get("local_document_chunk_tokens")
+                )
+                or 8192
+            ),
+            32_768,
+        ),
+    )
+    local_chunk_required = bool(
+        is_local_model and context_str and len(context_str) // 4 > local_batch_limit
+    )
+    structural_source_units = len(_model_source_units(context_str)) if context_str else 0
+    exhaustive_matrix_extraction = bool(
+        requires_matrix_output
+        and context_str
+        and structural_source_units > 1
+        and _exhaustive_matrix_task(task_description)
     )
 
-    if context_str and (chunk_required or matrix_chunk_required or len(user_message) // 4 > max_input_tokens):
+    if context_str and (
+        chunk_required
+        or local_chunk_required
+        or exhaustive_matrix_extraction
+        or len(user_message) // 4 > max_input_tokens
+    ):
         checkpoint_fingerprint = hashlib.sha256(
             json.dumps(
                 {
@@ -1683,6 +1829,12 @@ async def _exec_samurai(
                     "source": context_str,
                     "routing_profile_id": routing_profile_id,
                     "local_matrix_chunk_tokens": config.get("local_matrix_chunk_tokens"),
+                    "matrix_extraction_strategy": 2,
+                    "matrix_chunk_tokens": config.get("matrix_chunk_tokens"),
+                    "matrix_chunk_max_units": config.get("matrix_chunk_max_units"),
+                    "minimum_matrix_rows": config.get("minimum_matrix_rows"),
+                    "minimum_source_coverage_ratio": config.get("minimum_source_coverage_ratio"),
+                    "allow_sparse_matrix_output": config.get("allow_sparse_matrix_output"),
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -1700,8 +1852,8 @@ async def _exec_samurai(
                 model_chain=model_chain,
                 routing_context=_routing,
                 expected_width=expected_matrix_width,
-                timeout=timeout,
-                max_tokens=max_output_tokens,
+                timeout=max(30, min(timeout, int(config.get("planning_timeout") or 180))),
+                max_tokens=min(int(max_output_tokens or 2048), 2048),
             )
             if mapping_plan:
                 checkpoint["mapping_plan"] = mapping_plan
@@ -1769,13 +1921,34 @@ async def _exec_samurai(
                 chunk_token_budget = min(chunk_token_budget, configured_batch_tokens)
             else:
                 chunk_token_budget = min(chunk_token_budget, 8192)
+        elif requires_matrix_output:
+            # A large remote context window makes the request fit, but it does
+            # not make a single response a reliable container for hundreds of
+            # spreadsheet rows. Keep source batches and result matrices
+            # bounded independently of the advertised model context.
+            remote_matrix_chunk_tokens = max(
+                2048,
+                min(int(config.get("matrix_chunk_tokens") or 24_576), 65_536),
+            )
+            chunk_token_budget = min(chunk_token_budget, remote_matrix_chunk_tokens)
         chunk_max_output_tokens = max_output_tokens
         if is_local_model and requires_matrix_output:
             chunk_max_output_tokens = min(int(max_output_tokens or 8192), 8192)
+        elif requires_matrix_output:
+            chunk_max_output_tokens = min(int(max_output_tokens or 32_768), 32_768)
         requested_local_chunk_timeout = int(config.get("local_chunk_timeout") or 600)
         local_chunk_timeout = max(60, min(requested_local_chunk_timeout, 1800))
         chunk_call_timeout = max(timeout, local_chunk_timeout) if is_local_model else timeout
-        chunks = _split_model_context(context_str, chunk_token_budget * 4)
+        matrix_chunk_max_units = (
+            max(1, min(int(config.get("matrix_chunk_max_units") or 10), 100))
+            if requires_matrix_output
+            else None
+        )
+        chunks = _split_model_context(
+            context_str,
+            chunk_token_budget * 4,
+            max_units=matrix_chunk_max_units,
+        )
         if checkpoint.get("total_chunks") not in {None, len(chunks)}:
             checkpoint["outputs"] = {}
         checkpoint["total_chunks"] = len(chunks)
@@ -1783,6 +1956,7 @@ async def _exec_samurai(
         completed_characters = 0
         initial_progress_characters = max(1, (total_characters + 99) // 100)
         outputs: list[str] = []
+        progress_lock = asyncio.Lock()
 
         async def report_progress(completed: int) -> None:
             if not progress_callback:
@@ -1797,16 +1971,62 @@ async def _exec_samurai(
             except Exception as exc:
                 log.warning("Could not persist AgentFlow node progress: %s", exc)
 
+        async def mark_chunk_completed(character_count: int) -> None:
+            nonlocal completed_characters
+            async with progress_lock:
+                completed_characters = min(
+                    total_characters,
+                    completed_characters + character_count,
+                )
+                await report_progress(completed_characters)
+
         await report_progress(0)
 
-        async def process_chunk(chunk: str, label: str, split_depth: int = 0) -> list[str]:
+        async def process_chunk(
+            chunk: str,
+            label: str,
+            split_depth: int = 0,
+            validation_retry: int = 0,
+            validation_feedback: str = "",
+            retained_rows: list[list[Any]] | None = None,
+        ) -> list[str]:
             nonlocal completed_characters
+            accepted_rows = [list(row) for row in (retained_rows or [])]
+            minimum_rows = 0
+            source_evidence = 0
+            evidence_label = "source unit(s)"
+            if requires_matrix_output:
+                minimum_rows, source_evidence, evidence_label = _minimum_matrix_rows_for_source(
+                    chunk,
+                    task_description,
+                    config,
+                )
             chunk_message = (
                 f"{fixed_message}\n\n"
                 f"--- CONTEXT FROM PREVIOUS STEPS ({label}) ---\n{chunk}\n\n"
                 "Process every relevant record in this chunk. Return only the requested structured "
                 "data for this chunk; do not summarize, sample, or omit repeated records."
             )
+            if minimum_rows:
+                chunk_message += (
+                    f"\n\n--- COMPLETENESS REQUIREMENT ---\nThis chunk contains "
+                    f"{source_evidence} {evidence_label} and requires at least {minimum_rows} output row(s). "
+                    "An empty or shorter matrix is invalid. Verify every required row before submitting."
+                )
+            if validation_feedback:
+                chunk_message += (
+                    "\n\n--- CORRECTIVE RETRY ---\nThe previous response failed deterministic validation: "
+                    f"{validation_feedback}\nRe-read this complete source chunk and submit a corrected matrix."
+                )
+            if accepted_rows:
+                missing_rows = max(0, minimum_rows - len(accepted_rows))
+                chunk_message += (
+                    "\n\n--- RETAINED VALID ROWS ---\n"
+                    f"Shogun has safely retained {len(accepted_rows)} valid row(s) from the previous attempt. "
+                    f"At least {missing_rows} additional row(s) are still required. Return only the missing "
+                    "row(s); do not repeat any retained row. The retained rows are:\n"
+                    + json.dumps(accepted_rows, ensure_ascii=False, default=str)
+                )
             if native_read_context:
                 chunk_message += (
                     "\n\n--- GOVERNED NATIVE READ RESULTS ---\n"
@@ -1840,17 +2060,33 @@ async def _exec_samurai(
                         "%s could not refresh chunk-level routing; using the established chain: %s",
                         label,
                         route_error,
-                    )
+                )
                 if requires_matrix_output:
-                    rows = await _call_llm_chain_rows(
+                    rows = await _call_llm_chain_rows_with_fallback(
                         messages,
                         chunk_chain,
                         timeout=chunk_call_timeout,
-                        retry_count=max(1, retry_count),
+                        retry_count=retry_count,
                         context=f"AgentFlow Samurai node {label.lower()}",
                         expected_width=expected_matrix_width,
                         max_tokens=chunk_max_output_tokens,
                         routing_context=chunk_routing,
+                        governance_context=governance_context,
+                        row_validator=lambda candidate_rows: _validate_matrix_coverage(
+                            _merge_matrix_attempt_rows(accepted_rows, candidate_rows),
+                            chunk,
+                            task_description,
+                            config,
+                            label=label,
+                        ),
+                    )
+                    rows = _merge_matrix_attempt_rows(accepted_rows, rows)
+                    _validate_matrix_coverage(
+                        rows,
+                        chunk,
+                        task_description,
+                        config,
+                        label=label,
                     )
                     output = json.dumps(rows, ensure_ascii=False, default=str)
                 else:
@@ -1863,11 +2099,16 @@ async def _exec_samurai(
                         max_tokens=chunk_max_output_tokens,
                         routing_context=chunk_routing,
                     )
-                completed_characters = min(total_characters, completed_characters + len(chunk))
-                await report_progress(completed_characters)
+                await mark_chunk_completed(len(chunk))
                 return [output]
-            except ModelCallError as exc:
-                timed_out = "timeout" in exc.cause_type.lower()
+            except (
+                ModelCallError,
+                IncompleteMatrixOutputError,
+                MalformedMatrixOutputError,
+            ) as exc:
+                incomplete = isinstance(exc, IncompleteMatrixOutputError)
+                malformed = isinstance(exc, MalformedMatrixOutputError)
+                timed_out = isinstance(exc, ModelCallError) and "timeout" in exc.cause_type.lower()
                 error_text = str(exc).lower()
                 context_rejected = any(
                     marker in error_text
@@ -1879,62 +2120,194 @@ async def _exec_samurai(
                         "too many tokens",
                     )
                 )
-                if not (timed_out or context_rejected) or split_depth >= 5 or len(chunk) <= 4000:
+                source_unit_count = len(_model_source_units(chunk))
+                max_split_depth = 3 if incomplete or malformed else 2
+                recoverable = incomplete or malformed or timed_out or context_rejected
+                if not recoverable:
                     raise
-                subchunks = _split_model_context(chunk, max(1000, len(chunk) // 2))
-                if len(subchunks) < 2:
-                    raise
-                log.warning(
-                    "%s timed out; retrying it as %d smaller parts",
-                    label,
-                    len(subchunks),
+                can_split = (
+                    source_unit_count > 1 and split_depth < 8
+                ) or (
+                    split_depth < max_split_depth and len(chunk) > 2000
                 )
-                recovered: list[str] = []
-                for part_index, subchunk in enumerate(subchunks, start=1):
-                    recovered.extend(
-                        await process_chunk(
-                            subchunk,
-                            f"{label}, part {part_index}/{len(subchunks)}",
-                            split_depth + 1,
-                        )
+                if can_split:
+                    subchunks = _split_model_context(
+                        chunk,
+                        max(1000, len(chunk) // 2),
+                        max_units=max(1, source_unit_count // 2) if source_unit_count > 1 else None,
                     )
-                return recovered
+                    if len(subchunks) >= 2:
+                        log.warning(
+                            "%s was not safely complete (%s); retrying it as %d smaller parts",
+                            label,
+                            type(exc).__name__,
+                            len(subchunks),
+                        )
+                        recovered: list[str] = []
+                        for part_index, subchunk in enumerate(subchunks, start=1):
+                            recovered.extend(
+                                await process_chunk(
+                                    subchunk,
+                                    f"{label}, part {part_index}/{len(subchunks)}",
+                                    split_depth + 1,
+                                )
+                            )
+                        return recovered
+
+                retry_rows = accepted_rows
+                if incomplete:
+                    retry_rows = _merge_matrix_attempt_rows(
+                        accepted_rows,
+                        getattr(exc, "candidate_rows", []),
+                    )
+                max_leaf_retries = max(
+                    0,
+                    min(int(config.get("matrix_leaf_retries") or 3), 3),
+                )
+                if (incomplete or malformed) and validation_retry < max_leaf_retries:
+                    log.warning(
+                        "%s cannot be subdivided further; issuing corrective matrix retry %d/%d",
+                        label,
+                        validation_retry + 1,
+                        max_leaf_retries,
+                    )
+                    return await process_chunk(
+                        chunk,
+                        label,
+                        split_depth,
+                        validation_retry + 1,
+                        str(exc),
+                        retry_rows,
+                    )
+                raise
 
         checkpoint_outputs = dict(checkpoint.get("outputs") or {})
-        for index, chunk in enumerate(chunks, start=1):
+        matrix_concurrency = (
+            max(1, min(int(config.get("matrix_chunk_concurrency") or 4), 8))
+            if requires_matrix_output and not is_local_model
+            else 1
+        )
+        chunk_semaphore = asyncio.Semaphore(matrix_concurrency)
+        checkpoint_lock = asyncio.Lock()
+
+        async def run_top_level_chunk(index: int, chunk: str) -> tuple[int, list[str]]:
             checkpoint_key = str(index)
             cached_output = checkpoint_outputs.get(checkpoint_key)
-            if isinstance(cached_output, list) and all(isinstance(item, str) for item in cached_output):
-                outputs.extend(cached_output)
-                completed_characters = min(total_characters, completed_characters + len(chunk))
-                await report_progress(completed_characters)
-                continue
-            chunk_outputs = await process_chunk(chunk, f"chunk {index}/{len(chunks)}")
+            if isinstance(cached_output, list) and all(
+                isinstance(item, str) for item in cached_output
+            ):
+                cache_is_valid = True
+                if requires_matrix_output:
+                    try:
+                        from shogun.services.file_template import parse_excel_rows
+
+                        cached_rows: list[list[Any]] = []
+                        for cached_part in cached_output:
+                            cached_rows.extend(
+                                parse_excel_rows(cached_part, require_structured_json=True)
+                            )
+                        cached_rows = _validate_agentflow_rows(
+                            {"rows": cached_rows},
+                            expected_matrix_width,
+                        )
+                        _validate_matrix_coverage(
+                            cached_rows,
+                            chunk,
+                            task_description,
+                            config,
+                            label=f"checkpoint chunk {index}/{len(chunks)}",
+                        )
+                    except Exception as cache_error:
+                        cache_is_valid = False
+                        log.warning(
+                            "Discarding incomplete AgentFlow checkpoint chunk %s/%s: %s",
+                            index,
+                            len(chunks),
+                            cache_error,
+                        )
+                if cache_is_valid:
+                    await mark_chunk_completed(len(chunk))
+                    return index, cached_output
+                async with checkpoint_lock:
+                    checkpoint_outputs.pop(checkpoint_key, None)
+                    checkpoint["outputs"] = checkpoint_outputs
+                    checkpoint["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    _save_samurai_checkpoint(config, checkpoint)
+            async with chunk_semaphore:
+                chunk_outputs = await process_chunk(chunk, f"chunk {index}/{len(chunks)}")
+            async with checkpoint_lock:
+                checkpoint_outputs[checkpoint_key] = chunk_outputs
+                checkpoint["outputs"] = checkpoint_outputs
+                checkpoint["updated_at"] = datetime.now(timezone.utc).isoformat()
+                _save_samurai_checkpoint(config, checkpoint)
+            return index, chunk_outputs
+
+        chunk_tasks = [
+            asyncio.create_task(run_top_level_chunk(index, chunk))
+            for index, chunk in enumerate(chunks, start=1)
+        ]
+        try:
+            chunk_results = await asyncio.gather(*chunk_tasks)
+        except BaseException:
+            for task in chunk_tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*chunk_tasks, return_exceptions=True)
+            raise
+        for _index, chunk_outputs in sorted(chunk_results, key=lambda item: item[0]):
             outputs.extend(chunk_outputs)
-            checkpoint_outputs[checkpoint_key] = chunk_outputs
-            checkpoint["outputs"] = checkpoint_outputs
-            checkpoint["updated_at"] = datetime.now(timezone.utc).isoformat()
-            _save_samurai_checkpoint(config, checkpoint)
         await report_progress(total_characters)
-        merged = _merge_structured_chunk_matrices(outputs, task_description, fixed_context_str, config)
+        merged = _merge_structured_chunk_matrices(
+            outputs,
+            task_description,
+            fixed_context_str,
+            config,
+            force_matrix_output=requires_matrix_output,
+        )
         if merged is not None:
             return merged
         return "\n".join(outputs)
 
+    direct_progress_total = max(100, len(context_str or user_message))
+    if progress_callback:
+        try:
+            await progress_callback(max(1, (direct_progress_total + 99) // 100), direct_progress_total)
+        except Exception as progress_error:
+            log.warning("Could not persist AgentFlow node progress: %s", progress_error)
     messages = [
         {"role": "system", "content": agent_persona},
         {"role": "user", "content": user_message},
     ]
     if requires_matrix_output:
-        rows = await _call_llm_chain_rows(
+        direct_matrix_max_tokens = (
+            min(int(max_output_tokens or 8192), 8192)
+            if is_local_model
+            else max_output_tokens
+        )
+        rows = await _call_llm_chain_rows_with_fallback(
             messages,
             model_chain,
             timeout=timeout,
-            retry_count=max(1, retry_count),
+            retry_count=retry_count,
             context="AgentFlow Samurai node",
             expected_width=expected_matrix_width,
-            max_tokens=max_output_tokens,
+            max_tokens=direct_matrix_max_tokens,
             routing_context=_routing,
+            governance_context=governance_context,
+            row_validator=lambda candidate_rows: _validate_matrix_coverage(
+                candidate_rows,
+                context_str,
+                task_description,
+                config,
+                label="AgentFlow Samurai node",
+            ),
+        )
+        _validate_matrix_coverage(
+            rows,
+            context_str,
+            task_description,
+            config,
+            label="AgentFlow Samurai node",
         )
         output = json.dumps(rows, ensure_ascii=False, default=str)
     else:
@@ -1947,7 +2320,18 @@ async def _exec_samurai(
             max_tokens=max_output_tokens,
             routing_context=_routing,
         )
-    merged = _merge_structured_chunk_matrices([output], task_description, fixed_context_str, config)
+    if progress_callback:
+        try:
+            await progress_callback(direct_progress_total, direct_progress_total)
+        except Exception as progress_error:
+            log.warning("Could not persist AgentFlow node progress: %s", progress_error)
+    merged = _merge_structured_chunk_matrices(
+        [output],
+        task_description,
+        fixed_context_str,
+        config,
+        force_matrix_output=requires_matrix_output,
+    )
     return merged if merged is not None else output
 
 
@@ -2011,21 +2395,179 @@ async def _resolve_samurai_task_description(config: dict[str, Any]) -> str:
     return content
 
 
-def _split_model_context(text: str, max_chars: int) -> list[str]:
-    """Split long context at source boundaries without dropping or duplicating text."""
-    limit = max(1000, int(max_chars))
-    if len(text) <= limit:
-        return [text]
+def _model_source_units(text: str) -> list[str]:
+    """Return stable document units suitable for bounded extraction and coverage checks."""
+    if not text:
+        return []
     material_starts = [match.start() for match in re.finditer(r"(?m)^\s*Sachnummer\s*:\s*", text)]
     if len(material_starts) > 1:
-        source_units = []
+        units: list[str] = []
         for index, start in enumerate(material_starts):
             unit_start = 0 if index == 0 else start
             unit_end = material_starts[index + 1] if index + 1 < len(material_starts) else len(text)
-            source_units.append(text[unit_start:unit_end])
+            units.append(text[unit_start:unit_end])
+        return units
+    marker = re.compile(r"(?m)(?=^--- (?:Page \d+|Excel row \d+|Slide \d+) ---\s*$)")
+    marked_units = [unit for unit in marker.split(text) if unit]
+    return marked_units if len(marked_units) > 1 else [text]
+
+
+def _exhaustive_matrix_task(task_description: str) -> bool:
+    """Identify contracts that promise exhaustive records rather than a sparse report."""
+    task = str(task_description or "")
+    return bool(
+        re.search(
+            r"\b(?:every|each)\s+(?:relevant\s+)?(?:record|row|order|item|material|entry|line)\b"
+            r"|\ball\s+(?:relevant\s+)?(?:records|rows|orders|items|materials|entries|lines)\b"
+            r"|\b(?:read|process|extract|convert)\s+(?:the\s+)?complete\b"
+            r"|\bdo\s+not\s+(?:sample|omit|skip)\b",
+            task,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _minimum_matrix_rows_for_source(
+    source_context: str,
+    task_description: str,
+    config: dict[str, Any],
+) -> tuple[int, int, str]:
+    """Return a conservative minimum row count and its source evidence."""
+    units = len(_model_source_units(source_context))
+    explicit = config.get("minimum_matrix_rows")
+    if explicit not in (None, ""):
+        return max(0, int(explicit)), units, "source unit(s)"
+    if config.get("allow_sparse_matrix_output") or not _exhaustive_matrix_task(task_description):
+        return 0, units, "source unit(s)"
+    if not source_context.strip():
+        return 0, units, "source unit(s)"
+
+    sap_expected_rows = _expected_sap_output_rows(source_context, task_description)
+    if sap_expected_rows is not None:
+        try:
+            ratio = float(config.get("minimum_source_coverage_ratio", 1.0))
+        except (TypeError, ValueError):
+            ratio = 1.0
+        ratio = max(0.05, min(ratio, 1.0))
+        minimum = int((sap_expected_rows * ratio) + 0.999999)
+        return minimum, sap_expected_rows, "semantically required row(s)"
+
+    if units <= 1:
+        return 1, units, "source unit(s)"
+    try:
+        ratio = float(config.get("minimum_source_coverage_ratio", 0.25))
+    except (TypeError, ValueError):
+        ratio = 0.25
+    ratio = max(0.05, min(ratio, 1.0))
+    return max(1, int((units * ratio) + 0.999999)), units, "source unit(s)"
+
+
+def _expected_sap_output_rows(source_context: str, task_description: str) -> int | None:
+    """Infer the minimum rows promised by the explicit SAP planning contract.
+
+    This is deliberately activated by both the source markers and instructions;
+    it is not a general PDF heuristic. The contract produces one stock row when
+    stock is positive, one row per ``Sa = 06`` production order, and one
+    aggregated planning row per article that has ``Sa = 01`` demand.
+    """
+    task = str(task_description or "")
+    if not (
+        re.search(r"Sa\s*=\s*06", task, re.IGNORECASE)
+        and re.search(r"Sa\s*=\s*01", task, re.IGNORECASE)
+        and re.search(r"stock row|Bestand", task, re.IGNORECASE)
+    ):
+        return None
+    if not re.search(r"(?m)^\s*(?:Sachnummer\s*:|(?:01|06)\s+\S+)", source_context):
+        return None
+
+    material_starts = [
+        match.start()
+        for match in re.finditer(r"(?m)^\s*Sachnummer\s*:\s*", source_context)
+    ]
+    if material_starts:
+        sections: list[str] = []
+        for index, start in enumerate(material_starts):
+            end = (
+                material_starts[index + 1]
+                if index + 1 < len(material_starts)
+                else len(source_context)
+            )
+            sections.append(source_context[start:end])
     else:
-        marker = re.compile(r"(?m)(?=^--- (?:Page \d+|Excel row \d+|Slide \d+) ---\s*$)")
-        source_units = [unit for unit in marker.split(text) if unit]
+        sections = [source_context]
+
+    expected_rows = 0
+    for section in sections:
+        stock_match = re.search(r"(?m)^\s*Bestand\s*:\s*([\d.,-]+)", section)
+        if stock_match:
+            normalized_stock = stock_match.group(1).replace(".", "").replace(",", ".")
+            try:
+                expected_rows += int(float(normalized_stock) > 0)
+            except ValueError:
+                pass
+        expected_rows += len(re.findall(r"(?m)^\s*06\s+\S+\s+\S+", section))
+        demand_articles = set(re.findall(r"(?m)^\s*01\s+(\S+)\s+\S+", section))
+        expected_rows += len(demand_articles)
+    return expected_rows
+
+
+def _merge_matrix_attempt_rows(
+    retained_rows: list[list[Any]],
+    candidate_rows: list[list[Any]],
+) -> list[list[Any]]:
+    """Merge extraction attempts without multiplying rows repeated by a retry.
+
+    A corrective request may return only missing rows or repeat the complete
+    partial matrix. Treat each attempt as a multiset and retain the maximum
+    occurrence count for each exact row across attempts. This preserves
+    legitimate duplicate source rows while preventing the same partial answer
+    from being appended on every retry.
+    """
+    merged = [list(row) for row in retained_rows]
+    retained_counts: dict[str, int] = defaultdict(int)
+    candidate_counts: dict[str, int] = defaultdict(int)
+    for row in merged:
+        retained_counts[json.dumps(row, ensure_ascii=False, default=str)] += 1
+    for row in candidate_rows:
+        normalized_row = list(row)
+        key = json.dumps(normalized_row, ensure_ascii=False, default=str)
+        candidate_counts[key] += 1
+        if candidate_counts[key] > retained_counts[key]:
+            merged.append(normalized_row)
+    return merged
+
+
+def _validate_matrix_coverage(
+    rows: list[list[Any]],
+    source_context: str,
+    task_description: str,
+    config: dict[str, Any],
+    *,
+    label: str,
+) -> None:
+    """Reject shaped-but-obviously-incomplete exhaustive extraction results."""
+    minimum_rows, source_evidence, evidence_label = _minimum_matrix_rows_for_source(
+        source_context,
+        task_description,
+        config,
+    )
+    if len(rows) >= minimum_rows:
+        return
+    raise IncompleteMatrixOutputError(
+        f"{label} returned only {len(rows)} row(s) for {source_evidence} {evidence_label}; "
+        f"this exhaustive extraction requires at least {minimum_rows} row(s) before it can be accepted.",
+        candidate_rows=rows,
+        minimum_rows=minimum_rows,
+    )
+
+
+def _split_model_context(text: str, max_chars: int, max_units: int | None = None) -> list[str]:
+    """Split long context at source boundaries without dropping or duplicating text."""
+    limit = max(1000, int(max_chars))
+    unit_limit = max(1, int(max_units)) if max_units not in (None, 0) else None
+    source_units = _model_source_units(text)
+    if len(text) <= limit and (unit_limit is None or len(source_units) <= unit_limit):
+        return [text]
     if len(source_units) > 1:
         chunks: list[str] = []
         current_units: list[str] = []
@@ -2037,11 +2579,14 @@ def _split_model_context(text: str, max_chars: int) -> list[str]:
                     current_units = []
                     current_length = 0
                 if unit != text:
-                    chunks.extend(_split_model_context(unit, limit))
+                    chunks.extend(_split_model_context(unit, limit, unit_limit))
                 else:
                     chunks.extend(unit[index:index + limit] for index in range(0, len(unit), limit))
                 continue
-            if current_units and current_length + len(unit) > limit:
+            if current_units and (
+                current_length + len(unit) > limit
+                or (unit_limit is not None and len(current_units) >= unit_limit)
+            ):
                 chunks.append("".join(current_units))
                 current_units = []
                 current_length = 0
@@ -2075,9 +2620,11 @@ def _merge_structured_chunk_matrices(
     task_description: str,
     fixed_context: str,
     config: dict[str, Any],
+    *,
+    force_matrix_output: bool = False,
 ) -> str | None:
     """Combine independently generated 2D-array chunks into one validated matrix."""
-    if not _requires_structured_matrix_output(
+    if not force_matrix_output and not _requires_structured_matrix_output(
         task_description,
         str(config.get("expected_output") or ""),
         fixed_context,
@@ -3906,23 +4453,23 @@ async def _call_llm_rows(
             calls = normalize_text_tool_calls(str(content or ""), {_AGENTFLOW_ROWS_TOOL_NAME})
         call = next((item for item in calls if item.get("tool") == _AGENTFLOW_ROWS_TOOL_NAME), None)
         if not call:
-            # Backward-compatible final fallback for models that follow the row
-            # contract but omit the canonical tool wrapper. The strict parser and
-            # width validator still convert textual JSON into governed values
-            # before Office receives anything.
             from shogun.services.file_template import parse_excel_rows
 
-            parsed_rows = parse_excel_rows(str(content or ""), require_structured_json=True)
-            rows = _validate_agentflow_rows({"rows": parsed_rows}, expected_width)
+            try:
+                parsed_rows = parse_excel_rows(str(content or ""), require_structured_json=True)
+                rows = _validate_agentflow_rows({"rows": parsed_rows}, expected_width)
+            except Exception:
+                if mode == "native" and bool(profile.get("fallback_enabled", True)):
+                    raise
+                # Text adapters may legitimately return an exact-width Markdown
+                # table or TSV matrix. Accept those structured representations,
+                # but never turn arbitrary prose into a successful spreadsheet.
+                parsed_rows = parse_excel_rows(str(content or ""), require_structured_json=False)
+                rows = _validate_agentflow_rows({"rows": parsed_rows}, expected_width)
         else:
             rows = _validate_agentflow_rows(call.get("arguments") or {}, expected_width)
         return rows, json.dumps(rows, ensure_ascii=False, default=str), mode
     except Exception as parse_error:
-        # A successful HTTP response does not prove that native tool calling
-        # succeeded. Local and OpenAI-compatible models sometimes answer with
-        # prose, malformed arguments, or an unsupported call envelope. Treat
-        # that as a transport failure and use the persisted Shogun adapter just
-        # as we do when the provider rejects the tools field outright.
         if mode == "native" and bool(profile.get("fallback_enabled", True)):
             compact_content = re.sub(r"\s+", " ", str(content or "")).strip()
             structural_preview = re.sub(r"[A-Za-z0-9]", "x", compact_content)[:160]
@@ -3964,6 +4511,7 @@ async def _call_llm_chain_rows(
     expected_width: int | None,
     max_tokens: int | None,
     routing_context: dict[str, Any] | None,
+    row_validator: Callable[[list[list[Any]]], None] | None = None,
 ) -> list[list[Any]]:
     """Call routed models until one returns a validated canonical row matrix."""
     last_error: Exception | None = None
@@ -3999,6 +4547,8 @@ async def _call_llm_chain_rows(
                     temperature=temperature,
                     seed=seed,
                 )
+                if row_validator:
+                    row_validator(rows)
                 await _record_model_usage(
                     provider,
                     model_name,
@@ -4183,6 +4733,529 @@ async def _call_llm_chain(
         cause=last_error,
         input_characters=input_characters,
     ) from last_error
+
+
+async def _resolve_samurai_tools(governance_context: dict[str, Any] | None) -> tuple[list[dict[str, Any]], Callable]:
+    """Load the governed, read-only artifact tools for Samurai inference.
+
+    A Samurai transforms inputs into a typed result.  It may inspect approved
+    artifacts, but the explicit downstream node remains the sole owner of
+    writes, sends, saves, and other side effects.
+    """
+    from shogun.services.native_skills import NATIVE_TOOLS, execute_native_tool
+    from shogun.services.posture_guard import filter_tools_by_posture, get_posture_permissions
+
+    posture_permissions = (governance_context or {}).get("permissions")
+    if not posture_permissions:
+        try:
+            posture_permissions = await get_posture_permissions()
+        except Exception:
+            posture_permissions = {}
+
+    artifact_read_tools = {
+        "workspace_info",
+        "workspace_list",
+        "workspace_read",
+        "workspace_read_image",
+        "workspace_read_pdf",
+        "office_excel_open",
+        "office_excel_open_attachment",
+        "office_excel_read_range",
+        "office_excel_list_sheets",
+        "office_excel_get_metadata",
+        "office_word_open",
+        "office_word_get_metadata",
+        "office_word_read_text",
+        "office_word_read_page",
+        "office_word_read_pages",
+        "office_word_read_headings",
+        "office_pptx_open",
+        "office_pptx_get_metadata",
+        "file_detect_type",
+        "file_inspect",
+        "file_read",
+        "file_preview",
+        "file_schema",
+        "file_query",
+        "file_extract",
+        "file_compare",
+        "file_validate",
+        "file_list_formats",
+    }
+
+    allowed_tools, _ = filter_tools_by_posture(NATIVE_TOOLS, posture_permissions)
+    filtered_tools = [
+        tool
+        for tool in allowed_tools
+        if tool.get("function", {}).get("name") in artifact_read_tools
+    ]
+
+    async def _executor(tool_name: str, args: dict[str, Any], session: AsyncSession) -> str:
+        return await execute_native_tool(tool_name, args, session)
+
+    return filtered_tools, _executor
+
+
+async def _call_llm_with_tools(
+    messages: list[dict],
+    model_name: str,
+    base_url: str,
+    headers: dict,
+    timeout: int = 120,
+    max_tokens: int | None = None,
+    temperature: float = 0.3,
+    seed: int | None = None,
+    tools: list[dict] | None = None,
+    tool_executor: Callable | None = None,
+    max_tool_rounds: int = 6,
+    governance_context: dict[str, Any] | None = None,
+    tool_profile: dict[str, Any] | None = None,
+) -> str:
+    """Run a bounded, governed tool loop through a model-specific adapter."""
+    if not tools or not tool_executor:
+        return await _call_llm(
+            messages,
+            model_name,
+            base_url,
+            headers,
+            timeout=timeout,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            seed=seed,
+        )
+
+    profile = dict(tool_profile or {})
+    mode = str(profile.get("mode") or "native")
+    if mode == "unsupported":
+        return await _call_llm(
+            messages,
+            model_name,
+            base_url,
+            headers,
+            timeout=timeout,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            seed=seed,
+        )
+    formatted_tools = [
+        {"type": t.get("type", "function"), "function": t["function"]}
+        for t in tools
+    ]
+    allowed_tool_names = {
+        str(tool.get("function", {}).get("name") or "")
+        for tool in tools
+    }
+
+    current_messages = [dict(m) for m in messages]
+    if mode == "text":
+        from shogun.services.native_skills import generate_tool_prompt
+
+        tool_prompt = generate_tool_prompt(tools)
+        if current_messages and current_messages[0].get("role") == "system":
+            current_messages[0]["content"] = (
+                str(current_messages[0].get("content") or "") + "\n\n" + tool_prompt
+            )
+        else:
+            current_messages.insert(0, {"role": "system", "content": tool_prompt})
+    url = f"{base_url.rstrip('/')}/chat/completions"
+
+    for _round_num in range(max_tool_rounds):
+        payload: dict[str, Any] = {
+            "model": model_name,
+            "messages": current_messages,
+            "stream": False,
+            "temperature": temperature,
+        }
+        if mode == "native":
+            payload["tools"] = formatted_tools
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+        if seed is not None:
+            payload["seed"] = seed
+
+        async with httpx.AsyncClient(timeout=float(timeout)) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code >= 400:
+                body = resp.text[:500]
+                err_lower = body.lower()
+                if any(k in err_lower for k in ("invalid tool", "does not support tool", "tool use is not supported")):
+                    if mode == "native" and bool(profile.get("fallback_enabled", True)):
+                        log.warning(
+                            "Model %s rejected native tools; using its Shogun text adapter",
+                            model_name,
+                        )
+                        fallback_profile = dict(profile)
+                        fallback_profile.update({"mode": "text", "adapter_id": "shogun_text_v1"})
+                        return await _call_llm_with_tools(
+                            messages,
+                            model_name,
+                            base_url,
+                            headers,
+                            timeout=timeout,
+                            max_tokens=max_tokens,
+                            temperature=temperature,
+                            seed=seed,
+                            tools=tools,
+                            tool_executor=tool_executor,
+                            max_tool_rounds=max_tool_rounds,
+                            governance_context=governance_context,
+                            tool_profile=fallback_profile,
+                        )
+                raise ValueError(f"LLM API error {resp.status_code}: {body}")
+
+            data = resp.json()
+            choices = data.get("choices", [])
+            if not choices:
+                raise ValueError("LLM returned no choices")
+
+            message_obj = choices[0].get("message", {})
+            content = message_obj.get("content", "")
+            if isinstance(content, list):
+                content = "\n".join(
+                    str(part.get("text") or "") for part in content if isinstance(part, dict)
+                )
+            if mode == "native":
+                canonical_calls = normalize_native_tool_calls(data)
+            else:
+                canonical_calls = normalize_text_tool_calls(str(content or ""), allowed_tool_names)
+
+            if not canonical_calls:
+                if not content:
+                    raise ValueError("LLM returned empty content and no tool calls")
+                return str(content)
+
+            if mode == "native":
+                current_messages.append({
+                    "role": "assistant",
+                    "content": content,
+                    "tool_calls": message_obj.get("tool_calls", []),
+                })
+            else:
+                current_messages.append({"role": "assistant", "content": str(content or "")})
+
+            from shogun.services.content_wrapper import wrap_tool_result
+            from shogun.services.tool_gate import GateAction, check_tool_access
+
+            posture_permissions = dict((governance_context or {}).get("permissions") or {})
+            posture_tier = (
+                (governance_context or {}).get("posture_level")
+                or posture_permissions.get("active_tier")
+                or (governance_context or {}).get("active_tier")
+                or "standard"
+            )
+            gate_mode = "ronin_desktop" if posture_tier == "ronin" else str(posture_tier)
+            if gate_mode not in {"standard", "campaign", "ronin_browser", "ronin_desktop"}:
+                gate_mode = "standard"
+            campaign_preset = posture_permissions.get("active_campaign_preset")
+            if isinstance(campaign_preset, str) and campaign_preset:
+                try:
+                    from shogun.services.campaign_presets import get_preset
+
+                    campaign_preset = get_preset(campaign_preset)
+                except Exception as preset_error:
+                    log.warning("Could not resolve Campaign preset for Samurai tool call: %s", preset_error)
+                    campaign_preset = None
+
+            for call in canonical_calls:
+                call_id = str(call.get("id") or f"call-{uuid.uuid4().hex[:10]}")
+                func_name = str(call.get("tool") or "")
+                args = call.get("arguments") or {}
+
+                if func_name not in allowed_tool_names:
+                    res_str = json.dumps({
+                        "status": "blocked",
+                        "message": f"Tool '{func_name}' is not in this Samurai node's scoped tool set.",
+                    })
+                else:
+                    try:
+                        gate_decision = await check_tool_access(
+                            mode=gate_mode,
+                            tool_name=func_name,
+                            args=args,
+                            campaign_preset=campaign_preset if isinstance(campaign_preset, dict) else None,
+                        )
+                    except Exception as gate_error:
+                        # Governance failures are never permission grants.
+                        log.warning("ToolGate evaluation error for %s: %s", func_name, gate_error)
+                        res_str = json.dumps({
+                            "status": "blocked",
+                            "message": f"ToolGate could not safely evaluate '{func_name}'.",
+                        })
+                    else:
+                        if gate_decision.action == GateAction.BLOCK:
+                            res_str = json.dumps({
+                                "status": "blocked",
+                                "message": f"ToolGate blocked '{func_name}': {gate_decision.reason}",
+                            })
+                        elif gate_decision.action == GateAction.CONFIRM:
+                            # AgentFlow runs have no interactive confirmation
+                            # channel. Never interpret CONFIRM as ALLOW.
+                            res_str = json.dumps({
+                                "status": "permission_required",
+                                "message": (
+                                    f"Tool '{func_name}' requires interactive approval and was not executed."
+                                ),
+                                "reason": gate_decision.reason,
+                            })
+                        else:
+                            try:
+                                async with async_session_factory() as session:
+                                    res_str = await tool_executor(func_name, args, session)
+                            except Exception as exec_error:
+                                res_str = json.dumps({
+                                    "status": "error",
+                                    "message": f"Tool execution failed for '{func_name}': {exec_error}",
+                                })
+
+                res_str = wrap_tool_result(func_name, str(res_str))
+                if mode == "native":
+                    current_messages.append({
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "name": func_name,
+                        "content": res_str,
+                    })
+                else:
+                    current_messages.append({
+                        "role": "user",
+                        "content": (
+                            "<tool_result>"
+                            + json.dumps(
+                                {"tool": func_name, "result": res_str},
+                                ensure_ascii=False,
+                            )
+                            + "</tool_result>\nContinue the task using this real result."
+                        ),
+                    })
+
+    raise RuntimeError(f"Samurai node exceeded maximum tool rounds ({max_tool_rounds})")
+
+
+async def _call_llm_chain_with_tools(
+    messages: list[dict],
+    model_chain: list[tuple[ModelProvider, str, str, dict]],
+    *,
+    timeout: int,
+    retry_count: int,
+    context: str,
+    max_tokens: int | None = None,
+    routing_context: dict[str, Any] | None = None,
+    usage_session: AsyncSession | None = None,
+    tools: list[dict] | None = None,
+    tool_executor: Callable | None = None,
+    governance_context: dict[str, Any] | None = None,
+) -> str:
+    """Call each model in order with tool execution support."""
+    if not tools or not tool_executor or getattr(_call_llm_chain, "__name__", "") != "_call_llm_chain":
+        return await _call_llm_chain(
+            messages,
+            model_chain,
+            timeout=timeout,
+            retry_count=retry_count,
+            context=context,
+            max_tokens=max_tokens,
+            routing_context=routing_context,
+            usage_session=usage_session,
+        )
+
+    last_error: Exception | None = None
+    last_provider: ModelProvider | None = None
+    last_model = "unknown-model"
+    input_characters = len(json.dumps(messages, ensure_ascii=False, default=str))
+    tool_profiles = (routing_context or {}).get("tool_calling_profiles") or {}
+    for model_index, chain_item in enumerate(model_chain):
+        if isinstance(chain_item, (list, tuple)) and len(chain_item) >= 4:
+            _provider, model_name, base_url, headers = chain_item[:4]
+        else:
+            _provider = chain_item
+            model_name = getattr(_provider, "model_name", "unknown-model")
+            base_url = getattr(_provider, "base_url", "http://localhost:8000")
+            headers = getattr(_provider, "headers", {})
+
+        last_provider = _provider
+        last_model = model_name
+        for attempt in range(1 + retry_count):
+            started = time.perf_counter()
+            try:
+                route_key = f"{getattr(_provider, 'id', '')}:{model_name}"
+                tool_profile = tool_profiles.get(route_key) or infer_tool_calling_profile(
+                    model_name,
+                    str(getattr(_provider, "provider_type", "") or ""),
+                    tool_capability=True,
+                )
+                model_parameters = ((routing_context or {}).get("request_parameters") or {}).get(route_key) or {}
+                temperature = max(0.0, min(2.0, float(model_parameters.get("temperature", 0.3))))
+                configured_seed = (routing_context or {}).get("flow_seed")
+                seed_match = str((routing_context or {}).get("flow_seed_model_id") or "").strip()
+                physical_model = f"{getattr(_provider, 'id', '')}:{model_name}"
+                provider_model = f"{getattr(_provider, 'provider_type', '')}/{model_name}"
+                seed = (
+                    int(configured_seed)
+                    if configured_seed is not None
+                    and (not seed_match or seed_match in {model_name, physical_model, provider_model})
+                    else None
+                )
+                result = await _call_llm_with_tools(
+                    messages,
+                    model_name,
+                    base_url,
+                    headers,
+                    timeout=timeout,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    seed=seed,
+                    tools=tools,
+                    tool_executor=tool_executor,
+                    governance_context=governance_context,
+                    tool_profile=tool_profile,
+                )
+                await _record_model_usage(
+                    _provider,
+                    model_name,
+                    messages,
+                    result,
+                    time.perf_counter() - started,
+                    routing_context,
+                    usage_session,
+                    success=True,
+                )
+                return result
+            except Exception as exc:
+                last_error = exc
+                await _record_model_usage(
+                    _provider,
+                    model_name,
+                    messages,
+                    "",
+                    time.perf_counter() - started,
+                    routing_context,
+                    usage_session,
+                    success=False,
+                    error=str(exc),
+                )
+                log.warning(
+                    "%s model '%s' failed (attempt %d/%d, timeout=%ss): %s",
+                    context,
+                    model_name,
+                    attempt + 1,
+                    1 + retry_count,
+                    timeout,
+                    exc,
+                )
+                if attempt < retry_count:
+                    await asyncio.sleep(2**attempt)
+
+        if model_index + 1 < len(model_chain):
+            next_item = model_chain[model_index + 1]
+            next_model = (
+                next_item[1]
+                if isinstance(next_item, (list, tuple)) and len(next_item) > 1
+                else "fallback-model"
+            )
+            reason = (
+                f"timeout after {timeout}s"
+                if isinstance(last_error, (httpx.TimeoutException, asyncio.TimeoutError))
+                else str(last_error)[:300]
+            )
+            from shogun.services.notification_service import notify_model_fallback
+
+            await notify_model_fallback(
+                from_model=model_name,
+                to_model=next_model,
+                reason=reason,
+                context=context,
+                timeout_seconds=timeout,
+            )
+
+    if last_error is None:
+        raise ValueError(f"{context} failed without a model response")
+    provider_name = (
+        getattr(last_provider, "name", None)
+        or getattr(last_provider, "provider_type", None)
+        or "unknown-provider"
+    )
+    raise ModelCallError(
+        context=context,
+        provider=str(provider_name),
+        model=last_model,
+        timeout=timeout,
+        cause=last_error,
+        input_characters=input_characters,
+    ) from last_error
+
+
+def _is_structured_rows_failure(error: Exception) -> bool:
+    """Return whether a model responded but violated the row contract."""
+    cause = error.__cause__ if isinstance(error, ModelCallError) else error
+    if isinstance(cause, json.JSONDecodeError) or (
+        isinstance(error, ModelCallError) and error.cause_type == "JSONDecodeError"
+    ):
+        return True
+    text = f"{error} {cause or ''}".lower()
+    return any(
+        marker in text
+        for marker in (
+            "did not submit rows",
+            "valid json rows",
+            "must contain exactly",
+            "row matrix",
+            "structured json",
+            "expecting value",
+            "unterminated string",
+            "expecting ',' delimiter",
+            "extra data",
+        )
+    )
+
+
+async def _call_llm_chain_rows_with_fallback(
+    messages: list[dict],
+    model_chain: list[tuple[ModelProvider, str, str, dict]],
+    *,
+    timeout: int,
+    retry_count: int,
+    context: str,
+    expected_width: int | None,
+    max_tokens: int | None,
+    routing_context: dict[str, Any] | None,
+    governance_context: dict[str, Any] | None,
+    row_validator: Callable[[list[list[Any]]], None] | None = None,
+) -> list[list[Any]]:
+    """Return an exact row matrix or a typed error suitable for chunk subdivision.
+
+    ``_call_llm_chain_rows`` already tries the model's native row-submission
+    tool and Shogun's text adapter. General Samurai tools cannot repair an
+    in-memory response and previously turned a recoverable malformed chunk
+    into a terminal prose response. Preserve infrastructure errors, but tag a
+    structural response failure so the caller can retry only that source chunk
+    at a smaller size.
+    """
+    try:
+        return await _call_llm_chain_rows(
+            messages,
+            model_chain,
+            timeout=timeout,
+            retry_count=retry_count,
+            context=context,
+            expected_width=expected_width,
+            max_tokens=max_tokens,
+            routing_context=routing_context,
+            row_validator=row_validator,
+        )
+    except Exception as original_error:
+        underlying_error = (
+            original_error.__cause__
+            if isinstance(original_error, ModelCallError)
+            else original_error
+        )
+        if isinstance(underlying_error, IncompleteMatrixOutputError):
+            raise underlying_error
+        if not _is_structured_rows_failure(original_error):
+            raise
+        raise MalformedMatrixOutputError(
+            f"{context} returned malformed structured rows after both its native row protocol "
+            "and Shogun's structured text adapter were attempted."
+        ) from original_error
 
 
 async def _record_model_usage(

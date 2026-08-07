@@ -588,6 +588,18 @@ Format: xlsx
     assert __import__("json").loads(merged) == [["A", 1], ["B", 2]]
 
 
+def test_downstream_excel_contract_forces_chunk_matrix_merge_without_template():
+    merged = flow_engine._merge_structured_chunk_matrices(
+        ['[["A", 1]]', '[["B", 2]]'],
+        "Extract the records.",
+        "",
+        {},
+        force_matrix_output=True,
+    )
+
+    assert __import__("json").loads(merged) == [["A", 1], ["B", 2]]
+
+
 def test_excel_template_contract_rejects_summary_without_prompt_wording():
     fixed_context = """[FILE TEMPLATE CONTRACT]
 Format: xlsx

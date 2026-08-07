@@ -586,7 +586,12 @@ function TokenBudgetControls({ item, disabled, onPatch }: {
   onPatch: (patch: Partial<RegistryModel>) => void;
 }) {
   const minimum = 128;
-  const context = Math.max(1024, Number(item.context_window) || 8192);
+  const configuredContext = Math.max(1024, Number(item.context_window) || 8192);
+  const detectedContextValue = Number(item.config_json?.detected_context_window);
+  const detectedContext = Number.isFinite(detectedContextValue) && detectedContextValue >= 1024
+    ? detectedContextValue
+    : null;
+  const context = detectedContext ? Math.min(configuredContext, detectedContext) : configuredContext;
   const outputCeiling = Math.max(minimum, context - minimum);
   const initialOutput = Math.max(minimum, Math.min(Number(item.max_output_tokens) || 4096, outputCeiling));
   const configuredInput = Number(item.config_json?.max_input_tokens);
@@ -619,9 +624,10 @@ function TokenBudgetControls({ item, disabled, onPatch }: {
     if (Object.keys(patch).length) onPatch(patch);
   };
   const commitContext = (value: number) => {
-    if (value < 1024 || value === context) return;
-    const nextOutput = Math.min(outputTokens, value - minimum);
-    const nextInput = Math.min(inputTokens, value - nextOutput);
+    if (value < 1024 || value === configuredContext) return;
+    const effectiveValue = detectedContext ? Math.min(value, detectedContext) : value;
+    const nextOutput = Math.min(outputTokens, effectiveValue - minimum);
+    const nextInput = Math.min(inputTokens, effectiveValue - nextOutput);
     onPatch({
       context_window: value,
       max_output_tokens: nextOutput,
@@ -635,21 +641,24 @@ function TokenBudgetControls({ item, disabled, onPatch }: {
 
   return <div className="mb-3 rounded-lg border border-shogun-border bg-[#050508] p-3">
     <div className="flex flex-wrap items-end justify-between gap-2">
-      <label className="text-[9px] uppercase text-shogun-subdued">Effective runtime context
-        <input type="number" min="1024" step="1024" defaultValue={context} disabled={disabled || contextMode === 'auto'}
+      <label className="text-[9px] uppercase text-shogun-subdued">{contextMode === 'manual' ? 'Requested context limit' : 'Detected runtime context'}
+        <input type="number" min="1024" step="1024" defaultValue={configuredContext} disabled={disabled || contextMode === 'auto'}
           onBlur={event => {
             const value = Number(event.currentTarget.value);
             if (value >= 1024) commitContext(value);
-            else event.currentTarget.value = String(context);
+            else event.currentTarget.value = String(configuredContext);
           }}
           className="ml-2 w-28 rounded border border-shogun-border bg-[#080b14] p-1 text-right font-mono text-[10px] normal-case" />
       </label>
-      <span className="text-[8px] text-shogun-subdued">Input + output cannot exceed {context.toLocaleString()} tokens</span>
+      <span className="text-[8px] text-shogun-subdued">Input + output cannot exceed the effective {context.toLocaleString()}-token runtime ceiling</span>
     </div>
     <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-cyan-400/20 bg-cyan-400/5 px-2 py-1.5">
       <button type="button" disabled={disabled} onClick={() => commitContextMode('auto')} className={`rounded px-2 py-1 text-[8px] font-bold uppercase ${contextMode === 'auto' ? 'bg-cyan-400/20 text-cyan-200' : 'text-shogun-subdued'}`}>Auto</button>
       <button type="button" disabled={disabled} onClick={() => commitContextMode('manual')} className={`rounded px-2 py-1 text-[8px] font-bold uppercase ${contextMode === 'manual' ? 'bg-amber-400/20 text-amber-200' : 'text-shogun-subdued'}`}>Manual override</button>
       <span className="text-[8px] text-shogun-subdued">Source: {contextSource}. Auto checks the Ollama runtime first, then model/provider metadata.</span>
+      {detectedContext && configuredContext > detectedContext && <span className="text-[8px] text-amber-300">
+        The provider reports {detectedContext.toLocaleString()} tokens, so routing and sliders are safely capped there.
+      </span>}
     </div>
     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
       <label className="text-[9px] uppercase text-shogun-subdued">

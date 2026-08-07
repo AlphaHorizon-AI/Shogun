@@ -315,9 +315,35 @@ def infer_tiers(model_id: str, local: bool) -> tuple[int, int, int]:
     return quality, cost, latency
 
 
+def effective_context_window(item: ModelRegistryEntry) -> int:
+    """Return the safe runtime context ceiling for a registry entry.
+
+    Katana keeps the operator's manual value for display and editing, but a
+    provider-reported runtime/model limit is authoritative when it is lower.
+    This prevents a stale or optimistic manual value from routing a document
+    that the loaded model cannot actually accept.
+    """
+    configured = max(1024, int(item.context_window))
+    detected = (item.config_json or {}).get("detected_context_window")
+    try:
+        return min(configured, max(1024, int(detected))) if detected is not None else configured
+    except (TypeError, ValueError):
+        return configured
+
+
+def effective_max_output_tokens(item: ModelRegistryEntry) -> int:
+    """Return an output reserve that leaves a minimum runtime input budget."""
+    return min(
+        max(1, int(item.max_output_tokens)),
+        max(1, effective_context_window(item) - 128),
+    )
+
+
 def configured_max_input_tokens(item: ModelRegistryEntry) -> int:
-    """Return the operator input budget without exceeding model capacity."""
-    available = max(1, int(item.context_window) - int(item.max_output_tokens))
+    """Return the operator input budget without exceeding runtime capacity."""
+    context_window = effective_context_window(item)
+    output_reserve = effective_max_output_tokens(item)
+    available = max(1, context_window - output_reserve)
     configured = (item.config_json or {}).get("max_input_tokens")
     try:
         return max(1, min(int(configured), available)) if configured is not None else available
@@ -507,6 +533,14 @@ class ModelRegistryService:
             "auto" if state.get("context_limit_source") == "operator_default" else "manual"
         ))
         state["context_limit_mode"] = mode
+        if detected:
+            context, source = detected
+            detected_context = max(1024, int(context))
+            # Persist provider/runtime discovery in every mode. Manual mode
+            # controls the requested allocation, but routing must still know
+            # the lower physical ceiling reported by the provider.
+            state["detected_context_window"] = detected_context
+            state["detected_context_source"] = source
         if mode == "auto" and detected:
             context, source = detected
             item.context_window = max(1024, int(context))
@@ -516,7 +550,6 @@ class ModelRegistryService:
                 state["max_input_tokens"] = min(
                     int(configured_input), item.context_window - item.max_output_tokens
                 )
-            state["detected_context_window"] = item.context_window
             state["context_limit_source"] = source
         elif mode == "auto":
             state["context_limit_source"] = "detection_unavailable"
@@ -1003,9 +1036,9 @@ class ModelRoutingService:
             "selected_registry_id": selected.id,
             "selected_model": selected.model_id,
             "selected_provider": selected.provider,
-            "selected_context_window": selected.context_window,
+            "selected_context_window": effective_context_window(selected),
             "selected_max_input_tokens": configured_max_input_tokens(selected),
-            "selected_max_output_tokens": selected.max_output_tokens,
+            "selected_max_output_tokens": effective_max_output_tokens(selected),
             "selected_temperature": _profile_temperature(profile, selected),
             "fallback_model": fallbacks[0].model_id if fallbacks else None,
             "fallback_provider": fallbacks[0].provider if fallbacks else None,
@@ -1015,9 +1048,9 @@ class ModelRoutingService:
                     "display_name": item.display_name,
                     "provider": item.provider,
                     "temperature": _profile_temperature(profile, item),
-                    "context_window": item.context_window,
+                    "context_window": effective_context_window(item),
                     "max_input_tokens": configured_max_input_tokens(item),
-                    "max_output_tokens": item.max_output_tokens,
+                    "max_output_tokens": effective_max_output_tokens(item),
                 }
                 for item in fallbacks
             ],

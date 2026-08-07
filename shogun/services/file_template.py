@@ -7,11 +7,14 @@ new output path before applying generated content.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 from copy import copy
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger("shogun.file_template")
 
 TEMPLATE_MARKER = "__shogun_file_template__"
 SUPPORTED_TEMPLATE_SUFFIXES = {".docx", ".xlsx"}
@@ -163,7 +166,7 @@ def render_excel_template(
     _copy_template(source, output)
     wb = openpyxl.load_workbook(str(output))
     try:
-        ws = wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames else wb[wb.sheetnames[0]]
+        ws = _resolve_excel_worksheet(wb, sheet_name)
         content = _unwrap_flow_context(context)
         replacements = _context_replacements(content)
         changed = _replace_excel_placeholders(ws, replacements)
@@ -191,6 +194,28 @@ def render_excel_template(
         return changed
     finally:
         wb.close()
+
+
+def _resolve_excel_worksheet(workbook: Any, sheet_name: str | None) -> Any:
+    """Resolve the destination worksheet without silently choosing an unrelated tab."""
+    requested = str(sheet_name or "").strip()
+    if not requested:
+        return workbook[workbook.sheetnames[0]]
+    if requested in workbook.sheetnames:
+        return workbook[requested]
+    if len(workbook.sheetnames) == 1:
+        selected = workbook.sheetnames[0]
+        log.warning(
+            "Requested worksheet %r was not found; using the template's only worksheet %r",
+            requested,
+            selected,
+        )
+        return workbook[selected]
+    available = ", ".join(repr(name) for name in workbook.sheetnames)
+    raise ValueError(
+        f"Worksheet {requested!r} was not found in the Excel template. "
+        f"Available worksheets: {available}. Select an existing worksheet in the AgentFlow Files node."
+    )
 
 
 def _copy_template(source: Path, output: Path) -> None:

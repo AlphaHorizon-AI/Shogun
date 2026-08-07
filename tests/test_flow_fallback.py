@@ -613,6 +613,345 @@ REFERENCE-ONLY-VALUE | 99
 
 
 @pytest.mark.asyncio
+async def test_remote_exhaustive_matrix_is_bounded_parallel_and_complete(monkeypatch):
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Remote Matrix Model",
+        provider_type="openai_compatible",
+        is_local=False,
+        config={},
+    )
+
+    async def resolve_route(*_args, **_kwargs):
+        return [(provider, "matrix-model", "https://model.invalid/v1", {})], {
+            "selected_context_window": 262_144,
+            "selected_max_input_tokens": 196_608,
+            "selected_max_output_tokens": 65_536,
+        }
+
+    active_calls = 0
+    max_active_calls = 0
+    chunk_unit_counts: list[int] = []
+
+    async def call_rows(messages, *_args, **_kwargs):
+        nonlocal active_calls, max_active_calls
+        prompt = messages[-1]["content"]
+        unit_count = len(re.findall(r"(?m)^Sachnummer\s*:", prompt))
+        chunk_unit_counts.append(unit_count)
+        active_calls += 1
+        max_active_calls = max(max_active_calls, active_calls)
+        await flow_engine.asyncio.sleep(0.01)
+        active_calls -= 1
+        return [[f"material-{index}", index] for index in range(unit_count)]
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
+
+    source = "\n".join(
+        f"Sachnummer : {140000 + index}\n01 order-{index}" for index in range(12)
+    )
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+"""
+
+    result = await flow_engine._exec_samurai(
+        {
+            "task_description": "Extract every material record from the complete document.",
+            "matrix_chunk_max_units": 3,
+            "matrix_chunk_concurrency": 3,
+        },
+        source,
+        fixed_context_str=fixed_context,
+    )
+
+    assert sorted(chunk_unit_counts) == [3, 3, 3, 3]
+    assert max_active_calls > 1
+    assert len(__import__("json").loads(result)) == 12
+
+
+@pytest.mark.asyncio
+async def test_exhaustive_matrix_rejects_shaped_but_incomplete_rows(monkeypatch):
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Remote Matrix Model",
+        provider_type="openai_compatible",
+        is_local=False,
+        config={},
+    )
+
+    async def resolve_route(*_args, **_kwargs):
+        return [(provider, "matrix-model", "https://model.invalid/v1", {})], {
+            "selected_context_window": 262_144,
+            "selected_max_input_tokens": 196_608,
+            "selected_max_output_tokens": 65_536,
+        }
+
+    async def call_rows(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
+    source = "\n".join(
+        f"Sachnummer : {140000 + index}\n01 order-{index}" for index in range(10)
+    )
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+"""
+
+    with pytest.raises(flow_engine.IncompleteMatrixOutputError, match="visibly incomplete|requires at least"):
+        await flow_engine._exec_samurai(
+            {
+                "task_description": "Extract every material record from the complete document.",
+                "matrix_chunk_max_units": 10,
+                "matrix_chunk_concurrency": 1,
+            },
+            source,
+            fixed_context_str=fixed_context,
+        )
+
+
+def test_sap_coverage_counts_semantically_required_rows_not_material_sections():
+    source = """Sachnummer : 45131100
+Bestand : 0,0 KT-Bestand : 0,0
+01 45131100 0003946967 2026/42 2026/10 2026/43 2026/10 21,0 20,0 21.07.2026
+Sachnummer : 45140100
+Bestand : 0,0 KT-Bestand : 0,0
+01 45140100 0003951565 2027/26 2027/06 2027/26 2027/07 3,0 2,0 21.07.2026
+"""
+    task = """Extract every order. Create a stock row when Bestand is positive.
+For every Sa = 06 order create one row. Aggregate Sa = 01 demand into one planning row per article.
+"""
+
+    minimum, evidence, label = flow_engine._minimum_matrix_rows_for_source(source, task, {})
+
+    assert (minimum, evidence, label) == (2, 2, "semantically required row(s)")
+    with pytest.raises(flow_engine.IncompleteMatrixOutputError, match="requires at least 2"):
+        flow_engine._validate_matrix_coverage(
+            [["only-one-row"]],
+            source,
+            task,
+            {},
+            label="test chunk",
+        )
+
+
+@pytest.mark.asyncio
+async def test_incomplete_sap_chunk_can_split_to_individual_materials(monkeypatch):
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Remote Matrix Model",
+        provider_type="openai_compatible",
+        is_local=False,
+        config={},
+    )
+
+    async def resolve_route(*_args, **_kwargs):
+        return [(provider, "matrix-model", "https://model.invalid/v1", {})], {
+            "selected_context_window": 262_144,
+            "selected_max_input_tokens": 196_608,
+            "selected_max_output_tokens": 65_536,
+        }
+
+    attempted_unit_counts: list[int] = []
+    corrective_prompts: list[str] = []
+
+    async def call_rows(messages, *_args, **_kwargs):
+        prompt = messages[-1]["content"]
+        unit_count = len(re.findall(r"(?m)^Sachnummer\s*:", prompt))
+        attempted_unit_counts.append(unit_count)
+        if "--- CORRECTIVE RETRY ---" in prompt:
+            corrective_prompts.append(prompt)
+        if unit_count == 1 and "Sachnummer : 140000" in prompt and not corrective_prompts:
+            return []
+        return [["one-row", 1]]
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
+    source = "\n".join(
+        f"Sachnummer : {140000 + index}\nBestand : 0,0\n"
+        f"01 {140000 + index} order-{index} 2026/01"
+        for index in range(10)
+    )
+    task = """Extract every order from the complete document. Create a stock row when Bestand is positive.
+For every Sa = 06 order create one row. Aggregate Sa = 01 demand into one planning row per article.
+"""
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+"""
+
+    result = await flow_engine._exec_samurai(
+        {
+            "task_description": task,
+            "matrix_chunk_max_units": 10,
+            "matrix_chunk_concurrency": 1,
+        },
+        source,
+        fixed_context_str=fixed_context,
+    )
+
+    assert 10 in attempted_unit_counts
+    assert 1 in attempted_unit_counts
+    assert corrective_prompts
+    assert "requires at least 1 output row" in corrective_prompts[0]
+    assert len(__import__("json").loads(result)) == 10
+
+
+@pytest.mark.asyncio
+async def test_incomplete_leaf_retains_partial_rows_and_requests_only_missing_rows(monkeypatch):
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Remote Matrix Model",
+        provider_type="openai_compatible",
+        is_local=False,
+        config={},
+    )
+
+    async def resolve_route(*_args, **_kwargs):
+        return [(provider, "matrix-model", "https://model.invalid/v1", {})], {
+            "selected_context_window": 262_144,
+            "selected_max_input_tokens": 196_608,
+            "selected_max_output_tokens": 65_536,
+        }
+
+    prompts: list[str] = []
+
+    async def call_rows(messages, *_args, **_kwargs):
+        prompt = messages[-1]["content"]
+        prompts.append(prompt)
+        if "Sachnummer : 140000" not in prompt:
+            return [["other-planning", 3]]
+        if "--- RETAINED VALID ROWS ---" in prompt:
+            return [["missing-planning", 2]]
+        return [["retained-stock", 1]]
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
+    source = """Sachnummer : 140000
+Bestand : 10,0 KT-Bestand : 0,0
+01 140000 order-1 2026/01
+Sachnummer : 140001
+Bestand : 0,0 KT-Bestand : 0,0
+01 140001 order-2 2026/01
+"""
+    task = """Extract every order from the complete document. Create a stock row when Bestand is positive.
+For every Sa = 06 order create one row. Aggregate Sa = 01 demand into one planning row per article.
+"""
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+"""
+
+    result = await flow_engine._exec_samurai(
+        {
+            "task_description": task,
+            "matrix_chunk_max_units": 1,
+            "matrix_chunk_concurrency": 1,
+        },
+        source,
+        fixed_context_str=fixed_context,
+    )
+
+    rows = __import__("json").loads(result)
+    assert rows == [
+        ["retained-stock", 1],
+        ["missing-planning", 2],
+        ["other-planning", 3],
+    ]
+    corrective_prompt = next(prompt for prompt in prompts if "--- RETAINED VALID ROWS ---" in prompt)
+    assert "At least 1 additional row(s)" in corrective_prompt
+    assert '["retained-stock", 1]' in corrective_prompt
+
+
+@pytest.mark.asyncio
+async def test_malformed_matrix_chunk_is_subdivided_instead_of_using_general_tools(monkeypatch):
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Remote Matrix Model",
+        provider_type="openai_compatible",
+        is_local=False,
+        config={},
+    )
+
+    async def resolve_route(*_args, **_kwargs):
+        return [(provider, "matrix-model", "https://model.invalid/v1", {})], {
+            "selected_context_window": 262_144,
+            "selected_max_input_tokens": 196_608,
+            "selected_max_output_tokens": 65_536,
+        }
+
+    attempted_unit_counts: list[int] = []
+
+    async def call_rows(messages, *_args, **_kwargs):
+        prompt = messages[-1]["content"]
+        unit_count = len(re.findall(r"(?m)^Sachnummer\s*:", prompt))
+        attempted_unit_counts.append(unit_count)
+        if unit_count > 5:
+            raise flow_engine.ModelCallError(
+                context="AgentFlow Samurai node chunk 1/1",
+                provider="Remote Matrix Model",
+                model="matrix-model",
+                timeout=300,
+                cause=ValueError("The model did not submit rows or valid JSON rows"),
+                input_characters=len(prompt),
+            )
+        return [[f"material-{index}", index] for index in range(unit_count)]
+
+    async def forbidden_general_tool_repair(*_args, **_kwargs):
+        raise AssertionError("Malformed row matrices must not be sent to general Samurai tools")
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain_with_tools", forbidden_general_tool_repair)
+    source = "\n".join(
+        f"Sachnummer : {140000 + index}\n01 order-{index}" for index in range(10)
+    )
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+"""
+
+    result = await flow_engine._exec_samurai(
+        {
+            "task_description": "Extract every material record from the complete document.",
+            "matrix_chunk_max_units": 10,
+            "matrix_chunk_concurrency": 1,
+        },
+        source,
+        fixed_context_str=fixed_context,
+    )
+
+    assert attempted_unit_counts == [10, 5, 5]
+    assert len(__import__("json").loads(result)) == 10
+
+
+def test_json_decode_failure_is_classified_as_malformed_matrix_output():
+    decode_error = __import__("json").JSONDecodeError("Expecting value", "[]\nnot-json", 3)
+    error = flow_engine.ModelCallError(
+        context="AgentFlow Samurai node chunk 9/30",
+        provider="Remote Matrix Model",
+        model="matrix-model",
+        timeout=600,
+        cause=decode_error,
+        input_characters=32_961,
+    )
+
+    assert flow_engine._is_structured_rows_failure(error) is True
+
+
+@pytest.mark.asyncio
 async def test_samurai_resumes_completed_matrix_chunks_from_checkpoint(monkeypatch, tmp_path):
     from shogun.config import settings
 
