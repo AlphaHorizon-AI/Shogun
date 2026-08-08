@@ -41,6 +41,7 @@ from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_router import ModelRegistryEntry
 from shogun.db.models.model_routing import ModelRoutingProfile
 from shogun.services.provider_credentials import provider_api_key
+from shogun.services.structured_transformations import try_deterministic_matrix_transform
 from shogun.services.tool_calling_profiles import (
     infer_tool_calling_profile,
     normalize_native_tool_calls,
@@ -1651,6 +1652,46 @@ async def _exec_samurai(
             re.IGNORECASE,
         )
     expected_matrix_width = int(matrix_width_match.group(1)) if matrix_width_match else None
+
+    # Prefer a deterministic adapter when the runtime source and the explicit
+    # instructions jointly prove an unambiguous transformation.  This avoids
+    # asking a model to rediscover labeled source fields (for example SAP's
+    # Endtermin versus Starttermin) and leaves every unrecognized workflow on
+    # the normal Samurai/model path.
+    if requires_matrix_output and context_str and fixed_context_str:
+        deterministic = try_deterministic_matrix_transform(
+            task_description=task_description,
+            source_context=context_str,
+            fixed_context=fixed_context_str,
+        )
+        if deterministic is not None:
+            if expected_matrix_width is not None and any(
+                len(row) != expected_matrix_width for row in deterministic.rows
+            ):
+                raise ValueError(
+                    f"Deterministic adapter {deterministic.adapter_id} returned rows outside the "
+                    f"{expected_matrix_width}-column template contract."
+                )
+            _validate_matrix_coverage(
+                deterministic.rows,
+                context_str,
+                task_description,
+                config,
+                label=f"Deterministic adapter {deterministic.adapter_id}",
+            )
+            if progress_callback:
+                progress_total = max(1, len(context_str))
+                try:
+                    await progress_callback(progress_total, progress_total)
+                except Exception as progress_error:
+                    log.warning("Could not persist AgentFlow node progress: %s", progress_error)
+            log.info(
+                "AgentFlow Samurai used deterministic adapter %s for %d validated row(s)",
+                deterministic.adapter_id,
+                len(deterministic.rows),
+            )
+            return json.dumps(deterministic.rows, ensure_ascii=False, default=str)
+
     # Resolve agent persona
     agent_persona = "You are a Samurai agent executing a task in an automated workflow."
     if "[POPULATED ONE-SHOT EXAMPLE]" in fixed_context_str:
@@ -2496,19 +2537,26 @@ def _expected_sap_output_rows(source_context: str, task_description: str) -> int
     else:
         sections = [source_context]
 
-    expected_rows = 0
+    stock_articles: set[str] = set()
+    production_orders: set[tuple[str, str]] = set()
+    demand_articles: set[str] = set()
     for section in sections:
+        material_match = re.search(r"(?m)^\s*Sachnummer\s*:\s*(\S+)", section)
+        material = material_match.group(1) if material_match else ""
         stock_match = re.search(r"(?m)^\s*Bestand\s*:\s*([\d.,-]+)", section)
         if stock_match:
             normalized_stock = stock_match.group(1).replace(".", "").replace(",", ".")
             try:
-                expected_rows += int(float(normalized_stock) > 0)
+                if float(normalized_stock) > 0:
+                    stock_articles.add(material or f"section-{len(stock_articles)}")
             except ValueError:
                 pass
-        expected_rows += len(re.findall(r"(?m)^\s*06\s+\S+\s+\S+", section))
-        demand_articles = set(re.findall(r"(?m)^\s*01\s+(\S+)\s+\S+", section))
-        expected_rows += len(demand_articles)
-    return expected_rows
+        production_orders.update(
+            (article, order.lstrip("0") or "0")
+            for article, order in re.findall(r"(?m)^\s*06\s+(\S+)\s+(\S+)", section)
+        )
+        demand_articles.update(re.findall(r"(?m)^\s*01\s+(\S+)\s+\S+", section))
+    return len(stock_articles) + len(production_orders) + len(demand_articles)
 
 
 def _merge_matrix_attempt_rows(

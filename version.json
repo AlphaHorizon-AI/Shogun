@@ -1,8 +1,8 @@
 {
-  "version": "1.47.70",
+  "version": "1.47.71",
   "name": "Shogun OS",
-  "build": 221,
+  "build": 222,
   "channel": "stable",
-  "released": "2026-08-07T11:30:47Z",
-  "changelog": "Add authoritative AgentFlow baseline workbook merging with deterministic entity replacement, preserve configured columns, and resolve the frontend js-yaml security advisory."
+  "released": "2026-08-08T18:28:50Z",
+  "changelog": "Add deterministic SAP AgentFlow transformation with complete stock, production-order, BOM, and monthly-demand reconciliation."
 }
