@@ -31,6 +31,7 @@ class _SapMaterial:
     demand_references: set[str] = field(default_factory=set)
 
 
+_SAP_NUMBER_PATTERN = r"[+-]?(?:\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d+)(?:,\d+)?"
 _SAP_ORDER_RE = re.compile(
     r"(?m)^\s*(?P<kind>01|06)\s+"
     r"(?P<article>\S+)\s+"
@@ -39,8 +40,8 @@ _SAP_ORDER_RE = re.compile(
     r"(?P<end_month>\d{4}/\d{2})\s+"
     r"(?P<start_week>\d{4}/\d{2})\s+"
     r"(?P<start_month>\d{4}/\d{2})\s+"
-    r"(?P<planned>[\d.,-]+)\s+"
-    r"(?P<remaining>[\d.,-]+)\s+"
+    rf"(?P<planned>{_SAP_NUMBER_PATTERN})\s+"
+    rf"(?P<remaining>{_SAP_NUMBER_PATTERN})\s+"
     r"(?P<date>\d{2}\.\d{2}\.\d{4})\s*$"
 )
 _SAP_MATERIAL_RE = re.compile(r"(?m)^\s*Sachnummer\s*:\s*(\S+)")
@@ -191,7 +192,10 @@ def _parse_sap_materials(source_context: str) -> dict[str, _SapMaterial]:
         )
         if description and not material.description:
             material.description = description
-        stock_text = _match_group(section, r"(?m)^\s*Bestand\s*:\s*([\d.,-]+)")
+        stock_text = _match_group(
+            section,
+            rf"(?m)^\s*Bestand\s*:\s*({_SAP_NUMBER_PATTERN})",
+        )
         if stock_text:
             material.stock = max(material.stock, _sap_number(stock_text))
         rohling, rohteil = _sap_bom_materials(section)
@@ -254,7 +258,11 @@ def _match_group(text: str, pattern: str) -> str:
 
 
 def _sap_number(value: str) -> int | float:
-    normalized = str(value).strip().replace(".", "").replace(",", ".")
+    # SAP's German reports use both dots and whitespace (including non-breaking
+    # variants emitted by PDF extractors) as thousands separators, with a comma
+    # as the decimal separator. Keep the field boundaries in the row regex, then
+    # normalize only the captured number so ``1 200,0`` becomes numeric 1200.
+    normalized = re.sub(r"[\s.\u00a0\u202f]", "", str(value).strip()).replace(",", ".")
     number = float(normalized)
     return int(number) if number.is_integer() else number
 

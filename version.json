@@ -1,8 +1,8 @@
 {
-  "version": "1.47.72",
+  "version": "1.47.73",
   "name": "Shogun OS",
-  "build": 223,
+  "build": 224,
   "channel": "stable",
-  "released": "2026-08-08T18:39:47Z",
-  "changelog": "Migrate the Tenshu frontend to React Router 7.18.2, align locked dependencies, rebuild frontend assets, and resolve startup build failures."
+  "released": "2026-08-08T21:11:32Z",
+  "changelog": "Parse grouped German SAP quantities reliably in deterministic AgentFlow transformations, including whitespace and dot thousands separators."
 }

@@ -40,6 +40,22 @@ Endtermin Starttermin
 01 140052 0003950611 2027/23 2027/06 2027/25 2027/07 176,0 175,0 21.07.2026
 """
 
+GROUPED_NUMBER_SOURCE = """Sachnummer : 68420100 Disponent : 40 A. Schmitt_OT&UT Nachfolgematerial :
+Teilebez. : Kolben STU190.037/ST190.041 CR10.5 Werkstoff : 42 CRMO 4 V Zeichnung : 13171.189523. 06
+Bestand : 0,0 KT-Bestand : 0,0
+Stückliste : Pos Materialnummer Benennung Menge ME Basismenge : 1,000
+ 0010 68420050 Kolben STU190 vorbearbeitet 1,000 ST
+Bemerkungen :
+Sa Artikelnummer Best-Nr Auftrag Lief Jahr/WW Jahr/MO Jahr/WW Jahr/Mo Soll-Menge Rest-Menge Datum
+Endtermin Starttermin
+01 68420100 0003955053 2026/34 2026/08 2026/37 2026/09 624,0 611,0 21.07.2026
+01 68420100 0003955056 2026/47 2026/11 2027/01 2027/01 1 224,0 1 200,0 21.07.2026
+01 68420100 0003955058 2027/03 2027/01 2027/09 2027/03 1 224,0 1 200,0 21.07.2026
+01 68420100 0003955059 2027/07 2027/02 2027/13 2027/04 1 224,0 1 200,0 21.07.2026
+01 68420100 0003955060 2027/12 2027/03 2027/18 2027/05 1.224,0 1.200,0 21.07.2026
+01 68420100 0003955061 2027/16 2027/04 2027/22 2027/06 1 224,0 1 200,0 21.07.2026
+"""
+
 
 def test_sap_adapter_uses_start_month_and_deduplicates_business_rows():
     result = try_deterministic_matrix_transform(
@@ -88,6 +104,21 @@ Endtermin Starttermin
     assert row[2] == ""
     assert row[3] == "99288050"
     assert row[21] == 13
+
+
+def test_sap_adapter_parses_grouped_german_quantities_without_splitting_fields():
+    result = try_deterministic_matrix_transform(
+        task_description=TASK,
+        source_context=GROUPED_NUMBER_SOURCE,
+        fixed_context=FIXED_CONTEXT,
+    )
+
+    assert result is not None
+    assert len(result.rows) == 1
+    demand = result.rows[0]
+    assert demand[12] == 611
+    assert demand[16] == 1200
+    assert demand[18:22] == [1200, 1200, 1200, 1200]
 
 
 def test_sap_coverage_counts_unique_orders():
