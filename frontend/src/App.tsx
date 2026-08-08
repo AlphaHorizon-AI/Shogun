@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Switch, Route, Redirect, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Shell } from './components/layout/Shell'
 import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { useTranslation, I18nProvider } from './i18n'
@@ -189,7 +189,7 @@ function FirstRunGate({ children }: { children: React.ReactNode }) {
 
   // First run: redirect to /setup (unless already on /setup)
   if (status === 'first_run' && location.pathname !== '/setup') {
-    return <Redirect to="/setup" />
+    return <Navigate to="/setup" replace />
   }
 
   return <>{children}</>
@@ -211,33 +211,33 @@ function AppContent() {
     <Router>
       <FirstRunGate>
         <Suspense fallback={<div className="fixed inset-0 bg-[#0a0e1a] flex items-center justify-center"><Loader2 className="w-8 h-8 text-[#d4a017] animate-spin" /></div>}>
-          <Switch>
+          <Routes>
           {/* Setup wizard — always accessible at /setup */}
-          <Route path="/setup" render={() => <SetupPage />} />
+          <Route path="/setup" element={<SetupPage />} />
 
           {/* Main Tenshu routes (wrapped in Shell) */}
-          <Route exact path="/" render={() => <Shell><Dashboard /></Shell>} />
-          <Route path="/chat" render={() => <Shell><Chat /></Shell>} />
-          <Route path="/shogun" render={() => <Shell><ShogunProfile /></Shell>} />
-          <Route path="/samurai" render={() => <Shell><SamuraiNetwork /></Shell>} />
-          <Route path="/katana" render={() => <Shell><Katana /></Shell>} />
-          <Route path="/toolgate" render={() => <Shell><ToolGate /></Shell>} />
-          <Route path="/torii" render={() => <Shell><Torii /></Shell>} />
-          <Route path="/kaizen" render={() => <Shell><Kaizen /></Shell>} />
-          <Route path="/bushido" render={() => <Shell><Bushido /></Shell>} />
-          <Route path="/archives" render={() => <Shell><Archives /></Shell>} />
-          <Route path="/dojo" render={() => <Shell><Dojo /></Shell>} />
-          <Route path="/logs" render={() => <Shell><Logs /></Shell>} />
-          <Route path="/guide" render={() => <Shell><Guide /></Shell>} />
-          <Route path="/nexus" render={() => <Shell><Nexus /></Shell>} />
-          <Route path="/updates" render={() => <Shell><Updates /></Shell>} />
-          <Route path="/backups" render={() => <Shell><Backups /></Shell>} />
-          <Route path="/gensui" render={() => <Shell><Gensui /></Shell>} />
-          <Route path="/privacy-telemetry" render={() => <Shell><PrivacyTelemetry /></Shell>} />
+          <Route path="/" element={<Shell><Dashboard /></Shell>} />
+          <Route path="/chat" element={<Shell><Chat /></Shell>} />
+          <Route path="/shogun" element={<Shell><ShogunProfile /></Shell>} />
+          <Route path="/samurai" element={<Shell><SamuraiNetwork /></Shell>} />
+          <Route path="/katana" element={<Shell><Katana /></Shell>} />
+          <Route path="/toolgate" element={<Shell><ToolGate /></Shell>} />
+          <Route path="/torii" element={<Shell><Torii /></Shell>} />
+          <Route path="/kaizen" element={<Shell><Kaizen /></Shell>} />
+          <Route path="/bushido" element={<Shell><Bushido /></Shell>} />
+          <Route path="/archives" element={<Shell><Archives /></Shell>} />
+          <Route path="/dojo" element={<Shell><Dojo /></Shell>} />
+          <Route path="/logs" element={<Shell><Logs /></Shell>} />
+          <Route path="/guide" element={<Shell><Guide /></Shell>} />
+          <Route path="/nexus" element={<Shell><Nexus /></Shell>} />
+          <Route path="/updates" element={<Shell><Updates /></Shell>} />
+          <Route path="/backups" element={<Shell><Backups /></Shell>} />
+          <Route path="/gensui" element={<Shell><Gensui /></Shell>} />
+          <Route path="/privacy-telemetry" element={<Shell><PrivacyTelemetry /></Shell>} />
 
           {/* Fallback */}
-          <Route render={() => <Redirect to="/" />} />
-          </Switch>
+          <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </Suspense>
       </FirstRunGate>
     </Router>
