@@ -1,8 +1,8 @@
 {
-  "version": "1.47.73",
+  "version": "1.47.74",
   "name": "Shogun OS",
-  "build": 224,
+  "build": 225,
   "channel": "stable",
-  "released": "2026-08-08T21:11:32Z",
-  "changelog": "Parse grouped German SAP quantities reliably in deterministic AgentFlow transformations, including whitespace and dot thousands separators."
+  "released": "2026-08-09T14:46:44Z",
+  "changelog": "Add deterministic Mapping / RPA nodes, typed Excel handoff, reusable mapping templates, and consolidated AgentFlow / Flow Stack terminology."
 }

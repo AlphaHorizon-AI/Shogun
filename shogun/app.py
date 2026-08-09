@@ -723,6 +723,8 @@ def create_app() -> FastAPI:
     app.include_router(comms_router, prefix=prefix)
     app.include_router(visual_router, prefix=prefix)
     app.include_router(agent_flow_router, prefix=prefix)
+    from shogun.api.mapping_rpa import router as mapping_rpa_router
+    app.include_router(mapping_rpa_router, prefix=prefix)
     app.include_router(stack_orchestrator_router, prefix=prefix)
     app.include_router(mado_router, prefix=prefix)
     app.include_router(gensui_config_router, prefix=prefix)

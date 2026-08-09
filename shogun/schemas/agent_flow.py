@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from shogun.mapping.schema import MappingConfig
 from shogun.schemas.common import ShogunBase
 
 
@@ -150,6 +151,8 @@ class AgentFlowNodeCreate(BaseModel):
             self.config = EmailReadNodeConfig.model_validate(self.config).model_dump()
         if self.node_type == "calendar_read":
             self.config = CalendarReadNodeConfig.model_validate(self.config).model_dump()
+        if self.node_type == "mapping_rpa":
+            self.config = MappingConfig.model_validate(self.config).model_dump(mode="json")
         return self
 
 

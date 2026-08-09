@@ -75,6 +75,7 @@ import {
   Square,
   CheckSquare2,
   Hash,
+  WandSparkles,
 } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from '../lib/routerCompat';
@@ -250,10 +251,10 @@ const NODE_PALETTE = [
   { type: 'email_send',      label: 'Email Send',       icon: Mail,      color: '#e879a8', desc: 'Send email via SMTP' },
   { type: 'channel_send',    label: 'Telegram / Teams', icon: MessageSquare, color: '#38bdf8', desc: 'Send an operator message' },
   { type: 'workspace',       label: 'Workspace',        icon: FolderOpen, color: '#f59e0b', desc: 'File operations' },
+  { type: 'mapping_rpa',     label: 'Mapping / RPA',    icon: WandSparkles, color: '#2dd4bf', desc: 'Deterministic validation and field placement' },
   { type: 'file_template',   label: 'File Template',    icon: Clipboard, color: '#60a5fa', desc: 'Triggered Word or Excel output contract' },
   { type: 'office',          label: 'Files',            icon: FileText, color: '#10b981', desc: 'PDF, Word, Excel, and PowerPoint files' },
-  { type: 'subflow',         label: 'Subflow',          icon: Layers3, color: '#8b5cf6', desc: 'Run a reusable child flow' },
-  { type: 'stack_orchestrator', label: 'Stack Orchestrator', icon: Network, color: '#c084fc', desc: 'Supervise long-running Agent Stacks' },
+  { type: 'subflow',         label: 'Run AgentFlow',     icon: Layers3, color: '#8b5cf6', desc: 'Run a reusable AgentFlow as one governed step' },
 ] as const;
 
 
@@ -274,6 +275,7 @@ const nodeColors: Record<string, string> = {
   email_send: '#e879a8',
   channel_send: '#38bdf8',
   workspace: '#f59e0b',
+  mapping_rpa: '#2dd4bf',
   file_template: '#60a5fa',
   office: '#10b981',
   subflow: '#8b5cf6',
@@ -293,11 +295,18 @@ const nodeIcons: Record<string, React.ElementType> = {
   email_send: Mail,
   channel_send: MessageSquare,
   workspace: FolderOpen,
+  mapping_rpa: WandSparkles,
   file_template: Clipboard,
   office: FileText,
   subflow: Layers3,
   stack_orchestrator: Network,
 };
+
+function nodeTypeLabel(nodeType: string): string {
+  if (nodeType === 'subflow') return 'Run AgentFlow';
+  if (nodeType === 'stack_orchestrator') return 'Stack Orchestrator (Legacy)';
+  return nodeType.replaceAll('_', ' ');
+}
 
 function isInspectorInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(
@@ -433,7 +442,7 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
         <div className="flex-1 min-w-0">
           <div className="text-[11px] font-bold text-[#c8d0d8] truncate">{data.label}</div>
           <div className="text-[8px] font-bold uppercase tracking-widest" style={{ color: `${color}90` }}>
-            {type.replace('_', ' ')}
+            {nodeTypeLabel(type)}
           </div>
         </div>
         <button
@@ -642,6 +651,19 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             )}
           </>
         )}
+        {type === 'mapping_rpa' && (
+          <>
+            <div className="flex items-center gap-1">
+              <WandSparkles className="w-2.5 h-2.5 text-[#2dd4bf]/70" />
+              <span className="text-[8px] font-bold text-[#2dd4bf]/80 uppercase">
+                {config.mode || 'strict'} · {config.output?.type || 'table'}
+              </span>
+            </div>
+            <p className="text-[9px] text-[#7a8899]">
+              {(config.mappings || []).length} deterministic mapping{(config.mappings || []).length === 1 ? '' : 's'}
+            </p>
+          </>
+        )}
         {type === 'office' && (
           <>
             <div className="flex items-center gap-1">
@@ -693,7 +715,7 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             <div className="flex items-center gap-1">
               <Layers3 className="w-2.5 h-2.5 text-[#8b5cf6]/70" />
               <span className="text-[8px] font-bold text-[#8b5cf6]/80 uppercase">
-                {config.child_flow_name || 'Select child flow'}
+                {config.child_flow_name || 'Select AgentFlow'}
               </span>
             </div>
             <p className="text-[8px] text-[#7a8899]">
@@ -767,6 +789,26 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             id="false"
             className="!w-2.5 !h-2.5 !border-2 !rounded-full !bg-[#0a0e1a]"
             style={{ borderColor: '#ef4444' }}
+          />
+        </>
+      )}
+      {type === 'mapping_rpa' && (
+        <>
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="success"
+            className="!w-2.5 !h-2.5 !border-2 !rounded-full !bg-[#0a0e1a]"
+            style={{ borderColor: '#22c55e', left: '35%' }}
+            title="SUCCESS"
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="validation_failed"
+            className="!w-2.5 !h-2.5 !border-2 !rounded-full !bg-[#0a0e1a]"
+            style={{ borderColor: '#ef4444', left: '65%' }}
+            title="VALIDATION_FAILED"
           />
         </>
       )}
@@ -847,6 +889,7 @@ const nodeTypes: NodeTypes = {
   email_send: FlowNode,
   channel_send: FlowNode,
   workspace: FlowNode,
+  mapping_rpa: FlowNode,
   file_template: FlowNode,
   office: FlowNode,
   subflow: FlowNode,
@@ -913,6 +956,206 @@ const edgeTypes: EdgeTypes = {
 // ═══════════════════════════════════════════════════════════════
 // FILES NODE FIELDS — with folder picker
 // ═══════════════════════════════════════════════════════════════
+
+const MAPPING_TYPES = ['string', 'integer', 'decimal', 'number', 'boolean', 'date', 'datetime', 'currency', 'array', 'object'] as const;
+const MAPPING_TRANSFORMS = ['none', 'trim', 'uppercase', 'lowercase', 'convert', 'decimal_normalize', 'date_format'] as const;
+
+function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string, any>; updateConfig: (k: string, v: any) => void }) {
+  const mappings = Array.isArray(config.mappings) ? config.mappings : [];
+  const output = config.output || { type: 'table', start_cell: 'A1' };
+  const [previewInput, setPreviewInput] = useState(`{
+  "article_number": "68947124",
+  "description": "Pump Housing",
+  "quantity": "4",
+  "unit_price": "129,95",
+  "currency": "eur"
+}`);
+  const [preview, setPreview] = useState<any>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [templateName, setTemplateName] = useState(config.name || 'Supplier PDF to Excel');
+  const [templateBusy, setTemplateBusy] = useState(false);
+
+  const loadTemplates = useCallback(async () => {
+    try {
+      const response = await axios.get('/api/v1/mapping-rpa/templates');
+      setTemplates(response.data?.data || []);
+    } catch {
+      setTemplates([]);
+    }
+  }, []);
+
+  useEffect(() => { void loadTemplates(); }, [loadTemplates]);
+
+  const updateRule = (index: number, patch: Record<string, any>) => {
+    updateConfig('mappings', mappings.map((rule: any, ruleIndex: number) =>
+      ruleIndex === index ? { ...rule, ...patch } : rule
+    ));
+  };
+
+  const addRule = () => {
+    const nextColumn = String.fromCharCode(65 + Math.min(mappings.length, 25));
+    updateConfig('mappings', [
+      ...mappings,
+      { source: '', target: nextColumn, type: 'string', required: false, transform: [] },
+    ]);
+  };
+
+  const runPreview = async () => {
+    setPreviewing(true);
+    try {
+      const response = await axios.post('/api/v1/mapping-rpa/preview', { config, input: previewInput });
+      setPreview(response.data?.data || null);
+    } catch (error: any) {
+      setPreview({ status: 'MAPPING_SCHEMA_ERROR', errors: [{ message: error?.response?.data?.detail || error.message }] });
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const saveTemplate = async () => {
+    if (!templateName.trim()) return;
+    setTemplateBusy(true);
+    try {
+      await axios.post('/api/v1/mapping-rpa/templates', {
+        name: templateName.trim(),
+        scope: 'private',
+        owner_id: 'system',
+        config,
+      });
+      await loadTemplates();
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
+
+  const loadTemplate = (templateId: string) => {
+    const template = templates.find((item) => item.id === templateId);
+    if (template?.config) updateConfig('__replace__', template.config);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Mapping Mode</label>
+          <select value={config.mode || 'strict'} onChange={(event) => updateConfig('mode', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none focus:border-[#2dd4bf]">
+            <option value="strict">Strict</option>
+            <option value="lenient">Lenient</option>
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Input Array Path</label>
+          <input value={config.input_path || ''} onChange={(event) => updateConfig('input_path', event.target.value || null)} placeholder="items" className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Output</label>
+          <select value={output.type || 'table'} onChange={(event) => updateConfig('output', { ...output, type: event.target.value })} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none focus:border-[#2dd4bf]">
+            <option value="table">Excel Table</option>
+            <option value="range">Excel Range</option>
+            <option value="cells">Fixed Cells</option>
+            <option value="object">JSON Object</option>
+          </select>
+        </div>
+        {['table', 'range'].includes(output.type || 'table') && (
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Start Cell</label>
+            <input value={output.start_cell || 'A1'} onChange={(event) => updateConfig('output', { ...output, start_cell: event.target.value.toUpperCase() })} placeholder="A2" className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] font-mono outline-none focus:border-[#2dd4bf]" />
+          </div>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Destination Sheet (Optional)</label>
+        <input value={output.sheet || ''} onChange={(event) => updateConfig('output', { ...output, sheet: event.target.value || null })} placeholder="Products" className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Visual Mapping Table</label>
+          <button type="button" onClick={addRule} className="flex items-center gap-1 text-[9px] font-bold text-[#2dd4bf] hover:text-[#5eead4]"><Plus className="w-3 h-3" /> Add Mapping</button>
+        </div>
+        {mappings.map((rule: any, index: number) => {
+          const transform = Array.isArray(rule.transform) ? rule.transform[0] || 'none' : rule.transform || 'none';
+          return (
+            <div key={index} className="rounded-lg border border-[#1a2040] bg-[#0a0e1a] p-2.5 space-y-2">
+              <div className="grid grid-cols-[1fr_58px_26px] gap-1.5">
+                <input value={rule.source || ''} onChange={(event) => updateRule(index, { source: event.target.value })} placeholder="Source field" className="min-w-0 bg-[#050508] border border-[#1a2040] rounded p-1.5 text-[10px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
+                <input value={rule.target || ''} onChange={(event) => updateRule(index, { target: event.target.value.toUpperCase() })} placeholder={output.type === 'cells' ? 'B4' : 'A'} className="min-w-0 bg-[#050508] border border-[#1a2040] rounded p-1.5 text-[10px] font-mono text-center text-[#2dd4bf] outline-none focus:border-[#2dd4bf]" />
+                <button type="button" onClick={() => updateConfig('mappings', mappings.filter((_: any, itemIndex: number) => itemIndex !== index))} className="flex items-center justify-center rounded border border-[#ef4444]/20 text-[#ef4444]/70 hover:bg-[#ef4444]/10" aria-label="Remove mapping"><X className="w-3 h-3" /></button>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <select value={rule.type || 'string'} onChange={(event) => updateRule(index, { type: event.target.value })} className="bg-[#050508] border border-[#1a2040] rounded p-1.5 text-[10px] text-[#c8d0d8] outline-none focus:border-[#2dd4bf]">
+                  {MAPPING_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+                <select value={typeof transform === 'string' ? transform : transform.name || 'none'} onChange={(event) => updateRule(index, { transform: event.target.value === 'none' ? [] : [event.target.value] })} className="bg-[#050508] border border-[#1a2040] rounded p-1.5 text-[10px] text-[#c8d0d8] outline-none focus:border-[#2dd4bf]">
+                  {MAPPING_TRANSFORMS.map((name) => <option key={name} value={name}>{name.replace('_', ' ')}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <input value={(rule.aliases || []).join(', ')} onChange={(event) => updateRule(index, { aliases: event.target.value.split(',').map((value) => value.trim()).filter(Boolean) })} placeholder="Aliases: SKU, Artikel-Nr" className="min-w-0 bg-[#050508] border border-[#1a2040] rounded p-1.5 text-[9px] text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
+                <input value={rule.has_default ? String(rule.default ?? '') : ''} onChange={(event) => updateRule(index, { default: event.target.value, has_default: event.target.value !== '' })} placeholder="Default value" className="min-w-0 bg-[#050508] border border-[#1a2040] rounded p-1.5 text-[9px] text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
+              </div>
+              <input value={rule.expression || ''} onChange={(event) => updateRule(index, { expression: event.target.value || null })} placeholder="Optional formula: quantity * unit_price" className="w-full bg-[#050508] border border-[#1a2040] rounded p-1.5 text-[9px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
+              <input value={rule.condition || ''} onChange={(event) => updateRule(index, { condition: event.target.value || null })} placeholder="Optional condition: quantity > 0" className="w-full bg-[#050508] border border-[#1a2040] rounded p-1.5 text-[9px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
+              <label className="flex items-center gap-2 text-[9px] text-[#7a8899]"><input type="checkbox" checked={Boolean(rule.required)} onChange={(event) => updateRule(index, { required: event.target.checked })} className="accent-[#2dd4bf]" /> Required</label>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <label className="flex items-center gap-2 text-[9px] text-[#7a8899]"><input type="checkbox" checked={config.retain_lineage !== false} onChange={(event) => updateConfig('retain_lineage', event.target.checked)} className="accent-[#2dd4bf]" /> Retain lineage</label>
+        <label className="flex items-center gap-2 text-[9px] text-[#7a8899]"><input type="checkbox" checked={config.route_failures !== false} onChange={(event) => updateConfig('route_failures', event.target.checked)} className="accent-[#2dd4bf]" /> Route failures</label>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Duplicate Key</label>
+          <input value={config.duplicate_key || ''} onChange={(event) => updateConfig('duplicate_key', event.target.value || null)} placeholder="article_number" className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-[10px] text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Duplicate Policy</label>
+          <select value={config.duplicate_policy || 'allow'} onChange={(event) => updateConfig('duplicate_policy', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-[10px] text-[#c8d0d8] outline-none focus:border-[#2dd4bf]">
+            {['allow', 'skip', 'replace', 'merge', 'error'].map((policy) => <option key={policy} value={policy}>{policy}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-[#2dd4bf]/20 bg-[#2dd4bf]/5 p-2.5 space-y-2">
+        <label className="text-[9px] font-bold text-[#2dd4bf] uppercase tracking-widest">Mapping Templates</label>
+        <select defaultValue="" onChange={(event) => loadTemplate(event.target.value)} className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none">
+          <option value="">Load a reusable template…</option>
+          {templates.map((template) => <option key={template.id} value={template.id}>{template.name} · v{template.version} · {template.scope}</option>)}
+        </select>
+        <div className="flex gap-1.5">
+          <input value={templateName} onChange={(event) => setTemplateName(event.target.value)} className="min-w-0 flex-1 bg-[#050508] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none" />
+          <button type="button" disabled={templateBusy} onClick={() => void saveTemplate()} className="px-2 rounded border border-[#2dd4bf]/30 bg-[#2dd4bf]/10 text-[9px] font-bold text-[#2dd4bf] disabled:opacity-50">{templateBusy ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Preview Input</label>
+          <button type="button" disabled={previewing} onClick={() => void runPreview()} className="flex items-center gap-1 rounded border border-[#2dd4bf]/30 bg-[#2dd4bf]/10 px-2 py-1 text-[9px] font-bold text-[#2dd4bf] disabled:opacity-50">{previewing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Preview Mapping</button>
+        </div>
+        <textarea value={previewInput} onChange={(event) => setPreviewInput(event.target.value)} rows={7} spellCheck={false} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-[9px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf] resize-y" />
+        {preview && (
+          <div className={cn('rounded-lg border p-2.5', preview.status === 'SUCCESS' ? 'border-[#22c55e]/30 bg-[#22c55e]/5' : 'border-[#ef4444]/30 bg-[#ef4444]/5')}>
+            <div className="mb-1 text-[9px] font-bold" style={{ color: preview.status === 'SUCCESS' ? '#22c55e' : '#ef4444' }}>{preview.status}</div>
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-[9px] text-[#c8d0d8]">{JSON.stringify(preview.rows || preview.cells || preview.data || preview.errors, null, 2)}</pre>
+          </div>
+        )}
+      </div>
+
+      <div className="p-2.5 bg-[#2dd4bf]/5 border border-[#2dd4bf]/20 rounded-lg">
+        <p className="text-[8px] leading-relaxed text-[#2dd4bf]/80"><strong>AI interprets. Rules map. Tools execute.</strong> This node performs no model calls and passes typed rows or cells directly to Files / Excel.</p>
+      </div>
+    </div>
+  );
+}
 
 const READ_ACTIONS = ['pdf_read', 'excel_read', 'word_read', 'pptx_read'];
 
@@ -1708,6 +1951,10 @@ function NodeInspector({
   const [validatingSubflow, setValidatingSubflow] = useState(false);
 
   const updateConfig = (key: string, value: any) => {
+    if (key === '__replace__') {
+      onUpdate(node.id, { ...node.data, config: value });
+      return;
+    }
     onUpdate(node.id, {
       ...node.data,
       config: { ...config, [key]: value },
@@ -1757,7 +2004,7 @@ function NodeInspector({
           <div>
             <h3 className="text-xs font-bold text-[#c8d0d8]">Node Properties</h3>
             <span className="text-[8px] font-bold uppercase tracking-widest" style={{ color }}>
-              {nodeType.replace('_', ' ')}
+              {nodeTypeLabel(nodeType)}
             </span>
           </div>
         </div>
@@ -2730,7 +2977,7 @@ Content-Type: application/json
           </>
         )}
 
-        {/* Flow Stacking / Subflow fields */}
+        {/* Reusable AgentFlow execution (internal node type remains "subflow"). */}
         {nodeType === 'subflow' && (
           <>
             <div className="rounded-lg border border-[#8b5cf6]/25 bg-[#8b5cf6]/5 p-3">
@@ -2740,7 +2987,7 @@ Content-Type: application/json
               </p>
             </div>
             <div className="space-y-1.5">
-              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Child Flow</label>
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">AgentFlow to Run</label>
               <select
                 value={config.child_flow_id || ''}
                 onChange={(event) => {
@@ -2845,13 +3092,13 @@ Content-Type: application/json
           </>
         )}
 
-        {/* Stack Orchestrator control-node fields */}
+        {/* Legacy compatibility editor. New orchestration is created from Flow Stack. */}
         {nodeType === 'stack_orchestrator' && (
           <>
             <div className="rounded-lg border border-[#c084fc]/25 bg-[#c084fc]/5 p-3">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-[#c084fc]">Runtime control layer</p>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[#c084fc]">Legacy compatibility node</p>
               <p className="mt-1 text-[9px] leading-relaxed text-[#7a8899]">
-                Supervises Agent Stacks through persistent state, checkpoints, verification, retries and inherited posture permissions. Concrete work remains in Agent Flow.
+                Existing saved nodes remain editable and executable. Create new supervised orchestration from Flow Stack, where runtime, checkpoints, verification and retries now live.
               </p>
             </div>
             <div className="space-y-1.5">
@@ -2915,7 +3162,7 @@ Content-Type: application/json
               <div className="space-y-1.5">
                 <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Checkpoint</label>
                 <select value={config.checkpoint_frequency || 'after_each_step'} onChange={(event) => updateConfig('checkpoint_frequency', event.target.value)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none">
-                  <option value="after_each_step">Each step</option><option value="after_each_subflow">Each subflow</option><option value="timed">Timed</option>
+                  <option value="after_each_step">Each step</option><option value="after_each_subflow">Each AgentFlow</option><option value="timed">Timed</option>
                 </select>
               </div>
             </div>
@@ -3424,6 +3671,10 @@ Content-Type: application/json
         {nodeType === 'office' && (
           <FilesNodeFields config={config} updateConfig={updateConfig} />
         )}
+
+        {nodeType === 'mapping_rpa' && (
+          <MappingRpaNodeFields config={config} updateConfig={updateConfig} />
+        )}
       </div>
     </div>
   );
@@ -3787,7 +4038,7 @@ export function AgentFlowCanvas({
     (event: DragEvent) => {
       event.preventDefault();
       const nodeType = event.dataTransfer.getData('application/agentflow-node-type');
-      if (!nodeType) return;
+      if (!nodeType || nodeType === 'stack_orchestrator') return;
 
       const position = reactFlowInstance.screenToFlowPosition({
         x: event.clientX,
@@ -3795,23 +4046,7 @@ export function AgentFlowCanvas({
       });
 
       const paletteItem = NODE_PALETTE.find((p) => p.type === nodeType);
-      const initialConfig = nodeType === 'stack_orchestrator' ? {
-        mode: 'selected_stack',
-        objective: '',
-        success_criteria: [],
-        allowed_tools: [],
-        model_routing_profile: 'balanced',
-        max_runtime_minutes: 60,
-        max_iterations: 50,
-        max_retry_attempts_per_step: 2,
-        checkpoint_frequency: 'after_each_step',
-        context_compaction: true,
-        verification_required: true,
-        approval_policy: 'inherited',
-        artifact_policy: 'retain_all',
-        output_publication: 'summary_and_final',
-        failure_policy: 'pause',
-      } : nodeType === 'email_read' ? {
+      const initialConfig = nodeType === 'email_read' ? {
         folder: 'INBOX',
         page: 1,
         per_page: 10,
@@ -3820,6 +4055,24 @@ export function AgentFlowCanvas({
         days_ahead: 1,
         start_date: null,
         end_date: null,
+      } : nodeType === 'mapping_rpa' ? {
+        version: 1,
+        name: 'Mapping / RPA',
+        mode: 'strict',
+        input_path: null,
+        output: { type: 'table', start_cell: 'A1', sheet: null, include_headers: false },
+        mappings: [
+          { source: 'article_number', target: 'A', type: 'string', required: true, transform: ['trim'] },
+          { source: 'description', target: 'B', type: 'string', required: true, transform: ['trim'] },
+          { source: 'quantity', target: 'C', type: 'integer', required: true, transform: ['convert'] },
+          { source: 'unit_price', target: 'D', type: 'decimal', required: false, transform: ['decimal_normalize'] },
+          { source: 'currency', target: 'E', type: 'string', required: false, default: 'EUR', transform: ['uppercase'] },
+        ],
+        aliases: {},
+        duplicate_policy: 'allow',
+        on_record_error: 'fail',
+        route_failures: true,
+        retain_lineage: true,
       } : nodeType === 'office' ? {
         action: 'pdf_read',
         start_page: 1,
@@ -5011,7 +5264,7 @@ export function StackOrchestratorConsole({ flows, onClose }: { flows: FlowListIt
         setVerifications(verificationResponse.data?.data || []);
       }
     } catch (err) {
-      setError(axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Could not load Stack Orchestrator state');
+      setError(axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Could not load Flow Stack runtime state');
     }
   }, [selectedId]);
 
@@ -5052,7 +5305,7 @@ export function StackOrchestratorConsole({ flows, onClose }: { flows: FlowListIt
         await refresh();
       }
     } catch (err) {
-      setError(axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Could not create Stack Orchestrator run');
+      setError(axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Could not create Flow Stack run');
     } finally {
       setBusy(false);
     }
@@ -5100,8 +5353,8 @@ export function StackOrchestratorConsole({ flows, onClose }: { flows: FlowListIt
       <div className="flex h-[88vh] w-full max-w-7xl overflow-hidden rounded-xl border border-[#c084fc]/30 bg-[#080b18] shadow-2xl">
         <aside className="w-72 shrink-0 border-r border-[#1a2040] bg-[#070914] flex flex-col">
           <div className="border-b border-[#1a2040] p-4">
-            <h3 className="flex items-center gap-2 text-sm font-bold text-[#c084fc]"><Network className="w-4 h-4" />Stack Orchestrator</h3>
-            <p className="mt-1 text-[8px] uppercase tracking-widest text-[#7a8899]">Long-horizon runtime control</p>
+            <h3 className="flex items-center gap-2 text-sm font-bold text-[#c084fc]"><Network className="w-4 h-4" />Flow Stack Runtime</h3>
+            <p className="mt-1 text-[8px] uppercase tracking-widest text-[#7a8899]">Runs · checkpoints · verification</p>
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {runs.map((run) => (
@@ -5110,7 +5363,7 @@ export function StackOrchestratorConsole({ flows, onClose }: { flows: FlowListIt
                 <div className="mt-2 flex items-center justify-between"><span className="text-[8px] uppercase text-[#7a8899]">{run.mode.replace('_', ' ')}</span><span className="text-[8px] font-bold uppercase" style={{ color: statusColor(run.status) }}>{run.status.replace('_', ' ')}</span></div>
               </button>
             ))}
-            {runs.length === 0 && <p className="p-5 text-center text-[9px] text-[#7a8899]">No orchestrated runs yet.</p>}
+            {runs.length === 0 && <p className="p-5 text-center text-[9px] text-[#7a8899]">No Flow Stack runs yet.</p>}
           </div>
         </aside>
 
@@ -5132,7 +5385,7 @@ export function StackOrchestratorConsole({ flows, onClose }: { flows: FlowListIt
                 {mode !== 'template' && <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">{mode === 'goal_driven' ? 'Attach after review' : 'Agent Stack'}</label><select value={selectedStackId} onChange={(event) => setSelectedStackId(event.target.value)} className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-2.5 text-xs text-[#c8d0d8]"><option value="">Select stack...</option>{flows.map((flow) => <option key={flow.id} value={flow.id}>{flow.name} · {flow.flow_type}</option>)}</select></div>}
                 {mode === 'template' && <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">Template ID</label><input value={templateId} onChange={(event) => setTemplateId(event.target.value)} placeholder="bug-fix-stack" className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-2.5 text-xs text-[#c8d0d8]" /></div>}
                 <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">Objective</label><textarea value={objective} onChange={(event) => setObjective(event.target.value)} rows={4} placeholder="What should this Agent Stack accomplish?" className="w-full rounded-lg border border-[#1a2040] bg-[#050508] p-3 text-xs text-[#c8d0d8] outline-none focus:border-[#c084fc]" /></div>
-                <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">Published Output</label><select value={outputPublication} onChange={(event) => setOutputPublication(event.target.value)} className="w-full rounded-lg border border-[#c084fc]/30 bg-[#050508] p-2.5 text-xs text-[#c8d0d8]"><option value="summary_and_final">Orchestrator summary + final Flow</option><option value="summary_only">Orchestrator summary only</option><option value="final_only">Final Flow only</option><option value="all_steps">All Flow outputs (legacy)</option></select><p className="text-[8px] leading-relaxed text-[#7a8899]">Every intermediate result is handed to the next Flow without being published.</p></div>
+                <div className="space-y-1.5"><label className="text-[8px] font-bold uppercase tracking-widest text-[#7a8899]">Published Output</label><select value={outputPublication} onChange={(event) => setOutputPublication(event.target.value)} className="w-full rounded-lg border border-[#c084fc]/30 bg-[#050508] p-2.5 text-xs text-[#c8d0d8]"><option value="summary_and_final">Flow Stack summary + final Flow</option><option value="summary_only">Flow Stack summary only</option><option value="final_only">Final Flow only</option><option value="all_steps">All Flow outputs (legacy)</option></select><p className="text-[8px] leading-relaxed text-[#7a8899]">Every intermediate result is handed to the next Flow without being published.</p></div>
                 <button disabled={busy || !objective || (mode === 'selected_stack' && !selectedStackId) || (mode === 'template' && !templateId)} onClick={createRun} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#c084fc] px-4 py-3 text-xs font-bold text-[#090b15] disabled:opacity-40">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Network className="w-4 h-4" />}Create Runtime Plan</button>
               </div>
             ) : (

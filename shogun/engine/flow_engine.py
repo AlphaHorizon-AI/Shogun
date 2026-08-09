@@ -152,6 +152,9 @@ def _flow_artifact_descriptor(
             "word_read": "docx",
             "pptx_read": "pptx",
         }.get(action, action or "office")
+    elif node_type == "mapping_rpa":
+        kind = "mapping"
+        role = "deterministic_transform"
     content_length = len(output) if isinstance(output, str) else None
     return {
         _FLOW_ARTIFACT_MARKER: True,
@@ -179,7 +182,7 @@ def _downstream_output_contracts(
         config = dict(target.config or {})
         node_type = str(target.node_type or "")
         action = str(config.get("action") or "")
-        if node_type not in {"office", "output", "workspace"}:
+        if node_type not in {"mapping_rpa", "office", "output", "workspace"}:
             continue
         contracts.append(
             {
@@ -188,6 +191,9 @@ def _downstream_output_contracts(
                 "node_type": node_type,
                 "action": action,
                 "format": (
+                    str((config.get("output") or {}).get("type") or "mapping")
+                    if node_type == "mapping_rpa"
+                    else
                     "xlsx"
                     if action in {"excel_create", "excel_write"}
                     else "docx"
@@ -651,6 +657,17 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
                             else:
                                 # Ensure the taken branch is NOT skipped
                                 skipped_nodes.discard(target_id)
+                    elif node.node_type == "mapping_rpa" and isinstance(result, dict):
+                        # Mapping nodes expose deterministic route handles while
+                        # preserving unlabelled edges as the normal success path.
+                        status = str(result.get("status") or "SUCCESS").lower()
+                        for target_id, handle in edge_by_source.get(node_id, []):
+                            normalized = str(handle or "").lower()
+                            if normalized and normalized != status:
+                                skipped_nodes.add(target_id)
+                                _mark_downstream_skipped(target_id, edge_by_source, skipped_nodes)
+                            else:
+                                skipped_nodes.discard(target_id)
 
         # ── 6. Mark skipped nodes ──────────────────────────────
         for nid in skipped_nodes:
@@ -865,6 +882,13 @@ async def _execute_single_node(
             result = await _exec_channel_send(config, context_str)
         elif node_type == "workspace":
             result = await _exec_workspace(config, context_str, run_id, trigger_type)
+        elif node_type == "mapping_rpa":
+            result = await _exec_mapping_rpa(
+                config,
+                predecessor_outputs,
+                flow_id=str(node.flow_id),
+                node_id=node_id,
+            )
         elif node_type == "office":
             result = await _exec_office(
                 config,
@@ -873,6 +897,7 @@ async def _execute_single_node(
                 node_id,
                 trigger_type,
                 template_inputs=template_inputs,
+                predecessor_outputs=predecessor_outputs,
             )
         elif node_type == "subflow":
             result = await _exec_subflow(
@@ -3609,6 +3634,97 @@ def _excel_rows_from_context(context: str) -> list[list[Any]]:
     return parse_excel_rows(context)
 
 
+async def _exec_mapping_rpa(
+    config: dict[str, Any],
+    predecessor_outputs: dict[str, Any],
+    *,
+    flow_id: str,
+    node_id: str,
+) -> dict[str, Any]:
+    """Execute the deterministic mapping node against one selected predecessor."""
+    from shogun.mapping.engine import execute_mapping
+    from shogun.mapping.errors import MappingError, MappingInputError
+    from shogun.mapping.schema import MappingConfig
+
+    mapping_config = MappingConfig.model_validate(config)
+    selected_id = mapping_config.input_source_node_id
+    if selected_id:
+        if selected_id not in predecessor_outputs:
+            raise MappingInputError(
+                f'Configured input source node "{selected_id}" is not connected',
+                source=selected_id,
+            )
+        payload = predecessor_outputs[selected_id]
+    else:
+        available = [(key, value) for key, value in predecessor_outputs.items() if value is not None]
+        if len(available) != 1:
+            raise MappingInputError(
+                "Mapping / RPA requires exactly one predecessor unless input_source_node_id is configured",
+                received={"predecessor_count": len(available)},
+            )
+        selected_id, payload = available[0]
+    try:
+        return execute_mapping(
+            payload,
+            mapping_config,
+            context={"flow_id": flow_id, "node_id": node_id, "source_node_id": selected_id},
+        )
+    except MappingError as exc:
+        if not mapping_config.route_failures:
+            raise
+        log.warning("mapping_validation_failed node_id=%s error=%s", node_id, exc)
+        return {
+            "__shogun_mapping_output__": True,
+            "status": exc.code,
+            "type": mapping_config.output.type,
+            "records_received": 0,
+            "records_written": 0,
+            "records_failed": 1,
+            "errors": [exc.as_dict()],
+            "mapping": {
+                "name": mapping_config.name,
+                "version": mapping_config.version,
+                "mode": mapping_config.mode,
+            },
+        }
+
+
+def _mapping_payload_from_predecessors(predecessor_outputs: dict[str, Any] | None) -> dict[str, Any] | None:
+    payloads = [
+        value for value in (predecessor_outputs or {}).values()
+        if isinstance(value, dict) and value.get("__shogun_mapping_output__")
+    ]
+    if len(payloads) > 1:
+        raise ValueError("Files node received multiple Mapping / RPA payloads; connect exactly one")
+    if not payloads:
+        return None
+    payload = payloads[0]
+    if payload.get("status") not in {"SUCCESS", "PARTIAL"}:
+        first_error = (payload.get("errors") or [{}])[0]
+        raise ValueError(
+            f"Mapping output is not writable ({payload.get('status')}): "
+            f"{first_error.get('message', 'validation failed')}"
+        )
+    return payload
+
+
+def _write_openpyxl_mapping(ws: Any, payload: dict[str, Any], fallback_start: str = "A1") -> int:
+    """Write a typed mapping envelope to an openpyxl worksheet."""
+    from openpyxl.utils.cell import coordinate_to_tuple
+
+    if payload.get("type") == "cells":
+        for cell, value in (payload.get("cells") or {}).items():
+            ws[str(cell).upper()] = value
+        return len(payload.get("cells") or {})
+    rows = payload.get("rows") or []
+    start = str(payload.get("start_cell") or fallback_start or "A1").upper()
+    start_row, start_column = coordinate_to_tuple(start)
+    for row_offset, row in enumerate(rows):
+        for column_offset, value in enumerate(row):
+            ws.cell(row=start_row + row_offset, column=start_column + column_offset, value=value)
+    return len(rows)
+
+
 async def _exec_office(
     config: dict,
     context_str: str,
@@ -3616,6 +3732,7 @@ async def _exec_office(
     node_id: str | None = None,
     trigger_type: str = "manual",
     template_inputs: list[dict[str, Any]] | None = None,
+    predecessor_outputs: dict[str, Any] | None = None,
 ) -> str:
     """Files node — reads PDFs and performs Office document operations.
 
@@ -3633,6 +3750,7 @@ async def _exec_office(
     root = settings.workspace_path.resolve()
     root.mkdir(parents=True, exist_ok=True)
     templates = [item for item in (template_inputs or []) if item.get("__shogun_file_template__")]
+    mapping_payload = _mapping_payload_from_predecessors(predecessor_outputs)
 
     def _create_template(expected_format: str) -> dict[str, Any] | None:
         if len(templates) > 1:
@@ -3751,7 +3869,29 @@ async def _exec_office(
         elif action == "excel_create":
             abs_out = _resolve_output(output_path, ".xlsx", "output.xlsx")
             template = _create_template("xlsx")
-            if template:
+            if template and mapping_payload:
+                import shutil
+
+                import openpyxl
+
+                from shogun.services.file_template import resolve_workspace_template
+
+                source = resolve_workspace_template(str(template.get("template_path") or ""), root)
+                Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, abs_out)
+                wb = openpyxl.load_workbook(abs_out)
+                try:
+                    target_sheet = str(mapping_payload.get("sheet") or sheet_name or wb.sheetnames[0])
+                    if target_sheet not in wb.sheetnames:
+                        raise ValueError(f'Excel template does not contain sheet "{target_sheet}"')
+                    written = _write_openpyxl_mapping(
+                        wb[target_sheet], mapping_payload, str(config.get("start_range") or "A1")
+                    )
+                    wb.save(abs_out)
+                finally:
+                    wb.close()
+                row_summary = f"{written} mapped item(s) populated from template"
+            elif template:
                 from shogun.services.file_template import render_excel_template, resolve_workspace_template
 
                 source = resolve_workspace_template(str(template.get("template_path") or ""), root)
@@ -3770,25 +3910,33 @@ async def _exec_office(
                 row_summary = f"{rows_written} cells populated from template"
             else:
                 import openpyxl
+
                 from shogun.office.adapters.excel_adapter import log_excel_payload_shape
 
                 wb = openpyxl.Workbook()
                 ws = wb.active
-                ws.title = sheet_name or "Sheet1"
-                rows = _excel_rows_from_context(context_str)
+                ws.title = str((mapping_payload or {}).get("sheet") or sheet_name or "Sheet1")
+                rows = (mapping_payload or {}).get("rows") or _excel_rows_from_context(context_str)
                 if rows:
                     from openpyxl.utils import get_column_letter
 
                     width = max(len(row) for row in rows)
                     destination = f"A1:{get_column_letter(width)}{len(rows)}"
                     log_excel_payload_shape("excel_create", ws.title, destination, rows)
-                for r_idx, cells in enumerate(rows, 1):
-                    for c_idx, val in enumerate(cells, 1):
-                        ws.cell(row=r_idx, column=c_idx, value=val.strip() if isinstance(val, str) else val)
+                if mapping_payload:
+                    written = _write_openpyxl_mapping(
+                        ws, mapping_payload, str(config.get("start_range") or "A1")
+                    )
+                else:
+                    for r_idx, cells in enumerate(rows, 1):
+                        for c_idx, val in enumerate(cells, 1):
+                            ws.cell(row=r_idx, column=c_idx, value=val.strip() if isinstance(val, str) else val)
+                    written = len(rows)
                 Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
                 wb.save(abs_out)
                 wb.close()
-                row_summary = f"{len(rows)} rows"
+                unit = "cells" if mapping_payload and mapping_payload.get("type") == "cells" else "rows"
+                row_summary = f"{written} {unit}"
             saved_path = await _record_output(abs_out)
             log.info("[Flow/Office] excel_create: %s (%s)", saved_path, row_summary)
             return f"Excel workbook created: {saved_path} ({row_summary})"
@@ -3809,18 +3957,29 @@ async def _exec_office(
             )
             handle = open_workbook(abs_in)
             try:
-                data = _excel_rows_from_context(context_str)
-                if data:
-                    target_sheet = sheet_name or handle.workbook.sheetnames[0]
-                    start_range = str(config.get("start_range") or "A1").strip() or "A1"
+                data = (mapping_payload or {}).get("rows") or _excel_rows_from_context(context_str)
+                target_sheet = str((mapping_payload or {}).get("sheet") or sheet_name or handle.workbook.sheetnames[0])
+                if mapping_payload and mapping_payload.get("type") == "cells":
+                    for target_cell, value in (mapping_payload.get("cells") or {}).items():
+                        write_range(handle, target_sheet, str(target_cell).upper(), [[value]])
+                    written = len(mapping_payload.get("cells") or {})
+                elif data:
+                    start_range = str(
+                        (mapping_payload or {}).get("start_cell")
+                        or config.get("start_range")
+                        or "A1"
+                    ).strip() or "A1"
                     write_range(handle, target_sheet, start_range, data)
+                    written = len(data)
+                else:
+                    written = 0
                 Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
                 save_as(handle, abs_out)
                 saved_path = await _record_output(abs_out)
                 log.info(
-                    "[Flow/Office] excel_write: %s → %s (%d rows)", input_path, saved_path, len(data)
+                    "[Flow/Office] excel_write: %s → %s (%d mapped items)", input_path, saved_path, written
                 )
-                return f"Excel updated: {saved_path} ({len(data)} rows written)"
+                return f"Excel updated: {saved_path} ({written} mapped item(s) written)"
             finally:
                 close_workbook(handle)
 
