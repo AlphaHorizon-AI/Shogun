@@ -637,7 +637,7 @@ async def test_remote_exhaustive_matrix_is_bounded_parallel_and_complete(monkeyp
     async def call_rows(messages, *_args, **_kwargs):
         nonlocal active_calls, max_active_calls
         prompt = messages[-1]["content"]
-        unit_count = len(re.findall(r"(?m)^Sachnummer\s*:", prompt))
+        unit_count = len(re.findall(r"(?m)^--- Page \d+ ---$", prompt))
         chunk_unit_counts.append(unit_count)
         active_calls += 1
         max_active_calls = max(max_active_calls, active_calls)
@@ -649,7 +649,8 @@ async def test_remote_exhaustive_matrix_is_bounded_parallel_and_complete(monkeyp
     monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
 
     source = "\n".join(
-        f"Sachnummer : {140000 + index}\n01 order-{index}" for index in range(12)
+        f"--- Page {index + 1} ---\nRecord: {140000 + index}\nLine: order-{index}"
+        for index in range(12)
     )
     fixed_context = """[FILE TEMPLATE CONTRACT]
 Format: xlsx
@@ -659,7 +660,7 @@ Format: xlsx
 
     result = await flow_engine._exec_samurai(
         {
-            "task_description": "Extract every material record from the complete document.",
+            "task_description": "Extract every record from the complete document.",
             "matrix_chunk_max_units": 3,
             "matrix_chunk_concurrency": 3,
         },
@@ -696,7 +697,8 @@ async def test_exhaustive_matrix_rejects_shaped_but_incomplete_rows(monkeypatch)
     monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
     monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
     source = "\n".join(
-        f"Sachnummer : {140000 + index}\n01 order-{index}" for index in range(10)
+        f"--- Page {index + 1} ---\nRecord: {140000 + index}\nLine: order-{index}"
+        for index in range(10)
     )
     fixed_context = """[FILE TEMPLATE CONTRACT]
 Format: xlsx
@@ -707,7 +709,7 @@ Format: xlsx
     with pytest.raises(flow_engine.IncompleteMatrixOutputError, match="visibly incomplete|requires at least"):
         await flow_engine._exec_samurai(
             {
-                "task_description": "Extract every material record from the complete document.",
+                "task_description": "Extract every record from the complete document.",
                 "matrix_chunk_max_units": 10,
                 "matrix_chunk_concurrency": 1,
             },
@@ -716,33 +718,40 @@ Format: xlsx
         )
 
 
-def test_sap_coverage_counts_semantically_required_rows_not_material_sections():
-    source = """Sachnummer : 45131100
-Bestand : 0,0 KT-Bestand : 0,0
-01 45131100 0003946967 2026/42 2026/10 2026/43 2026/10 21,0 20,0 21.07.2026
-Sachnummer : 45140100
-Bestand : 0,0 KT-Bestand : 0,0
-01 45140100 0003951565 2027/26 2027/06 2027/26 2027/07 3,0 2,0 21.07.2026
+def test_profile_coverage_counts_required_rows_not_source_sections():
+    source = """Account: A1
+D A1 order-1
+Account: A2
+D A2 order-2
 """
-    task = """Extract every order. Create a stock row when Bestand is positive.
-For every Sa = 06 order create one row. Aggregate Sa = 01 demand into one planning row per article.
-"""
+    task = "Extract every record from the complete document."
+    profile = {
+        "id": "account_demand_v1",
+        "adapter": "sectioned_record_matrix_v1",
+        "parameters": {
+            "section_pattern": r"(?m)^Account: (?P<section_id>\S+)",
+            "record_pattern": r"(?m)^(?P<kind>D) (?P<account>\S+) (?P<reference>\S+)$",
+            "record_section_key_group": "account",
+            "row_rules": [{"kind": "aggregate", "match": {"kind": "D"}}],
+        },
+    }
+    config = {"_transformation_profiles": [profile]}
 
-    minimum, evidence, label = flow_engine._minimum_matrix_rows_for_source(source, task, {})
+    minimum, evidence, label = flow_engine._minimum_matrix_rows_for_source(source, task, config)
 
-    assert (minimum, evidence, label) == (2, 2, "semantically required row(s)")
+    assert (minimum, evidence, label) == (2, 2, "profile-required row(s)")
     with pytest.raises(flow_engine.IncompleteMatrixOutputError, match="requires at least 2"):
         flow_engine._validate_matrix_coverage(
             [["only-one-row"]],
             source,
             task,
-            {},
+            config,
             label="test chunk",
         )
 
 
 @pytest.mark.asyncio
-async def test_incomplete_sap_chunk_can_split_to_individual_materials(monkeypatch):
+async def test_incomplete_chunk_can_split_to_individual_source_pages(monkeypatch):
     monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
     provider = SimpleNamespace(
         id=uuid.uuid4(),
@@ -764,24 +773,21 @@ async def test_incomplete_sap_chunk_can_split_to_individual_materials(monkeypatc
 
     async def call_rows(messages, *_args, **_kwargs):
         prompt = messages[-1]["content"]
-        unit_count = len(re.findall(r"(?m)^Sachnummer\s*:", prompt))
+        unit_count = len(re.findall(r"(?m)^--- Page \d+ ---$", prompt))
         attempted_unit_counts.append(unit_count)
         if "--- CORRECTIVE RETRY ---" in prompt:
             corrective_prompts.append(prompt)
-        if unit_count == 1 and "Sachnummer : 140000" in prompt and not corrective_prompts:
+        if unit_count == 1 and "Record: 140000" in prompt and not corrective_prompts:
             return []
         return [["one-row", 1]]
 
     monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
     monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
     source = "\n".join(
-        f"Sachnummer : {140000 + index}\nBestand : 0,0\n"
-        f"01 {140000 + index} order-{index} 2026/01"
+        f"--- Page {index + 1} ---\nRecord: {140000 + index}\nLine: order-{index}"
         for index in range(10)
     )
-    task = """Extract every order from the complete document. Create a stock row when Bestand is positive.
-For every Sa = 06 order create one row. Aggregate Sa = 01 demand into one planning row per article.
-"""
+    task = "Extract every record from the complete document."
     fixed_context = """[FILE TEMPLATE CONTRACT]
 Format: xlsx
 [MACHINE-READABLE TEMPLATE MANIFEST]
@@ -793,6 +799,7 @@ Format: xlsx
             "task_description": task,
             "matrix_chunk_max_units": 10,
             "matrix_chunk_concurrency": 1,
+            "minimum_source_coverage_ratio": 1.0,
         },
         source,
         fixed_context_str=fixed_context,
@@ -828,24 +835,22 @@ async def test_incomplete_leaf_retains_partial_rows_and_requests_only_missing_ro
     async def call_rows(messages, *_args, **_kwargs):
         prompt = messages[-1]["content"]
         prompts.append(prompt)
-        if "Sachnummer : 140000" not in prompt:
-            return [["other-planning", 3]]
+        if "Record: 140000" not in prompt:
+            return [["other-planning", 3], ["other-detail", 4]]
         if "--- RETAINED VALID ROWS ---" in prompt:
             return [["missing-planning", 2]]
         return [["retained-stock", 1]]
 
     monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
     monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
-    source = """Sachnummer : 140000
-Bestand : 10,0 KT-Bestand : 0,0
-01 140000 order-1 2026/01
-Sachnummer : 140001
-Bestand : 0,0 KT-Bestand : 0,0
-01 140001 order-2 2026/01
+    source = """--- Page 1 ---
+Record: 140000
+Line: order-1
+--- Page 2 ---
+Record: 140001
+Line: order-2
 """
-    task = """Extract every order from the complete document. Create a stock row when Bestand is positive.
-For every Sa = 06 order create one row. Aggregate Sa = 01 demand into one planning row per article.
-"""
+    task = "Extract every record and detail from the complete document."
     fixed_context = """[FILE TEMPLATE CONTRACT]
 Format: xlsx
 [MACHINE-READABLE TEMPLATE MANIFEST]
@@ -857,6 +862,7 @@ Format: xlsx
             "task_description": task,
             "matrix_chunk_max_units": 1,
             "matrix_chunk_concurrency": 1,
+            "minimum_matrix_rows": 2,
         },
         source,
         fixed_context_str=fixed_context,
@@ -867,6 +873,7 @@ Format: xlsx
         ["retained-stock", 1],
         ["missing-planning", 2],
         ["other-planning", 3],
+        ["other-detail", 4],
     ]
     corrective_prompt = next(prompt for prompt in prompts if "--- RETAINED VALID ROWS ---" in prompt)
     assert "At least 1 additional row(s)" in corrective_prompt
@@ -895,7 +902,7 @@ async def test_malformed_matrix_chunk_is_subdivided_instead_of_using_general_too
 
     async def call_rows(messages, *_args, **_kwargs):
         prompt = messages[-1]["content"]
-        unit_count = len(re.findall(r"(?m)^Sachnummer\s*:", prompt))
+        unit_count = len(re.findall(r"(?m)^--- Page \d+ ---$", prompt))
         attempted_unit_counts.append(unit_count)
         if unit_count > 5:
             raise flow_engine.ModelCallError(
@@ -915,7 +922,8 @@ async def test_malformed_matrix_chunk_is_subdivided_instead_of_using_general_too
     monkeypatch.setattr(flow_engine, "_call_llm_chain_rows", call_rows)
     monkeypatch.setattr(flow_engine, "_call_llm_chain_with_tools", forbidden_general_tool_repair)
     source = "\n".join(
-        f"Sachnummer : {140000 + index}\n01 order-{index}" for index in range(10)
+        f"--- Page {index + 1} ---\nRecord: {140000 + index}\nLine: order-{index}"
+        for index in range(10)
     )
     fixed_context = """[FILE TEMPLATE CONTRACT]
 Format: xlsx
@@ -925,7 +933,7 @@ Format: xlsx
 
     result = await flow_engine._exec_samurai(
         {
-            "task_description": "Extract every material record from the complete document.",
+            "task_description": "Extract every record from the complete document.",
             "matrix_chunk_max_units": 10,
             "matrix_chunk_concurrency": 1,
         },

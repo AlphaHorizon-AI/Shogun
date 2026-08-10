@@ -7,6 +7,116 @@ import pytest
 from shogun.engine import flow_engine
 from shogun.services.structured_transformations import try_deterministic_matrix_transform
 
+NUMBER_PATTERN = r"[+-]?(?:\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d+)(?:,\d+)?"
+PROFILE = {
+    "id": "ks_lbp_disposition_v1",
+    "adapter": "sectioned_record_matrix_v1",
+    "parameters": {
+        "required_source_patterns": [
+            r"(?m)^\s*Sachnummer\s*:\s*\S+",
+            r"(?m)^\s*Teilebez\.\s*:",
+            r"(?m)^\s*Sa\s+Artikelnummer\b",
+        ],
+        "section_pattern": r"(?m)^\s*Sachnummer\s*:\s*(?P<section_id>\S+)",
+        "section_key_group": "section_id",
+        "section_fields": [
+            {
+                "target": "description",
+                "pattern": r"(?m)^\s*Teilebez\.\s*:\s*(?P<value>.*?)\s+Werkstoff\s*:",
+                "group": "value",
+                "aggregate": "first",
+            },
+            {
+                "target": "stock",
+                "pattern": rf"(?m)^\s*Bestand\s*:\s*(?P<value>{NUMBER_PATTERN})",
+                "group": "value",
+                "value_type": "localized_number",
+                "aggregate": "max",
+            },
+        ],
+        "selector_fields": [
+            {
+                "target": "rohling",
+                "scope_pattern": r"(?ims)^\s*St\S*ckliste\s*:.*?\n(?P<body>.*?)^\s*Bemerkungen\s*:",
+                "line_pattern": r"(?m)^\s*\d{4}\s+(?P<value>\S+)\s+(?P<text>.+?)\s+[\d.,-]+\s+\S+\s*$",
+                "include_terms": ["rohling"],
+                "exclude_terms": [
+                    "beutel", "box", "duese", "düse", "faltkiste", "kiste",
+                    "pack", "spannstift", "teleskop", "verpack",
+                ],
+                "aggregate": "first",
+            },
+            {
+                "target": "rohteil",
+                "scope_pattern": r"(?ims)^\s*St\S*ckliste\s*:.*?\n(?P<body>.*?)^\s*Bemerkungen\s*:",
+                "line_pattern": r"(?m)^\s*\d{4}\s+(?P<value>\S+)\s+(?P<text>.+?)\s+[\d.,-]+\s+\S+\s*$",
+                "include_terms": ["rohteil", "halbzeug", "vorbearb", "kolben"],
+                "exclude_terms": [
+                    "rohling", "beutel", "box", "duese", "düse", "faltkiste",
+                    "kiste", "pack", "spannstift", "teleskop", "verpack",
+                ],
+                "aggregate": "first",
+            },
+        ],
+        "record_pattern": (
+            r"(?m)^\s*(?P<kind>01|06)\s+"
+            r"(?P<article>\S+)\s+"
+            r"(?P<reference>\S+)\s+"
+            r"(?P<end_week>\d{4}/\d{2})\s+"
+            r"(?P<end_month>\d{4}/\d{2})\s+"
+            r"(?P<start_week>\d{4}/\d{2})\s+"
+            r"(?P<start_month>\d{4}/\d{2})\s+"
+            rf"(?P<planned>{NUMBER_PATTERN})\s+"
+            rf"(?P<remaining>{NUMBER_PATTERN})\s+"
+            r"(?P<date>\d{2}\.\d{2}\.\d{4})\s*$"
+        ),
+        "record_section_key_group": "article",
+        "template": {
+            "minimum_columns": 10,
+            "expected_headers": {
+                "1": ["Artikel-Nr", "Artikelnummer"],
+                "4": ["Fertigungsauftrag"],
+            },
+            "planning_start_column": 10,
+            "backlog_headers": ["Rückstand", "RÃ¼ckstand", "Ruckstand", "Rueckstand"],
+            "future_header_patterns": [r"(?:>=|≥|\bab\b|\bfrom\b|future|sp[äa]ter)", r"\+\s*$"],
+        },
+        "base_columns": {
+            "0": {"field": "description"},
+            "1": {"section_key": True},
+            "2": {"field": "rohling"},
+            "3": {"field": "rohteil"},
+        },
+        "row_rules": [
+            {
+                "kind": "section",
+                "when": {"field": "stock", "operator": "positive"},
+                "columns": {
+                    "4": {"literal": "Lager 0031"},
+                    "5": {"field": "stock"},
+                },
+            },
+            {
+                "kind": "record",
+                "match": {"kind": "06"},
+                "columns": {
+                    "4": {"group": "reference", "transforms": ["strip_leading_zero"]},
+                    "5": {"group": "planned", "value_type": "localized_number"},
+                },
+            },
+            {
+                "kind": "aggregate",
+                "match": {"kind": "01"},
+                "key_group": "end_month",
+                "value_group": "remaining",
+                "value_type": "localized_number",
+                "destination": "planning_month",
+                "strict_accounting": True,
+            },
+        ],
+    },
+}
+
 TASK = """Read the complete SAP report.
 For every order where Sa = 06, create one production row using Soll-Menge.
 For every order where Sa = 01, aggregate Rest-Menge by Endtermin Jahr/Mo, never Starttermin Jahr/Mo.
@@ -105,13 +215,14 @@ FULL_HORIZON_SOURCE = END_MONTH_SOURCE.replace(
 
 def test_sap_adapter_uses_end_month_and_preserves_business_row_occurrences():
     result = try_deterministic_matrix_transform(
-        task_description=TASK,
+        profile=PROFILE,
         source_context=SOURCE,
         fixed_context=FIXED_CONTEXT,
     )
 
     assert result is not None
-    assert result.adapter_id == "sap_disposition_v1"
+    assert result.adapter_id == "sectioned_record_matrix_v1"
+    assert result.profile_id == "ks_lbp_disposition_v1"
     assert len(result.rows) == 4
     assert all(len(row) == 22 for row in result.rows)
 
@@ -125,13 +236,8 @@ def test_sap_adapter_uses_end_month_and_preserves_business_row_occurrences():
 
 
 def test_sap_adapter_maps_rest_quantity_to_endtermin_month_for_legacy_saved_flow():
-    legacy_task = TASK.replace(
-        "Endtermin Jahr/Mo, never Starttermin Jahr/Mo",
-        "Starttermin Jahr/Mo",
-    )
-
     result = try_deterministic_matrix_transform(
-        task_description=legacy_task,
+        profile=PROFILE,
         source_context=END_MONTH_SOURCE,
         fixed_context=FIXED_CONTEXT,
     )
@@ -144,7 +250,7 @@ def test_sap_adapter_maps_rest_quantity_to_endtermin_month_for_legacy_saved_flow
 
 def test_sap_adapter_sums_every_identical_demand_occurrence_by_endtermin_month():
     result = try_deterministic_matrix_transform(
-        task_description=TASK,
+        profile=PROFILE,
         source_context=DUPLICATE_DEMAND_SOURCE,
         fixed_context=FIXED_CONTEXT,
     )
@@ -163,7 +269,7 @@ def test_sap_adapter_creates_materials_only_from_explicit_sachnummer_headers():
     )
 
     result = try_deterministic_matrix_transform(
-        task_description=TASK,
+        profile=PROFILE,
         source_context=source,
         fixed_context=FIXED_CONTEXT,
     )
@@ -180,7 +286,7 @@ def test_sap_adapter_keeps_material_context_across_page_breaks():
     )
 
     result = try_deterministic_matrix_transform(
-        task_description=TASK,
+        profile=PROFILE,
         source_context=source,
         fixed_context=FIXED_CONTEXT,
     )
@@ -202,7 +308,7 @@ def test_sap_adapter_accumulates_later_endtermin_months_in_explicit_future_bucke
     )
 
     result = try_deterministic_matrix_transform(
-        task_description=TASK.replace("22 values", "23 values"),
+        profile=PROFILE,
         source_context=source,
         fixed_context=fixed_context,
     )
@@ -214,7 +320,7 @@ def test_sap_adapter_accumulates_later_endtermin_months_in_explicit_future_bucke
 
 def test_sap_adapter_routes_every_rest_quantity_into_exactly_one_full_horizon_bucket():
     result = try_deterministic_matrix_transform(
-        task_description=TASK.replace("22 values", "24 values"),
+        profile=PROFILE,
         source_context=FULL_HORIZON_SOURCE,
         fixed_context=FULL_HORIZON_CONTEXT,
     )
@@ -238,7 +344,7 @@ def test_sap_adapter_fails_closed_when_template_cannot_account_for_a_demand_mont
 
     with pytest.raises(ValueError, match="2026/06.*no Excel planning bucket"):
         try_deterministic_matrix_transform(
-            task_description=TASK,
+            profile=PROFILE,
             source_context=source,
             fixed_context=FIXED_CONTEXT,
         )
@@ -261,7 +367,7 @@ Endtermin Starttermin
     )
 
     result = try_deterministic_matrix_transform(
-        task_description=TASK,
+        profile=PROFILE,
         source_context=source,
         fixed_context=FIXED_CONTEXT,
     )
@@ -275,7 +381,7 @@ Endtermin Starttermin
 
 def test_sap_adapter_parses_grouped_german_quantities_without_splitting_fields():
     result = try_deterministic_matrix_transform(
-        task_description=TASK,
+        profile=PROFILE,
         source_context=GROUPED_NUMBER_SOURCE,
         fixed_context=FIXED_CONTEXT,
     )
@@ -289,8 +395,13 @@ def test_sap_adapter_parses_grouped_german_quantities_without_splitting_fields()
     assert demand[20:22] == ["", ""]
 
 
-def test_sap_coverage_counts_source_order_occurrences():
-    assert flow_engine._expected_sap_output_rows(SOURCE, TASK) == 4
+def test_profile_coverage_counts_source_record_occurrences():
+    config = {"_transformation_profiles": [PROFILE]}
+    assert flow_engine._minimum_matrix_rows_for_source(SOURCE, TASK, config) == (
+        4,
+        4,
+        "profile-required row(s)",
+    )
 
 
 @pytest.mark.asyncio
@@ -305,7 +416,7 @@ async def test_samurai_uses_deterministic_adapter_without_model_routing(monkeypa
         progress.append((completed, total))
 
     output = await flow_engine._exec_samurai(
-        {"task_description": TASK},
+        {"task_description": TASK, "_transformation_profiles": [PROFILE]},
         SOURCE,
         progress_callback=report,
         fixed_context_str=FIXED_CONTEXT,

@@ -1,8 +1,8 @@
 {
-  "version": "1.47.76",
+  "version": "1.47.77",
   "name": "Shogun OS",
-  "build": 227,
+  "build": 228,
   "channel": "stable",
-  "released": "2026-08-10T10:28:05Z",
-  "changelog": "Complete SAP PDF-to-Excel demand mapping with Rückstand and future buckets while preserving source occurrences."
+  "released": "2026-08-10T11:38:54Z",
+  "changelog": "Scope deterministic document transformations to explicit Mapping/RPA profiles and keep the core workflow engine source-agnostic."
 }

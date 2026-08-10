@@ -1,8 +1,8 @@
-"""Deterministic adapters for explicit, machine-readable file transformations.
+"""Profile-driven deterministic transformations for AgentFlow.
 
-These adapters are deliberately narrow.  They only run when both the runtime
-source and the user's instructions identify a supported contract.  Every
-other transformation remains on the normal Samurai/model path.
+The runtime contains only generic parsing and matrix-building primitives.  All
+source labels, record types, field meanings, and destination rules must be
+declared by an explicit Mapping/RPA transformation profile.
 """
 
 from __future__ import annotations
@@ -12,64 +12,24 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+SUPPORTED_ADAPTER = "sectioned_record_matrix_v1"
+
 
 @dataclass(slots=True)
 class DeterministicMatrixResult:
     adapter_id: str
+    profile_id: str
     rows: list[list[Any]]
 
 
 @dataclass(slots=True)
-class _SapOrder:
-    kind: str
-    article: str
-    reference: str
-    end_week: str
-    end_month: str
-    start_week: str
-    start_month: str
-    planned: int | float
-    remaining: int | float
-    date: str
+class _RecordSection:
+    key: str
+    fields: dict[str, Any] = field(default_factory=dict)
+    records: list[dict[str, str]] = field(default_factory=list)
 
 
-@dataclass(slots=True)
-class _SapMaterial:
-    article: str
-    description: str = ""
-    rohling: str = ""
-    rohteil: str = ""
-    stock: int | float = 0
-    orders: list[_SapOrder] = field(default_factory=list)
-
-
-_SAP_NUMBER_PATTERN = r"[+-]?(?:\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d+)(?:,\d+)?"
-_SAP_ORDER_RE = re.compile(
-    r"(?m)^\s*(?P<kind>01|06)\s+"
-    r"(?P<article>\S+)\s+"
-    r"(?P<reference>\S+)\s+"
-    r"(?P<end_week>\d{4}/\d{2})\s+"
-    r"(?P<end_month>\d{4}/\d{2})\s+"
-    r"(?P<start_week>\d{4}/\d{2})\s+"
-    r"(?P<start_month>\d{4}/\d{2})\s+"
-    rf"(?P<planned>{_SAP_NUMBER_PATTERN})\s+"
-    rf"(?P<remaining>{_SAP_NUMBER_PATTERN})\s+"
-    r"(?P<date>\d{2}\.\d{2}\.\d{4})\s*$"
-)
-_SAP_MATERIAL_RE = re.compile(r"(?m)^\s*Sachnummer\s*:\s*(\S+)")
-_SAP_AUXILIARY_BOM_TERMS = (
-    "beutel",
-    "box",
-    "duese",
-    "düse",
-    "faltkiste",
-    "kiste",
-    "pack",
-    "spannstift",
-    "teleskop",
-    "verpack",
-)
-_SAP_MONTH_NAMES = {
+_MONTH_NAMES = {
     "jan": 1,
     "january": 1,
     "januar": 1,
@@ -110,158 +70,480 @@ _SAP_MONTH_NAMES = {
 
 def try_deterministic_matrix_transform(
     *,
-    task_description: str,
+    profile: dict[str, Any],
     source_context: str,
     fixed_context: str,
-) -> DeterministicMatrixResult | None:
-    """Return an authoritative matrix when a narrow adapter can prove the mapping."""
+) -> DeterministicMatrixResult:
+    """Execute the explicitly selected transformation profile.
 
-    template = _excel_template_contract(fixed_context)
-    if template is None or not _is_sap_planning_contract(task_description, source_context):
-        return None
-    headers, logical_width = template
-    month_columns = _planning_month_columns(headers)
-    if logical_width < 10 or not month_columns:
-        return None
+    A profile is never discovered from task wording or source contents.  The
+    caller must supply the profile attached to the upstream Mapping/RPA node.
+    """
 
-    materials = _parse_sap_materials(source_context)
-    if not materials:
-        return None
+    profile_id, parameters = _profile_parameters(profile)
+    _validate_required_source_patterns(source_context, parameters, profile_id)
+    headers, logical_width = _excel_template_contract(fixed_context, parameters, profile_id)
+    sections = _parse_sections(source_context, parameters, profile_id)
+    planning_columns = _planning_month_columns(headers, parameters)
+    rows = _build_rows(
+        sections,
+        logical_width,
+        planning_columns,
+        parameters,
+        profile_id,
+    )
+    if not rows:
+        raise ValueError(f"Transformation profile '{profile_id}' produced no rows.")
+    if any(len(row) != logical_width for row in rows):
+        raise ValueError(
+            f"Transformation profile '{profile_id}' produced a row outside the "
+            f"{logical_width}-column template contract."
+        )
+    return DeterministicMatrixResult(
+        adapter_id=SUPPORTED_ADAPTER,
+        profile_id=profile_id,
+        rows=rows,
+    )
 
-    rows: list[list[Any]] = []
-    for material in materials.values():
-        base = [""] * logical_width
-        base[0] = material.description
-        base[1] = material.article
-        base[2] = material.rohling
-        base[3] = material.rohteil
 
-        if material.stock > 0:
-            row = list(base)
-            row[4] = "Lager 0031"
-            row[5] = material.stock
-            rows.append(row)
+def deterministic_profile_source_units(
+    profile: dict[str, Any],
+    source_context: str,
+) -> list[str]:
+    """Split source text at the explicit profile's section boundaries."""
 
-        # Every parsed Sa=06 line is a source occurrence. Identical order
-        # lines are intentionally preserved because SAP may list the same
-        # visible order more than once and each occurrence contributes to the
-        # ordered quantity.
-        for order in material.orders:
-            if order.kind != "06":
-                continue
-            row = list(base)
-            row[4] = order.reference
-            row[5] = order.planned
-            rows.append(row)
+    _profile_id, parameters = _profile_parameters(profile)
+    pattern = _required_pattern(parameters, "section_pattern")
+    matches = list(pattern.finditer(str(source_context or "")))
+    if not matches:
+        return [source_context] if source_context else []
+    units: list[str] = []
+    for index, match in enumerate(matches):
+        start = 0 if index == 0 else match.start()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(source_context)
+        units.append(source_context[start:end])
+    return units
 
-        # Bedarf is deterministic: sum every Sa=01 Rest-Menge occurrence by
-        # Endtermin Jahr/MO. Starttermin must never select the Bedarf column.
-        demand_orders = [order for order in material.orders if order.kind == "01"]
-        if demand_orders:
-            demand_by_month: dict[str, int | float] = {}
-            source_total: int | float = 0
-            for order in demand_orders:
-                demand_by_month[order.end_month] = _add_numbers(
-                    demand_by_month.get(order.end_month, 0),
-                    order.remaining,
-                )
-                source_total = _add_numbers(source_total, order.remaining)
-            row = list(base)
-            mapped_total: int | float = 0
-            unmapped_months: list[str] = []
-            for month, quantity in demand_by_month.items():
-                column = _planning_column_for_month(month_columns, month)
-                if column is None:
-                    unmapped_months.append(month)
-                    continue
-                current = row[column] if isinstance(row[column], (int, float)) else 0
-                row[column] = _add_numbers(current, quantity)
-                mapped_total = _add_numbers(mapped_total, quantity)
-            if unmapped_months or not _numbers_equal(source_total, mapped_total):
-                missing = ", ".join(sorted(unmapped_months)) or "unknown"
+
+def expected_deterministic_matrix_rows(
+    profile: dict[str, Any],
+    source_context: str,
+) -> int:
+    """Count rows required by a profile without relying on domain heuristics."""
+
+    profile_id, parameters = _profile_parameters(profile)
+    sections = _parse_sections(source_context, parameters, profile_id)
+    total = 0
+    for section in sections:
+        for rule in _row_rules(parameters):
+            kind = str(rule.get("kind") or "").strip().lower()
+            if kind == "section":
+                total += int(_section_condition_matches(section, rule.get("when")))
+            elif kind == "record":
+                total += sum(1 for record in section.records if _record_matches(record, rule.get("match")))
+            elif kind == "aggregate":
+                total += int(any(_record_matches(record, rule.get("match")) for record in section.records))
+            else:
                 raise ValueError(
-                    "SAP demand accounting failed for material "
-                    f"{material.article}: Endtermin month(s) {missing} have no Excel planning bucket "
-                    f"(source Rest-Menge {source_total}, mapped {mapped_total})."
+                    f"Transformation profile '{profile_id}' has unsupported row rule kind '{kind}'."
                 )
-            rows.append(row)
-
-    if not rows or any(len(row) != logical_width for row in rows):
-        return None
-    return DeterministicMatrixResult(adapter_id="sap_disposition_v1", rows=rows)
+    return total
 
 
-def _is_sap_planning_contract(task_description: str, source_context: str) -> bool:
-    task = str(task_description or "")
-    required_rules = (
-        re.search(r"Sa\s*=\s*06", task, re.IGNORECASE),
-        re.search(r"Sa\s*=\s*01", task, re.IGNORECASE),
-        # Accept old saved flow instructions mentioning Starttermin so the
-        # deterministic correction applies without requiring every flow to be
-        # edited. The adapter itself always follows the canonical Endtermin
-        # rule below.
-        re.search(r"(?:Endtermin|Starttermin)\s+Jahr/Mo", task, re.IGNORECASE),
-        re.search(r"Soll-Menge", task, re.IGNORECASE),
-        re.search(r"Rest-Menge", task, re.IGNORECASE),
-    )
-    return bool(
-        all(required_rules)
-        and _SAP_MATERIAL_RE.search(source_context or "")
-        and re.search(r"(?m)^\s*Teilebez\.\s*:", source_context or "")
-        and re.search(r"(?m)^\s*Sa\s+Artikelnummer\b", source_context or "")
-    )
+def _profile_parameters(profile: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    if not isinstance(profile, dict):
+        raise ValueError("Transformation profile must be an object.")
+    profile_id = str(profile.get("id") or "").strip()
+    if not profile_id:
+        raise ValueError("Transformation profile requires an id.")
+    adapter = str(profile.get("adapter") or "").strip()
+    if adapter != SUPPORTED_ADAPTER:
+        raise ValueError(
+            f"Transformation profile '{profile_id}' uses unsupported adapter '{adapter}'."
+        )
+    parameters = profile.get("parameters")
+    if not isinstance(parameters, dict):
+        raise ValueError(f"Transformation profile '{profile_id}' requires parameters.")
+    return profile_id, parameters
 
 
-def _excel_template_contract(fixed_context: str) -> tuple[list[Any], int] | None:
+def _validate_required_source_patterns(
+    source_context: str,
+    parameters: dict[str, Any],
+    profile_id: str,
+) -> None:
+    for raw_pattern in parameters.get("required_source_patterns") or []:
+        if not re.search(str(raw_pattern), source_context or ""):
+            raise ValueError(
+                f"Runtime source does not match transformation profile '{profile_id}'."
+            )
+
+
+def _parse_sections(
+    source_context: str,
+    parameters: dict[str, Any],
+    profile_id: str,
+) -> list[_RecordSection]:
+    text = str(source_context or "")
+    section_pattern = _required_pattern(parameters, "section_pattern")
+    key_group = str(parameters.get("section_key_group") or "section_id")
+    matches = list(section_pattern.finditer(text))
+    if not matches:
+        raise ValueError(f"Transformation profile '{profile_id}' found no source sections.")
+
+    record_pattern = _required_pattern(parameters, "record_pattern")
+    record_section_key_group = str(parameters.get("record_section_key_group") or "").strip()
+    sections: dict[str, _RecordSection] = {}
+    for index, match in enumerate(matches):
+        try:
+            key = str(match.group(key_group)).strip()
+        except (IndexError, KeyError) as exc:
+            raise ValueError(
+                f"Transformation profile '{profile_id}' section pattern lacks group '{key_group}'."
+            ) from exc
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        section_text = text[match.start():end]
+        section = sections.setdefault(key, _RecordSection(key=key))
+        _extract_section_fields(section, section_text, parameters, profile_id)
+        _extract_selector_fields(section, section_text, parameters, profile_id)
+        for record_match in record_pattern.finditer(section_text):
+            record = {
+                name: str(value or "").strip()
+                for name, value in record_match.groupdict().items()
+            }
+            if record_section_key_group and record.get(record_section_key_group) != key:
+                continue
+            section.records.append(record)
+    return list(sections.values())
+
+
+def _extract_section_fields(
+    section: _RecordSection,
+    section_text: str,
+    parameters: dict[str, Any],
+    profile_id: str,
+) -> None:
+    for rule in parameters.get("section_fields") or []:
+        if not isinstance(rule, dict):
+            raise ValueError(f"Transformation profile '{profile_id}' has an invalid section field rule.")
+        target = str(rule.get("target") or "").strip()
+        pattern = _compile_pattern(rule.get("pattern"), f"section field '{target}'")
+        group = str(rule.get("group") or "value")
+        values: list[Any] = []
+        for match in pattern.finditer(section_text):
+            try:
+                values.append(_convert_value(match.group(group), rule.get("value_type")))
+            except (IndexError, KeyError) as exc:
+                raise ValueError(
+                    f"Transformation profile '{profile_id}' section field '{target}' "
+                    f"lacks group '{group}'."
+                ) from exc
+        if values:
+            _store_aggregated_field(section.fields, target, values, str(rule.get("aggregate") or "first"))
+
+
+def _extract_selector_fields(
+    section: _RecordSection,
+    section_text: str,
+    parameters: dict[str, Any],
+    profile_id: str,
+) -> None:
+    for rule in parameters.get("selector_fields") or []:
+        if not isinstance(rule, dict):
+            raise ValueError(f"Transformation profile '{profile_id}' has an invalid selector rule.")
+        target = str(rule.get("target") or "").strip()
+        scope_pattern = _compile_pattern(rule.get("scope_pattern"), f"selector scope '{target}'")
+        line_pattern = _compile_pattern(rule.get("line_pattern"), f"selector line '{target}'")
+        scope_group = str(rule.get("scope_group") or "body")
+        value_group = str(rule.get("value_group") or "value")
+        text_group = str(rule.get("text_group") or "text")
+        include_terms = [str(value).casefold() for value in rule.get("include_terms") or []]
+        exclude_terms = [str(value).casefold() for value in rule.get("exclude_terms") or []]
+        values: list[Any] = []
+        for scope_match in scope_pattern.finditer(section_text):
+            try:
+                body = scope_match.group(scope_group)
+            except (IndexError, KeyError) as exc:
+                raise ValueError(
+                    f"Transformation profile '{profile_id}' selector '{target}' lacks "
+                    f"scope group '{scope_group}'."
+                ) from exc
+            for line_match in line_pattern.finditer(body):
+                try:
+                    classifier = str(line_match.group(text_group) or "").casefold()
+                    value = line_match.group(value_group)
+                except (IndexError, KeyError) as exc:
+                    raise ValueError(
+                        f"Transformation profile '{profile_id}' selector '{target}' has invalid groups."
+                    ) from exc
+                if include_terms and not any(term in classifier for term in include_terms):
+                    continue
+                if any(term in classifier for term in exclude_terms):
+                    continue
+                values.append(_convert_value(value, rule.get("value_type")))
+        if values:
+            _store_aggregated_field(section.fields, target, values, str(rule.get("aggregate") or "first"))
+
+
+def _store_aggregated_field(
+    fields: dict[str, Any],
+    target: str,
+    values: list[Any],
+    aggregate: str,
+) -> None:
+    if aggregate == "max":
+        value = max(values)
+        if target in fields:
+            value = max(fields[target], value)
+        fields[target] = value
+    elif aggregate == "last":
+        fields[target] = values[-1]
+    elif aggregate == "first":
+        if target not in fields or fields[target] in (None, ""):
+            fields[target] = values[0]
+    else:
+        raise ValueError(f"Unsupported field aggregate '{aggregate}'.")
+
+
+def _excel_template_contract(
+    fixed_context: str,
+    parameters: dict[str, Any],
+    profile_id: str,
+) -> tuple[list[Any], int]:
     marker = "[MACHINE-READABLE TEMPLATE MANIFEST]"
     marker_index = str(fixed_context or "").find(marker)
     if marker_index < 0:
-        return None
+        raise ValueError(f"Transformation profile '{profile_id}' requires an Excel template manifest.")
     json_start = fixed_context.find("{", marker_index + len(marker))
     if json_start < 0:
-        return None
+        raise ValueError(f"Transformation profile '{profile_id}' found an invalid template manifest.")
     try:
         manifest, _ = json.JSONDecoder().raw_decode(fixed_context[json_start:])
-    except (json.JSONDecodeError, TypeError):
-        return None
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(f"Transformation profile '{profile_id}' found an invalid template manifest.") from exc
     if not isinstance(manifest, dict) or manifest.get("kind") != "excel":
-        return None
+        raise ValueError(f"Transformation profile '{profile_id}' requires an Excel template.")
     sheets = manifest.get("sheets") or []
     if not sheets or not isinstance(sheets[0], dict):
-        return None
+        raise ValueError(f"Transformation profile '{profile_id}' requires an Excel sheet contract.")
     sheet = sheets[0]
     preview_rows = sheet.get("preview_rows") or []
     headers = list(preview_rows[0]) if preview_rows and isinstance(preview_rows[0], list) else []
     try:
         logical_width = int(sheet.get("logical_columns") or len(headers))
-    except (TypeError, ValueError):
-        return None
-    if logical_width < 6 or len(headers) < logical_width:
-        return None
-    canonical = [_canonical_header(value) for value in headers]
-    if canonical[1] not in {"artikelnr", "artikelnummer"} or canonical[4] != "fertigungsauftrag":
-        return None
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Transformation profile '{profile_id}' has an invalid column count.") from exc
+    template = parameters.get("template") or {}
+    minimum_columns = int(template.get("minimum_columns") or 1)
+    if logical_width < minimum_columns or len(headers) < logical_width:
+        raise ValueError(
+            f"Transformation profile '{profile_id}' requires at least {minimum_columns} template columns."
+        )
+    for raw_index, accepted in (template.get("expected_headers") or {}).items():
+        index = int(raw_index)
+        aliases = accepted if isinstance(accepted, list) else [accepted]
+        if index >= logical_width or _canonical_header(headers[index]) not in {
+            _canonical_header(alias) for alias in aliases
+        }:
+            raise ValueError(
+                f"Transformation profile '{profile_id}' does not match template column {index + 1}."
+            )
     return headers[:logical_width], logical_width
 
 
-def _planning_month_columns(headers: list[Any]) -> dict[str, int]:
+def _build_rows(
+    sections: list[_RecordSection],
+    logical_width: int,
+    planning_columns: dict[str, int],
+    parameters: dict[str, Any],
+    profile_id: str,
+) -> list[list[Any]]:
+    rows: list[list[Any]] = []
+    for section in sections:
+        base = [""] * logical_width
+        for raw_column, value_spec in (parameters.get("base_columns") or {}).items():
+            base[int(raw_column)] = _resolve_value_spec(value_spec, section, None)
+        for rule in _row_rules(parameters):
+            kind = str(rule.get("kind") or "").strip().lower()
+            if kind == "section":
+                if _section_condition_matches(section, rule.get("when")):
+                    rows.append(_row_from_rule(base, section, None, rule))
+            elif kind == "record":
+                for record in section.records:
+                    if _record_matches(record, rule.get("match")):
+                        rows.append(_row_from_rule(base, section, record, rule))
+            elif kind == "aggregate":
+                records = [
+                    record
+                    for record in section.records
+                    if _record_matches(record, rule.get("match"))
+                ]
+                if records:
+                    rows.append(
+                        _aggregate_row(
+                            base,
+                            section,
+                            records,
+                            rule,
+                            planning_columns,
+                            profile_id,
+                        )
+                    )
+            else:
+                raise ValueError(
+                    f"Transformation profile '{profile_id}' has unsupported row rule kind '{kind}'."
+                )
+    return rows
+
+
+def _row_rules(parameters: dict[str, Any]) -> list[dict[str, Any]]:
+    rules = parameters.get("row_rules") or []
+    if not isinstance(rules, list) or not all(isinstance(rule, dict) for rule in rules):
+        raise ValueError("Transformation profile row_rules must be a list of objects.")
+    return rules
+
+
+def _row_from_rule(
+    base: list[Any],
+    section: _RecordSection,
+    record: dict[str, str] | None,
+    rule: dict[str, Any],
+) -> list[Any]:
+    row = list(base)
+    for raw_column, value_spec in (rule.get("columns") or {}).items():
+        row[int(raw_column)] = _resolve_value_spec(value_spec, section, record)
+    return row
+
+
+def _aggregate_row(
+    base: list[Any],
+    section: _RecordSection,
+    records: list[dict[str, str]],
+    rule: dict[str, Any],
+    planning_columns: dict[str, int],
+    profile_id: str,
+) -> list[Any]:
+    if str(rule.get("destination") or "") != "planning_month":
+        raise ValueError(f"Transformation profile '{profile_id}' has an unsupported aggregate destination.")
+    key_group = str(rule.get("key_group") or "").strip()
+    value_group = str(rule.get("value_group") or "").strip()
+    if not key_group or not value_group:
+        raise ValueError(f"Transformation profile '{profile_id}' aggregate rule requires key/value groups.")
+    by_key: dict[str, int | float] = {}
+    source_total: int | float = 0
+    for record in records:
+        key = record.get(key_group, "")
+        quantity = _convert_value(record.get(value_group, ""), rule.get("value_type"))
+        if not isinstance(quantity, (int, float)):
+            raise ValueError(f"Transformation profile '{profile_id}' aggregate quantity must be numeric.")
+        by_key[key] = _add_numbers(by_key.get(key, 0), quantity)
+        source_total = _add_numbers(source_total, quantity)
+
+    row = list(base)
+    mapped_total: int | float = 0
+    unmapped_keys: list[str] = []
+    for key, quantity in by_key.items():
+        column = _planning_column_for_month(planning_columns, key)
+        if column is None:
+            unmapped_keys.append(key)
+            continue
+        current = row[column] if isinstance(row[column], (int, float)) else 0
+        row[column] = _add_numbers(current, quantity)
+        mapped_total = _add_numbers(mapped_total, quantity)
+    if rule.get("strict_accounting", True) and (
+        unmapped_keys or not _numbers_equal(source_total, mapped_total)
+    ):
+        missing = ", ".join(sorted(unmapped_keys)) or "unknown"
+        raise ValueError(
+            f"Transformation profile '{profile_id}' could not account for section {section.key}: "
+            f"planning key(s) {missing} have no Excel planning bucket "
+            f"(source quantity {source_total}, mapped {mapped_total})."
+        )
+    return row
+
+
+def _resolve_value_spec(
+    value_spec: Any,
+    section: _RecordSection,
+    record: dict[str, str] | None,
+) -> Any:
+    if not isinstance(value_spec, dict):
+        return value_spec
+    if "literal" in value_spec:
+        value: Any = value_spec.get("literal")
+    elif value_spec.get("section_key"):
+        value = section.key
+    elif "field" in value_spec:
+        value = section.fields.get(str(value_spec.get("field")), "")
+    elif "group" in value_spec:
+        value = (record or {}).get(str(value_spec.get("group")), "")
+    else:
+        value = ""
+    for transform in value_spec.get("transforms") or []:
+        if transform == "strip_leading_zero":
+            value = str(value).lstrip("0") or "0"
+        elif transform == "strip":
+            value = str(value).strip()
+        else:
+            raise ValueError(f"Unsupported transformation profile value transform '{transform}'.")
+    if value_spec.get("value_type") not in (None, ""):
+        return _convert_value(value, value_spec.get("value_type"))
+    return value
+
+
+def _section_condition_matches(section: _RecordSection, condition: Any) -> bool:
+    if not condition:
+        return True
+    if not isinstance(condition, dict):
+        raise ValueError("Transformation profile section condition must be an object.")
+    value = section.fields.get(str(condition.get("field") or ""))
+    operator = str(condition.get("operator") or "truthy")
+    if operator == "positive":
+        return isinstance(value, (int, float)) and value > 0
+    if operator == "equals":
+        return value == condition.get("value")
+    if operator == "truthy":
+        return bool(value)
+    raise ValueError(f"Unsupported transformation profile condition operator '{operator}'.")
+
+
+def _record_matches(record: dict[str, str], match_spec: Any) -> bool:
+    if not match_spec:
+        return True
+    if not isinstance(match_spec, dict):
+        raise ValueError("Transformation profile record match must be an object.")
+    for group, expected in match_spec.items():
+        accepted = expected if isinstance(expected, list) else [expected]
+        if record.get(str(group)) not in {str(value) for value in accepted}:
+            return False
+    return True
+
+
+def _planning_month_columns(headers: list[Any], parameters: dict[str, Any]) -> dict[str, int]:
+    template = parameters.get("template") or {}
+    start_column = int(template.get("planning_start_column") or 0)
+    backlog_headers = {
+        re.sub(r"\s+", " ", str(value)).strip().casefold()
+        for value in template.get("backlog_headers") or []
+    }
+    future_patterns = [
+        re.compile(str(value), re.IGNORECASE)
+        for value in template.get("future_header_patterns") or []
+    ]
     columns: dict[str, int] = {}
     for index, header in enumerate(headers):
-        if index < 10 or header in (None, ""):
+        if index < start_column or header in (None, ""):
             continue
         header_text = str(header)
-        backlog_label = re.sub(r"\s+", " ", header_text).strip().casefold()
-        if backlog_label in {"rückstand", "ruckstand", "rueckstand", "backlog", "overdue"}:
+        normalized_header = re.sub(r"\s+", " ", header_text).strip().casefold()
+        if normalized_header in backlog_headers:
             columns["backlog"] = index
             continue
         month = _planning_header_month(header_text)
         if month is None:
             continue
-        future_bucket = bool(
-            re.search(r"(?:>=|≥|\bab\b|\bfrom\b|future|sp[aä]ter)", header_text, re.IGNORECASE)
-            or re.search(r"\+\s*$", header_text)
-        )
-        columns[f">={month}" if future_bucket else month] = index
+        is_future = any(pattern.search(header_text) for pattern in future_patterns)
+        columns[f">={month}" if is_future else month] = index
     return columns
 
 
@@ -272,15 +554,14 @@ def _planning_column_for_month(columns: dict[str, int], month: str) -> int | Non
     month_key = _month_key(month)
     if month_key is None:
         return None
-    eligible_future_buckets = sorted(
+    future_buckets = sorted(
         (_month_key(threshold[2:]), column)
         for threshold, column in columns.items()
-        if threshold.startswith(">=")
-        and _month_key(threshold[2:]) is not None
-        and month_key >= _month_key(threshold[2:])
+        if threshold.startswith(">=") and _month_key(threshold[2:]) is not None
     )
-    if eligible_future_buckets:
-        return eligible_future_buckets[-1][1]
+    eligible = [item for item in future_buckets if item[0] is not None and month_key >= item[0]]
+    if eligible:
+        return eligible[-1][1]
     exact_months = sorted(
         key
         for key in (_month_key(candidate) for candidate in columns)
@@ -299,7 +580,7 @@ def _planning_header_month(header_text: str) -> str | None:
     named = re.search(r"(?i)\b([a-zä]+)\.?\s+(\d{4})\b", header_text)
     if not named:
         return None
-    month_number = _SAP_MONTH_NAMES.get(named.group(1).casefold())
+    month_number = _MONTH_NAMES.get(named.group(1).casefold())
     if month_number is None:
         return None
     return f"{named.group(2)}/{month_number:02d}"
@@ -313,90 +594,31 @@ def _month_key(month: str) -> tuple[int, int] | None:
     return (year, number) if 1 <= number <= 12 else None
 
 
-def _parse_sap_materials(source_context: str) -> dict[str, _SapMaterial]:
-    text = str(source_context or "")
-    starts = list(_SAP_MATERIAL_RE.finditer(text))
-    materials: dict[str, _SapMaterial] = {}
-    for index, match in enumerate(starts):
-        article = match.group(1).strip()
-        end = starts[index + 1].start() if index + 1 < len(starts) else len(text)
-        section = text[match.start() : end]
-        material = materials.setdefault(article, _SapMaterial(article=article))
-
-        description = _match_group(
-            section,
-            r"(?m)^\s*Teilebez\.\s*:\s*(.*?)\s+Werkstoff\s*:",
-        )
-        if description and not material.description:
-            material.description = description
-        stock_text = _match_group(
-            section,
-            rf"(?m)^\s*Bestand\s*:\s*({_SAP_NUMBER_PATTERN})",
-        )
-        if stock_text:
-            material.stock = max(material.stock, _sap_number(stock_text))
-        rohling, rohteil = _sap_bom_materials(section)
-        material.rohling = material.rohling or rohling
-        material.rohteil = material.rohteil or rohteil
-
-        for order_match in _SAP_ORDER_RE.finditer(section):
-            row_article = order_match.group("article").strip()
-            if row_article != article:
-                continue
-            material.orders.append(
-                _SapOrder(
-                    kind=order_match.group("kind"),
-                    article=row_article,
-                    reference=order_match.group("reference").lstrip("0") or "0",
-                    end_week=order_match.group("end_week"),
-                    end_month=order_match.group("end_month"),
-                    start_week=order_match.group("start_week"),
-                    start_month=order_match.group("start_month"),
-                    planned=_sap_number(order_match.group("planned")),
-                    remaining=_sap_number(order_match.group("remaining")),
-                    date=order_match.group("date"),
-                )
-            )
-    return materials
+def _convert_value(value: Any, value_type: Any) -> Any:
+    normalized_type = str(value_type or "string").strip().lower()
+    if normalized_type in {"", "string"}:
+        return str(value or "").strip()
+    if normalized_type == "localized_number":
+        normalized = re.sub(r"[\s.\u00a0\u202f]", "", str(value).strip()).replace(",", ".")
+        number = float(normalized)
+        return int(number) if number.is_integer() else number
+    if normalized_type == "number":
+        number = float(value)
+        return int(number) if number.is_integer() else number
+    raise ValueError(f"Unsupported transformation profile value type '{normalized_type}'.")
 
 
-def _sap_bom_materials(section: str) -> tuple[str, str]:
-    match = re.search(
-        r"(?ims)^\s*St(?:ü|Ã¼|u)ckliste\s*:.*?\n(?P<body>.*?)^\s*Bemerkungen\s*:",
-        section,
-    )
-    if not match:
-        return "", ""
-    rohling = ""
-    rohteil = ""
-    for line in match.group("body").splitlines():
-        item = re.match(r"^\s*\d{4}\s+(\S+)\s+(.+?)\s+[\d.,-]+\s+\S+\s*$", line)
-        if not item:
-            continue
-        number, description = item.group(1).strip(), item.group(2).strip()
-        lowered = description.casefold()
-        if any(term in lowered for term in _SAP_AUXILIARY_BOM_TERMS):
-            continue
-        if "rohling" in lowered and not rohling:
-            rohling = number
-        elif any(term in lowered for term in ("rohteil", "halbzeug", "vorbearb", "kolben")) and not rohteil:
-            rohteil = number
-    return rohling, rohteil
+def _compile_pattern(value: Any, label: str) -> re.Pattern[str]:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"Transformation profile requires a regex for {label}.")
+    try:
+        return re.compile(value)
+    except re.error as exc:
+        raise ValueError(f"Transformation profile has an invalid regex for {label}: {exc}") from exc
 
 
-def _match_group(text: str, pattern: str) -> str:
-    match = re.search(pattern, text)
-    return match.group(1).strip() if match else ""
-
-
-def _sap_number(value: str) -> int | float:
-    # SAP's German reports use both dots and whitespace (including non-breaking
-    # variants emitted by PDF extractors) as thousands separators, with a comma
-    # as the decimal separator. Keep the field boundaries in the row regex, then
-    # normalize only the captured number so ``1 200,0`` becomes numeric 1200.
-    normalized = re.sub(r"[\s.\u00a0\u202f]", "", str(value).strip()).replace(",", ".")
-    number = float(normalized)
-    return int(number) if number.is_integer() else number
+def _required_pattern(parameters: dict[str, Any], key: str) -> re.Pattern[str]:
+    return _compile_pattern(parameters.get(key), key)
 
 
 def _add_numbers(left: int | float, right: int | float) -> int | float:

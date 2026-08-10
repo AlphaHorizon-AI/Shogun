@@ -223,6 +223,21 @@ def test_agentflow_node_schema_normalizes_mapping_configuration():
     assert node.config["output"]["type"] == "table"
 
 
+def test_agentflow_node_schema_preserves_explicit_transformation_profile():
+    profile = {
+        "id": "supplier_report_v1",
+        "adapter": "sectioned_record_matrix_v1",
+        "parameters": {"section_pattern": r"(?m)^Record: (?P<section_id>\S+)"},
+    }
+    node = AgentFlowNodeCreate(
+        node_type="mapping_rpa",
+        label="Map",
+        config=_config(transformation_profile=profile),
+    )
+
+    assert node.config["transformation_profile"] == profile
+
+
 @pytest.mark.anyio
 async def test_canonical_mapping_to_excel_file_end_to_end(tmp_path, monkeypatch):
     mapped = execute_mapping(

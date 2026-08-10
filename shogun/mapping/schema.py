@@ -75,6 +75,14 @@ class MappingOutputConfig(BaseModel):
         return self
 
 
+class MappingTransformationProfile(BaseModel):
+    """Explicit, flow-scoped deterministic transformation configuration."""
+
+    id: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9_.-]+$")
+    adapter: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9_.-]+$")
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
 class MappingConfig(BaseModel):
     version: int = Field(default=1, ge=1)
     name: str = Field(default="Mapping / RPA", min_length=1, max_length=255)
@@ -92,6 +100,7 @@ class MappingConfig(BaseModel):
     confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     retain_lineage: bool = True
     include_metadata: bool = False
+    transformation_profile: MappingTransformationProfile | None = None
 
     @model_validator(mode="after")
     def validate_targets(self):

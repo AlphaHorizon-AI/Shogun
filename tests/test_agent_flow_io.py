@@ -260,6 +260,60 @@ async def test_samurai_receives_template_as_fixed_context(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_samurai_receives_profile_only_from_direct_mapping_predecessor(monkeypatch):
+    captured: dict[str, object] = {}
+    profile = {
+        "id": "supplier_report_v1",
+        "adapter": "sectioned_record_matrix_v1",
+        "parameters": {"section_pattern": r"(?m)^Record: (?P<section_id>\S+)"},
+    }
+
+    async def update_state(*_args, **_kwargs):
+        return None
+
+    async def execute_samurai(config, _context, _governance, **_kwargs):
+        captured["profiles"] = config.get("_transformation_profiles")
+        return "done"
+
+    monkeypatch.setattr(flow_engine, "_update_node_state", update_state)
+    monkeypatch.setattr(flow_engine, "_exec_samurai", execute_samurai)
+    monkeypatch.setattr(flow_engine, "_finalize_node_skills", update_state)
+    monkeypatch.setattr(flow_engine, "_node_uses_active_skill_context", lambda *_args: False)
+
+    mapping_id = str(uuid.uuid4())
+    input_id = str(uuid.uuid4())
+    node = SimpleNamespace(
+        id=uuid.uuid4(),
+        flow_id=uuid.uuid4(),
+        node_type="samurai",
+        label="Transform",
+        config={"task_description": "Transform records"},
+    )
+    node_map = {
+        mapping_id: SimpleNamespace(
+            label="Mapping contract",
+            node_type="mapping_rpa",
+            config={"transformation_profile": profile},
+        ),
+        input_id: SimpleNamespace(
+            label="Input",
+            node_type="input",
+            config={"transformation_profile": {"id": "must_be_ignored"}},
+        ),
+    }
+
+    result = await flow_engine._execute_single_node(
+        uuid.uuid4(),
+        node,
+        {mapping_id: {"status": "SUCCESS"}, input_id: "source"},
+        node_map,
+    )
+
+    assert result == "done"
+    assert captured["profiles"] == [profile]
+
+
+@pytest.mark.asyncio
 async def test_samurai_instruction_file_replaces_typed_prompt(tmp_path, monkeypatch):
     upload_root = tmp_path / "uploads"
     instruction = upload_root / "agent_flows" / uuid.uuid4().hex / "instruction.md"
@@ -641,28 +695,36 @@ def test_model_context_splitting_preserves_source_units():
     assert all(chunk.count("--- Page") <= 2 for chunk in chunks)
 
 
-def test_model_context_keeps_material_continuation_pages_together():
-    first_material = (
-        "--- Page 1 ---\nSachnummer : 140000\n"
+def test_profile_context_keeps_section_continuation_pages_together():
+    first_section = (
+        "--- Page 1 ---\nRecord: 140000\n"
         + ("A" * 450)
         + "\n--- Page 2 ---\ncontinuation without a new material\n"
         + ("B" * 350)
     )
-    second_material = "\n--- Page 3 ---\nSachnummer : 140006\n" + ("C" * 700)
-    text = "[Document]\n" + first_material + second_material
+    second_section = "\n--- Page 3 ---\nRecord: 140006\n" + ("C" * 700)
+    text = "[Document]\n" + first_section + second_section
+    profile = {
+        "id": "record_sections_v1",
+        "adapter": "sectioned_record_matrix_v1",
+        "parameters": {"section_pattern": r"(?m)^Record: (?P<section_id>\S+)"},
+    }
 
-    chunks = flow_engine._split_model_context(text, 1000)
+    chunks = flow_engine._split_model_context(text, 1000, profile=profile)
 
     assert "".join(chunks) == text
-    first_chunk = next(chunk for chunk in chunks if "Sachnummer : 140000" in chunk)
+    first_chunk = next(chunk for chunk in chunks if "Record: 140000" in chunk)
     assert "continuation without a new material" in first_chunk
-    assert "Sachnummer : 140006" not in first_chunk
+    assert "Record: 140006" not in first_chunk
 
 
-def test_single_material_pages_are_one_source_unit():
+def test_default_source_units_use_generic_page_boundaries():
     text = (
-        "--- Page 1 ---\nSachnummer : 68420100\nmaster data\n"
-        "--- Page 2 ---\n1.Periode\n2.Periode\nBedarf\nBestand\nBestellt\n"
+        "--- Page 1 ---\nRecord: A1\nmaster data\n"
+        "--- Page 2 ---\ncontinuation data\n"
     )
 
-    assert flow_engine._model_source_units(text) == [text]
+    assert flow_engine._model_source_units(text) == [
+        "--- Page 1 ---\nRecord: A1\nmaster data\n",
+        "--- Page 2 ---\ncontinuation data\n",
+    ]

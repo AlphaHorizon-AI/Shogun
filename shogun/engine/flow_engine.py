@@ -41,7 +41,11 @@ from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_router import ModelRegistryEntry
 from shogun.db.models.model_routing import ModelRoutingProfile
 from shogun.services.provider_credentials import provider_api_key
-from shogun.services.structured_transformations import try_deterministic_matrix_transform
+from shogun.services.structured_transformations import (
+    deterministic_profile_source_units,
+    expected_deterministic_matrix_rows,
+    try_deterministic_matrix_transform,
+)
 from shogun.services.tool_calling_profiles import (
     infer_tool_calling_profile,
     normalize_native_tool_calls,
@@ -718,6 +722,19 @@ async def _execute_single_node(
     config = node.config or {}
     node_type = node.node_type
 
+    # Transformation profiles are capabilities of explicit upstream
+    # Mapping/RPA nodes. They are not inferred from prompts, filenames, source
+    # text, or global runtime state.
+    upstream_transformation_profiles: list[dict[str, Any]] = []
+    if node_type == "samurai":
+        for predecessor_id in predecessor_outputs:
+            predecessor = node_map.get(predecessor_id)
+            if predecessor is None or getattr(predecessor, "node_type", None) != "mapping_rpa":
+                continue
+            profile = (getattr(predecessor, "config", None) or {}).get("transformation_profile")
+            if isinstance(profile, dict):
+                upstream_transformation_profiles.append(profile)
+
     # Build context string from predecessor outputs
     context_parts: list[str] = []
     chunkable_context_parts: list[str] = []
@@ -827,6 +844,7 @@ async def _execute_single_node(
                     "_run_id": str(run_id),
                     "_input_artifacts": input_artifacts,
                     "_output_contracts": list(downstream_contracts or []),
+                    "_transformation_profiles": upstream_transformation_profiles,
                 },
                 chunkable_context_str,
                 governance_context or {},
@@ -1678,44 +1696,46 @@ async def _exec_samurai(
         )
     expected_matrix_width = int(matrix_width_match.group(1)) if matrix_width_match else None
 
-    # Prefer a deterministic adapter when the runtime source and the explicit
-    # instructions jointly prove an unambiguous transformation.  This avoids
-    # asking a model to rediscover labeled source fields (for example SAP's
-    # Endtermin versus Starttermin) and leaves every unrecognized workflow on
-    # the normal Samurai/model path.
-    if requires_matrix_output and context_str and fixed_context_str:
+    transformation_profile = _active_transformation_profile(config)
+    if transformation_profile and not requires_matrix_output:
+        raise ValueError("A Mapping/RPA transformation profile requires a matrix output contract.")
+    if transformation_profile:
+        if not context_str or not fixed_context_str:
+            raise ValueError(
+                "A Mapping/RPA transformation profile requires runtime source data and a file template."
+            )
         deterministic = try_deterministic_matrix_transform(
-            task_description=task_description,
+            profile=transformation_profile,
             source_context=context_str,
             fixed_context=fixed_context_str,
         )
-        if deterministic is not None:
-            if expected_matrix_width is not None and any(
-                len(row) != expected_matrix_width for row in deterministic.rows
-            ):
-                raise ValueError(
-                    f"Deterministic adapter {deterministic.adapter_id} returned rows outside the "
-                    f"{expected_matrix_width}-column template contract."
-                )
-            _validate_matrix_coverage(
-                deterministic.rows,
-                context_str,
-                task_description,
-                config,
-                label=f"Deterministic adapter {deterministic.adapter_id}",
+        if expected_matrix_width is not None and any(
+            len(row) != expected_matrix_width for row in deterministic.rows
+        ):
+            raise ValueError(
+                f"Transformation profile {deterministic.profile_id} returned rows outside the "
+                f"{expected_matrix_width}-column template contract."
             )
-            if progress_callback:
-                progress_total = max(1, len(context_str))
-                try:
-                    await progress_callback(progress_total, progress_total)
-                except Exception as progress_error:
-                    log.warning("Could not persist AgentFlow node progress: %s", progress_error)
-            log.info(
-                "AgentFlow Samurai used deterministic adapter %s for %d validated row(s)",
-                deterministic.adapter_id,
-                len(deterministic.rows),
-            )
-            return json.dumps(deterministic.rows, ensure_ascii=False, default=str)
+        _validate_matrix_coverage(
+            deterministic.rows,
+            context_str,
+            task_description,
+            config,
+            label=f"Transformation profile {deterministic.profile_id}",
+        )
+        if progress_callback:
+            progress_total = max(1, len(context_str))
+            try:
+                await progress_callback(progress_total, progress_total)
+            except Exception as progress_error:
+                log.warning("Could not persist AgentFlow node progress: %s", progress_error)
+        log.info(
+            "AgentFlow Samurai used transformation profile %s with adapter %s for %d validated row(s)",
+            deterministic.profile_id,
+            deterministic.adapter_id,
+            len(deterministic.rows),
+        )
+        return json.dumps(deterministic.rows, ensure_ascii=False, default=str)
 
     # Resolve agent persona
     agent_persona = "You are a Samurai agent executing a task in an automated workflow."
@@ -1872,7 +1892,7 @@ async def _exec_samurai(
     local_chunk_required = bool(
         is_local_model and context_str and len(context_str) // 4 > local_batch_limit
     )
-    structural_source_units = len(_model_source_units(context_str)) if context_str else 0
+    structural_source_units = len(_model_source_units_for_config(context_str, config)) if context_str else 0
     exhaustive_matrix_extraction = bool(
         requires_matrix_output
         and context_str
@@ -2014,6 +2034,7 @@ async def _exec_samurai(
             context_str,
             chunk_token_budget * 4,
             max_units=matrix_chunk_max_units,
+            profile=transformation_profile,
         )
         if checkpoint.get("total_chunks") not in {None, len(chunks)}:
             checkpoint["outputs"] = {}
@@ -2186,7 +2207,7 @@ async def _exec_samurai(
                         "too many tokens",
                     )
                 )
-                source_unit_count = len(_model_source_units(chunk))
+                source_unit_count = len(_model_source_units_for_config(chunk, config))
                 max_split_depth = 3 if incomplete or malformed else 2
                 recoverable = incomplete or malformed or timed_out or context_rejected
                 if not recoverable:
@@ -2201,6 +2222,7 @@ async def _exec_samurai(
                         chunk,
                         max(1000, len(chunk) // 2),
                         max_units=max(1, source_unit_count // 2) if source_unit_count > 1 else None,
+                        profile=transformation_profile,
                     )
                     if len(subchunks) >= 2:
                         log.warning(
@@ -2461,21 +2483,34 @@ async def _resolve_samurai_task_description(config: dict[str, Any]) -> str:
     return content
 
 
+def _active_transformation_profile(config: dict[str, Any]) -> dict[str, Any] | None:
+    raw_profiles = config.get("_transformation_profiles") or []
+    if isinstance(raw_profiles, dict):
+        raw_profiles = [raw_profiles]
+    profiles = [profile for profile in raw_profiles if isinstance(profile, dict)]
+    if len(profiles) > 1:
+        profile_ids = ", ".join(str(profile.get("id") or "unnamed") for profile in profiles)
+        raise ValueError(
+            "Samurai received multiple Mapping/RPA transformation profiles "
+            f"({profile_ids}). Connect exactly one profiled Mapping/RPA predecessor."
+        )
+    return profiles[0] if profiles else None
+
+
 def _model_source_units(text: str) -> list[str]:
     """Return stable document units suitable for bounded extraction and coverage checks."""
     if not text:
         return []
-    material_starts = [match.start() for match in re.finditer(r"(?m)^\s*Sachnummer\s*:\s*", text)]
-    if material_starts:
-        units: list[str] = []
-        for index, start in enumerate(material_starts):
-            unit_start = 0 if index == 0 else start
-            unit_end = material_starts[index + 1] if index + 1 < len(material_starts) else len(text)
-            units.append(text[unit_start:unit_end])
-        return units
     marker = re.compile(r"(?m)(?=^--- (?:Page \d+|Excel row \d+|Slide \d+) ---\s*$)")
     marked_units = [unit for unit in marker.split(text) if unit]
     return marked_units if len(marked_units) > 1 else [text]
+
+
+def _model_source_units_for_config(text: str, config: dict[str, Any]) -> list[str]:
+    profile = _active_transformation_profile(config)
+    if profile:
+        return deterministic_profile_source_units(profile, text)
+    return _model_source_units(text)
 
 
 def _exhaustive_matrix_task(task_description: str) -> bool:
@@ -2499,7 +2534,7 @@ def _minimum_matrix_rows_for_source(
     config: dict[str, Any],
 ) -> tuple[int, int, str]:
     """Return a conservative minimum row count and its source evidence."""
-    units = len(_model_source_units(source_context))
+    units = len(_model_source_units_for_config(source_context, config))
     explicit = config.get("minimum_matrix_rows")
     if explicit not in (None, ""):
         return max(0, int(explicit)), units, "source unit(s)"
@@ -2508,15 +2543,19 @@ def _minimum_matrix_rows_for_source(
     if not source_context.strip():
         return 0, units, "source unit(s)"
 
-    sap_expected_rows = _expected_sap_output_rows(source_context, task_description)
-    if sap_expected_rows is not None:
+    transformation_profile = _active_transformation_profile(config)
+    if transformation_profile is not None:
+        expected_rows = expected_deterministic_matrix_rows(
+            transformation_profile,
+            source_context,
+        )
         try:
             ratio = float(config.get("minimum_source_coverage_ratio", 1.0))
         except (TypeError, ValueError):
             ratio = 1.0
         ratio = max(0.05, min(ratio, 1.0))
-        minimum = int((sap_expected_rows * ratio) + 0.999999)
-        return minimum, sap_expected_rows, "semantically required row(s)"
+        minimum = int((expected_rows * ratio) + 0.999999)
+        return minimum, expected_rows, "profile-required row(s)"
 
     if units <= 1:
         return 1, units, "source unit(s)"
@@ -2526,63 +2565,6 @@ def _minimum_matrix_rows_for_source(
         ratio = 0.25
     ratio = max(0.05, min(ratio, 1.0))
     return max(1, int((units * ratio) + 0.999999)), units, "source unit(s)"
-
-
-def _expected_sap_output_rows(source_context: str, task_description: str) -> int | None:
-    """Infer the minimum rows promised by the explicit SAP planning contract.
-
-    This is deliberately activated by both the source markers and instructions;
-    it is not a general PDF heuristic. The contract produces one stock row when
-    stock is positive, one row per ``Sa = 06`` production order, and one
-    aggregated planning row per article that has ``Sa = 01`` demand.
-    """
-    task = str(task_description or "")
-    if not (
-        re.search(r"Sa\s*=\s*06", task, re.IGNORECASE)
-        and re.search(r"Sa\s*=\s*01", task, re.IGNORECASE)
-        and re.search(r"stock row|Bestand", task, re.IGNORECASE)
-    ):
-        return None
-    if not re.search(r"(?m)^\s*(?:Sachnummer\s*:|(?:01|06)\s+\S+)", source_context):
-        return None
-
-    material_starts = [
-        match.start()
-        for match in re.finditer(r"(?m)^\s*Sachnummer\s*:\s*", source_context)
-    ]
-    if material_starts:
-        sections: list[str] = []
-        for index, start in enumerate(material_starts):
-            end = (
-                material_starts[index + 1]
-                if index + 1 < len(material_starts)
-                else len(source_context)
-            )
-            sections.append(source_context[start:end])
-    else:
-        sections = [source_context]
-
-    stock_articles: set[str] = set()
-    production_order_occurrences = 0
-    demand_articles: set[str] = set()
-    for section in sections:
-        material_match = re.search(r"(?m)^\s*Sachnummer\s*:\s*(\S+)", section)
-        material = material_match.group(1) if material_match else ""
-        stock_match = re.search(r"(?m)^\s*Bestand\s*:\s*([\d.,-]+)", section)
-        if stock_match:
-            normalized_stock = stock_match.group(1).replace(".", "").replace(",", ".")
-            try:
-                if float(normalized_stock) > 0:
-                    stock_articles.add(material or f"section-{len(stock_articles)}")
-            except ValueError:
-                pass
-        production_order_occurrences += sum(
-            1
-            for article, _order in re.findall(r"(?m)^\s*06\s+(\S+)\s+(\S+)", section)
-            if not material or article == material
-        )
-        demand_articles.update(re.findall(r"(?m)^\s*01\s+(\S+)\s+\S+", section))
-    return len(stock_articles) + production_order_occurrences + len(demand_articles)
 
 
 def _merge_matrix_attempt_rows(
@@ -2635,11 +2617,20 @@ def _validate_matrix_coverage(
     )
 
 
-def _split_model_context(text: str, max_chars: int, max_units: int | None = None) -> list[str]:
+def _split_model_context(
+    text: str,
+    max_chars: int,
+    max_units: int | None = None,
+    profile: dict[str, Any] | None = None,
+) -> list[str]:
     """Split long context at source boundaries without dropping or duplicating text."""
     limit = max(1000, int(max_chars))
     unit_limit = max(1, int(max_units)) if max_units not in (None, 0) else None
-    source_units = _model_source_units(text)
+    source_units = (
+        deterministic_profile_source_units(profile, text)
+        if profile
+        else _model_source_units(text)
+    )
     if len(text) <= limit and (unit_limit is None or len(source_units) <= unit_limit):
         return [text]
     if len(source_units) > 1:
@@ -2653,7 +2644,7 @@ def _split_model_context(text: str, max_chars: int, max_units: int | None = None
                     current_units = []
                     current_length = 0
                 if unit != text:
-                    chunks.extend(_split_model_context(unit, limit, unit_limit))
+                    chunks.extend(_split_model_context(unit, limit, unit_limit, profile=profile))
                 else:
                     chunks.extend(unit[index:index + limit] for index in range(0, len(unit), limit))
                 continue
