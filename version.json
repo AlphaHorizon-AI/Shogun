@@ -1,8 +1,8 @@
 {
-  "version": "1.47.74",
+  "version": "1.47.75",
   "name": "Shogun OS",
-  "build": 225,
+  "build": 226,
   "channel": "stable",
-  "released": "2026-08-09T14:46:44Z",
-  "changelog": "Add deterministic Mapping / RPA nodes, typed Excel handoff, reusable mapping templates, and consolidated AgentFlow / Flow Stack terminology."
+  "released": "2026-08-10T07:13:52Z",
+  "changelog": "Fix authenticated agent avatar rendering and improve Flow Stack template positioning with top-aligned canvas centering."
 }

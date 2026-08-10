@@ -3,14 +3,14 @@ import type { DragEvent, ErrorInfo, ReactNode } from 'react';
 import axios from 'axios';
 import {
   ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Controls, MiniMap,
-  addEdge, reconnectEdge, useEdgesState, useNodesState, useReactFlow, Handle, Position,
+  addEdge, reconnectEdge, useEdgesState, useNodesState, useNodesInitialized, useReactFlow, Handle, Position,
 } from '@xyflow/react';
 import type { Connection, Edge, Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
   Layers3, Search, Save, BookmarkPlus, Play, RefreshCw, Boxes, Route,
   ShieldCheck, Sparkles, Trash2, CircleStop, Pause, RotateCcw, Loader2, X, Eye,
-  ChevronDown, ChevronUp, Info, Power,
+  ChevronDown, ChevronUp, Info, Power, LocateFixed,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { AgentFlowCanvas } from './AgentFlow';
@@ -208,10 +208,28 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
   const [editorFlow, setEditorFlow] = useState<AgentFlowData | null>(null);
   const [openingFlowId, setOpeningFlowId] = useState<string | null>(null);
   const openingFlowRef = useRef(false);
+  const autoCenteredSeedRef = useRef<CatalogTemplate | null>(null);
   const [agents, setAgents] = useState<any[]>([]);
   const [routingProfiles, setRoutingProfiles] = useState<any[]>([]);
   const [availableFlows, setAvailableFlows] = useState<FlowListItem[]>([]);
   const reactFlow = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
+
+  const centerStack = useCallback(() => {
+    if (!nodes.length) {
+      setNotice('Add an AgentFlow template before centering the canvas.');
+      return;
+    }
+    const bounds = reactFlow.getNodesBounds(nodes);
+    void (async () => {
+      await reactFlow.fitView({ padding: 0.2, duration: 0, maxZoom: 1.15 });
+      const viewport = reactFlow.getViewport();
+      await reactFlow.setViewport({
+        ...viewport,
+        y: 72 - bounds.y * viewport.zoom,
+      }, { duration: 450 });
+    })();
+  }, [nodes, reactFlow]);
 
   useEffect(() => {
     Promise.all([
@@ -306,8 +324,16 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
       setOutputPublication(seed.orchestrator_config.output_publication || 'summary_and_final');
     }
     setNotice(`Opened “${seed.name}” in the Stack Builder. Click any AgentFlow block to inspect its internal nodes.`);
-    window.setTimeout(() => reactFlow.fitView({ padding: 0.15 }), 0);
-  }, [seed, templates, reactFlow, setEdges, setNodes]);
+  }, [seed, templates, setEdges, setNodes]);
+
+  useEffect(() => {
+    if (!seed || !nodes.length || !nodesInitialized || autoCenteredSeedRef.current === seed) return;
+    const frame = window.requestAnimationFrame(() => {
+      centerStack();
+      autoCenteredSeedRef.current = seed;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [centerStack, nodes.length, nodesInitialized, seed]);
 
   const categories = useMemo(() => ['All', ...Array.from(new Set(templates.map((item) => item.category))).sort()], [templates]);
   const visible = useMemo(() => templates.filter((item) =>
@@ -464,6 +490,14 @@ function FlowStackBuilder({ seed }: { seed: CatalogTemplate | null }) {
           <div className="px-3 py-2 rounded bg-[#0e1225]/95 border border-shogun-border text-[10px] text-shogun-subdued">
             Drag to reorder · connect handles · click a card to edit
           </div>
+          <button
+            type="button"
+            onClick={centerStack}
+            title="Fit the complete Flow Stack and move it to the top of the canvas"
+            className="flex items-center gap-1.5 rounded border border-shogun-blue/40 bg-[#0e1225]/95 px-3 py-2 text-[10px] font-bold text-shogun-blue shadow-lg hover:border-shogun-blue hover:bg-shogun-blue/10"
+          >
+            <LocateFixed className="h-3.5 w-3.5" /> CENTER FLOW
+          </button>
           {(selectedNodeIds.length > 0 || selectedEdgeIds.length > 0) && <button onClick={deleteSelected} className="flex items-center gap-1.5 rounded border border-red-500/30 bg-[#180b14]/95 px-3 py-2 text-[10px] font-bold text-red-300 hover:bg-red-500/15"><Trash2 className="h-3 w-3" />DELETE SELECTED ({selectedNodeIds.length + selectedEdgeIds.length})</button>}
         </div>
         <StackActionsContext.Provider value={stackActions}>

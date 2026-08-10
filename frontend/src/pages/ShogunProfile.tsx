@@ -23,6 +23,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import axios from 'axios';
+import { AuthenticatedImage } from '../components/AuthenticatedImage';
 import { useLocation } from 'react-router-dom';
 import { useNavigate } from '../lib/routerCompat';
 import { cn } from '../lib/utils';
@@ -636,7 +637,12 @@ export const ShogunProfile = () => {
             className="w-20 h-20 bg-shogun-card rounded-2xl border border-shogun-gold/30 flex items-center justify-center shadow-shogun relative cursor-pointer group hover:border-shogun-gold/60 transition-all overflow-hidden"
           >
             {shogunData.avatar_url ? (
-              <img src={shogunData.avatar_url} alt="Shogun Avatar" className="w-full h-full object-cover" />
+              <AuthenticatedImage
+                src={shogunData.avatar_url}
+                fallbackSrc="/assets/shogun-default-avatar.jpg"
+                alt="Shogun Avatar"
+                className="w-full h-full object-cover"
+              />
             ) : (
               <img src="/assets/shogun-default-avatar.jpg" alt="Shogun Avatar" className="w-full h-full object-cover" />
             )}

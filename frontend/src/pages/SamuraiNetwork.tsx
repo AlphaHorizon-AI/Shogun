@@ -20,6 +20,7 @@ import {
   Layers3,
 } from 'lucide-react';
 import axios from 'axios';
+import { AuthenticatedImage } from '../components/AuthenticatedImage';
 import { cn } from '../lib/utils';
 import { resolveAgentRoutingProfile, routingProfileLabel } from '../lib/routingProfiles';
 import { useTranslation } from '../i18n';
@@ -446,7 +447,7 @@ export const SamuraiNetwork = () => {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-shogun-card border border-shogun-border flex items-center justify-center text-shogun-gold font-bold relative overflow-hidden">
                           {agent.avatar_url && agent.avatar_url !== '/shogun-avatar.png' ? (
-                            <img src={agent.avatar_url} alt={agent.name} className="w-full h-full object-cover" />
+                            <AuthenticatedImage src={agent.avatar_url} fallbackSrc="/shogun-avatar.png" alt={agent.name} className="w-full h-full object-cover" />
                           ) : (
                             agent.name[0]
                           )}
@@ -580,7 +581,7 @@ export const SamuraiNetwork = () => {
                   className="w-14 h-14 rounded-xl bg-[#050508] border border-shogun-border flex items-center justify-center text-shogun-gold font-bold text-lg relative cursor-pointer group hover:border-shogun-gold/50 transition-all overflow-hidden shrink-0"
                 >
                   {editAgent.avatar_url && editAgent.avatar_url !== '/shogun-avatar.png' ? (
-                    <img src={editAgent.avatar_url} alt={editAgent.name} className="w-full h-full object-cover" />
+                    <AuthenticatedImage src={editAgent.avatar_url} fallbackSrc="/shogun-avatar.png" alt={editAgent.name} className="w-full h-full object-cover" />
                   ) : (
                     editAgent.name[0]
                   )}

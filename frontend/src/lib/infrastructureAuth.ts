@@ -38,7 +38,11 @@ export function installInfrastructureFetchGuard(): void {
     const target = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(target, window.location.origin);
     const token = getInfrastructureAdminToken();
-    if (token && url.origin === window.location.origin && url.pathname.startsWith('/api/v1/')) {
+    const protectedPath = url.pathname.startsWith('/api/v1/')
+      || url.pathname.startsWith('/uploads/')
+      || url.pathname.startsWith('/mado/screenshots/')
+      || url.pathname.startsWith('/ronin/screenshots/');
+    if (token && url.origin === window.location.origin && protectedPath) {
       const headers = new Headers(input instanceof Request ? input.headers : undefined);
       new Headers(init.headers).forEach((value, key) => headers.set(key, value));
       headers.set('X-Shogun-Infrastructure-Token', token);
@@ -49,7 +53,11 @@ export function installInfrastructureFetchGuard(): void {
   axios.interceptors.request.use(config => {
     const token = getInfrastructureAdminToken();
     const url = typeof config.url === 'string' ? new URL(config.url, window.location.origin) : null;
-    if (token && url?.origin === window.location.origin && url.pathname.startsWith('/api/v1/')) {
+    const protectedPath = url?.pathname.startsWith('/api/v1/')
+      || url?.pathname.startsWith('/uploads/')
+      || url?.pathname.startsWith('/mado/screenshots/')
+      || url?.pathname.startsWith('/ronin/screenshots/');
+    if (token && url?.origin === window.location.origin && protectedPath) {
       config.headers.set('X-Shogun-Infrastructure-Token', token);
     }
     return config;
