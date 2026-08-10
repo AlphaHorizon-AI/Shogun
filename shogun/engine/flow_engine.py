@@ -2466,7 +2466,7 @@ def _model_source_units(text: str) -> list[str]:
     if not text:
         return []
     material_starts = [match.start() for match in re.finditer(r"(?m)^\s*Sachnummer\s*:\s*", text)]
-    if len(material_starts) > 1:
+    if material_starts:
         units: list[str] = []
         for index, start in enumerate(material_starts):
             unit_start = 0 if index == 0 else start
@@ -2563,7 +2563,7 @@ def _expected_sap_output_rows(source_context: str, task_description: str) -> int
         sections = [source_context]
 
     stock_articles: set[str] = set()
-    production_orders: set[tuple[str, str]] = set()
+    production_order_occurrences = 0
     demand_articles: set[str] = set()
     for section in sections:
         material_match = re.search(r"(?m)^\s*Sachnummer\s*:\s*(\S+)", section)
@@ -2576,12 +2576,13 @@ def _expected_sap_output_rows(source_context: str, task_description: str) -> int
                     stock_articles.add(material or f"section-{len(stock_articles)}")
             except ValueError:
                 pass
-        production_orders.update(
-            (article, order.lstrip("0") or "0")
-            for article, order in re.findall(r"(?m)^\s*06\s+(\S+)\s+(\S+)", section)
+        production_order_occurrences += sum(
+            1
+            for article, _order in re.findall(r"(?m)^\s*06\s+(\S+)\s+(\S+)", section)
+            if not material or article == material
         )
         demand_articles.update(re.findall(r"(?m)^\s*01\s+(\S+)\s+\S+", section))
-    return len(stock_articles) + len(production_orders) + len(demand_articles)
+    return len(stock_articles) + production_order_occurrences + len(demand_articles)
 
 
 def _merge_matrix_attempt_rows(
@@ -2723,9 +2724,10 @@ def _merge_structured_chunk_matrices(
                 )
         rows.extend(parsed)
 
-    deduplicate = bool(config.get("deduplicate_rows")) or bool(
-        re.search(r"(?:do not create|remove|without) duplicate", task_description, re.IGNORECASE)
-    )
+    # Exact-looking source rows can be legitimate repeated occurrences. Only
+    # an explicit node configuration may collapse them; prose such as "do not
+    # create duplicates" is too ambiguous to prove parser overlap.
+    deduplicate = bool(config.get("deduplicate_rows"))
     if deduplicate:
         unique_rows: list[list[Any]] = []
         seen: set[str] = set()

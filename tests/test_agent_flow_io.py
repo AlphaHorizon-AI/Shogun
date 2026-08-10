@@ -554,11 +554,24 @@ def test_structured_chunk_matrices_are_validated_and_deduplicated():
         ['[["A", 1, ""]]', '[["A", 1, ""], ["B", 2, ""]]'],
         "Return only one valid two-dimensional array. Do not create duplicate rows.",
         '[MACHINE-READABLE TEMPLATE MANIFEST]\n{"logical_columns": 3}',
-        {},
+        {"deduplicate_rows": True},
     )
 
     assert merged is not None
     assert __import__("json").loads(merged) == [["A", 1, ""], ["B", 2, ""]]
+
+
+def test_structured_chunk_matrices_preserve_identical_source_occurrences_by_default():
+    merged = flow_engine._merge_structured_chunk_matrices(
+        ['[["A", 100], ["A", 100]]'],
+        "Return valid rows and do not create parser-overlap duplicates.",
+        '[MACHINE-READABLE TEMPLATE MANIFEST]\n{"logical_columns": 2}',
+        {},
+        force_matrix_output=True,
+    )
+
+    assert merged is not None
+    assert __import__("json").loads(merged) == [["A", 100], ["A", 100]]
 
 
 def test_structured_chunk_matrix_rejects_markdown_summary():
@@ -644,3 +657,12 @@ def test_model_context_keeps_material_continuation_pages_together():
     first_chunk = next(chunk for chunk in chunks if "Sachnummer : 140000" in chunk)
     assert "continuation without a new material" in first_chunk
     assert "Sachnummer : 140006" not in first_chunk
+
+
+def test_single_material_pages_are_one_source_unit():
+    text = (
+        "--- Page 1 ---\nSachnummer : 68420100\nmaster data\n"
+        "--- Page 2 ---\n1.Periode\n2.Periode\nBedarf\nBestand\nBestellt\n"
+    )
+
+    assert flow_engine._model_source_units(text) == [text]

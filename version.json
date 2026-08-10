@@ -1,8 +1,8 @@
 {
-  "version": "1.47.75",
+  "version": "1.47.76",
   "name": "Shogun OS",
-  "build": 226,
+  "build": 227,
   "channel": "stable",
-  "released": "2026-08-10T07:13:52Z",
-  "changelog": "Fix authenticated agent avatar rendering and improve Flow Stack template positioning with top-aligned canvas centering."
+  "released": "2026-08-10T10:28:05Z",
+  "changelog": "Complete SAP PDF-to-Excel demand mapping with Rückstand and future buckets while preserving source occurrences."
 }

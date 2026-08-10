@@ -20,15 +20,27 @@ class DeterministicMatrixResult:
 
 
 @dataclass(slots=True)
+class _SapOrder:
+    kind: str
+    article: str
+    reference: str
+    end_week: str
+    end_month: str
+    start_week: str
+    start_month: str
+    planned: int | float
+    remaining: int | float
+    date: str
+
+
+@dataclass(slots=True)
 class _SapMaterial:
     article: str
     description: str = ""
     rohling: str = ""
     rohteil: str = ""
     stock: int | float = 0
-    production_orders: dict[str, int | float] = field(default_factory=dict)
-    demand_by_month: dict[str, int | float] = field(default_factory=dict)
-    demand_references: set[str] = field(default_factory=set)
+    orders: list[_SapOrder] = field(default_factory=list)
 
 
 _SAP_NUMBER_PATTERN = r"[+-]?(?:\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d+)(?:,\d+)?"
@@ -57,6 +69,43 @@ _SAP_AUXILIARY_BOM_TERMS = (
     "teleskop",
     "verpack",
 )
+_SAP_MONTH_NAMES = {
+    "jan": 1,
+    "january": 1,
+    "januar": 1,
+    "feb": 2,
+    "february": 2,
+    "februar": 2,
+    "mar": 3,
+    "march": 3,
+    "marz": 3,
+    "märz": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "mai": 5,
+    "jun": 6,
+    "june": 6,
+    "juni": 6,
+    "jul": 7,
+    "july": 7,
+    "juli": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "okt": 10,
+    "oktober": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+    "dez": 12,
+    "dezember": 12,
+}
 
 
 def try_deterministic_matrix_transform(
@@ -93,20 +142,48 @@ def try_deterministic_matrix_transform(
             row[5] = material.stock
             rows.append(row)
 
-        for order, quantity in material.production_orders.items():
+        # Every parsed Sa=06 line is a source occurrence. Identical order
+        # lines are intentionally preserved because SAP may list the same
+        # visible order more than once and each occurrence contributes to the
+        # ordered quantity.
+        for order in material.orders:
+            if order.kind != "06":
+                continue
             row = list(base)
-            row[4] = order
-            row[5] = quantity
+            row[4] = order.reference
+            row[5] = order.planned
             rows.append(row)
 
-        # Keep one planning row for every material with Sa=01 records.  Values
-        # outside the template horizon remain excluded rather than shifted.
-        if material.demand_references:
+        # Bedarf is deterministic: sum every Sa=01 Rest-Menge occurrence by
+        # Endtermin Jahr/MO. Starttermin must never select the Bedarf column.
+        demand_orders = [order for order in material.orders if order.kind == "01"]
+        if demand_orders:
+            demand_by_month: dict[str, int | float] = {}
+            source_total: int | float = 0
+            for order in demand_orders:
+                demand_by_month[order.end_month] = _add_numbers(
+                    demand_by_month.get(order.end_month, 0),
+                    order.remaining,
+                )
+                source_total = _add_numbers(source_total, order.remaining)
             row = list(base)
-            for month, quantity in material.demand_by_month.items():
-                column = month_columns.get(month)
-                if column is not None:
-                    row[column] = quantity
+            mapped_total: int | float = 0
+            unmapped_months: list[str] = []
+            for month, quantity in demand_by_month.items():
+                column = _planning_column_for_month(month_columns, month)
+                if column is None:
+                    unmapped_months.append(month)
+                    continue
+                current = row[column] if isinstance(row[column], (int, float)) else 0
+                row[column] = _add_numbers(current, quantity)
+                mapped_total = _add_numbers(mapped_total, quantity)
+            if unmapped_months or not _numbers_equal(source_total, mapped_total):
+                missing = ", ".join(sorted(unmapped_months)) or "unknown"
+                raise ValueError(
+                    "SAP demand accounting failed for material "
+                    f"{material.article}: Endtermin month(s) {missing} have no Excel planning bucket "
+                    f"(source Rest-Menge {source_total}, mapped {mapped_total})."
+                )
             rows.append(row)
 
     if not rows or any(len(row) != logical_width for row in rows):
@@ -119,7 +196,11 @@ def _is_sap_planning_contract(task_description: str, source_context: str) -> boo
     required_rules = (
         re.search(r"Sa\s*=\s*06", task, re.IGNORECASE),
         re.search(r"Sa\s*=\s*01", task, re.IGNORECASE),
-        re.search(r"Starttermin\s+Jahr/Mo", task, re.IGNORECASE),
+        # Accept old saved flow instructions mentioning Starttermin so the
+        # deterministic correction applies without requiring every flow to be
+        # edited. The adapter itself always follows the canonical Endtermin
+        # rule below.
+        re.search(r"(?:Endtermin|Starttermin)\s+Jahr/Mo", task, re.IGNORECASE),
         re.search(r"Soll-Menge", task, re.IGNORECASE),
         re.search(r"Rest-Menge", task, re.IGNORECASE),
     )
@@ -168,18 +249,74 @@ def _planning_month_columns(headers: list[Any]) -> dict[str, int]:
     for index, header in enumerate(headers):
         if index < 10 or header in (None, ""):
             continue
-        match = re.search(r"(?<!\d)(\d{4})[-/](\d{2})(?:[-/]\d{2})?", str(header))
-        if match:
-            columns[f"{match.group(1)}/{match.group(2)}"] = index
+        header_text = str(header)
+        backlog_label = re.sub(r"\s+", " ", header_text).strip().casefold()
+        if backlog_label in {"rückstand", "ruckstand", "rueckstand", "backlog", "overdue"}:
+            columns["backlog"] = index
+            continue
+        month = _planning_header_month(header_text)
+        if month is None:
+            continue
+        future_bucket = bool(
+            re.search(r"(?:>=|≥|\bab\b|\bfrom\b|future|sp[aä]ter)", header_text, re.IGNORECASE)
+            or re.search(r"\+\s*$", header_text)
+        )
+        columns[f">={month}" if future_bucket else month] = index
     return columns
+
+
+def _planning_column_for_month(columns: dict[str, int], month: str) -> int | None:
+    exact = columns.get(month)
+    if exact is not None:
+        return exact
+    month_key = _month_key(month)
+    if month_key is None:
+        return None
+    eligible_future_buckets = sorted(
+        (_month_key(threshold[2:]), column)
+        for threshold, column in columns.items()
+        if threshold.startswith(">=")
+        and _month_key(threshold[2:]) is not None
+        and month_key >= _month_key(threshold[2:])
+    )
+    if eligible_future_buckets:
+        return eligible_future_buckets[-1][1]
+    exact_months = sorted(
+        key
+        for key in (_month_key(candidate) for candidate in columns)
+        if key is not None
+    )
+    if exact_months and month_key < exact_months[0]:
+        return columns.get("backlog")
+    return None
+
+
+def _planning_header_month(header_text: str) -> str | None:
+    numeric = re.search(r"(?<!\d)(\d{4})[-/](\d{2})(?:[-/]\d{2})?", header_text)
+    if numeric:
+        month = f"{numeric.group(1)}/{numeric.group(2)}"
+        return month if _month_key(month) is not None else None
+    named = re.search(r"(?i)\b([a-zä]+)\.?\s+(\d{4})\b", header_text)
+    if not named:
+        return None
+    month_number = _SAP_MONTH_NAMES.get(named.group(1).casefold())
+    if month_number is None:
+        return None
+    return f"{named.group(2)}/{month_number:02d}"
+
+
+def _month_key(month: str) -> tuple[int, int] | None:
+    match = re.fullmatch(r"(\d{4})/(\d{2})", str(month or "").strip())
+    if not match:
+        return None
+    year, number = int(match.group(1)), int(match.group(2))
+    return (year, number) if 1 <= number <= 12 else None
 
 
 def _parse_sap_materials(source_context: str) -> dict[str, _SapMaterial]:
     text = str(source_context or "")
     starts = list(_SAP_MATERIAL_RE.finditer(text))
     materials: dict[str, _SapMaterial] = {}
-    seen_production: set[tuple[str, str]] = set()
-    seen_demand: set[tuple[str, str]] = set()
     for index, match in enumerate(starts):
         article = match.group(1).strip()
         end = starts[index + 1].start() if index + 1 < len(starts) else len(text)
@@ -206,25 +343,20 @@ def _parse_sap_materials(source_context: str) -> dict[str, _SapMaterial]:
             row_article = order_match.group("article").strip()
             if row_article != article:
                 continue
-            reference = order_match.group("reference").lstrip("0") or "0"
-            if order_match.group("kind") == "06":
-                key = (article, reference)
-                if key not in seen_production:
-                    material.production_orders[reference] = _sap_number(order_match.group("planned"))
-                    seen_production.add(key)
-                continue
-
-            key = (article, reference)
-            if key in seen_demand:
-                continue
-            month = order_match.group("start_month")
-            quantity = _sap_number(order_match.group("remaining"))
-            material.demand_by_month[month] = _add_numbers(
-                material.demand_by_month.get(month, 0),
-                quantity,
+            material.orders.append(
+                _SapOrder(
+                    kind=order_match.group("kind"),
+                    article=row_article,
+                    reference=order_match.group("reference").lstrip("0") or "0",
+                    end_week=order_match.group("end_week"),
+                    end_month=order_match.group("end_month"),
+                    start_week=order_match.group("start_week"),
+                    start_month=order_match.group("start_month"),
+                    planned=_sap_number(order_match.group("planned")),
+                    remaining=_sap_number(order_match.group("remaining")),
+                    date=order_match.group("date"),
+                )
             )
-            material.demand_references.add(reference)
-            seen_demand.add(key)
     return materials
 
 
@@ -270,6 +402,10 @@ def _sap_number(value: str) -> int | float:
 def _add_numbers(left: int | float, right: int | float) -> int | float:
     total = float(left) + float(right)
     return int(total) if total.is_integer() else total
+
+
+def _numbers_equal(left: int | float, right: int | float) -> bool:
+    return abs(float(left) - float(right)) <= 1e-9
 
 
 def _canonical_header(value: Any) -> str:
