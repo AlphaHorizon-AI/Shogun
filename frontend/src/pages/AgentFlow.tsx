@@ -2164,9 +2164,15 @@ function NodeInspector({
               >
                 <option value="stop">Stop workflow</option>
                 <option value="retry">Retry</option>
+                <option value="continue">Continue and pass error</option>
                 <option value="skip">Skip and continue</option>
                 <option value="escalate">Escalate to Shogun</option>
               </select>
+              {config.failure_action === 'continue' && (
+                <p className="text-[8px] leading-relaxed text-[#7a8899]">
+                  Keeps the workflow running and sends this node&apos;s error to downstream nodes as context.
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -3387,6 +3393,24 @@ Content-Type: application/json
                 />
               </div>
             )}
+
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">On Failure</label>
+              <select
+                value={config.failure_action || 'stop'}
+                onChange={(e) => updateConfig('failure_action', e.target.value)}
+                className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#06b6d4] transition-colors outline-none cursor-pointer"
+              >
+                <option value="stop">Stop workflow</option>
+                <option value="continue">Continue and pass error</option>
+                <option value="skip">Skip downstream branch</option>
+              </select>
+              {config.failure_action === 'continue' && (
+                <p className="text-[8px] leading-relaxed text-[#7a8899]">
+                  Keeps the workflow running and sends the exact browser error to connected nodes, including Samurai, as context.
+                </p>
+              )}
+            </div>
 
             <div className="p-2.5 bg-[#06b6d4]/5 border border-[#06b6d4]/20 rounded-lg">
               <p className="text-[8px] text-[#06b6d4]/80">

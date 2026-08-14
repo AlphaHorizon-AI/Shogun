@@ -1,8 +1,8 @@
 {
-  "version": "1.47.77",
+  "version": "1.47.78",
   "name": "Shogun OS",
-  "build": 228,
+  "build": 229,
   "channel": "stable",
-  "released": "2026-08-10T11:38:54Z",
-  "changelog": "Scope deterministic document transformations to explicit Mapping/RPA profiles and keep the core workflow engine source-agnostic."
+  "released": "2026-08-14T06:36:14Z",
+  "changelog": "Allow AgentFlow browser nodes to continue after source failures and pass the exact error to downstream Samurai nodes."
 }
