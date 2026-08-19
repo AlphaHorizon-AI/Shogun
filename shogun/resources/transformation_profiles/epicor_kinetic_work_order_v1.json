@@ -1,0 +1,152 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "epicor_kinetic_work_order_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Epicor Kinetic maintenance request",
+  "description": "Normalize Epicor Kinetic maintenance request records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Epicor",
+    "product": "Kinetic",
+    "family": "enterprise_asset_management"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "REST v2; service schema pinned at activation",
+    "object": "Erp.BO.MaintSvc/MaintReqs",
+    "record_shape": "collection",
+    "pagination": "server paging",
+    "company_scope": "Company",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "maintenance_work_order",
+    "version": 1,
+    "record_kind": "maintenance_work_order"
+  },
+  "identity": {
+    "source_key": [
+      "Company",
+      "MaintReqNum"
+    ],
+    "canonical_key": [
+      "company_code",
+      "work_order_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "Company",
+      "target": "company_code",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "MaintReqNum",
+      "target": "work_order_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "EquipmentID",
+      "target": "asset_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Description",
+      "target": "description",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Status",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Priority",
+      "target": "priority",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "RequestDate",
+      "target": "created_at",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "RequiredDate",
+      "target": "required_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "Requestor",
+      "target": "requester_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Plant",
+      "target": "site_id",
+      "type": "string",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "company_code",
+        "work_order_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "requester_id"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:Erp.BO.MaintSvc/MaintReqs",
+      "transport:rest",
+      "field:Company"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

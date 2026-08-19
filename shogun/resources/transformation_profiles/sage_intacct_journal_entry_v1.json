@@ -1,0 +1,159 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "sage_intacct_journal_entry_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Sage Intacct general ledger journal lines",
+  "description": "Normalize Sage Intacct general ledger journal lines records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Sage",
+    "product": "Intacct",
+    "family": "accounting"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "REST v1; object schema pinned at activation",
+    "object": "general-ledger/journal-entries",
+    "record_shape": "header_with_lines",
+    "pagination": "links.next",
+    "related_objects": [
+      "lines"
+    ],
+    "record_path": "result"
+  },
+  "canonical_contract": {
+    "id": "general_journal_entry",
+    "version": 1,
+    "record_kind": "general_journal_entry"
+  },
+  "identity": {
+    "source_key": [
+      "key",
+      "lines.key"
+    ],
+    "canonical_key": [
+      "journal_id",
+      "line_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "key",
+      "target": "journal_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "journalSymbol",
+      "target": "journal_symbol",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "postingDate",
+      "target": "posting_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "description",
+      "target": "description",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "lines.key",
+      "target": "line_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "lines.glAccount.id",
+      "target": "account_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "lines.transactionDebit",
+      "target": "debit_amount",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "lines.transactionCredit",
+      "target": "credit_amount",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "lines.memo",
+      "target": "line_description",
+      "type": "string",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "journal_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "journal_balances",
+      "rule": "debits_equal_credits",
+      "fields": [
+        "debit_amount",
+        "credit_amount"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "description",
+      "line_description"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "nested_collection_flattening",
+      "business_rule:debits_equal_credits"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:general-ledger/journal-entries",
+      "transport:rest",
+      "field:key"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

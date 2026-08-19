@@ -1,0 +1,142 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "sage_intacct_bank_transaction_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Sage Intacct bank transaction",
+  "description": "Normalize Sage Intacct bank transaction records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Sage",
+    "product": "Intacct",
+    "family": "accounting"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "REST v1; object schema pinned at activation",
+    "object": "cash-management/bank-transactions",
+    "record_shape": "collection",
+    "pagination": "links.next",
+    "record_path": "result"
+  },
+  "canonical_contract": {
+    "id": "bank_transaction",
+    "version": 1,
+    "record_kind": "bank_transaction"
+  },
+  "identity": {
+    "source_key": [
+      "key"
+    ],
+    "canonical_key": [
+      "transaction_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "key",
+      "target": "transaction_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "documentNumber",
+      "target": "transaction_number",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "bankAccount.id",
+      "target": "account_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "transactionDate",
+      "target": "transaction_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "transactionType",
+      "target": "transaction_type",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "currency",
+      "target": "currency_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "amount",
+      "target": "amount",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "description",
+      "target": "description",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "reconciliationStatus",
+      "target": "reconciliation_status",
+      "type": "string",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "transaction_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "description"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:cash-management/bank-transactions",
+      "transport:rest",
+      "field:key"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

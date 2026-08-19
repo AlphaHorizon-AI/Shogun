@@ -99,6 +99,15 @@ def test_profile_name_cannot_escape_root(tmp_path):
     assert ".." not in path.name
 
 
+def test_runtime_registry_can_discard_transient_session():
+    registry = hardening.MadoRuntimeRegistry()
+    state = registry.register("flow-run-session", profile_id="flow_news")
+
+    assert registry.discard("flow-run-session") is state
+    assert registry.list() == []
+    assert registry.discard("flow-run-session") is None
+
+
 def test_upload_path_is_restricted(monkeypatch, tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()

@@ -1,0 +1,190 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "salesforce_order_handoff_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Salesforce order handoff lines",
+  "description": "Normalize Salesforce order handoff lines records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Salesforce",
+    "product": "Sales Cloud",
+    "family": "crm"
+  },
+  "source": {
+    "transport": "rest_soql",
+    "api_version": "API version pinned at activation",
+    "object": "Order",
+    "record_shape": "header_with_lines",
+    "pagination": "queryMore",
+    "related_objects": [
+      "OrderItem"
+    ],
+    "record_path": "records"
+  },
+  "canonical_contract": {
+    "id": "sales_order",
+    "version": 1,
+    "record_kind": "sales_order"
+  },
+  "identity": {
+    "source_key": [
+      "Id",
+      "OrderItems.Id"
+    ],
+    "canonical_key": [
+      "order_id",
+      "line_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "Id",
+      "target": "order_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "OrderNumber",
+      "target": "order_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "AccountId",
+      "target": "account_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Status",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "EffectiveDate",
+      "target": "effective_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "EndDate",
+      "target": "end_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "CurrencyIsoCode",
+      "target": "currency_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "OrderItems.Id",
+      "target": "line_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "OrderItems.PricebookEntry.Product2Id",
+      "target": "product_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "OrderItems.Quantity",
+      "target": "quantity",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "OrderItems.UnitPrice",
+      "target": "unit_price",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "OrderItems.TotalPrice",
+      "target": "line_amount",
+      "type": "decimal",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_non_blank",
+      "fields": [
+        "order_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "identity_unique",
+      "rule": "unique_composite",
+      "fields": [
+        "order_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "required_fields_present",
+      "rule": "required_fields_present",
+      "fields": [
+        "order_id",
+        "order_number",
+        "account_id",
+        "status",
+        "effective_date",
+        "line_id",
+        "product_id",
+        "quantity"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "nested_collection_flattening",
+      "business_rule:required_non_blank",
+      "business_rule:unique_composite",
+      "business_rule:required_fields_present"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:Order",
+      "transport:rest_soql",
+      "field:Id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

@@ -1,0 +1,193 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "business_central_sales_order_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Business Central sales order lines",
+  "description": "Normalize Business Central sales order lines records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Microsoft",
+    "product": "Dynamics 365 Business Central",
+    "family": "erp"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "v2.0",
+    "object": "salesOrders",
+    "record_shape": "header_with_lines",
+    "pagination": "@odata.nextLink",
+    "related_objects": [
+      "salesOrderLines"
+    ],
+    "company_scope": "companyId",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "sales_order",
+    "version": 1,
+    "record_kind": "sales_order"
+  },
+  "identity": {
+    "source_key": [
+      "id",
+      "salesOrderLines.id"
+    ],
+    "canonical_key": [
+      "order_id",
+      "line_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "id",
+      "target": "order_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "number",
+      "target": "order_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "customerId",
+      "target": "customer_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "orderDate",
+      "target": "order_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "requestedDeliveryDate",
+      "target": "requested_delivery_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "currencyCode",
+      "target": "currency_code",
+      "type": "string",
+      "required": false,
+      "transforms": [
+        "trim",
+        "uppercase"
+      ]
+    },
+    {
+      "source": "status",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "salesOrderLines.id",
+      "target": "line_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "salesOrderLines.itemId",
+      "target": "product_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "salesOrderLines.quantity",
+      "target": "quantity",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "salesOrderLines.unitOfMeasureCode",
+      "target": "uom",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "salesOrderLines.netAmount",
+      "target": "line_amount",
+      "type": "decimal",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_non_blank",
+      "fields": [
+        "order_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "identity_unique",
+      "rule": "unique_composite",
+      "fields": [
+        "order_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "required_fields_present",
+      "rule": "required_fields_present",
+      "fields": [
+        "order_id",
+        "order_number",
+        "customer_id",
+        "status",
+        "line_id",
+        "quantity"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "nested_collection_flattening",
+      "business_rule:required_non_blank",
+      "business_rule:unique_composite",
+      "business_rule:required_fields_present"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:salesOrders",
+      "transport:rest",
+      "field:id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

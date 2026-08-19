@@ -656,11 +656,15 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             <div className="flex items-center gap-1">
               <WandSparkles className="w-2.5 h-2.5 text-[#2dd4bf]/70" />
               <span className="text-[8px] font-bold text-[#2dd4bf]/80 uppercase">
-                {config.mode || 'strict'} · {config.output?.type || 'table'}
+                {config.execution_mode === 'contract'
+                  ? `contract · ${config.transformation_profile?.id || 'profile required'}`
+                  : `${config.mode || 'strict'} · ${config.output?.type || 'table'}`}
               </span>
             </div>
             <p className="text-[9px] text-[#7a8899]">
-              {(config.mappings || []).length} deterministic mapping{(config.mappings || []).length === 1 ? '' : 's'}
+              {config.execution_mode === 'contract'
+                ? `${config.transformation_profile?.adapter || 'No deterministic adapter selected'}`
+                : `${(config.mappings || []).length} deterministic mapping${(config.mappings || []).length === 1 ? '' : 's'}`}
             </p>
           </>
         )}
@@ -963,6 +967,11 @@ const MAPPING_TRANSFORMS = ['none', 'trim', 'uppercase', 'lowercase', 'convert',
 function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string, any>; updateConfig: (k: string, v: any) => void }) {
   const mappings = Array.isArray(config.mappings) ? config.mappings : [];
   const output = config.output || { type: 'table', start_cell: 'A1' };
+  const executionMode = config.execution_mode || 'transform';
+  const profile = config.transformation_profile || {};
+  const serializedProfileParameters = JSON.stringify(profile.parameters || {}, null, 2);
+  const [profileParametersDraft, setProfileParametersDraft] = useState(serializedProfileParameters);
+  const [profileParametersError, setProfileParametersError] = useState<string | null>(null);
   const [previewInput, setPreviewInput] = useState(`{
   "article_number": "68947124",
   "description": "Pump Housing",
@@ -986,6 +995,51 @@ function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string,
   }, []);
 
   useEffect(() => { void loadTemplates(); }, [loadTemplates]);
+
+  useEffect(() => {
+    setProfileParametersDraft(serializedProfileParameters);
+    setProfileParametersError(null);
+  }, [serializedProfileParameters]);
+
+  const updateProfile = (patch: Record<string, any>) => {
+    updateConfig('transformation_profile', {
+      id: profile.id || 'custom_matrix_v1',
+      adapter: profile.adapter || 'sectioned_record_matrix_v1',
+      parameters: profile.parameters || {},
+      model_fallback: profile.model_fallback === true,
+      ...patch,
+    });
+  };
+
+  const updateExecutionMode = (mode: 'transform' | 'contract') => {
+    if (mode === 'contract' && !config.transformation_profile) {
+      updateConfig('__replace__', {
+        ...config,
+        execution_mode: mode,
+        transformation_profile: {
+          id: 'custom_matrix_v1',
+          adapter: 'sectioned_record_matrix_v1',
+          parameters: {},
+          model_fallback: false,
+        },
+      });
+      return;
+    }
+    updateConfig('execution_mode', mode);
+  };
+
+  const applyProfileParameters = () => {
+    try {
+      const parsed = JSON.parse(profileParametersDraft);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Profile parameters must be a JSON object.');
+      }
+      updateProfile({ parameters: parsed });
+      setProfileParametersError(null);
+    } catch (error: any) {
+      setProfileParametersError(error?.message || 'Invalid profile parameters JSON.');
+    }
+  };
 
   const updateRule = (index: number, patch: Record<string, any>) => {
     updateConfig('mappings', mappings.map((rule: any, ruleIndex: number) =>
@@ -1036,6 +1090,45 @@ function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string,
 
   return (
     <div className="space-y-4">
+      <div className="space-y-1.5">
+        <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Execution</label>
+        <select value={executionMode} onChange={(event) => updateExecutionMode(event.target.value as 'transform' | 'contract')} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none focus:border-[#2dd4bf]">
+          <option value="transform">Transform predecessor data</option>
+          <option value="contract">Attach deterministic profile contract</option>
+        </select>
+        <p className="text-[8px] leading-relaxed text-[#7a8899]">
+          A profile contract configures a downstream Samurai&apos;s deterministic matrix adapter and contributes no source data of its own.
+        </p>
+      </div>
+
+      {executionMode === 'contract' && (
+        <div className="rounded-lg border border-[#2dd4bf]/25 bg-[#2dd4bf]/5 p-3 space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#2dd4bf] uppercase tracking-widest">Profile ID</label>
+              <input value={profile.id || ''} onChange={(event) => updateProfile({ id: event.target.value })} placeholder="document_profile_v1" className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[10px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-bold text-[#2dd4bf] uppercase tracking-widest">Adapter</label>
+              <input value={profile.adapter || ''} onChange={(event) => updateProfile({ adapter: event.target.value })} placeholder="sectioned_record_matrix_v1" className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[10px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-[9px] font-bold text-[#2dd4bf] uppercase tracking-widest">Profile Parameters (JSON)</label>
+              <button type="button" onClick={applyProfileParameters} className="rounded border border-[#2dd4bf]/30 bg-[#2dd4bf]/10 px-2 py-1 text-[8px] font-bold uppercase text-[#2dd4bf]">Apply JSON</button>
+            </div>
+            <textarea value={profileParametersDraft} onChange={(event) => setProfileParametersDraft(event.target.value)} rows={12} spellCheck={false} className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[9px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf] resize-y" />
+            {profileParametersError && <p className="text-[9px] text-[#ef4444]">{profileParametersError}</p>}
+          </div>
+          <label className="flex items-start gap-2 text-[9px] text-[#7a8899]">
+            <input type="checkbox" checked={profile.model_fallback === true} onChange={(event) => updateProfile({ model_fallback: event.target.checked })} className="mt-0.5 accent-[#2dd4bf]" />
+            <span><strong className="text-[#c8d0d8]">Allow model fallback</strong><br />Off by default. Validation failures stop the flow instead of silently changing execution paths.</span>
+          </label>
+        </div>
+      )}
+
+      {executionMode === 'transform' && (<>
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1.5">
           <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Mapping Mode</label>
@@ -1067,6 +1160,7 @@ function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string,
           </div>
         )}
       </div>
+
       <div className="space-y-1.5">
         <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Destination Sheet (Optional)</label>
         <input value={output.sheet || ''} onChange={(event) => updateConfig('output', { ...output, sheet: event.target.value || null })} placeholder="Products" className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
@@ -1124,6 +1218,8 @@ function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string,
         </div>
       </div>
 
+      </>)}
+
       <div className="rounded-lg border border-[#2dd4bf]/20 bg-[#2dd4bf]/5 p-2.5 space-y-2">
         <label className="text-[9px] font-bold text-[#2dd4bf] uppercase tracking-widest">Mapping Templates</label>
         <select defaultValue="" onChange={(event) => loadTemplate(event.target.value)} className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none">
@@ -1136,7 +1232,7 @@ function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string,
         </div>
       </div>
 
-      <div className="space-y-2">
+      {executionMode === 'transform' && (<div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Preview Input</label>
           <button type="button" disabled={previewing} onClick={() => void runPreview()} className="flex items-center gap-1 rounded border border-[#2dd4bf]/30 bg-[#2dd4bf]/10 px-2 py-1 text-[9px] font-bold text-[#2dd4bf] disabled:opacity-50">{previewing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Preview Mapping</button>
@@ -1148,10 +1244,15 @@ function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string,
             <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-[9px] text-[#c8d0d8]">{JSON.stringify(preview.rows || preview.cells || preview.data || preview.errors, null, 2)}</pre>
           </div>
         )}
-      </div>
+      </div>)}
 
       <div className="p-2.5 bg-[#2dd4bf]/5 border border-[#2dd4bf]/20 rounded-lg">
-        <p className="text-[8px] leading-relaxed text-[#2dd4bf]/80"><strong>AI interprets. Rules map. Tools execute.</strong> This node performs no model calls and passes typed rows or cells directly to Files / Excel.</p>
+        <p className="text-[8px] leading-relaxed text-[#2dd4bf]/80">
+          <strong>{executionMode === 'contract' ? 'Profiles declare. Adapters validate. Samurai stays deterministic.' : 'AI interprets. Rules map. Tools execute.'}</strong>{' '}
+          {executionMode === 'contract'
+            ? 'The contract is passed as validated metadata and is excluded from document source context.'
+            : 'This node performs no model calls and passes typed rows or cells directly to Files / Excel.'}
+        </p>
       </div>
     </div>
   );
@@ -4082,6 +4183,7 @@ export function AgentFlowCanvas({
       } : nodeType === 'mapping_rpa' ? {
         version: 1,
         name: 'Mapping / RPA',
+        execution_mode: 'transform',
         mode: 'strict',
         input_path: null,
         output: { type: 'table', start_cell: 'A1', sheet: null, include_headers: false },

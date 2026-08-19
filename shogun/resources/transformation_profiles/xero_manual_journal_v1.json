@@ -1,0 +1,164 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "xero_manual_journal_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Xero manual journal lines",
+  "description": "Normalize Xero manual journal lines records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Xero",
+    "product": "Xero Accounting",
+    "family": "accounting"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "Accounting API 2.0",
+    "object": "ManualJournals",
+    "record_shape": "header_with_lines",
+    "pagination": "page/pageSize",
+    "related_objects": [
+      "JournalLines"
+    ],
+    "record_path": "ManualJournals"
+  },
+  "canonical_contract": {
+    "id": "general_journal_entry",
+    "version": 1,
+    "record_kind": "general_journal_entry"
+  },
+  "identity": {
+    "source_key": [
+      "ManualJournalID",
+      "JournalLines._index"
+    ],
+    "canonical_key": [
+      "journal_id",
+      "line_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "ManualJournalID",
+      "target": "journal_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Narration",
+      "target": "description",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Date",
+      "target": "posting_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "Status",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "JournalLines.AccountCode",
+      "target": "account_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "JournalLines._index",
+      "target": "line_id",
+      "type": "integer",
+      "required": true
+    },
+    {
+      "source": "JournalLines.Description",
+      "target": "line_description",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "JournalLines.LineAmount",
+      "target": "amount",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "JournalLines.TaxType",
+      "target": "tax_type",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "UpdatedDateUTC",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "journal_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "journal_balances",
+      "rule": "sum_equals",
+      "field": "amount",
+      "value": 0
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "description",
+      "line_description"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "nested_collection_flattening",
+      "synthetic_line_index",
+      "business_rule:sum_equals"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:ManualJournals",
+      "transport:rest",
+      "field:ManualJournalID"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

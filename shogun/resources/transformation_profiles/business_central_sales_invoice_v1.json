@@ -1,0 +1,204 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "business_central_sales_invoice_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Business Central sales invoice lines",
+  "description": "Normalize Business Central sales invoice lines records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Microsoft",
+    "product": "Dynamics 365 Business Central",
+    "family": "finance"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "v2.0",
+    "object": "salesInvoices",
+    "record_shape": "header_with_lines",
+    "pagination": "@odata.nextLink",
+    "related_objects": [
+      "salesInvoiceLines"
+    ],
+    "company_scope": "companyId",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "accounts_receivable_invoice",
+    "version": 1,
+    "record_kind": "accounts_receivable_invoice"
+  },
+  "identity": {
+    "source_key": [
+      "id",
+      "salesInvoiceLines.id"
+    ],
+    "canonical_key": [
+      "invoice_id",
+      "line_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "id",
+      "target": "invoice_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "number",
+      "target": "invoice_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "customerId",
+      "target": "customer_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "invoiceDate",
+      "target": "invoice_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "dueDate",
+      "target": "due_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "currencyCode",
+      "target": "currency_code",
+      "type": "string",
+      "required": true,
+      "transforms": [
+        "trim",
+        "uppercase"
+      ]
+    },
+    {
+      "source": "totalAmountIncludingTax",
+      "target": "invoice_total",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "salesInvoiceLines.id",
+      "target": "line_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "salesInvoiceLines.itemId",
+      "target": "product_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "salesInvoiceLines.quantity",
+      "target": "quantity",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "salesInvoiceLines.netAmount",
+      "target": "line_amount",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "salesInvoiceLines.taxPercent",
+      "target": "tax_percent",
+      "type": "decimal",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_non_blank",
+      "fields": [
+        "invoice_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "identity_unique",
+      "rule": "unique_composite",
+      "fields": [
+        "invoice_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "required_fields_present",
+      "rule": "required_fields_present",
+      "fields": [
+        "invoice_id",
+        "invoice_number",
+        "customer_id",
+        "invoice_date",
+        "currency_code",
+        "line_id",
+        "line_amount"
+      ]
+    },
+    {
+      "id": "invoice_total_reconciles",
+      "rule": "header_equals_line_sum_with_tolerance",
+      "fields": [
+        "invoice_total",
+        "line_amount"
+      ],
+      "tolerance": "currency_minor_unit"
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "nested_collection_flattening",
+      "business_rule:required_non_blank",
+      "business_rule:unique_composite",
+      "business_rule:required_fields_present",
+      "business_rule:header_equals_line_sum_with_tolerance"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:salesInvoices",
+      "transport:rest",
+      "field:id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

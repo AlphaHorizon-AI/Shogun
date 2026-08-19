@@ -1,0 +1,149 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "hubspot_ticket_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "HubSpot ticket",
+  "description": "Normalize HubSpot ticket records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "HubSpot",
+    "product": "CRM",
+    "family": "crm_service"
+  },
+  "source": {
+    "transport": "crm_objects_api",
+    "api_version": "CRM v3",
+    "object": "tickets",
+    "record_shape": "collection",
+    "pagination": "paging.next.after",
+    "record_path": "results"
+  },
+  "canonical_contract": {
+    "id": "service_case",
+    "version": 1,
+    "record_kind": "service_case"
+  },
+  "identity": {
+    "source_key": [
+      "id"
+    ],
+    "canonical_key": [
+      "case_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "id",
+      "target": "case_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "properties.subject",
+      "target": "subject",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "properties.content",
+      "target": "description",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "properties.hs_pipeline",
+      "target": "pipeline_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "properties.hs_pipeline_stage",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "properties.hs_ticket_priority",
+      "target": "priority",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "properties.hubspot_owner_id",
+      "target": "owner_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "properties.createdate",
+      "target": "created_at",
+      "type": "datetime",
+      "required": true
+    },
+    {
+      "source": "properties.closed_date",
+      "target": "closed_at",
+      "type": "datetime",
+      "required": false
+    },
+    {
+      "source": "updatedAt",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "case_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "subject",
+      "description"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:tickets",
+      "transport:crm_objects_api",
+      "field:id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

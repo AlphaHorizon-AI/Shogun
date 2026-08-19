@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from importlib.resources import files
 from typing import Any
 
 SUPPORTED_ADAPTER = "sectioned_record_matrix_v1"
@@ -27,6 +28,14 @@ class _RecordSection:
     key: str
     fields: dict[str, Any] = field(default_factory=dict)
     records: list[dict[str, str]] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class _RecordHeaderBinding:
+    """A position-sensitive mapping from raw record groups to semantic groups."""
+
+    position: int
+    source_by_target: dict[str, str]
 
 
 _MONTH_NAMES = {
@@ -68,6 +77,35 @@ _MONTH_NAMES = {
 }
 
 
+def load_bundled_transformation_profile(profile_id: str) -> dict[str, Any]:
+    """Load a versioned profile resource by an explicit, traversal-safe id."""
+
+    normalized_id = str(profile_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?", normalized_id):
+        raise ValueError("Bundled transformation profile id is invalid.")
+    resource = files("shogun").joinpath(
+        "resources",
+        "transformation_profiles",
+        f"{normalized_id}.json",
+    )
+    try:
+        profile = json.loads(resource.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError(
+            f"Bundled transformation profile '{normalized_id}' does not exist."
+        ) from exc
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(
+            f"Bundled transformation profile '{normalized_id}' is invalid."
+        ) from exc
+    loaded_id, _parameters = _profile_parameters(profile)
+    if loaded_id != normalized_id:
+        raise ValueError(
+            f"Bundled transformation profile '{normalized_id}' declares id '{loaded_id}'."
+        )
+    return profile
+
+
 def try_deterministic_matrix_transform(
     *,
     profile: dict[str, Any],
@@ -84,7 +122,7 @@ def try_deterministic_matrix_transform(
     _validate_required_source_patterns(source_context, parameters, profile_id)
     headers, logical_width = _excel_template_contract(fixed_context, parameters, profile_id)
     sections = _parse_sections(source_context, parameters, profile_id)
-    planning_columns = _planning_month_columns(headers, parameters)
+    planning_columns = _planning_month_columns(headers, parameters, profile_id)
     rows = _build_rows(
         sections,
         logical_width,
@@ -140,7 +178,7 @@ def expected_deterministic_matrix_rows(
             if kind == "section":
                 total += int(_section_condition_matches(section, rule.get("when")))
             elif kind == "record":
-                total += sum(1 for record in section.records if _record_matches(record, rule.get("match")))
+                total += len(_matching_records(section, rule, profile_id))
             elif kind == "aggregate":
                 total += int(any(_record_matches(record, rule.get("match")) for record in section.records))
             else:
@@ -206,15 +244,210 @@ def _parse_sections(
         section = sections.setdefault(key, _RecordSection(key=key))
         _extract_section_fields(section, section_text, parameters, profile_id)
         _extract_selector_fields(section, section_text, parameters, profile_id)
+        header_bindings = _record_header_bindings(
+            section_text,
+            record_pattern,
+            parameters,
+            profile_id,
+        )
         for record_match in record_pattern.finditer(section_text):
             record = {
                 name: str(value or "").strip()
                 for name, value in record_match.groupdict().items()
             }
+            _apply_record_header_binding(
+                record,
+                record_match.start(),
+                header_bindings,
+                parameters,
+                profile_id,
+            )
             if record_section_key_group and record.get(record_section_key_group) != key:
                 continue
             section.records.append(record)
     return list(sections.values())
+
+
+def _record_header_bindings(
+    section_text: str,
+    record_pattern: re.Pattern[str],
+    parameters: dict[str, Any],
+    profile_id: str,
+) -> list[_RecordHeaderBinding]:
+    """Resolve semantic record fields from position-sensitive source headers.
+
+    This is intentionally domain-neutral.  A profile names the header slots,
+    their aliases, and which raw regex groups each slot controls.  Each record
+    uses the closest preceding header, so a single input may contain sections
+    whose source columns appear in different orders.
+    """
+
+    raw_layout = parameters.get("record_header_layout")
+    if raw_layout in (None, {}):
+        return []
+    if not isinstance(raw_layout, dict):
+        raise ValueError(
+            f"Transformation profile '{profile_id}' has an invalid record header layout."
+        )
+
+    header_pattern = _compile_pattern(
+        raw_layout.get("pattern"),
+        "record header layout",
+    )
+    slots = raw_layout.get("slots")
+    roles = raw_layout.get("roles")
+    if not isinstance(slots, dict) or not slots:
+        raise ValueError(
+            f"Transformation profile '{profile_id}' record header layout requires slots."
+        )
+    if not isinstance(roles, dict) or not roles:
+        raise ValueError(
+            f"Transformation profile '{profile_id}' record header layout requires roles."
+        )
+    if len(slots) != len(roles):
+        raise ValueError(
+            f"Transformation profile '{profile_id}' record header layout must map "
+            "every slot to exactly one role."
+        )
+
+    aliases: dict[str, str] = {}
+    role_targets: dict[str, dict[str, str]] = {}
+    for raw_role, raw_spec in roles.items():
+        role = str(raw_role).strip()
+        if not role or not isinstance(raw_spec, dict):
+            raise ValueError(
+                f"Transformation profile '{profile_id}' has an invalid record header role."
+            )
+        raw_aliases = raw_spec.get("aliases") or []
+        targets = raw_spec.get("targets")
+        if not isinstance(raw_aliases, list) or not raw_aliases or not isinstance(targets, dict):
+            raise ValueError(
+                f"Transformation profile '{profile_id}' record header role '{role}' "
+                "requires aliases and targets."
+            )
+        normalized_targets = {
+            str(field).strip(): str(target).strip()
+            for field, target in targets.items()
+        }
+        if not normalized_targets or any(not field or not target for field, target in normalized_targets.items()):
+            raise ValueError(
+                f"Transformation profile '{profile_id}' record header role '{role}' "
+                "has invalid targets."
+            )
+        role_targets[role] = normalized_targets
+        for raw_alias in raw_aliases:
+            alias = _canonical_header(raw_alias)
+            if not alias:
+                raise ValueError(
+                    f"Transformation profile '{profile_id}' record header role '{role}' "
+                    "has an empty alias."
+                )
+            existing = aliases.get(alias)
+            if existing is not None and existing != role:
+                raise ValueError(
+                    f"Transformation profile '{profile_id}' has ambiguous record header "
+                    f"alias '{raw_alias}'."
+                )
+            aliases[alias] = role
+
+    normalized_slots: dict[str, dict[str, str]] = {}
+    for raw_slot, raw_sources in slots.items():
+        slot = str(raw_slot).strip()
+        if slot not in header_pattern.groupindex or not isinstance(raw_sources, dict):
+            raise ValueError(
+                f"Transformation profile '{profile_id}' record header slot '{slot}' "
+                "is not a named header group."
+            )
+        sources = {
+            str(field).strip(): str(source).strip()
+            for field, source in raw_sources.items()
+        }
+        if not sources or any(
+            not field or not source or source not in record_pattern.groupindex
+            for field, source in sources.items()
+        ):
+            raise ValueError(
+                f"Transformation profile '{profile_id}' record header slot '{slot}' "
+                "references an invalid record group."
+            )
+        normalized_slots[slot] = sources
+
+    bindings: list[_RecordHeaderBinding] = []
+    for header_match in header_pattern.finditer(section_text):
+        used_roles: set[str] = set()
+        source_by_target: dict[str, str] = {}
+        for slot, sources in normalized_slots.items():
+            label = str(header_match.group(slot) or "").strip()
+            role = aliases.get(_canonical_header(label))
+            if role is None:
+                raise ValueError(
+                    f"Transformation profile '{profile_id}' found unknown record header "
+                    f"label '{label}'."
+                )
+            if role in used_roles:
+                raise ValueError(
+                    f"Transformation profile '{profile_id}' found an ambiguous record "
+                    f"header: role '{role}' occurs more than once."
+                )
+            used_roles.add(role)
+            targets = role_targets[role]
+            if set(sources) != set(targets):
+                raise ValueError(
+                    f"Transformation profile '{profile_id}' record header role '{role}' "
+                    "does not define the same fields as its slot."
+                )
+            for field_name, source in sources.items():
+                target = targets[field_name]
+                existing_source = source_by_target.get(target)
+                if existing_source is not None and existing_source != source:
+                    raise ValueError(
+                        f"Transformation profile '{profile_id}' maps record header target "
+                        f"'{target}' more than once."
+                    )
+                source_by_target[target] = source
+        if used_roles != set(role_targets):
+            missing = ", ".join(sorted(set(role_targets) - used_roles))
+            raise ValueError(
+                f"Transformation profile '{profile_id}' record header is missing role(s): {missing}."
+            )
+        bindings.append(
+            _RecordHeaderBinding(
+                position=header_match.end(),
+                source_by_target=source_by_target,
+            )
+        )
+
+    if not bindings and raw_layout.get("required", True):
+        raise ValueError(
+            f"Transformation profile '{profile_id}' found no required record header layout."
+        )
+    return bindings
+
+
+def _apply_record_header_binding(
+    record: dict[str, str],
+    record_position: int,
+    bindings: list[_RecordHeaderBinding],
+    parameters: dict[str, Any],
+    profile_id: str,
+) -> None:
+    if not parameters.get("record_header_layout"):
+        return
+    binding = next(
+        (candidate for candidate in reversed(bindings) if candidate.position <= record_position),
+        None,
+    )
+    if binding is None:
+        raise ValueError(
+            f"Transformation profile '{profile_id}' found a record before its required header layout."
+        )
+    for target, source in binding.source_by_target.items():
+        if target in record and target != source:
+            raise ValueError(
+                f"Transformation profile '{profile_id}' record header target '{target}' "
+                "conflicts with an existing record group."
+            )
+        record[target] = record.get(source, "")
 
 
 def _extract_section_fields(
@@ -369,9 +602,8 @@ def _build_rows(
                 if _section_condition_matches(section, rule.get("when")):
                     rows.append(_row_from_rule(base, section, None, rule))
             elif kind == "record":
-                for record in section.records:
-                    if _record_matches(record, rule.get("match")):
-                        rows.append(_row_from_rule(base, section, record, rule))
+                for record in _matching_records(section, rule, profile_id):
+                    rows.append(_row_from_rule(base, section, record, rule))
             elif kind == "aggregate":
                 records = [
                     record
@@ -401,6 +633,61 @@ def _row_rules(parameters: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(rules, list) or not all(isinstance(rule, dict) for rule in rules):
         raise ValueError("Transformation profile row_rules must be a list of objects.")
     return rules
+
+
+def _matching_records(
+    section: _RecordSection,
+    rule: dict[str, Any],
+    profile_id: str,
+) -> list[dict[str, str]]:
+    records = [
+        record
+        for record in section.records
+        if _record_matches(record, rule.get("match"))
+    ]
+    raw_identity = rule.get("deduplicate_by")
+    if raw_identity in (None, []):
+        return records
+    if not isinstance(raw_identity, list) or not raw_identity:
+        raise ValueError(
+            f"Transformation profile '{profile_id}' record deduplicate_by must be "
+            "a non-empty list."
+        )
+    identity_specs: list[dict[str, Any]] = []
+    for raw_spec in raw_identity:
+        spec = {"group": raw_spec} if isinstance(raw_spec, str) else raw_spec
+        if not isinstance(spec, dict) or not str(spec.get("group") or "").strip():
+            raise ValueError(
+                f"Transformation profile '{profile_id}' record deduplicate_by contains "
+                "an invalid identity group."
+            )
+        identity_specs.append(spec)
+    identity_groups = [str(spec["group"]).strip() for spec in identity_specs]
+    if len(set(identity_groups)) != len(identity_groups):
+        raise ValueError(
+            f"Transformation profile '{profile_id}' record deduplicate_by contains "
+            "a repeated identity group."
+        )
+
+    unique: list[dict[str, str]] = []
+    seen: set[tuple[str, ...]] = set()
+    for record in records:
+        missing = [group for group in identity_groups if not str(record.get(group) or "").strip()]
+        if missing:
+            raise ValueError(
+                f"Transformation profile '{profile_id}' cannot deduplicate a record in "
+                f"section {section.key}: stable identity group(s) "
+                f"{', '.join(missing)} are empty."
+            )
+        identity = tuple(
+            str(_resolve_value_spec(spec, section, record)).strip()
+            for spec in identity_specs
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+        unique.append(record)
+    return unique
 
 
 def _row_from_rule(
@@ -519,7 +806,11 @@ def _record_matches(record: dict[str, str], match_spec: Any) -> bool:
     return True
 
 
-def _planning_month_columns(headers: list[Any], parameters: dict[str, Any]) -> dict[str, int]:
+def _planning_month_columns(
+    headers: list[Any],
+    parameters: dict[str, Any],
+    profile_id: str,
+) -> dict[str, int]:
     template = parameters.get("template") or {}
     start_column = int(template.get("planning_start_column") or 0)
     backlog_headers = {
@@ -537,13 +828,23 @@ def _planning_month_columns(headers: list[Any], parameters: dict[str, Any]) -> d
         header_text = str(header)
         normalized_header = re.sub(r"\s+", " ", header_text).strip().casefold()
         if normalized_header in backlog_headers:
+            if "backlog" in columns:
+                raise ValueError(
+                    f"Transformation profile '{profile_id}' found more than one backlog column."
+                )
             columns["backlog"] = index
             continue
         month = _planning_header_month(header_text)
         if month is None:
             continue
         is_future = any(pattern.search(header_text) for pattern in future_patterns)
-        columns[f">={month}" if is_future else month] = index
+        bucket = f">={month}" if is_future else month
+        if bucket in columns:
+            raise ValueError(
+                f"Transformation profile '{profile_id}' found ambiguous planning header "
+                f"'{header_text}'."
+            )
+        columns[bucket] = index
     return columns
 
 

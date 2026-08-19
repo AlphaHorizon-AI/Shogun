@@ -1,0 +1,160 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "xero_bill_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Xero supplier bill",
+  "description": "Normalize Xero supplier bill records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Xero",
+    "product": "Xero Accounting",
+    "family": "accounting"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "Accounting API 2.0",
+    "object": "Invoices",
+    "record_shape": "collection",
+    "pagination": "page/pageSize",
+    "record_path": "Invoices"
+  },
+  "canonical_contract": {
+    "id": "accounts_payable_invoice",
+    "version": 1,
+    "record_kind": "accounts_payable_invoice"
+  },
+  "identity": {
+    "source_key": [
+      "InvoiceID"
+    ],
+    "canonical_key": [
+      "invoice_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "InvoiceID",
+      "target": "invoice_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "InvoiceNumber",
+      "target": "invoice_number",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Type",
+      "target": "invoice_type",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Contact.ContactID",
+      "target": "vendor_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Date",
+      "target": "invoice_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "DueDate",
+      "target": "due_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "CurrencyCode",
+      "target": "currency_code",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Total",
+      "target": "invoice_total",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "AmountDue",
+      "target": "open_balance",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "Status",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "UpdatedDateUTC",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "invoice_id"
+      ]
+    },
+    {
+      "id": "payable_type",
+      "rule": "equals",
+      "field": "invoice_type",
+      "value": "ACCPAY"
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:Invoices",
+      "transport:rest",
+      "field:InvoiceID"
+    ],
+    "negative_fingerprints": [
+      "field:Type=ACCREC"
+    ]
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

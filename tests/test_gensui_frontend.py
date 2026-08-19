@@ -25,6 +25,7 @@ def test_gensui_serves_root_assets_spa_and_api_without_route_collision(
     client = TestClient(create_app())
     try:
         root = client.get("/")
+        direct_index = client.get("/index.html")
         asset = client.get("/assets/app.js")
         spa = client.get("/agents")
         health = client.get("/api/gensui/health")
@@ -34,10 +35,13 @@ def test_gensui_serves_root_assets_spa_and_api_without_route_collision(
 
     assert root.status_code == 200
     assert "Gensui" in root.text
+    assert root.headers["cache-control"] == "no-store, no-cache, must-revalidate"
+    assert direct_index.headers["cache-control"] == "no-store, no-cache, must-revalidate"
     assert asset.status_code == 200
     assert "/api/gensui" in asset.text
     assert spa.status_code == 200
     assert "Gensui" in spa.text
+    assert spa.headers["cache-control"] == "no-store, no-cache, must-revalidate"
     assert health.status_code == 200
     assert health.json()["service"] == "gensui"
     assert missing_api.status_code == 404

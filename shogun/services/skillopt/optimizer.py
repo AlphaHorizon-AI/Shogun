@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shogun.db.models.skill import Skill
 from shogun.db.models.skillopt import SkillOptTrainingRun
 from shogun.services.base_service import BaseService
+from shogun.services.enterprise_transformation_skill import assert_skill_mutable
 
 
 class SkillOptService(BaseService):
@@ -25,6 +26,7 @@ class SkillOptService(BaseService):
         skill = await self.db.get(Skill, skill_id)
         if not skill or not skill.active_version_id:
             raise ValueError("Skill not found or has no active version")
+        assert_skill_mutable(skill, "optimize its protected kernel")
 
         # Create training run
         run = SkillOptTrainingRun(

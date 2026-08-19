@@ -147,6 +147,20 @@ def create_app() -> FastAPI:
     # ── Serve Frontend (production) ──────────────────────────
     frontend_dist = gensui_settings.gensui_frontend_dist
     if frontend_dist.exists():
+        index_path = frontend_dist / "index.html"
+
+        def serve_spa_index() -> FileResponse:
+            # Vite gives bundles content-hashed names. Never cache the SPA shell,
+            # otherwise a rebuild can leave the browser requesting a deleted hash.
+            return FileResponse(
+                str(index_path),
+                headers={
+                    "Cache-Control": "no-store, no-cache, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                },
+            )
+
         # Serve /assets/* static files
         assets_path = frontend_dist / "assets"
         if assets_path.exists():
@@ -155,7 +169,7 @@ def create_app() -> FastAPI:
         # Explicit root route
         @app.get("/")
         async def serve_root():
-            return FileResponse(str(frontend_dist / "index.html"))
+            return serve_spa_index()
 
         # Catch-all for SPA routing — must NOT match /api, /docs, /redoc
         @app.get("/{full_path:path}")
@@ -165,9 +179,11 @@ def create_app() -> FastAPI:
             # Serve actual file if it exists (favicon.svg, logo.png, etc.)
             target = frontend_dist / full_path
             if full_path and target.is_file():
+                if target == index_path:
+                    return serve_spa_index()
                 return FileResponse(target)
             # Otherwise serve index.html (SPA client-side routing)
-            return FileResponse(str(frontend_dist / "index.html"))
+            return serve_spa_index()
     else:
         log.warning(
             "Gensui frontend distribution is missing at %s; UI routes are disabled",

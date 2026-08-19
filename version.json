@@ -1,8 +1,8 @@
 {
-  "version": "1.47.79",
+  "version": "1.47.80",
   "name": "Shogun OS",
-  "build": 230,
+  "build": 231,
   "channel": "stable",
-  "released": "2026-08-19T14:52:05Z",
-  "changelog": "Serialize parallel AgentFlow run-state updates and recover structured extraction through bounded native-to-text fallback."
+  "released": "2026-08-19T16:34:05Z",
+  "changelog": "Add explicit fail-closed AgentFlow transformation contracts and a semantic SAP disposition v2 profile."
 }

@@ -1,0 +1,159 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "workday_worker_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Workday worker master",
+  "description": "Normalize Workday worker master records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Workday",
+    "product": "Workday",
+    "family": "hcm"
+  },
+  "source": {
+    "transport": "workday_rest",
+    "api_version": "REST v1; service schema pinned at activation",
+    "object": "workers",
+    "record_shape": "collection",
+    "pagination": "next cursor",
+    "record_path": "data"
+  },
+  "canonical_contract": {
+    "id": "worker_master",
+    "version": 1,
+    "record_kind": "worker_master"
+  },
+  "identity": {
+    "source_key": [
+      "id"
+    ],
+    "canonical_key": [
+      "worker_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "id",
+      "target": "worker_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "workerID",
+      "target": "worker_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "legalName.firstName",
+      "target": "first_name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "legalName.lastName",
+      "target": "last_name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "primaryWorkEmail",
+      "target": "work_email",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "primaryWorkPhone",
+      "target": "work_phone",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "hireDate",
+      "target": "hire_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "terminationDate",
+      "target": "termination_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "workerStatus",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "supervisoryOrganization.id",
+      "target": "organization_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "location.id",
+      "target": "location_id",
+      "type": "string",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "worker_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "first_name",
+      "last_name",
+      "work_email",
+      "work_phone",
+      "hire_date",
+      "termination_date"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:workers",
+      "transport:workday_rest",
+      "field:id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

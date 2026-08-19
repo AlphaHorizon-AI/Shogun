@@ -1,0 +1,175 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "d365_fscm_product_master_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "D365 F&SCM product master",
+  "description": "Normalize D365 F&SCM product master records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Microsoft",
+    "product": "Dynamics 365 Finance and Supply Chain Management",
+    "family": "erp_scm"
+  },
+  "source": {
+    "transport": "odata_v4",
+    "api_version": "OData v4; entity schema pinned at activation",
+    "object": "ReleasedProductsV2",
+    "record_shape": "collection",
+    "pagination": "@odata.nextLink",
+    "company_scope": "dataAreaId",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "product_master",
+    "version": 1,
+    "record_kind": "product_master"
+  },
+  "identity": {
+    "source_key": [
+      "dataAreaId",
+      "ItemNumber"
+    ],
+    "canonical_key": [
+      "company_code",
+      "product_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "dataAreaId",
+      "target": "company_code",
+      "type": "string",
+      "required": true,
+      "transforms": [
+        "trim",
+        "uppercase"
+      ]
+    },
+    {
+      "source": "ItemNumber",
+      "target": "product_id",
+      "type": "string",
+      "required": true,
+      "transforms": [
+        "trim"
+      ]
+    },
+    {
+      "source": "ProductNumber",
+      "target": "global_product_id",
+      "type": "string",
+      "required": false,
+      "transforms": [
+        "trim"
+      ]
+    },
+    {
+      "source": "ProductName",
+      "target": "name",
+      "type": "string",
+      "required": true,
+      "transforms": [
+        "trim"
+      ]
+    },
+    {
+      "source": "ProductType",
+      "target": "product_type",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "ProductGroupId",
+      "target": "product_group_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "InventoryUnitSymbol",
+      "target": "inventory_uom",
+      "type": "string",
+      "required": false,
+      "transforms": [
+        "trim",
+        "uppercase"
+      ]
+    },
+    {
+      "source": "SalesUnitSymbol",
+      "target": "sales_uom",
+      "type": "string",
+      "required": false,
+      "transforms": [
+        "trim",
+        "uppercase"
+      ]
+    },
+    {
+      "source": "PurchaseUnitSymbol",
+      "target": "purchase_uom",
+      "type": "string",
+      "required": false,
+      "transforms": [
+        "trim",
+        "uppercase"
+      ]
+    },
+    {
+      "source": "IsCatchWeightProduct",
+      "target": "is_catch_weight",
+      "type": "boolean",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "company_code",
+        "product_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:ReleasedProductsV2",
+      "transport:odata_v4",
+      "field:dataAreaId"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

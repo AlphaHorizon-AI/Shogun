@@ -22,6 +22,7 @@ import time
 import uuid
 from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -58,6 +59,7 @@ log = logging.getLogger("shogun.flow_engine")
 _active_runs: dict[str, asyncio.Task] = {}
 _launch_events: dict[str, asyncio.Event] = {}
 _run_state_locks: dict[str, asyncio.Lock] = {}
+_run_mado_sessions: dict[str, set[str]] = {}
 _child_run_semaphore: asyncio.Semaphore | None = None
 
 
@@ -69,6 +71,38 @@ def _run_state_lock(run_id: uuid.UUID) -> asyncio.Lock:
         lock = asyncio.Lock()
         _run_state_locks[key] = lock
     return lock
+
+
+def _flow_mado_session_identity(run_id: uuid.UUID | None, session_name: Any) -> tuple[str, str]:
+    """Return an execution-scoped session ID and a reusable profile name."""
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", str(session_name or "flow_browser").strip())[:72]
+    safe_name = safe_name or "flow_browser"
+    profile_name = f"flow_{safe_name}"
+    if run_id is None:
+        return profile_name, profile_name
+    return f"flow_{run_id.hex}_{safe_name}", profile_name
+
+
+async def _close_run_mado_sessions(run_id: uuid.UUID) -> None:
+    """Close and forget every transient browser session owned by a flow run."""
+    session_ids = _run_mado_sessions.pop(str(run_id), set())
+    if not session_ids:
+        return
+
+    from shogun.services import mado_service
+    from shogun.services.mado_hardening import runtime_registry
+
+    async def close_one(session_id: str) -> None:
+        try:
+            result = await mado_service.close_browser(session_id)
+            if result.get("status") == "error":
+                log.warning("Failed to close Mado session %s for flow run %s: %s", session_id, run_id, result)
+        except Exception:
+            log.warning("Failed to close Mado session %s for flow run %s", session_id, run_id, exc_info=True)
+        finally:
+            runtime_registry.discard(session_id)
+
+    await asyncio.gather(*(close_one(session_id) for session_id in session_ids))
 
 
 @dataclass(slots=True)
@@ -131,6 +165,52 @@ class MalformedMatrixOutputError(ValueError):
 
 
 _FLOW_ARTIFACT_MARKER = "__shogun_flow_artifact__"
+_MAPPING_PROFILE_CARRIER_MARKER = "__shogun_mapping_profile_contract__"
+
+
+def _canonical_output_for_model(output: dict[str, Any]) -> str:
+    """Render canonical records once and redact declared sensitive fields for LLM context."""
+
+    from copy import deepcopy
+
+    canonical = deepcopy(output.get("canonical") or {})
+    privacy = dict(output.get("privacy") or {})
+    sensitive_paths = {
+        str(path)
+        for path in [
+            *(privacy.get("pii_fields") or []),
+            *(privacy.get("secret_fields") or []),
+        ]
+        if str(path).strip()
+    }
+    records = canonical.get("records") if isinstance(canonical, dict) else None
+    if isinstance(records, list):
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            for path in sensitive_paths:
+                current: Any = record
+                parts = [part for part in path.split(".") if part]
+                for part in parts[:-1]:
+                    if not isinstance(current, dict) or part not in current:
+                        current = None
+                        break
+                    current = current[part]
+                if isinstance(current, dict) and parts and parts[-1] in current:
+                    current[parts[-1]] = "[REDACTED FOR MODEL CONTEXT]"
+    return json.dumps(
+        {
+            "canonical": canonical,
+            "profile": output.get("profile") or {},
+            "privacy": {
+                "classification": privacy.get("classification", "internal"),
+                "sensitive_fields_redacted": sorted(sensitive_paths),
+                "retention": privacy.get("retention", "flow_policy"),
+            },
+        },
+        ensure_ascii=False,
+        default=str,
+    )
 
 
 def _flow_artifact_descriptor(
@@ -706,6 +786,7 @@ async def _execute_flow(run_id: uuid.UUID, flow_id: uuid.UUID) -> None:
         log.exception("Flow run %s failed with unexpected error", run_id)
         await _fail_run(run_id, f"Unexpected error: {str(exc)[:500]}")
     finally:
+        await _close_run_mado_sessions(run_id)
         if launch_ready and not launch_ready.is_set():
             launch_ready.set()
 
@@ -738,23 +819,77 @@ async def _execute_single_node(
     # Mapping/RPA nodes. They are not inferred from prompts, filenames, source
     # text, or global runtime state.
     upstream_transformation_profiles: list[dict[str, Any]] = []
+    transformation_profile_carrier_ids: set[str] = set()
     if node_type == "samurai":
+        from shogun.mapping.schema import MappingConfig
+
         for predecessor_id in predecessor_outputs:
             predecessor = node_map.get(predecessor_id)
             if predecessor is None or getattr(predecessor, "node_type", None) != "mapping_rpa":
                 continue
-            profile = (getattr(predecessor, "config", None) or {}).get("transformation_profile")
-            if isinstance(profile, dict):
-                upstream_transformation_profiles.append(profile)
+            predecessor_config = dict(getattr(predecessor, "config", None) or {})
+            if predecessor_config.get("transformation_profile") is None:
+                continue
+            mapping_config = MappingConfig.model_validate(predecessor_config)
+            profile = mapping_config.transformation_profile
+            if profile is None:
+                continue
+            predecessor_output = predecessor_outputs.get(predecessor_id)
+            if mapping_config.execution_mode == "contract":
+                resolved_profile = _trusted_contract_profile_from_carrier(
+                    profile,
+                    predecessor_output,
+                    carrier_label=str(getattr(predecessor, "label", predecessor_id)),
+                )
+                transformation_profile_carrier_ids.add(predecessor_id)
+                upstream_transformation_profiles.append(resolved_profile)
+                continue
+            elif mapping_config.execution_mode == "profile":
+                # Structured enterprise ingress profiles execute inside their
+                # Mapping/RPA node. Downstream nodes consume canonical data;
+                # they must not reinterpret the same profile as a PDF/Samurai
+                # extraction contract.
+                if not (
+                    isinstance(predecessor_output, dict)
+                    and predecessor_output.get("__shogun_canonical_output__")
+                    and str(predecessor_output.get("status") or "").upper() in {"SUCCESS", "PARTIAL"}
+                ):
+                    raise ValueError(
+                        f"Mapping/RPA enterprise profile '{getattr(predecessor, 'label', predecessor_id)}' "
+                        "did not provide successful canonical output."
+                    )
+                continue
+            elif isinstance(predecessor_output, dict) and str(
+                predecessor_output.get("status") or "SUCCESS"
+            ).upper() not in {"SUCCESS", "PARTIAL"}:
+                raise ValueError(
+                    f"Mapping/RPA profile predecessor '{getattr(predecessor, 'label', predecessor_id)}' "
+                    "did not complete successfully."
+                )
+            upstream_transformation_profiles.append(profile.model_dump(mode="json"))
+
+        # Normalize and reject ambiguous contracts before any source context is
+        # assembled. A normal Samurai has no profile; a deterministic Samurai
+        # has exactly one explicitly connected Mapping/RPA profile.
+        active_profile = _active_transformation_profile(
+            {"_transformation_profiles": upstream_transformation_profiles}
+        )
+        upstream_transformation_profiles = [active_profile] if active_profile else []
 
     # Build context string from predecessor outputs
     context_parts: list[str] = []
     chunkable_context_parts: list[str] = []
     fixed_context_parts: list[str] = []
     input_artifacts: list[dict[str, Any]] = []
+    transformation_source_contexts: list[dict[str, str]] = []
     for pred_id, output in predecessor_outputs.items():
         pred_node = node_map.get(pred_id)
         pred_label = pred_node.label if pred_node else pred_id
+        if pred_id in transformation_profile_carrier_ids:
+            # The carrier is control-plane configuration, not source data. Its
+            # tiny success marker must never be parsed as another PDF/record or
+            # advertised to the model as a business artifact.
+            continue
         if output is not None:
             input_artifacts.append(_flow_artifact_descriptor(pred_node, output))
             if isinstance(output, dict) and output.get("__shogun_file_template__"):
@@ -762,6 +897,9 @@ async def _execute_single_node(
 
                 output_text = format_template_guidance(output)
                 is_fixed_context = True
+            elif isinstance(output, dict) and output.get("__shogun_canonical_output__"):
+                output_text = _canonical_output_for_model(output)
+                is_fixed_context = False
             else:
                 output_text = str(output)
                 is_fixed_context = False
@@ -777,6 +915,14 @@ async def _execute_single_node(
                 labelled_output = f"[Output from '{pred_label}']:\n{output_text}"
             context_parts.append(labelled_output)
             (fixed_context_parts if is_fixed_context else chunkable_context_parts).append(labelled_output)
+            if node_type == "samurai" and not is_fixed_context:
+                transformation_source_contexts.append(
+                    {
+                        "node_id": str(pred_id),
+                        "label": str(pred_label),
+                        "content": output_text,
+                    }
+                )
     context_str = "\n\n".join(context_parts) if context_parts else ""
     chunkable_context_str = "\n\n".join(chunkable_context_parts)
     fixed_context_str = "\n\n".join(fixed_context_parts)
@@ -803,7 +949,11 @@ async def _execute_single_node(
     # delivery nodes cannot publish them.
     execution_context_str = context_str
     active_skill_run_ids: list[str] = []
-    if _node_uses_active_skill_context(node_type, config):
+    # An explicit deterministic profile returns before model routing. Avoid
+    # skill retrieval/activation as well so this path is genuinely model-free
+    # and its template contract cannot be polluted by unrelated skill text.
+    deterministic_samurai = node_type == "samurai" and bool(upstream_transformation_profiles)
+    if _node_uses_active_skill_context(node_type, config) and not deterministic_samurai:
         try:
             from shogun.schemas.skills import SkillActivationRequest
             from shogun.services.active_skill_service import SkillActivationService
@@ -857,6 +1007,7 @@ async def _execute_single_node(
                     "_input_artifacts": input_artifacts,
                     "_output_contracts": list(downstream_contracts or []),
                     "_transformation_profiles": upstream_transformation_profiles,
+                    "_transformation_source_contexts": transformation_source_contexts,
                 },
                 chunkable_context_str,
                 governance_context or {},
@@ -1716,38 +1867,61 @@ async def _exec_samurai(
             raise ValueError(
                 "A Mapping/RPA transformation profile requires runtime source data and a file template."
             )
-        deterministic = try_deterministic_matrix_transform(
-            profile=transformation_profile,
-            source_context=context_str,
-            fixed_context=fixed_context_str,
-        )
-        if expected_matrix_width is not None and any(
-            len(row) != expected_matrix_width for row in deterministic.rows
-        ):
-            raise ValueError(
-                f"Transformation profile {deterministic.profile_id} returned rows outside the "
-                f"{expected_matrix_width}-column template contract."
+        try:
+            source_contexts = config.get("_transformation_source_contexts") or [
+                {"label": "combined runtime source", "content": context_str}
+            ]
+            if not isinstance(source_contexts, list) or any(
+                not isinstance(source, dict) for source in source_contexts
+            ):
+                raise ValueError("Samurai transformation source contexts must be a list of objects.")
+            _validate_transformation_profile_sources(transformation_profile, source_contexts)
+            deterministic = try_deterministic_matrix_transform(
+                profile=transformation_profile,
+                source_context=context_str,
+                fixed_context=fixed_context_str,
             )
-        _validate_matrix_coverage(
-            deterministic.rows,
-            context_str,
-            task_description,
-            config,
-            label=f"Transformation profile {deterministic.profile_id}",
-        )
-        if progress_callback:
-            progress_total = max(1, len(context_str))
-            try:
-                await progress_callback(progress_total, progress_total)
-            except Exception as progress_error:
-                log.warning("Could not persist AgentFlow node progress: %s", progress_error)
-        log.info(
-            "AgentFlow Samurai used transformation profile %s with adapter %s for %d validated row(s)",
-            deterministic.profile_id,
-            deterministic.adapter_id,
-            len(deterministic.rows),
-        )
-        return json.dumps(deterministic.rows, ensure_ascii=False, default=str)
+            if expected_matrix_width is not None and any(
+                len(row) != expected_matrix_width for row in deterministic.rows
+            ):
+                raise ValueError(
+                    f"Transformation profile {deterministic.profile_id} returned rows outside the "
+                    f"{expected_matrix_width}-column template contract."
+                )
+            _validate_matrix_coverage(
+                deterministic.rows,
+                context_str,
+                task_description,
+                config,
+                label=f"Transformation profile {deterministic.profile_id}",
+            )
+        except Exception as deterministic_error:
+            if not transformation_profile.get("model_fallback", False):
+                raise
+            log.warning(
+                "Transformation profile %s failed closed validation; explicit model fallback is enabled: %s",
+                transformation_profile.get("id"),
+                deterministic_error,
+            )
+            # Once the operator opts into a model fallback, use the completely
+            # generic extraction path. Profile-aware source splitting and row
+            # validation would otherwise re-run the same mismatched contract.
+            config = {**config, "_transformation_profiles": []}
+            transformation_profile = None
+        else:
+            if progress_callback:
+                progress_total = max(1, len(context_str))
+                try:
+                    await progress_callback(progress_total, progress_total)
+                except Exception as progress_error:
+                    log.warning("Could not persist AgentFlow node progress: %s", progress_error)
+            log.info(
+                "AgentFlow Samurai used transformation profile %s with adapter %s for %d validated row(s)",
+                deterministic.profile_id,
+                deterministic.adapter_id,
+                len(deterministic.rows),
+            )
+            return json.dumps(deterministic.rows, ensure_ascii=False, default=str)
 
     # Resolve agent persona
     agent_persona = "You are a Samurai agent executing a task in an automated workflow."
@@ -2496,17 +2670,70 @@ async def _resolve_samurai_task_description(config: dict[str, Any]) -> str:
 
 
 def _active_transformation_profile(config: dict[str, Any]) -> dict[str, Any] | None:
+    from shogun.mapping.schema import MappingTransformationProfile
+
     raw_profiles = config.get("_transformation_profiles") or []
     if isinstance(raw_profiles, dict):
         raw_profiles = [raw_profiles]
-    profiles = [profile for profile in raw_profiles if isinstance(profile, dict)]
-    if len(profiles) > 1:
-        profile_ids = ", ".join(str(profile.get("id") or "unnamed") for profile in profiles)
+    if not isinstance(raw_profiles, list):
+        raise ValueError("Samurai transformation profiles must be supplied as a list of objects.")
+    if any(not isinstance(profile, dict) for profile in raw_profiles):
+        raise ValueError("Every Samurai transformation profile must be an object.")
+    if len(raw_profiles) > 1:
+        profile_ids = ", ".join(str(profile.get("id") or "unnamed") for profile in raw_profiles)
         raise ValueError(
             "Samurai received multiple Mapping/RPA transformation profiles "
             f"({profile_ids}). Connect exactly one profiled Mapping/RPA predecessor."
         )
-    return profiles[0] if profiles else None
+    if not raw_profiles:
+        return None
+    # Validate shape without rewriting the trusted immutable registry
+    # definition. In particular, do not mix flow-config defaults or caller
+    # fields back into the profile that deterministic execution consumes.
+    MappingTransformationProfile.model_validate(raw_profiles[0])
+    return deepcopy(raw_profiles[0])
+
+
+def _validate_transformation_profile_sources(
+    profile: dict[str, Any],
+    sources: list[dict[str, Any]],
+) -> None:
+    """Require every direct runtime source to satisfy the explicit contract.
+
+    The deterministic adapter ultimately receives one combined context so it
+    can aggregate records across files. Validating only that combined string
+    could let one matching PDF hide an unrelated or wrong-version PDF. These
+    checks use only regexes declared by the profile; no filename or SAP/domain
+    inference is involved.
+    """
+    parameters = profile.get("parameters") or {}
+    raw_required = parameters.get("required_source_patterns") or []
+    if not isinstance(raw_required, list):
+        raise ValueError(
+            f"Transformation profile '{profile.get('id')}' requires required_source_patterns to be a list."
+        )
+    patterns = [str(pattern) for pattern in raw_required]
+    if profile.get("adapter") == "sectioned_record_matrix_v1":
+        section_pattern = parameters.get("section_pattern")
+        if section_pattern not in (None, ""):
+            patterns.append(str(section_pattern))
+
+    compiled: list[re.Pattern[str]] = []
+    for pattern in dict.fromkeys(patterns):
+        try:
+            compiled.append(re.compile(pattern))
+        except re.error as exc:
+            raise ValueError(
+                f"Transformation profile '{profile.get('id')}' has an invalid source regex: {exc}"
+            ) from exc
+
+    for index, source in enumerate(sources, start=1):
+        label = str(source.get("label") or source.get("node_id") or f"source {index}")
+        content = str(source.get("content") or "")
+        if not content.strip() or any(pattern.search(content) is None for pattern in compiled):
+            raise ValueError(
+                f"Runtime source '{label}' does not match transformation profile '{profile.get('id')}'."
+            )
 
 
 def _model_source_units(text: str) -> list[str]:
@@ -3284,8 +3511,10 @@ async def _exec_mado_browser(
     session_name = config.get("session_name", "flow_browser")
     browser_mode = config.get("browser_mode", "headless")
 
-    # Use a deterministic session ID for the flow to allow session reuse
-    flow_session_id = f"flow_{session_name}"
+    # Reuse a named browser inside one run, but never inherit its runtime clock
+    # or live page state in a later/parallel run. The persistent profile remains
+    # stable so sequential executions can retain cookies and authenticated state.
+    flow_session_id, profile_name = _flow_mado_session_identity(run_id, session_name)
     governance_context = governance_context or {}
 
     # Enforce the same local Torii, Harakiri, Gensui, browser-mode, and
@@ -3302,16 +3531,19 @@ async def _exec_mado_browser(
     # Ensure browser is launched
     launch_result = await mado_service.launch_browser(
         session_id=flow_session_id,
-        profile_name=f"flow_{session_name}",
+        profile_name=profile_name,
         mode=browser_mode,
     )
 
     if launch_result.get("status") == "error":
         return f"[ERROR] Failed to launch browser: {launch_result.get('error', 'Unknown')}"
 
+    if run_id is not None:
+        _run_mado_sessions.setdefault(str(run_id), set()).add(flow_session_id)
+
     runtime_registry.register(
         flow_session_id,
-        profile_id=f"flow_{session_name}",
+        profile_id=profile_name,
         posture=posture.get("active_tier"),
         mode=browser_mode,
         stack_run_id=governance_context.get("stack_run_id"),
@@ -3639,6 +3871,163 @@ def _excel_rows_from_context(context: str) -> list[list[Any]]:
     return parse_excel_rows(context)
 
 
+async def _resolve_registered_enterprise_profile(profile: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Resolve one trusted active registry version for Mapping/RPA execution."""
+
+    from shogun.db.engine import async_session_factory
+    from shogun.mapping.errors import MappingSchemaError
+    from shogun.services.transformation_profile_registry import (
+        TransformationProfileRegistryError,
+        TransformationProfileRegistryService,
+    )
+
+    try:
+        async with async_session_factory() as session:
+            service = TransformationProfileRegistryService(session)
+            resolved = await service.resolve_active_definition(
+                profile.id,
+                expected_version=profile.registry_version,
+                expected_hash=profile.content_hash.lower() if profile.content_hash else None,
+            )
+            definition = resolved["definition"]
+            evidence = resolved["registry_evidence"]
+            if profile.adapter != evidence["adapter_id"]:
+                raise MappingSchemaError(
+                    f"Transformation profile '{profile.id}' registry adapter is '{evidence['adapter_id']}', "
+                    f"not '{profile.adapter}'"
+                )
+            return definition, evidence
+    except MappingSchemaError:
+        raise
+    except TransformationProfileRegistryError as exc:
+        raise MappingSchemaError(str(exc), field="transformation_profile") from exc
+
+
+def _normalized_contract_snapshot(value: Any) -> dict[str, Any]:
+    """Normalize legacy inline mechanics for comparison with a registry definition."""
+
+    from shogun.mapping.schema import MappingTransformationProfile
+
+    raw = value.model_dump(mode="json") if hasattr(value, "model_dump") else value
+    return MappingTransformationProfile.model_validate(raw).model_dump(
+        mode="json",
+        exclude={"registry_version", "content_hash"},
+        exclude_none=True,
+    )
+
+
+def _validate_contract_registry_resolution(
+    configured_profile: Any,
+    definition: Any,
+    evidence: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Validate trusted registry output before it can become a Samurai contract."""
+
+    from shogun.mapping.errors import MappingSchemaError
+    from shogun.services.structured_transformations import SUPPORTED_ADAPTER
+    from shogun.services.transformation_profile_registry import profile_content_hash
+
+    if not isinstance(definition, dict) or not isinstance(evidence, dict):
+        raise MappingSchemaError(
+            "Transformation profile registry returned an invalid contract envelope",
+            field="transformation_profile",
+        )
+
+    profile_id = str(evidence.get("profile_id") or "")
+    adapter_id = str(evidence.get("adapter_id") or "")
+    status = str(evidence.get("status") or "").lower()
+    adapter_status = str(evidence.get("adapter_status") or "").lower()
+    version = evidence.get("version")
+    content_hash = str(evidence.get("content_hash") or "").lower()
+    if profile_id != configured_profile.id or adapter_id != configured_profile.adapter:
+        raise MappingSchemaError(
+            "Transformation profile registry evidence does not match the AgentFlow contract reference",
+            field="transformation_profile",
+        )
+    if status != "active" or adapter_status != "available":
+        raise MappingSchemaError(
+            "Transformation profile contract is not active with an available adapter",
+            field="transformation_profile",
+        )
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise MappingSchemaError(
+            "Transformation profile registry version is invalid",
+            field="transformation_profile.registry_version",
+        )
+    if definition.get("id") != profile_id or definition.get("adapter") != adapter_id:
+        raise MappingSchemaError(
+            "Resolved transformation profile definition does not match its registry evidence",
+            field="transformation_profile",
+        )
+    try:
+        actual_hash = profile_content_hash(definition)
+    except (TypeError, ValueError) as exc:
+        raise MappingSchemaError(
+            "Resolved transformation profile definition is not canonical JSON",
+            field="transformation_profile",
+        ) from exc
+    if actual_hash != content_hash:
+        raise MappingSchemaError(
+            "Resolved transformation profile definition failed its content-hash check",
+            field="transformation_profile.content_hash",
+        )
+    if configured_profile.is_registry_pinned:
+        if version != configured_profile.registry_version or content_hash != configured_profile.content_hash:
+            raise MappingSchemaError(
+                "Resolved transformation profile does not match the AgentFlow version/hash pin",
+                field="transformation_profile",
+            )
+    elif _normalized_contract_snapshot(configured_profile) != _normalized_contract_snapshot(definition):
+        # Backward compatibility is limited to exact snapshots of the active
+        # registry definition. Caller lifecycle/status fields cannot create
+        # trust and caller mechanics are never passed to Samurai.
+        raise MappingSchemaError(
+            "Unpinned inline transformation contract does not exactly match the active registry definition",
+            field="transformation_profile",
+        )
+    if adapter_id != SUPPORTED_ADAPTER:
+        raise MappingSchemaError(
+            f"Transformation profile adapter '{adapter_id}' cannot execute as a Samurai contract",
+            field="transformation_profile.adapter",
+        )
+    return deepcopy(definition), deepcopy(evidence)
+
+
+def _trusted_contract_profile_from_carrier(
+    configured_profile: Any,
+    carrier: Any,
+    *,
+    carrier_label: str,
+) -> dict[str, Any]:
+    """Extract only a registry-resolved profile from an internal contract carrier."""
+
+    if not (
+        isinstance(carrier, dict)
+        and carrier.get(_MAPPING_PROFILE_CARRIER_MARKER) is True
+        and carrier.get("status") == "SUCCESS"
+        and carrier.get("type") == "transformation_profile"
+    ):
+        raise ValueError(
+            f"Mapping/RPA contract carrier '{carrier_label}' did not provide a successful "
+            "transformation-profile contract."
+        )
+    definition, evidence = _validate_contract_registry_resolution(
+        configured_profile,
+        carrier.get("resolved_definition"),
+        carrier.get("registry_evidence"),
+    )
+    if (
+        carrier.get("profile_id") != evidence["profile_id"]
+        or carrier.get("adapter") != evidence["adapter_id"]
+        or carrier.get("registry_version") != evidence["version"]
+        or str(carrier.get("content_hash") or "").lower() != evidence["content_hash"]
+    ):
+        raise ValueError(
+            f"Mapping/RPA contract carrier '{carrier_label}' metadata does not match its registry evidence."
+        )
+    return definition
+
+
 async def _exec_mapping_rpa(
     config: dict[str, Any],
     predecessor_outputs: dict[str, Any],
@@ -3650,8 +4039,31 @@ async def _exec_mapping_rpa(
     from shogun.mapping.engine import execute_mapping
     from shogun.mapping.errors import MappingError, MappingInputError
     from shogun.mapping.schema import MappingConfig
+    from shogun.services.enterprise_transformations import execute_enterprise_profile
 
     mapping_config = MappingConfig.model_validate(config)
+    if mapping_config.execution_mode == "contract":
+        profile = mapping_config.transformation_profile
+        if profile is None:  # Kept defensive for direct, non-Pydantic callers.
+            raise MappingInputError("Mapping / RPA contract mode requires a transformation profile")
+        definition, registry_evidence = await _resolve_registered_enterprise_profile(profile)
+        definition, registry_evidence = _validate_contract_registry_resolution(
+            profile,
+            definition,
+            registry_evidence,
+        )
+        return {
+            _MAPPING_PROFILE_CARRIER_MARKER: True,
+            "status": "SUCCESS",
+            "type": "transformation_profile",
+            "profile_id": registry_evidence["profile_id"],
+            "adapter": registry_evidence["adapter_id"],
+            "registry_version": registry_evidence["version"],
+            "content_hash": registry_evidence["content_hash"],
+            "resolved_definition": definition,
+            "registry_evidence": registry_evidence,
+        }
+
     selected_id = mapping_config.input_source_node_id
     if selected_id:
         if selected_id not in predecessor_outputs:
@@ -3668,12 +4080,29 @@ async def _exec_mapping_rpa(
                 received={"predecessor_count": len(available)},
             )
         selected_id, payload = available[0]
+    execution_context = {"flow_id": flow_id, "node_id": node_id, "source_node_id": selected_id}
     try:
-        return execute_mapping(
-            payload,
-            mapping_config,
-            context={"flow_id": flow_id, "node_id": node_id, "source_node_id": selected_id},
-        )
+        if mapping_config.execution_mode == "profile":
+            profile = mapping_config.transformation_profile
+            if profile is None:  # Kept defensive for direct, non-Pydantic callers.
+                raise MappingInputError("Mapping / RPA profile mode requires a transformation profile")
+            definition, registry_evidence = await _resolve_registered_enterprise_profile(profile)
+            result = execute_enterprise_profile(
+                definition,
+                payload,
+                context=execution_context,
+                registry_evidence=registry_evidence,
+            )
+            result.update(
+                {
+                    "type": mapping_config.output.type,
+                    "start_cell": mapping_config.output.start_cell,
+                    "sheet": mapping_config.output.sheet,
+                    "include_headers": mapping_config.output.include_headers,
+                }
+            )
+            return result
+        return execute_mapping(payload, mapping_config, context=execution_context)
     except MappingError as exc:
         if not mapping_config.route_failures:
             raise
@@ -3690,6 +4119,12 @@ async def _exec_mapping_rpa(
                 "name": mapping_config.name,
                 "version": mapping_config.version,
                 "mode": mapping_config.mode,
+                "execution_mode": mapping_config.execution_mode,
+                "profile_id": (
+                    mapping_config.transformation_profile.id
+                    if mapping_config.transformation_profile is not None
+                    else None
+                ),
             },
         }
 
@@ -3713,21 +4148,53 @@ def _mapping_payload_from_predecessors(predecessor_outputs: dict[str, Any] | Non
     return payload
 
 
+def _safe_spreadsheet_value(value: Any) -> Any:
+    """Reject unsupported cells and neutralize spreadsheet formula injection."""
+
+    from datetime import date, datetime
+    from decimal import Decimal
+
+    if value is None or isinstance(value, (bool, int, float, Decimal, date, datetime)):
+        return value
+    if not isinstance(value, str):
+        raise ValueError(
+            f"Spreadsheet cells must be scalar values; received {type(value).__name__}"
+        )
+    if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", value):
+        raise ValueError("Spreadsheet text contains an illegal control character")
+    if len(value) > 32_767:
+        raise ValueError("Spreadsheet text exceeds Excel's 32,767-character cell limit")
+    if value.lstrip().startswith(("=", "+", "-", "@")):
+        return f"'{value}"
+    return value
+
+
+def _mapping_table_rows(payload: dict[str, Any]) -> list[list[Any]]:
+    rows = [list(row) for row in (payload.get("rows") or [])]
+    if payload.get("include_headers"):
+        headers = payload.get("headers") or []
+        if not isinstance(headers, list) or not headers:
+            raise ValueError("Mapping output requested headers but did not provide a header list")
+        rows.insert(0, list(headers))
+    return [[_safe_spreadsheet_value(value) for value in row] for row in rows]
+
+
 def _write_openpyxl_mapping(ws: Any, payload: dict[str, Any], fallback_start: str = "A1") -> int:
     """Write a typed mapping envelope to an openpyxl worksheet."""
     from openpyxl.utils.cell import coordinate_to_tuple
 
     if payload.get("type") == "cells":
         for cell, value in (payload.get("cells") or {}).items():
-            ws[str(cell).upper()] = value
+            ws[str(cell).upper()] = _safe_spreadsheet_value(value)
         return len(payload.get("cells") or {})
-    rows = payload.get("rows") or []
+    data_rows = payload.get("rows") or []
+    rows = _mapping_table_rows(payload)
     start = str(payload.get("start_cell") or fallback_start or "A1").upper()
     start_row, start_column = coordinate_to_tuple(start)
     for row_offset, row in enumerate(rows):
         for column_offset, value in enumerate(row):
             ws.cell(row=start_row + row_offset, column=start_column + column_offset, value=value)
-    return len(rows)
+    return len(data_rows)
 
 
 async def _exec_office(
@@ -3935,7 +4402,7 @@ async def _exec_office(
                 else:
                     for r_idx, cells in enumerate(rows, 1):
                         for c_idx, val in enumerate(cells, 1):
-                            ws.cell(row=r_idx, column=c_idx, value=val.strip() if isinstance(val, str) else val)
+                            ws.cell(row=r_idx, column=c_idx, value=_safe_spreadsheet_value(val))
                     written = len(rows)
                 Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
                 wb.save(abs_out)
@@ -3962,11 +4429,20 @@ async def _exec_office(
             )
             handle = open_workbook(abs_in)
             try:
-                data = (mapping_payload or {}).get("rows") or _excel_rows_from_context(context_str)
+                data = (
+                    _mapping_table_rows(mapping_payload)
+                    if mapping_payload and mapping_payload.get("type") != "cells"
+                    else _excel_rows_from_context(context_str)
+                )
                 target_sheet = str((mapping_payload or {}).get("sheet") or sheet_name or handle.workbook.sheetnames[0])
                 if mapping_payload and mapping_payload.get("type") == "cells":
                     for target_cell, value in (mapping_payload.get("cells") or {}).items():
-                        write_range(handle, target_sheet, str(target_cell).upper(), [[value]])
+                        write_range(
+                            handle,
+                            target_sheet,
+                            str(target_cell).upper(),
+                            [[_safe_spreadsheet_value(value)]],
+                        )
                     written = len(mapping_payload.get("cells") or {})
                 elif data:
                     start_range = str(
@@ -3974,8 +4450,16 @@ async def _exec_office(
                         or config.get("start_range")
                         or "A1"
                     ).strip() or "A1"
-                    write_range(handle, target_sheet, start_range, data)
-                    written = len(data)
+                    safe_data = [
+                        [_safe_spreadsheet_value(value) for value in row]
+                        for row in data
+                    ]
+                    write_range(handle, target_sheet, start_range, safe_data)
+                    written = (
+                        len(mapping_payload.get("rows") or [])
+                        if mapping_payload
+                        else len(data)
+                    )
                 else:
                     written = 0
                 Path(abs_out).parent.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,157 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "d365_fscm_inventory_balance_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "D365 F&SCM inventory balance",
+  "description": "Normalize D365 F&SCM inventory balance records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Microsoft",
+    "product": "Dynamics 365 Finance and Supply Chain Management",
+    "family": "erp_scm"
+  },
+  "source": {
+    "transport": "odata_v4",
+    "api_version": "OData v4; entity schema pinned at activation",
+    "object": "InventoryOnhand",
+    "record_shape": "collection",
+    "pagination": "@odata.nextLink",
+    "company_scope": "dataAreaId",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "inventory_balance",
+    "version": 1,
+    "record_kind": "inventory_balance"
+  },
+  "identity": {
+    "source_key": [
+      "dataAreaId",
+      "ItemNumber",
+      "InventorySiteId",
+      "InventoryWarehouseId",
+      "BatchNumber"
+    ],
+    "canonical_key": [
+      "company_code",
+      "product_id",
+      "site_id",
+      "location_id",
+      "lot_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "dataAreaId",
+      "target": "company_code",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "ItemNumber",
+      "target": "product_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "InventorySiteId",
+      "target": "site_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "InventoryWarehouseId",
+      "target": "location_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "BatchNumber",
+      "target": "lot_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "OnHandQuantity",
+      "target": "on_hand_quantity",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "AvailableOnHandQuantity",
+      "target": "available_quantity",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "OrderedQuantity",
+      "target": "ordered_quantity",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "InventoryUnitSymbol",
+      "target": "uom",
+      "type": "string",
+      "required": false,
+      "transforms": [
+        "trim",
+        "uppercase"
+      ]
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "company_code",
+        "product_id",
+        "site_id",
+        "location_id",
+        "lot_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:InventoryOnhand",
+      "transport:odata_v4",
+      "field:dataAreaId"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

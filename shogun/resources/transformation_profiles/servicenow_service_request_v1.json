@@ -1,0 +1,156 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "servicenow_service_request_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "ServiceNow service request",
+  "description": "Normalize ServiceNow service request records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "ServiceNow",
+    "product": "Now Platform",
+    "family": "itsm"
+  },
+  "source": {
+    "transport": "table_api",
+    "api_version": "Table API v2",
+    "object": "sc_request",
+    "record_shape": "collection",
+    "pagination": "Link header / sysparm_offset",
+    "record_path": "result"
+  },
+  "canonical_contract": {
+    "id": "service_request",
+    "version": 1,
+    "record_kind": "service_request"
+  },
+  "identity": {
+    "source_key": [
+      "sys_id"
+    ],
+    "canonical_key": [
+      "request_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "sys_id",
+      "target": "request_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "number",
+      "target": "request_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "short_description",
+      "target": "summary",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "request_state",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "priority",
+      "target": "priority",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "requested_for.value",
+      "target": "requested_for_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "requested_by.value",
+      "target": "requested_by_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "assigned_to.value",
+      "target": "owner_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "opened_at",
+      "target": "created_at",
+      "type": "datetime",
+      "required": true
+    },
+    {
+      "source": "closed_at",
+      "target": "closed_at",
+      "type": "datetime",
+      "required": false
+    },
+    {
+      "source": "price",
+      "target": "price",
+      "type": "decimal",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "request_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "summary",
+      "requested_for_id",
+      "requested_by_id"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:sc_request",
+      "transport:table_api",
+      "field:sys_id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

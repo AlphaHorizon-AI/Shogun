@@ -1,0 +1,186 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "ifs_cloud_bom_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "IFS Cloud product structure lines",
+  "description": "Normalize IFS Cloud product structure lines records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "IFS",
+    "product": "IFS Cloud",
+    "family": "manufacturing"
+  },
+  "source": {
+    "transport": "odata_v4",
+    "api_version": "OData v4 projection version pinned at activation",
+    "object": "ProductStructureHandling/ProductStructureHeadSet",
+    "record_shape": "header_with_lines",
+    "pagination": "@odata.nextLink",
+    "related_objects": [
+      "StructurePartSet"
+    ],
+    "company_scope": "Contract",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "bill_of_material",
+    "version": 1,
+    "record_kind": "bill_of_material"
+  },
+  "identity": {
+    "source_key": [
+      "Contract",
+      "PartNo",
+      "EngChgLevel",
+      "StructurePartSet.LineItemNo"
+    ],
+    "canonical_key": [
+      "site_id",
+      "parent_product_id",
+      "revision_id",
+      "line_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "Contract",
+      "target": "site_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "PartNo",
+      "target": "parent_product_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "EngChgLevel",
+      "target": "revision_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "StructurePartSet.LineItemNo",
+      "target": "line_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "StructurePartSet.ComponentPart",
+      "target": "component_product_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "StructurePartSet.QtyPerAssembly",
+      "target": "component_quantity",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "StructurePartSet.ConsumptionItem",
+      "target": "consumption_type",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "StructurePartSet.PhaseInDate",
+      "target": "valid_from",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "StructurePartSet.PhaseOutDate",
+      "target": "valid_to",
+      "type": "date",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_non_blank",
+      "fields": [
+        "site_id",
+        "parent_product_id",
+        "revision_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "identity_unique",
+      "rule": "unique_composite",
+      "fields": [
+        "site_id",
+        "parent_product_id",
+        "revision_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "required_fields_present",
+      "rule": "required_fields_present",
+      "fields": [
+        "site_id",
+        "parent_product_id",
+        "revision_id",
+        "line_id",
+        "component_product_id",
+        "component_quantity"
+      ]
+    },
+    {
+      "id": "component_quantity_positive",
+      "rule": "greater_than",
+      "field": "component_quantity",
+      "value": 0
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "nested_collection_flattening",
+      "business_rule:required_non_blank",
+      "business_rule:unique_composite",
+      "business_rule:required_fields_present",
+      "business_rule:greater_than"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:ProductStructureHandling/ProductStructureHeadSet",
+      "transport:odata_v4",
+      "field:Contract"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

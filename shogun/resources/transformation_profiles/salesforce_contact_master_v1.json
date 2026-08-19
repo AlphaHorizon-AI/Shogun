@@ -1,0 +1,162 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "salesforce_contact_master_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Salesforce contact master",
+  "description": "Normalize Salesforce contact master records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Salesforce",
+    "product": "Sales Cloud",
+    "family": "crm"
+  },
+  "source": {
+    "transport": "rest_soql",
+    "api_version": "API version pinned at activation",
+    "object": "Contact",
+    "record_shape": "collection",
+    "pagination": "queryMore",
+    "record_path": "records"
+  },
+  "canonical_contract": {
+    "id": "contact_master",
+    "version": 1,
+    "record_kind": "contact_master"
+  },
+  "identity": {
+    "source_key": [
+      "Id"
+    ],
+    "canonical_key": [
+      "contact_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "Id",
+      "target": "contact_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "AccountId",
+      "target": "account_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "FirstName",
+      "target": "first_name",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "LastName",
+      "target": "last_name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Email",
+      "target": "email",
+      "type": "string",
+      "required": false,
+      "transforms": [
+        "trim",
+        "lowercase"
+      ]
+    },
+    {
+      "source": "Phone",
+      "target": "phone",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Title",
+      "target": "job_title",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Department",
+      "target": "department",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "MailingCountryCode",
+      "target": "country_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "OwnerId",
+      "target": "owner_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "LastModifiedDate",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "contact_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "first_name",
+      "last_name",
+      "email",
+      "phone",
+      "job_title"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:Contact",
+      "transport:rest_soql",
+      "field:Id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

@@ -1,0 +1,171 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "business_central_vendor_master_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Business Central vendor master",
+  "description": "Normalize Business Central vendor master records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Microsoft",
+    "product": "Dynamics 365 Business Central",
+    "family": "erp"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "v2.0",
+    "object": "vendors",
+    "record_shape": "collection",
+    "pagination": "@odata.nextLink",
+    "company_scope": "companyId",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "vendor_master",
+    "version": 1,
+    "record_kind": "vendor_master"
+  },
+  "identity": {
+    "source_key": [
+      "id"
+    ],
+    "canonical_key": [
+      "vendor_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "id",
+      "target": "vendor_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "number",
+      "target": "vendor_number",
+      "type": "string",
+      "required": true,
+      "transforms": [
+        "trim"
+      ]
+    },
+    {
+      "source": "displayName",
+      "target": "name",
+      "type": "string",
+      "required": true,
+      "transforms": [
+        "trim"
+      ]
+    },
+    {
+      "source": "addressLine1",
+      "target": "address_line_1",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "city",
+      "target": "city",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "country",
+      "target": "country_code",
+      "type": "string",
+      "required": false,
+      "transforms": [
+        "trim",
+        "uppercase"
+      ]
+    },
+    {
+      "source": "email",
+      "target": "email",
+      "type": "string",
+      "required": false,
+      "transforms": [
+        "trim",
+        "lowercase"
+      ]
+    },
+    {
+      "source": "phoneNumber",
+      "target": "phone",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "currencyCode",
+      "target": "currency_code",
+      "type": "string",
+      "required": false,
+      "transforms": [
+        "trim",
+        "uppercase"
+      ]
+    },
+    {
+      "source": "paymentTermsId",
+      "target": "payment_terms_id",
+      "type": "string",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "vendor_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "name",
+      "address_line_1",
+      "city",
+      "email",
+      "phone"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:vendors",
+      "transport:rest",
+      "field:id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

@@ -1,0 +1,145 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "quickbooks_online_bank_transaction_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "QuickBooks Online bank transaction normalization",
+  "description": "Normalize QuickBooks Online bank transaction normalization records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Intuit",
+    "product": "QuickBooks Online",
+    "family": "accounting"
+  },
+  "source": {
+    "transport": "rest_query",
+    "api_version": "v3",
+    "object": "Purchase|Deposit|Transfer",
+    "record_shape": "collection",
+    "pagination": "startPosition/maxResults"
+  },
+  "canonical_contract": {
+    "id": "bank_transaction",
+    "version": 1,
+    "record_kind": "bank_transaction"
+  },
+  "identity": {
+    "source_key": [
+      "Id",
+      "TxnType"
+    ],
+    "canonical_key": [
+      "transaction_id",
+      "transaction_type"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "Id",
+      "target": "transaction_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "TxnType",
+      "target": "transaction_type",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "TxnDate",
+      "target": "transaction_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "AccountRef.value",
+      "target": "account_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "EntityRef.value",
+      "target": "counterparty_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "CurrencyRef.value",
+      "target": "currency_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "TotalAmt",
+      "target": "amount",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "PrivateNote",
+      "target": "description",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "MetaData.LastUpdatedTime",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "transaction_id",
+        "transaction_type"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "description"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "heterogeneous_object_union"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:Purchase|Deposit|Transfer",
+      "transport:rest_query",
+      "field:Id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

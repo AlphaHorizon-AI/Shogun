@@ -43,7 +43,7 @@ export default function Login() {
       <div className="relative glass-card p-8 w-full max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <img src="/logo.png" alt="Gensui" className="w-20 h-20 rounded-2xl mb-4 danger-glow" />
+          <img src="/gensui-purple-logo.png" alt="Gensui" className="w-20 h-20 rounded-2xl mb-4 danger-glow" />
           <h1 className="text-2xl font-bold text-gensui-50 tracking-wider">GENSUI</h1>
           <p className="text-xs text-gensui-500 uppercase tracking-[0.3em] mt-1">Central Command</p>
         </div>

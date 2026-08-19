@@ -61,6 +61,11 @@ from shogun.db.models.email_account import EmailAccount
 from shogun.db.models.agent_flow import AgentFlow, AgentFlowNode, AgentFlowEdge
 from shogun.db.models.agent_flow_run import AgentFlowRun, AgentFlowRunEdge
 from shogun.db.models.mapping_template import MappingTemplate
+from shogun.db.models.transformation_profile import (
+    RegisteredTransformationProfile,
+    TransformationAdapter,
+    TransformationProfileVersion,
+)
 from shogun.db.models.stack_orchestrator import (
     StackArtifact,
     StackCheckpoint,
@@ -149,6 +154,9 @@ __all__ = [
     "AgentFlowRun",
     "AgentFlowRunEdge",
     "MappingTemplate",
+    "RegisteredTransformationProfile",
+    "TransformationAdapter",
+    "TransformationProfileVersion",
     "StackRun",
     "StackStepRun",
     "StackCheckpoint",

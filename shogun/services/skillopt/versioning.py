@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shogun.db.models.skill import Skill
 from shogun.db.models.skillopt import SkillVersion
 from shogun.services.base_service import BaseService
+from shogun.services.enterprise_transformation_skill import assert_skill_mutable
 
 
 class SkillVersionService(BaseService):
@@ -90,6 +91,7 @@ class SkillVersionService(BaseService):
         skill = await self.db.get(Skill, skill_id)
         if not skill:
             raise ValueError(f"Skill {skill_id} not found")
+        assert_skill_mutable(skill, "activate another version of")
             
         version = await self.db.get(SkillVersion, version_id)
         if not version:

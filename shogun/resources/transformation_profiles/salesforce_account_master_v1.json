@@ -1,0 +1,156 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "salesforce_account_master_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Salesforce account master",
+  "description": "Normalize Salesforce account master records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Salesforce",
+    "product": "Sales Cloud",
+    "family": "crm"
+  },
+  "source": {
+    "transport": "rest_soql",
+    "api_version": "API version pinned at activation",
+    "object": "Account",
+    "record_shape": "collection",
+    "pagination": "queryMore",
+    "record_path": "records"
+  },
+  "canonical_contract": {
+    "id": "account_master",
+    "version": 1,
+    "record_kind": "account_master"
+  },
+  "identity": {
+    "source_key": [
+      "Id"
+    ],
+    "canonical_key": [
+      "account_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "Id",
+      "target": "account_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Name",
+      "target": "name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Type",
+      "target": "account_type",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Industry",
+      "target": "industry",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "ParentId",
+      "target": "parent_account_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "BillingCountryCode",
+      "target": "billing_country_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "BillingCity",
+      "target": "billing_city",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Phone",
+      "target": "phone",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Website",
+      "target": "website",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "OwnerId",
+      "target": "owner_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "LastModifiedDate",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "account_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "name",
+      "billing_city",
+      "phone"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:Account",
+      "transport:rest_soql",
+      "field:Id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

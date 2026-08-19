@@ -1,0 +1,166 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "salesforce_case_sla_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Salesforce case and SLA backlog",
+  "description": "Normalize Salesforce case and SLA backlog records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Salesforce",
+    "product": "Service Cloud",
+    "family": "crm_service"
+  },
+  "source": {
+    "transport": "rest_soql",
+    "api_version": "API version pinned at activation",
+    "object": "Case",
+    "record_shape": "collection",
+    "pagination": "queryMore",
+    "record_path": "records"
+  },
+  "canonical_contract": {
+    "id": "service_case",
+    "version": 1,
+    "record_kind": "service_case"
+  },
+  "identity": {
+    "source_key": [
+      "Id"
+    ],
+    "canonical_key": [
+      "case_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "Id",
+      "target": "case_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "CaseNumber",
+      "target": "case_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "AccountId",
+      "target": "account_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "ContactId",
+      "target": "contact_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Subject",
+      "target": "subject",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Status",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Priority",
+      "target": "priority",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Origin",
+      "target": "origin",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "OwnerId",
+      "target": "owner_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "CreatedDate",
+      "target": "created_at",
+      "type": "datetime",
+      "required": true
+    },
+    {
+      "source": "ClosedDate",
+      "target": "closed_at",
+      "type": "datetime",
+      "required": false
+    },
+    {
+      "source": "SlaStartDate",
+      "target": "sla_started_at",
+      "type": "datetime",
+      "required": false
+    },
+    {
+      "source": "SlaExitDate",
+      "target": "sla_exited_at",
+      "type": "datetime",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "case_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "subject"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:Case",
+      "transport:rest_soql",
+      "field:Id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

@@ -193,17 +193,39 @@ class NoCacheStaticFiles(StaticFiles):
         response.headers["Expires"] = "0"
         return response
 
+
+async def _protect_legacy_provider_credentials(session_factory=None, migration=None) -> int:
+    """Encrypt legacy provider credentials once during an application startup."""
+    if session_factory is None:
+        from shogun.db.engine import async_session_factory
+
+        session_factory = async_session_factory
+    if migration is None:
+        from shogun.services.provider_credentials import migrate_provider_credentials
+
+        migration = migrate_provider_credentials
+
+    async with session_factory() as credential_session:
+        migrated_credentials = await migration(credential_session)
+        if migrated_credentials:
+            await credential_session.commit()
+            logging.getLogger(__name__).info(
+                "Protected credentials for %d model provider(s)", migrated_credentials
+            )
+        return migrated_credentials
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown hooks."""
     # Startup
     settings.validate_security()
     settings.ensure_directories()
+    from shogun.services.startup_notices import record_startup_notice, resolve_startup_notice
+
     try:
         await _upgrade_database_schema()
     except Exception:
-        from shogun.services.startup_notices import record_startup_notice
-
         record_startup_notice(
             "database_migration_failed",
             "A database migration did not complete. Run Shogun Repair/Update before restarting.",
@@ -211,28 +233,9 @@ async def lifespan(app: FastAPI):
         )
         logging.getLogger(__name__).exception("Database migration failed during startup")
         raise
+    resolve_startup_notice("database_migration_failed")
 
-    from shogun.db.engine import async_session_factory
-    from shogun.services.provider_credentials import migrate_provider_credentials
-
-    async with async_session_factory() as credential_session:
-        migrated_credentials = await migrate_provider_credentials(credential_session)
-        if migrated_credentials:
-            await credential_session.commit()
-            logging.getLogger(__name__).info(
-                "Protected credentials for %d model provider(s)", migrated_credentials
-            )
-
-    from shogun.db.engine import async_session_factory
-    from shogun.services.provider_credentials import migrate_provider_credentials
-
-    async with async_session_factory() as credential_session:
-        migrated_credentials = await migrate_provider_credentials(credential_session)
-        if migrated_credentials:
-            await credential_session.commit()
-            logging.getLogger(__name__).info(
-                "Protected credentials for %d model provider(s)", migrated_credentials
-            )
+    await _protect_legacy_provider_credentials()
 
     # ── Auto-migrate execution_events to NIS2/SOC2 schema ──────
     try:
@@ -354,14 +357,22 @@ async def lifespan(app: FastAPI):
             await routing.registry.sync_connected()
             await session.commit()
         from shogun.services.active_skill_service import SkillActivationService
+        from shogun.services.enterprise_transformation_skill import (
+            ensure_enterprise_transformation_skill,
+        )
+        from shogun.services.transformation_profile_registry import (
+            TransformationProfileRegistryService,
+        )
+
         async with async_session_factory() as session:
             await SkillActivationService(session).ensure_defaults()
+            await ensure_enterprise_transformation_skill(session)
+            await TransformationProfileRegistryService(session).sync_bundled_profiles()
             await session.commit()
         from shogun.services.stack_orchestrator import recover_interrupted_stack_runs
         await recover_interrupted_stack_runs()
+        resolve_startup_notice("database_repair_incomplete")
     except Exception:
-        from shogun.services.startup_notices import record_startup_notice
-
         record_startup_notice(
             "database_repair_incomplete",
             "A legacy database repair could not be completed. Some Tenshu features may be unavailable.",
@@ -384,9 +395,8 @@ async def lifespan(app: FastAPI):
                     "ALTER TABLE skill_installations ADD COLUMN openclaw_skill_id VARCHAR(255)"
                 ))
                 logging.getLogger(__name__).info("Migrated skill_installations: added openclaw_skill_id column")
+        resolve_startup_notice("skill_schema_repair_incomplete")
     except Exception:
-        from shogun.services.startup_notices import record_startup_notice
-
         record_startup_notice(
             "skill_schema_repair_incomplete",
             "The installed-skill schema repair could not be completed.",
@@ -691,6 +701,7 @@ def create_app() -> FastAPI:
     from shogun.api.skill_lifecycle import router as skill_lifecycle_router
     from shogun.api.files import router as files_router
     from shogun.api.telemetry import router as telemetry_router
+    from shogun.api.transformation_profiles import router as transformation_profiles_router
 
     prefix = "/api/v1"
     app.include_router(system_router, prefix=prefix)
@@ -725,6 +736,7 @@ def create_app() -> FastAPI:
     app.include_router(agent_flow_router, prefix=prefix)
     from shogun.api.mapping_rpa import router as mapping_rpa_router
     app.include_router(mapping_rpa_router, prefix=prefix)
+    app.include_router(transformation_profiles_router, prefix=prefix)
     app.include_router(stack_orchestrator_router, prefix=prefix)
     app.include_router(mado_router, prefix=prefix)
     app.include_router(gensui_config_router, prefix=prefix)

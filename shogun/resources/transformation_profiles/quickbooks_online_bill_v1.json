@@ -1,0 +1,148 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "quickbooks_online_bill_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "QuickBooks Online vendor bill",
+  "description": "Normalize QuickBooks Online vendor bill records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Intuit",
+    "product": "QuickBooks Online",
+    "family": "accounting"
+  },
+  "source": {
+    "transport": "rest_query",
+    "api_version": "v3",
+    "object": "Bill",
+    "record_shape": "collection",
+    "pagination": "startPosition/maxResults",
+    "record_path": "QueryResponse.Bill"
+  },
+  "canonical_contract": {
+    "id": "accounts_payable_invoice",
+    "version": 1,
+    "record_kind": "accounts_payable_invoice"
+  },
+  "identity": {
+    "source_key": [
+      "Id"
+    ],
+    "canonical_key": [
+      "invoice_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "Id",
+      "target": "invoice_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "DocNumber",
+      "target": "invoice_number",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "VendorRef.value",
+      "target": "vendor_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "TxnDate",
+      "target": "invoice_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "DueDate",
+      "target": "due_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "CurrencyRef.value",
+      "target": "currency_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "TotalAmt",
+      "target": "invoice_total",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "Balance",
+      "target": "open_balance",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "PrivateNote",
+      "target": "note",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "MetaData.LastUpdatedTime",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "invoice_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "note"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:Bill",
+      "transport:rest_query",
+      "field:Id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

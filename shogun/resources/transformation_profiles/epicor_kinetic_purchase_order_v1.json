@@ -1,0 +1,193 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "epicor_kinetic_purchase_order_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Epicor Kinetic purchase order lines",
+  "description": "Normalize Epicor Kinetic purchase order lines records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Epicor",
+    "product": "Kinetic",
+    "family": "procurement"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "REST v2; service schema pinned at activation",
+    "object": "Erp.BO.POProcSvc/POHeaders",
+    "record_shape": "header_with_lines",
+    "pagination": "server paging",
+    "related_objects": [
+      "POLines"
+    ],
+    "company_scope": "Company",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "purchase_order",
+    "version": 1,
+    "record_kind": "purchase_order"
+  },
+  "identity": {
+    "source_key": [
+      "Company",
+      "PONum",
+      "POLines.POLine"
+    ],
+    "canonical_key": [
+      "company_code",
+      "order_id",
+      "line_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "Company",
+      "target": "company_code",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "PONum",
+      "target": "order_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "VendorNum",
+      "target": "vendor_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "OrderDate",
+      "target": "order_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "ApprovalStatus",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "CurrencyCode",
+      "target": "currency_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "POLines.POLine",
+      "target": "line_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "POLines.PartNum",
+      "target": "product_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "POLines.OrderQty",
+      "target": "quantity",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "POLines.PUM",
+      "target": "uom",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "POLines.UnitCost",
+      "target": "unit_cost",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "POLines.DueDate",
+      "target": "requested_receipt_date",
+      "type": "date",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_non_blank",
+      "fields": [
+        "company_code",
+        "order_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "identity_unique",
+      "rule": "unique_composite",
+      "fields": [
+        "company_code",
+        "order_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "required_fields_present",
+      "rule": "required_fields_present",
+      "fields": [
+        "company_code",
+        "order_id",
+        "vendor_id",
+        "status",
+        "line_id",
+        "quantity"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "nested_collection_flattening",
+      "business_rule:required_non_blank",
+      "business_rule:unique_composite",
+      "business_rule:required_fields_present"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:Erp.BO.POProcSvc/POHeaders",
+      "transport:rest",
+      "field:Company"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

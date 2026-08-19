@@ -1,0 +1,148 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "xero_bank_transaction_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Xero bank transaction",
+  "description": "Normalize Xero bank transaction records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Xero",
+    "product": "Xero Accounting",
+    "family": "accounting"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "Accounting API 2.0",
+    "object": "BankTransactions",
+    "record_shape": "collection",
+    "pagination": "page/pageSize",
+    "record_path": "BankTransactions"
+  },
+  "canonical_contract": {
+    "id": "bank_transaction",
+    "version": 1,
+    "record_kind": "bank_transaction"
+  },
+  "identity": {
+    "source_key": [
+      "BankTransactionID"
+    ],
+    "canonical_key": [
+      "transaction_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "BankTransactionID",
+      "target": "transaction_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Type",
+      "target": "transaction_type",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Contact.ContactID",
+      "target": "counterparty_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "BankAccount.AccountID",
+      "target": "account_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Date",
+      "target": "transaction_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "CurrencyCode",
+      "target": "currency_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Total",
+      "target": "amount",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "Reference",
+      "target": "reference",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Status",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "UpdatedDateUTC",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "transaction_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "reference"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:BankTransactions",
+      "transport:rest",
+      "field:BankTransactionID"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

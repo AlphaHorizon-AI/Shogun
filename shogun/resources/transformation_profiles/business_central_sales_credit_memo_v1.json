@@ -1,0 +1,182 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "business_central_sales_credit_memo_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Business Central sales credit memo lines",
+  "description": "Normalize Business Central sales credit memo lines records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Microsoft",
+    "product": "Dynamics 365 Business Central",
+    "family": "finance"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "v2.0",
+    "object": "salesCreditMemos",
+    "record_shape": "header_with_lines",
+    "pagination": "@odata.nextLink",
+    "related_objects": [
+      "salesCreditMemoLines"
+    ],
+    "company_scope": "companyId",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "accounts_receivable_credit_memo",
+    "version": 1,
+    "record_kind": "accounts_receivable_credit_memo"
+  },
+  "identity": {
+    "source_key": [
+      "id",
+      "salesCreditMemoLines.id"
+    ],
+    "canonical_key": [
+      "credit_memo_id",
+      "line_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "id",
+      "target": "credit_memo_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "number",
+      "target": "credit_memo_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "customerId",
+      "target": "customer_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "creditMemoDate",
+      "target": "document_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "currencyCode",
+      "target": "currency_code",
+      "type": "string",
+      "required": true,
+      "transforms": [
+        "trim",
+        "uppercase"
+      ]
+    },
+    {
+      "source": "totalAmountIncludingTax",
+      "target": "document_total",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "salesCreditMemoLines.id",
+      "target": "line_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "salesCreditMemoLines.itemId",
+      "target": "product_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "salesCreditMemoLines.quantity",
+      "target": "quantity",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "salesCreditMemoLines.netAmount",
+      "target": "line_amount",
+      "type": "decimal",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_non_blank",
+      "fields": [
+        "credit_memo_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "identity_unique",
+      "rule": "unique_composite",
+      "fields": [
+        "credit_memo_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "required_fields_present",
+      "rule": "required_fields_present",
+      "fields": [
+        "credit_memo_id",
+        "credit_memo_number",
+        "customer_id",
+        "document_date",
+        "currency_code",
+        "line_id",
+        "line_amount"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "nested_collection_flattening",
+      "business_rule:required_non_blank",
+      "business_rule:unique_composite",
+      "business_rule:required_fields_present"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:salesCreditMemos",
+      "transport:rest",
+      "field:id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

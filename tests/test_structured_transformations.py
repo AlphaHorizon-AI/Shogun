@@ -5,7 +5,10 @@ import json
 import pytest
 
 from shogun.engine import flow_engine
-from shogun.services.structured_transformations import try_deterministic_matrix_transform
+from shogun.services.structured_transformations import (
+    load_bundled_transformation_profile,
+    try_deterministic_matrix_transform,
+)
 
 NUMBER_PATTERN = r"[+-]?(?:\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d+)(?:,\d+)?"
 PROFILE = {
@@ -116,6 +119,8 @@ PROFILE = {
         ],
     },
 }
+
+PROFILE_V2 = load_bundled_transformation_profile("ks_lbp_disposition_v2")
 
 TASK = """Read the complete SAP report.
 For every order where Sa = 06, create one production row using Soll-Menge.
@@ -425,3 +430,155 @@ async def test_samurai_uses_deterministic_adapter_without_model_routing(monkeypa
     rows = json.loads(output)
     assert len(rows) == 4
     assert progress[-1][0] == progress[-1][1]
+
+
+def test_v2_uses_start_month_from_declared_normal_header_order():
+    result = try_deterministic_matrix_transform(
+        profile=PROFILE_V2,
+        source_context=END_MONTH_SOURCE,
+        fixed_context=FULL_HORIZON_CONTEXT,
+    )
+
+    assert result.profile_id == "ks_lbp_disposition_v2"
+    demand = result.rows[0]
+    assert len(demand) == 24
+    assert demand[15] == 29  # Starttermin 2026/11.
+    assert demand[14] == ""  # Endtermin 2026/10 is not the demand month.
+
+
+def test_bundled_v2_profile_loader_is_explicit_and_traversal_safe():
+    assert PROFILE_V2["id"] == "ks_lbp_disposition_v2"
+    assert PROFILE_V2["parameters"]["row_rules"][2]["key_group"] == "start_month"
+
+    with pytest.raises(ValueError, match="profile id is invalid"):
+        load_bundled_transformation_profile("../ks_lbp_disposition_v2")
+
+
+def test_v2_uses_start_month_when_source_header_and_date_columns_are_reversed():
+    source = END_MONTH_SOURCE.replace(
+        "Endtermin Starttermin",
+        "Starttermin Endtermin",
+    ).replace(
+        "2026/43 2026/10 2026/45 2026/11",
+        "2026/45 2026/11 2026/43 2026/10",
+    )
+
+    result = try_deterministic_matrix_transform(
+        profile=PROFILE_V2,
+        source_context=source,
+        fixed_context=FULL_HORIZON_CONTEXT,
+    )
+
+    demand = result.rows[0]
+    assert demand[15] == 29
+    assert demand[14] == ""
+
+
+def test_v2_applies_the_closest_preceding_header_to_each_record_block():
+    source = END_MONTH_SOURCE.replace(
+        "01 140090 0003943422 2026/43 2026/10 2026/45 2026/11 30,0 29,0 21.07.2026",
+        "01 140090 0003943422 2026/43 2026/10 2026/45 2026/11 30,0 29,0 21.07.2026\n"
+        "Starttermin Endtermin\n"
+        "01 140090 0003943423 2026/45 2026/11 2026/43 2026/10 12,0 11,0 21.07.2026",
+    )
+
+    result = try_deterministic_matrix_transform(
+        profile=PROFILE_V2,
+        source_context=source,
+        fixed_context=FULL_HORIZON_CONTEXT,
+    )
+
+    demand = result.rows[0]
+    assert demand[15] == 40
+    assert demand[14] == ""
+
+
+def test_v2_deduplicates_production_orders_by_declared_stable_identity():
+    source = SOURCE.replace(
+        "06 140052 0020164627 2026/35 2026/08 2026/35 2026/08 51,0 50,0 21.07.2026\n"
+        "06 140052 0020164627 2026/35 2026/08 2026/35 2026/08 51,0 50,0 21.07.2026",
+        "06 140052 0020164627 2026/35 2026/08 2026/35 2026/08 51,0 50,0 21.07.2026\n"
+        "06 140052 20164627 2026/35 2026/08 2026/35 2026/08 51,0 50,0 21.07.2026",
+    )
+    result = try_deterministic_matrix_transform(
+        profile=PROFILE_V2,
+        source_context=source,
+        fixed_context=FULL_HORIZON_CONTEXT,
+    )
+
+    assert len(result.rows) == 3
+    stock, production, demand = result.rows
+    assert stock[4:6] == ["Lager 0031", 1]
+    assert production[4:6] == ["20164627", 51]
+    assert demand[21] == 50  # Starttermin 2027/05.
+    assert demand[23] == 175  # Starttermin 2027/07 -> explicit future bucket.
+
+
+def test_v2_routes_start_months_across_dynamic_24_column_backlog_and_future_horizon():
+    source = END_MONTH_SOURCE.replace(
+        "01 140090 0003943422 2026/43 2026/10 2026/45 2026/11 30,0 29,0 21.07.2026",
+        "01 140090 0003943421 2030/01 2030/01 2026/24 2026/06 6,0 5,0 21.07.2026\n"
+        "01 140090 0003943422 2030/01 2030/01 2026/28 2026/07 8,0 7,0 21.07.2026\n"
+        "01 140090 0003943423 2030/01 2030/01 2027/24 2027/06 12,0 11,0 21.07.2026\n"
+        "01 140090 0003943424 2030/01 2030/01 2027/28 2027/07 14,0 13,0 21.07.2026\n"
+        "01 140090 0003943425 2030/01 2030/01 2029/36 2029/09 18,0 17,0 21.07.2026",
+    )
+
+    result = try_deterministic_matrix_transform(
+        profile=PROFILE_V2,
+        source_context=source,
+        fixed_context=FULL_HORIZON_CONTEXT,
+    )
+
+    demand = result.rows[0]
+    assert len(demand) == 24
+    assert demand[10] == 5
+    assert demand[11] == 7
+    assert demand[22] == 11
+    assert demand[23] == 30
+    assert sum(value for value in demand[10:] if isinstance(value, (int, float))) == 53
+
+
+def test_v2_fails_closed_when_required_record_header_is_missing():
+    source = END_MONTH_SOURCE.replace("Endtermin Starttermin\n", "")
+
+    with pytest.raises(ValueError, match="no required record header layout"):
+        try_deterministic_matrix_transform(
+            profile=PROFILE_V2,
+            source_context=source,
+            fixed_context=FULL_HORIZON_CONTEXT,
+        )
+
+
+def test_v2_fails_closed_when_record_header_roles_are_ambiguous():
+    source = END_MONTH_SOURCE.replace("Endtermin Starttermin", "Starttermin Starttermin")
+
+    with pytest.raises(ValueError, match="ambiguous record header.*start.*more than once"):
+        try_deterministic_matrix_transform(
+            profile=PROFILE_V2,
+            source_context=source,
+            fixed_context=FULL_HORIZON_CONTEXT,
+        )
+
+
+def test_v2_fails_closed_when_template_month_headers_are_ambiguous():
+    fixed_context = FULL_HORIZON_CONTEXT.replace(
+        '"2026-08-01T00:00:00"',
+        '"2026-07-01T00:00:00"',
+    )
+
+    with pytest.raises(ValueError, match="ambiguous planning header"):
+        try_deterministic_matrix_transform(
+            profile=PROFILE_V2,
+            source_context=END_MONTH_SOURCE,
+            fixed_context=fixed_context,
+        )
+
+
+def test_v2_coverage_count_deduplicates_production_identity():
+    config = {"_transformation_profiles": [PROFILE_V2]}
+    assert flow_engine._minimum_matrix_rows_for_source(SOURCE, TASK, config) == (
+        3,
+        3,
+        "profile-required row(s)",
+    )

@@ -750,6 +750,148 @@ D A2 order-2
         )
 
 
+def _mismatched_record_profile(*, model_fallback: bool = False) -> dict:
+    return {
+        "id": "record_contract_v2",
+        "adapter": "sectioned_record_matrix_v1",
+        "model_fallback": model_fallback,
+        "parameters": {
+            "required_source_patterns": [r"(?m)^Record: "],
+            "section_pattern": r"(?m)^Record: (?P<section_id>\S+)",
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_transformation_profile_source_mismatch_fails_closed_by_default(monkeypatch):
+    async def unexpected_route(*_args, **_kwargs):
+        raise AssertionError("a failed deterministic contract must not silently route to a model")
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", unexpected_route)
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+"""
+
+    with pytest.raises(ValueError, match="Runtime source 'PDF 2' does not match transformation profile"):
+        await flow_engine._exec_samurai(
+            {
+                "task_description": "Populate the template from the supplied source.",
+                "_transformation_profiles": [_mismatched_record_profile()],
+                "_transformation_source_contexts": [
+                    {"label": "PDF 1", "content": "Record: A1\nsource row"},
+                    {"label": "PDF 2", "content": "Sachnummer : 140000\nBestand : 12"},
+                ],
+            },
+            "Record: A1\nsource row\nSachnummer : 140000\nBestand : 12",
+            fixed_context_str=fixed_context,
+        )
+
+
+@pytest.mark.asyncio
+async def test_transformation_profile_can_explicitly_fall_back_to_generic_model(monkeypatch):
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Remote Matrix Model",
+        provider_type="openai_compatible",
+        is_local=False,
+        config={},
+    )
+    routed: list[str] = []
+
+    async def resolve_route(*_args, **kwargs):
+        routed.append(kwargs["prompt"])
+        return [(provider, "matrix-model", "https://model.invalid/v1", {})], {
+            "selected_context_window": 32_768,
+            "selected_max_input_tokens": 24_576,
+            "selected_max_output_tokens": 4_096,
+        }
+
+    async def call_rows(*_args, **_kwargs):
+        return [["model fallback", 1]]
+
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain_rows_with_fallback", call_rows)
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+"""
+
+    result = await flow_engine._exec_samurai(
+        {
+            "task_description": "Populate the template from the supplied source.",
+            "_transformation_profiles": [_mismatched_record_profile(model_fallback=True)],
+        },
+        "Sachnummer : 140000\nBestand : 12",
+        fixed_context_str=fixed_context,
+    )
+
+    assert __import__("json").loads(result) == [["model fallback", 1]]
+    assert len(routed) == 1
+
+
+def test_samurai_rejects_multiple_explicit_transformation_profiles():
+    with pytest.raises(ValueError, match="multiple Mapping/RPA transformation profiles"):
+        flow_engine._active_transformation_profile(
+            {
+                "_transformation_profiles": [
+                    _mismatched_record_profile(),
+                    {**_mismatched_record_profile(), "id": "second_contract_v2"},
+                ]
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_sap_text_without_an_explicit_profile_stays_on_the_model_path(monkeypatch):
+    monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
+    provider = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Remote Matrix Model",
+        provider_type="openai_compatible",
+        is_local=False,
+        config={},
+    )
+
+    def unexpected_deterministic_transform(*_args, **_kwargs):
+        raise AssertionError("SAP wording or source markers must never activate an adapter")
+
+    async def resolve_route(*_args, **_kwargs):
+        return [(provider, "matrix-model", "https://model.invalid/v1", {})], {
+            "selected_context_window": 32_768,
+            "selected_max_input_tokens": 24_576,
+            "selected_max_output_tokens": 4_096,
+        }
+
+    async def call_rows(*_args, **_kwargs):
+        return [["generic model", 1]]
+
+    monkeypatch.setattr(flow_engine, "try_deterministic_matrix_transform", unexpected_deterministic_transform)
+    monkeypatch.setattr(flow_engine, "_resolve_task_llm_chain", resolve_route)
+    monkeypatch.setattr(flow_engine, "_call_llm_chain_rows_with_fallback", call_rows)
+    fixed_context = """[FILE TEMPLATE CONTRACT]
+Format: xlsx
+[MACHINE-READABLE TEMPLATE MANIFEST]
+{"kind": "excel", "logical_columns": 2}
+"""
+
+    result = await flow_engine._exec_samurai(
+        {
+            "task_description": (
+                "Convert this SAP source: create a stock row for Bestand, one row for each "
+                "Sa = 06 order, and one aggregate row for Sa = 01 demand."
+            )
+        },
+        "Sachnummer : 140000\nBestand : 12\n06 140000 ORDER-1\n01 140000 DEMAND-1",
+        fixed_context_str=fixed_context,
+    )
+
+    assert __import__("json").loads(result) == [["generic model", 1]]
+
+
 @pytest.mark.asyncio
 async def test_incomplete_chunk_can_split_to_individual_source_pages(monkeypatch):
     monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
@@ -1145,7 +1287,9 @@ async def test_extract_node_with_url_navigates_before_reading(monkeypatch, tmp_p
     monkeypatch.setattr(settings, "mado_path", tmp_path / "mado")
     from shogun.services import mado_hardening, mado_service
 
+    run_id = uuid.uuid4()
     calls: list[tuple[str, str | None]] = []
+    launched_with: list[dict] = []
 
     async def allowed(*_args, **_kwargs):
         return None
@@ -1153,7 +1297,8 @@ async def test_extract_node_with_url_navigates_before_reading(monkeypatch, tmp_p
     async def posture():
         return {"active_tier": "campaign"}
 
-    async def launched(**_kwargs):
+    async def launched(**kwargs):
+        launched_with.append(kwargs)
         return {"status": "already_active"}
 
     async def governed(_session_id, _action_type, operation, **_kwargs):
@@ -1170,26 +1315,74 @@ async def test_extract_node_with_url_navigates_before_reading(monkeypatch, tmp_p
     monkeypatch.setattr(posture_guard, "check_mado_access", allowed)
     monkeypatch.setattr(posture_guard, "get_posture_tool_filter", posture)
     monkeypatch.setattr(posture_guard, "check_mado_browser_mode", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(posture_guard, "check_mado_session_limit", allowed)
     monkeypatch.setattr(mado_hardening.permission_guard, "check", allowed)
     monkeypatch.setattr(mado_hardening, "governed_action", governed)
     monkeypatch.setattr(mado_hardening.runtime_registry, "register", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(mado_service, "launch_browser", launched)
     monkeypatch.setattr(mado_service, "navigate", navigate)
     monkeypatch.setattr(mado_service, "extract_content", extract)
-    monkeypatch.setitem(mado_service._active_contexts, "flow_morning_news", object())
 
-    result = await flow_engine._exec_mado_browser(
-        {
-            "action": "extract_content",
-            "url": "https://example.test/ai",
-            "selector": "article",
-            "session_name": "morning_news",
-        },
-        "",
-    )
+    try:
+        result = await flow_engine._exec_mado_browser(
+            {
+                "action": "extract_content",
+                "url": "https://example.test/ai",
+                "selector": "article",
+                "session_name": "morning_news",
+            },
+            "",
+            run_id=run_id,
+        )
+    finally:
+        flow_engine._run_mado_sessions.pop(str(run_id), None)
 
     assert result == "Headline one\nHeadline two"
     assert calls == [("navigate", "https://example.test/ai"), ("extract", "article")]
+    assert launched_with == [
+        {
+            "session_id": f"flow_{run_id.hex}_morning_news",
+            "profile_name": "flow_morning_news",
+            "mode": "headless",
+        }
+    ]
+
+
+def test_flow_browser_session_identity_is_scoped_to_run():
+    first_run = uuid.uuid4()
+    second_run = uuid.uuid4()
+
+    first_session, first_profile = flow_engine._flow_mado_session_identity(first_run, "TechCrunch AI")
+    second_session, second_profile = flow_engine._flow_mado_session_identity(second_run, "TechCrunch AI")
+
+    assert first_session == f"flow_{first_run.hex}_TechCrunch_AI"
+    assert second_session == f"flow_{second_run.hex}_TechCrunch_AI"
+    assert first_session != second_session
+    assert first_profile == second_profile == "flow_TechCrunch_AI"
+
+
+@pytest.mark.asyncio
+async def test_flow_browser_sessions_close_and_leave_no_runtime_registry_state(monkeypatch):
+    from shogun.services import mado_hardening, mado_service
+
+    run_id = uuid.uuid4()
+    sessions = {f"flow_{run_id.hex}_one", f"flow_{run_id.hex}_two"}
+    flow_engine._run_mado_sessions[str(run_id)] = set(sessions)
+    closed: list[str] = []
+    discarded: list[str] = []
+
+    async def close_browser(session_id):
+        closed.append(session_id)
+        return {"status": "closed", "session_id": session_id}
+
+    monkeypatch.setattr(mado_service, "close_browser", close_browser)
+    monkeypatch.setattr(mado_hardening.runtime_registry, "discard", discarded.append)
+
+    await flow_engine._close_run_mado_sessions(run_id)
+
+    assert set(closed) == sessions
+    assert set(discarded) == sessions
+    assert str(run_id) not in flow_engine._run_mado_sessions
 
 
 def test_notification_cursor_only_returns_new_events():

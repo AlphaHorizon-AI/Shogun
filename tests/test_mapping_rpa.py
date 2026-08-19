@@ -12,6 +12,7 @@ from shogun.api.deps import get_db
 from shogun.config import settings
 from shogun.db.base import Base
 from shogun.db.models.mapping_template import MappingTemplate
+from shogun.engine import flow_engine
 from shogun.engine.flow_engine import (
     _exec_mapping_rpa,
     _exec_office,
@@ -22,6 +23,7 @@ from shogun.mapping.engine import execute_mapping
 from shogun.mapping.errors import MappingFieldMissing, MappingSchemaError, MappingTypeError
 from shogun.mapping.schema import MappingConfig
 from shogun.schemas.agent_flow import AgentFlowNodeCreate
+from shogun.services.transformation_profile_registry import profile_content_hash
 
 
 def _config(**overrides):
@@ -156,6 +158,36 @@ def test_cell_mapping_and_openpyxl_handoff_preserve_types():
     assert sheet["E3"].value == 4
 
 
+def test_openpyxl_handoff_writes_safe_headers_and_neutralizes_formulas():
+    workbook = Workbook()
+    sheet = workbook.active
+    payload = {
+        "type": "table",
+        "start_cell": "B2",
+        "include_headers": True,
+        "headers": ["=malicious header", "name"],
+        "rows": [["@SUM(A1:A2)", "Pump"]],
+    }
+
+    written = _write_openpyxl_mapping(sheet, payload)
+
+    assert written == 1
+    assert sheet["B2"].value == "'=malicious header"
+    assert sheet["C2"].value == "name"
+    assert sheet["B3"].value == "'@SUM(A1:A2)"
+    assert sheet["C3"].value == "Pump"
+
+
+def test_openpyxl_handoff_rejects_nonscalar_cells():
+    workbook = Workbook()
+    sheet = workbook.active
+    with pytest.raises(ValueError, match="must be scalar"):
+        _write_openpyxl_mapping(
+            sheet,
+            {"type": "table", "rows": [[{"nested": "not a cell"}]]},
+        )
+
+
 def test_safe_formula_and_duplicate_replace():
     config = {
         "mode": "lenient",
@@ -235,7 +267,223 @@ def test_agentflow_node_schema_preserves_explicit_transformation_profile():
         config=_config(transformation_profile=profile),
     )
 
-    assert node.config["transformation_profile"] == profile
+    assert node.config["transformation_profile"] == {
+        **profile,
+        "model_fallback": False,
+        "registry_version": None,
+        "content_hash": None,
+    }
+
+
+def test_contract_mapping_requires_a_profile_but_not_mapping_rules():
+    profile = {
+        "id": "supplier_report_v2",
+        "adapter": "sectioned_record_matrix_v1",
+        "parameters": {"section_pattern": r"(?m)^Record: (?P<section_id>\S+)"},
+    }
+
+    config = MappingConfig.model_validate(
+        {
+            "name": "Supplier extraction contract",
+            "execution_mode": "contract",
+            "transformation_profile": profile,
+        }
+    )
+
+    assert config.mappings == []
+    assert config.transformation_profile is not None
+    assert config.transformation_profile.model_fallback is False
+    with pytest.raises(ValueError, match="contract execution requires a transformation_profile"):
+        MappingConfig.model_validate({"execution_mode": "contract"})
+    with pytest.raises(ValueError, match="transform execution requires at least one mapping rule"):
+        MappingConfig.model_validate({})
+
+
+def test_transformation_profile_registry_pin_is_all_or_nothing_and_normalized():
+    digest = "AB" * 32
+    profile = MappingConfig.model_validate(
+        {
+            "execution_mode": "contract",
+            "transformation_profile": {
+                "id": "ks_lbp_disposition_v2",
+                "adapter": "sectioned_record_matrix_v1",
+                "registry_version": 2,
+                "content_hash": digest,
+            },
+        }
+    ).transformation_profile
+
+    assert profile is not None
+    assert profile.is_registry_pinned is True
+    assert profile.content_hash == digest.lower()
+    with pytest.raises(ValueError, match="registry_version and content_hash must be supplied together"):
+        MappingConfig.model_validate(
+            {
+                "execution_mode": "contract",
+                "transformation_profile": {
+                    "id": "ks_lbp_disposition_v2",
+                    "adapter": "sectioned_record_matrix_v1",
+                    "registry_version": 2,
+                },
+            }
+        )
+
+
+@pytest.mark.anyio
+async def test_contract_mapping_resolves_minimal_pinned_registry_reference(monkeypatch):
+    definition = {
+        "id": "ks_lbp_disposition_v2",
+        "adapter": "sectioned_record_matrix_v1",
+        "parameters": {"section_pattern": r"(?m)^Record: (?P<section_id>\S+)"},
+    }
+    digest = profile_content_hash(definition)
+    evidence = {
+        "profile_id": definition["id"],
+        "version": 2,
+        "content_hash": digest,
+        "status": "active",
+        "adapter_id": definition["adapter"],
+        "adapter_status": "available",
+        "version_id": "version-2",
+    }
+
+    async def resolve(profile):
+        assert profile.id == definition["id"]
+        assert profile.adapter == definition["adapter"]
+        assert profile.registry_version == 2
+        assert profile.content_hash == digest
+        assert profile.parameters == {}
+        return definition, evidence
+
+    monkeypatch.setattr(flow_engine, "_resolve_registered_enterprise_profile", resolve)
+    result = await flow_engine._exec_mapping_rpa(
+        {
+            "name": "SAP registry contract",
+            "execution_mode": "contract",
+            "transformation_profile": {
+                "id": definition["id"],
+                "adapter": "sectioned_record_matrix_v1",
+                "registry_version": 2,
+                "content_hash": digest,
+            },
+        },
+        {},
+        flow_id="flow-1",
+        node_id="contract-1",
+    )
+
+    assert result == {
+        "__shogun_mapping_profile_contract__": True,
+        "status": "SUCCESS",
+        "type": "transformation_profile",
+        "profile_id": definition["id"],
+        "adapter": "sectioned_record_matrix_v1",
+        "registry_version": 2,
+        "content_hash": digest,
+        "resolved_definition": definition,
+        "registry_evidence": evidence,
+    }
+
+
+@pytest.mark.anyio
+async def test_unpinned_contract_only_accepts_exact_active_registry_snapshot(monkeypatch):
+    definition = {
+        "id": "ks_lbp_disposition_v2",
+        "adapter": "sectioned_record_matrix_v1",
+        "parameters": {"section_pattern": r"(?m)^Record: (?P<section_id>\S+)"},
+    }
+    evidence = {
+        "profile_id": definition["id"],
+        "version": 2,
+        "content_hash": profile_content_hash(definition),
+        "status": "active",
+        "adapter_id": definition["adapter"],
+        "adapter_status": "available",
+        "version_id": "version-2",
+    }
+
+    async def resolve(_profile):
+        return definition, evidence
+
+    monkeypatch.setattr(flow_engine, "_resolve_registered_enterprise_profile", resolve)
+    base_config = {
+        "execution_mode": "contract",
+        "transformation_profile": {**definition, "model_fallback": False},
+    }
+    result = await flow_engine._exec_mapping_rpa(
+        base_config,
+        {},
+        flow_id="flow-1",
+        node_id="contract-1",
+    )
+    assert result["resolved_definition"] == definition
+    assert result["registry_evidence"] == evidence
+
+    mismatched = {
+        **base_config,
+        "transformation_profile": {
+            **base_config["transformation_profile"],
+            "parameters": {"section_pattern": "caller-controlled"},
+        },
+    }
+    with pytest.raises(MappingSchemaError, match="does not exactly match the active registry definition"):
+        await flow_engine._exec_mapping_rpa(
+            mismatched,
+            {},
+            flow_id="flow-1",
+            node_id="contract-1",
+        )
+
+
+def test_samurai_contract_carrier_rejects_forged_resolved_definition():
+    definition = {
+        "id": "ks_lbp_disposition_v2",
+        "adapter": "sectioned_record_matrix_v1",
+        "parameters": {"section_pattern": "trusted"},
+    }
+    digest = profile_content_hash(definition)
+    profile = MappingConfig.model_validate(
+        {
+            "execution_mode": "contract",
+            "transformation_profile": {
+                "id": definition["id"],
+                "adapter": definition["adapter"],
+                "registry_version": 2,
+                "content_hash": digest,
+            },
+        }
+    ).transformation_profile
+    assert profile is not None
+    evidence = {
+        "profile_id": definition["id"],
+        "version": 2,
+        "content_hash": digest,
+        "status": "active",
+        "adapter_id": definition["adapter"],
+        "adapter_status": "available",
+        "version_id": "version-2",
+    }
+    carrier = {
+        "__shogun_mapping_profile_contract__": True,
+        "status": "SUCCESS",
+        "type": "transformation_profile",
+        "profile_id": definition["id"],
+        "adapter": definition["adapter"],
+        "registry_version": 2,
+        "content_hash": digest,
+        "resolved_definition": {
+            **definition,
+            "parameters": {"section_pattern": "forged after resolution"},
+        },
+        "registry_evidence": evidence,
+    }
+
+    with pytest.raises(MappingSchemaError, match="failed its content-hash check"):
+        flow_engine._trusted_contract_profile_from_carrier(
+            profile,
+            carrier,
+            carrier_label="SAP registry contract",
+        )
 
 
 @pytest.mark.anyio

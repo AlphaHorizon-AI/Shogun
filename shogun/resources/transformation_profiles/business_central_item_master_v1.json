@@ -1,0 +1,147 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "business_central_item_master_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Business Central item master",
+  "description": "Normalize Business Central item master records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Microsoft",
+    "product": "Dynamics 365 Business Central",
+    "family": "erp"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "v2.0",
+    "object": "items",
+    "record_shape": "collection",
+    "pagination": "@odata.nextLink",
+    "company_scope": "companyId",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "product_master",
+    "version": 1,
+    "record_kind": "product_master"
+  },
+  "identity": {
+    "source_key": [
+      "id"
+    ],
+    "canonical_key": [
+      "product_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "id",
+      "target": "product_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "number",
+      "target": "product_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "displayName",
+      "target": "name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "type",
+      "target": "product_type",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "itemCategoryId",
+      "target": "product_category_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "baseUnitOfMeasureId",
+      "target": "base_uom_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "unitPrice",
+      "target": "sales_unit_price",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "unitCost",
+      "target": "unit_cost",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "inventory",
+      "target": "inventory_quantity",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "blocked",
+      "target": "is_blocked",
+      "type": "boolean",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "product_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:items",
+      "transport:rest",
+      "field:id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

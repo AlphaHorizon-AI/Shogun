@@ -1,0 +1,207 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "oracle_fusion_ap_invoice_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Oracle Fusion accounts payable invoice lines",
+  "description": "Normalize Oracle Fusion accounts payable invoice lines records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Oracle",
+    "product": "Fusion Cloud ERP and SCM",
+    "family": "finance"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "11.13.18.05",
+    "object": "invoices",
+    "record_shape": "header_with_lines",
+    "pagination": "hasMore/offset",
+    "related_objects": [
+      "invoiceLines"
+    ],
+    "company_scope": "BusinessUnitId",
+    "record_path": "items"
+  },
+  "canonical_contract": {
+    "id": "accounts_payable_invoice",
+    "version": 1,
+    "record_kind": "accounts_payable_invoice"
+  },
+  "identity": {
+    "source_key": [
+      "InvoiceId",
+      "invoiceLines.InvoiceLineId"
+    ],
+    "canonical_key": [
+      "invoice_id",
+      "line_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "InvoiceId",
+      "target": "invoice_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "InvoiceNumber",
+      "target": "invoice_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "BusinessUnitId",
+      "target": "company_code",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "SupplierId",
+      "target": "vendor_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "InvoiceDate",
+      "target": "invoice_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "PaymentDueDate",
+      "target": "due_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "InvoiceCurrency",
+      "target": "currency_code",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "InvoiceAmount",
+      "target": "invoice_total",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "invoiceLines.InvoiceLineId",
+      "target": "line_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "invoiceLines.LineNumber",
+      "target": "line_number",
+      "type": "integer",
+      "required": false
+    },
+    {
+      "source": "invoiceLines.ItemId",
+      "target": "product_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "invoiceLines.LineAmount",
+      "target": "line_amount",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "invoiceLines.TaxAmount",
+      "target": "tax_amount",
+      "type": "decimal",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_non_blank",
+      "fields": [
+        "invoice_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "identity_unique",
+      "rule": "unique_composite",
+      "fields": [
+        "invoice_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "required_fields_present",
+      "rule": "required_fields_present",
+      "fields": [
+        "invoice_id",
+        "invoice_number",
+        "company_code",
+        "vendor_id",
+        "invoice_date",
+        "currency_code",
+        "line_id",
+        "line_amount"
+      ]
+    },
+    {
+      "id": "invoice_total_reconciles",
+      "rule": "header_equals_line_sum_with_tolerance",
+      "fields": [
+        "invoice_total",
+        "line_amount"
+      ],
+      "tolerance": "currency_minor_unit"
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "nested_collection_flattening",
+      "business_rule:required_non_blank",
+      "business_rule:unique_composite",
+      "business_rule:required_fields_present",
+      "business_rule:header_equals_line_sum_with_tolerance"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:invoices",
+      "transport:rest",
+      "field:InvoiceId"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

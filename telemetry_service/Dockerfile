@@ -7,6 +7,9 @@ LABEL org.opencontainers.image.title="Shogun Installation Telemetry" \
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 10002 telemetry \
     && useradd --uid 10002 --gid telemetry --home-dir /app --shell /usr/sbin/nologin telemetry
 COPY telemetry_service/requirements.txt ./requirements.txt

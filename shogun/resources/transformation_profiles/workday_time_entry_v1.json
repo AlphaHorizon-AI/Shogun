@@ -1,0 +1,147 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "workday_time_entry_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Workday time block",
+  "description": "Normalize Workday time block records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Workday",
+    "product": "Workday",
+    "family": "hcm"
+  },
+  "source": {
+    "transport": "workday_rest",
+    "api_version": "REST v1; service schema pinned at activation",
+    "object": "timeTracking/timeBlocks",
+    "record_shape": "collection",
+    "pagination": "next cursor",
+    "record_path": "data"
+  },
+  "canonical_contract": {
+    "id": "time_entry",
+    "version": 1,
+    "record_kind": "time_entry"
+  },
+  "identity": {
+    "source_key": [
+      "id"
+    ],
+    "canonical_key": [
+      "time_entry_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "id",
+      "target": "time_entry_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "worker.id",
+      "target": "worker_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "position.id",
+      "target": "position_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "date",
+      "target": "entry_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "reportedQuantity",
+      "target": "hours",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "timeEntryCode.id",
+      "target": "time_code_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "status",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "submittedDate",
+      "target": "submitted_at",
+      "type": "datetime",
+      "required": false
+    },
+    {
+      "source": "approvedDate",
+      "target": "approved_at",
+      "type": "datetime",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "time_entry_id"
+      ]
+    },
+    {
+      "id": "hours_nonnegative",
+      "rule": "nonnegative",
+      "field": "hours"
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "worker_id"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:timeTracking/timeBlocks",
+      "transport:workday_rest",
+      "field:id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

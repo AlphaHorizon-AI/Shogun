@@ -1,0 +1,146 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "workday_position_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Workday position",
+  "description": "Normalize Workday position records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Workday",
+    "product": "Workday",
+    "family": "hcm"
+  },
+  "source": {
+    "transport": "workday_rest",
+    "api_version": "REST v1; service schema pinned at activation",
+    "object": "staffing/positions",
+    "record_shape": "collection",
+    "pagination": "next cursor",
+    "record_path": "data"
+  },
+  "canonical_contract": {
+    "id": "position",
+    "version": 1,
+    "record_kind": "position"
+  },
+  "identity": {
+    "source_key": [
+      "id"
+    ],
+    "canonical_key": [
+      "position_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "id",
+      "target": "position_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "positionID",
+      "target": "position_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "positionTitle",
+      "target": "title",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "jobProfile.id",
+      "target": "job_profile_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "supervisoryOrganization.id",
+      "target": "organization_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "location.id",
+      "target": "location_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "workerType",
+      "target": "worker_type",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "timeType",
+      "target": "time_type",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "availabilityDate",
+      "target": "available_from",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "positionStatus",
+      "target": "status",
+      "type": "string",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "position_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:staffing/positions",
+      "transport:workday_rest",
+      "field:id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

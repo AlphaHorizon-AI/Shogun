@@ -1,0 +1,150 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "oracle_fusion_product_master_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Oracle Fusion product master",
+  "description": "Normalize Oracle Fusion product master records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Oracle",
+    "product": "Fusion Cloud ERP and SCM",
+    "family": "erp_scm"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "11.13.18.05",
+    "object": "productsV2",
+    "record_shape": "collection",
+    "pagination": "hasMore/offset",
+    "company_scope": "OrganizationId",
+    "record_path": "items"
+  },
+  "canonical_contract": {
+    "id": "product_master",
+    "version": 1,
+    "record_kind": "product_master"
+  },
+  "identity": {
+    "source_key": [
+      "ItemId",
+      "OrganizationId"
+    ],
+    "canonical_key": [
+      "product_id",
+      "organization_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "ItemId",
+      "target": "product_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "OrganizationId",
+      "target": "organization_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "ItemNumber",
+      "target": "product_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "ItemDescription",
+      "target": "name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "ItemClass",
+      "target": "product_class",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "PrimaryUOMCode",
+      "target": "inventory_uom",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "LifecyclePhaseValue",
+      "target": "lifecycle_status",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "InventoryItemFlag",
+      "target": "is_inventory_item",
+      "type": "boolean",
+      "required": false
+    },
+    {
+      "source": "PurchasingEnabledFlag",
+      "target": "is_purchasable",
+      "type": "boolean",
+      "required": false
+    },
+    {
+      "source": "CustomerOrderEnabledFlag",
+      "target": "is_sellable",
+      "type": "boolean",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "product_id",
+        "organization_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:productsV2",
+      "transport:rest",
+      "field:ItemId"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

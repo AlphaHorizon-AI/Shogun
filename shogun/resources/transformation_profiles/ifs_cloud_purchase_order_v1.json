@@ -1,0 +1,194 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "ifs_cloud_purchase_order_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "IFS Cloud purchase order lines",
+  "description": "Normalize IFS Cloud purchase order lines records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "IFS",
+    "product": "IFS Cloud",
+    "family": "procurement"
+  },
+  "source": {
+    "transport": "odata_v4",
+    "api_version": "OData v4 projection version pinned at activation",
+    "object": "PurchaseOrderHandling/PurchaseOrderSet",
+    "record_shape": "header_with_lines",
+    "pagination": "@odata.nextLink",
+    "related_objects": [
+      "PurchaseOrderLineSet"
+    ],
+    "company_scope": "Contract",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "purchase_order",
+    "version": 1,
+    "record_kind": "purchase_order"
+  },
+  "identity": {
+    "source_key": [
+      "OrderNo",
+      "PurchaseOrderLineSet.LineNo",
+      "PurchaseOrderLineSet.ReleaseNo"
+    ],
+    "canonical_key": [
+      "order_id",
+      "line_id",
+      "release_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "OrderNo",
+      "target": "order_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Contract",
+      "target": "site_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "VendorNo",
+      "target": "vendor_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "OrderDate",
+      "target": "order_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "Objstate",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "CurrencyCode",
+      "target": "currency_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "PurchaseOrderLineSet.LineNo",
+      "target": "line_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "PurchaseOrderLineSet.ReleaseNo",
+      "target": "release_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "PurchaseOrderLineSet.PartNo",
+      "target": "product_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "PurchaseOrderLineSet.BuyQtyDue",
+      "target": "quantity",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "PurchaseOrderLineSet.PriceConvFactor",
+      "target": "unit_price",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "PurchaseOrderLineSet.WantedReceiptDate",
+      "target": "requested_receipt_date",
+      "type": "date",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_non_blank",
+      "fields": [
+        "order_id",
+        "line_id",
+        "release_id"
+      ]
+    },
+    {
+      "id": "identity_unique",
+      "rule": "unique_composite",
+      "fields": [
+        "order_id",
+        "line_id",
+        "release_id"
+      ]
+    },
+    {
+      "id": "required_fields_present",
+      "rule": "required_fields_present",
+      "fields": [
+        "order_id",
+        "site_id",
+        "vendor_id",
+        "status",
+        "line_id",
+        "release_id",
+        "quantity"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "nested_collection_flattening",
+      "business_rule:required_non_blank",
+      "business_rule:unique_composite",
+      "business_rule:required_fields_present"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:PurchaseOrderHandling/PurchaseOrderSet",
+      "transport:odata_v4",
+      "field:OrderNo"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

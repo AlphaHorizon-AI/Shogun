@@ -1,0 +1,179 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "epicor_kinetic_inventory_balance_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Epicor Kinetic part-bin inventory",
+  "description": "Normalize Epicor Kinetic part-bin inventory records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Epicor",
+    "product": "Kinetic",
+    "family": "inventory"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "REST v2; service schema pinned at activation",
+    "object": "Erp.BO.PartBinSearchSvc/PartBinSearches",
+    "record_shape": "collection",
+    "pagination": "server paging",
+    "company_scope": "Company",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "inventory_balance",
+    "version": 1,
+    "record_kind": "inventory_balance"
+  },
+  "identity": {
+    "source_key": [
+      "Company",
+      "PartNum",
+      "WarehouseCode",
+      "BinNum",
+      "LotNum"
+    ],
+    "canonical_key": [
+      "company_code",
+      "product_id",
+      "warehouse_id",
+      "location_id",
+      "lot_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "Company",
+      "target": "company_code",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "PartNum",
+      "target": "product_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "WarehouseCode",
+      "target": "warehouse_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "BinNum",
+      "target": "location_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "LotNum",
+      "target": "lot_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "OnhandQty",
+      "target": "on_hand_quantity",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "AllocatedQty",
+      "target": "allocated_quantity",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "AvailableQty",
+      "target": "available_quantity",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "IUM",
+      "target": "uom",
+      "type": "string",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_non_blank",
+      "fields": [
+        "company_code",
+        "product_id",
+        "warehouse_id",
+        "location_id",
+        "lot_id"
+      ]
+    },
+    {
+      "id": "identity_unique",
+      "rule": "unique_composite",
+      "fields": [
+        "company_code",
+        "product_id",
+        "warehouse_id",
+        "location_id",
+        "lot_id"
+      ]
+    },
+    {
+      "id": "required_fields_present",
+      "rule": "required_fields_present",
+      "fields": [
+        "company_code",
+        "product_id",
+        "warehouse_id",
+        "location_id",
+        "lot_id",
+        "on_hand_quantity"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "business_rule:required_non_blank",
+      "business_rule:unique_composite",
+      "business_rule:required_fields_present"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:Erp.BO.PartBinSearchSvc/PartBinSearches",
+      "transport:rest",
+      "field:Company"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

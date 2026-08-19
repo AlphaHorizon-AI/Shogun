@@ -69,6 +69,18 @@ def _get_local_subnets() -> list[str]:
     return list(subnets)
 
 
+def _build_probe_ips(subnets: list[str]) -> list[str]:
+    """Build a deduplicated probe list that always includes this machine.
+
+    Desktop Shogun binds to loopback by default, so LAN-only probing can never
+    discover a Shogun running beside Gensui on the same computer.
+    """
+    ips = ["127.0.0.1"]
+    for subnet in subnets:
+        ips.extend(f"{subnet}{i}" for i in range(1, 255))
+    return list(dict.fromkeys(ips))
+
+
 async def _probe_tcp(ip: str, port: int, timeout: float = TCP_CONNECT_TIMEOUT) -> bool:
     """Check if a TCP port is open on a given IP. Returns True if connectable."""
     try:
@@ -212,27 +224,13 @@ async def scan_network(
     local_ips = _get_local_ips()
 
     # Discover subnets
-    if not subnets:
+    if subnets is None:
         subnets = _get_local_subnets()
-
-    if not subnets:
-        return {
-            "hosts": [],
-            "enrolled": [],
-            "unenrolled": [],
-            "unknown": [],
-            "subnets_scanned": [],
-            "scan_duration_ms": 0,
-            "error": "Could not detect local network subnets",
-        }
 
     log.info("[NetworkScanner] Scanning subnets: %s (port %d)", subnets, port)
 
     # Build IP list
-    ips = []
-    for subnet in subnets:
-        for i in range(1, 255):
-            ips.append(f"{subnet}{i}")
+    ips = _build_probe_ips(subnets)
 
     # Scan all IPs concurrently (with semaphore)
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
@@ -248,19 +246,6 @@ async def scan_network(
     # Deduplicate same-instance hits across multiple interfaces
     discovered = _deduplicate_hosts(raw_discovered)
 
-    # ── Demo: inject a phantom rogue agent for presentation ──
-    discovered.append({
-        "ip": "10.0.13.37",
-        "port": port,
-        "hostname": "unknown-node.shadow",
-        "is_shogun": True,
-        "is_self": False,
-        "version": "1.2.1",
-        "instance_name": "Rogue Operative",
-        "shogun_id": None,
-        "interface_count": 1,
-        "all_ips": ["10.0.13.37"],
-    })
     # Load all enrolled members for cross-reference
     result = await session.execute(
         select(ShogunMember).where(ShogunMember.enrollment_status.in_(["active", "pending"]))

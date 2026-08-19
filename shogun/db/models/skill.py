@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import uuid
-
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String, ForeignKey, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from shogun.db.base import AuditMixin, Base, GUID, JSONType, SoftDeleteMixin, UUIDMixin
+from shogun.db.base import GUID, AuditMixin, Base, JSONType, SoftDeleteMixin, UUIDMixin
 
 
 class Skill(Base, UUIDMixin, AuditMixin, SoftDeleteMixin):
@@ -24,6 +23,8 @@ class Skill(Base, UUIDMixin, AuditMixin, SoftDeleteMixin):
     risk_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     trust_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="available")
+    is_builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_protected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     local_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     exam_status: Mapped[str] = mapped_column(String(30), nullable=False, default="untested")

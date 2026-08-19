@@ -301,6 +301,8 @@ async def rollback_skill(
     target = body.target_version_id if body else None
     svc = SkillRollbackService(db)
     result = await svc.rollback(skill_id, target_version_id=target)
+    if result.get("code") == "protected_builtin_skill":
+        raise HTTPException(status_code=403, detail=result["message"])
     await db.commit()
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result["message"])
@@ -324,6 +326,8 @@ async def deprecate_skill(skill_id: uuid.UUID, db: AsyncSession = Depends(get_db
     from shogun.services.skill_rollback_service import SkillRollbackService
     svc = SkillRollbackService(db)
     result = await svc.deprecate(skill_id)
+    if result.get("code") == "protected_builtin_skill":
+        raise HTTPException(status_code=403, detail=result["message"])
     await db.commit()
     return result
 
@@ -334,6 +338,8 @@ async def archive_skill(skill_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     from shogun.services.skill_rollback_service import SkillRollbackService
     svc = SkillRollbackService(db)
     result = await svc.archive(skill_id)
+    if result.get("code") == "protected_builtin_skill":
+        raise HTTPException(status_code=403, detail=result["message"])
     await db.commit()
     return result
 

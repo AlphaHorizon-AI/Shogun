@@ -79,6 +79,8 @@ class SkillResponse(ShogunBase):
     risk_score: float = 0.0
     trust_score: int = 0
     status: SkillStatus
+    is_builtin: bool = False
+    is_protected: bool = False
     hash: str | None = None
     local_path: str | None = None
     exam_status: str = "untested"

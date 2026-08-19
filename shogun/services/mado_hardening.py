@@ -163,6 +163,10 @@ class MadoRuntimeRegistry:
         state.record("mado.session.closed", "Browser session closed")
         return state
 
+    def discard(self, session_id: str) -> MadoRuntimeState | None:
+        """Forget a transient session after its durable audit events are emitted."""
+        return self._states.pop(session_id, None)
+
 
 runtime_registry = MadoRuntimeRegistry()
 

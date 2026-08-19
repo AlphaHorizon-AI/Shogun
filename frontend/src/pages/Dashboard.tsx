@@ -28,6 +28,7 @@ import { formatRecordCount } from '../lib/formatRecordCount';
 
 interface StartupWarning {
   id: string;
+  code?: string;
   message: string;
 }
 
@@ -129,6 +130,13 @@ export const Dashboard = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const startupWarnings = ((data?.startup_warnings || []) as StartupWarning[])
+    .filter((warning, index, warnings) => {
+      const identity = warning.code || warning.message;
+      return warnings.findIndex((candidate) => (candidate.code || candidate.message) === identity) === index;
+    })
+    .slice(0, 3);
+
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-700">
 
@@ -152,7 +160,7 @@ export const Dashboard = () => {
         </div>
       )}
 
-      {((data?.startup_warnings || []) as StartupWarning[]).slice(0, 3).map((warning) => (
+      {startupWarnings.map((warning) => (
         <div key={warning.id} className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/35 rounded-xl">
           <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           <div>

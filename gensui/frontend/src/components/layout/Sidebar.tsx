@@ -45,7 +45,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b border-gensui-700/30">
         <img
-          src="/gensui-logo.png"
+          src="/gensui-purple-logo.png"
           alt="Gensui"
           className="w-9 h-9 rounded-lg object-cover"
         />

@@ -1,0 +1,157 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "netsuite_customer_master_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "NetSuite customer master",
+  "description": "Normalize NetSuite customer master records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Oracle",
+    "product": "NetSuite",
+    "family": "erp"
+  },
+  "source": {
+    "transport": "suitetalk_rest",
+    "api_version": "record/v1",
+    "object": "customer",
+    "record_shape": "collection",
+    "pagination": "links/offset",
+    "company_scope": "subsidiary",
+    "record_path": "items"
+  },
+  "canonical_contract": {
+    "id": "customer_master",
+    "version": 1,
+    "record_kind": "customer_master"
+  },
+  "identity": {
+    "source_key": [
+      "id"
+    ],
+    "canonical_key": [
+      "customer_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "id",
+      "target": "customer_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "entityId",
+      "target": "customer_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "companyName",
+      "target": "name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "isPerson",
+      "target": "is_person",
+      "type": "boolean",
+      "required": false
+    },
+    {
+      "source": "email",
+      "target": "email",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "phone",
+      "target": "phone",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "currency.id",
+      "target": "currency_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "terms.id",
+      "target": "payment_terms_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "subsidiary.id",
+      "target": "company_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "dateCreated",
+      "target": "created_at",
+      "type": "datetime",
+      "required": false
+    },
+    {
+      "source": "lastModifiedDate",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "customer_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "name",
+      "email",
+      "phone"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:customer",
+      "transport:suitetalk_rest",
+      "field:id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

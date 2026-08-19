@@ -1,0 +1,160 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "salesforce_opportunity_pipeline_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Salesforce opportunity pipeline",
+  "description": "Normalize Salesforce opportunity pipeline records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Salesforce",
+    "product": "Sales Cloud",
+    "family": "crm"
+  },
+  "source": {
+    "transport": "rest_soql",
+    "api_version": "API version pinned at activation",
+    "object": "Opportunity",
+    "record_shape": "collection",
+    "pagination": "queryMore",
+    "record_path": "records"
+  },
+  "canonical_contract": {
+    "id": "opportunity_pipeline",
+    "version": 1,
+    "record_kind": "opportunity_pipeline"
+  },
+  "identity": {
+    "source_key": [
+      "Id"
+    ],
+    "canonical_key": [
+      "opportunity_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "Id",
+      "target": "opportunity_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "AccountId",
+      "target": "account_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Name",
+      "target": "name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "StageName",
+      "target": "stage",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Amount",
+      "target": "amount",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "CurrencyIsoCode",
+      "target": "currency_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "Probability",
+      "target": "probability_percent",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "CloseDate",
+      "target": "close_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "OwnerId",
+      "target": "owner_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "IsClosed",
+      "target": "is_closed",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "source": "IsWon",
+      "target": "is_won",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "source": "LastModifiedDate",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "opportunity_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "name"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:Opportunity",
+      "transport:rest_soql",
+      "field:Id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

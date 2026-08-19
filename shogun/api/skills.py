@@ -346,10 +346,16 @@ async def get_skill_performance(skill_id: uuid.UUID, db: AsyncSession = Depends(
 
 async def _set_skill_status(skill_id: uuid.UUID, status: str, db: AsyncSession):
     from shogun.db.models.skill import Skill
+    from shogun.services.enterprise_transformation_skill import assert_skill_mutable
 
     skill = await db.get(Skill, skill_id)
     if not skill or skill.is_deleted:
         raise HTTPException(status_code=404, detail="Skill not found")
+    if status != "installed":
+        try:
+            assert_skill_mutable(skill, f"set status to {status!r} on")
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
     skill.status = status
     await EventLogger.emit(
         category="skill", event_type=f"skill.{status}",

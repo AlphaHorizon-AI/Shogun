@@ -1,0 +1,137 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "economic_bank_transaction_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "e-conomic bank transaction",
+  "description": "Normalize e-conomic bank transaction records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Visma",
+    "product": "e-conomic",
+    "family": "accounting"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "REST v2; resource schema pinned at activation",
+    "object": "bankTransactions",
+    "record_shape": "collection",
+    "pagination": "pagination.nextPage",
+    "record_path": "collection"
+  },
+  "canonical_contract": {
+    "id": "bank_transaction",
+    "version": 1,
+    "record_kind": "bank_transaction"
+  },
+  "identity": {
+    "source_key": [
+      "transactionNumber"
+    ],
+    "canonical_key": [
+      "transaction_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "transactionNumber",
+      "target": "transaction_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "bankAccount.accountNumber",
+      "target": "account_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "date",
+      "target": "transaction_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "amount",
+      "target": "amount",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "currency",
+      "target": "currency_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "reference",
+      "target": "reference",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "text",
+      "target": "description",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "reconciled",
+      "target": "is_reconciled",
+      "type": "boolean",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "transaction_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "reference",
+      "description"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:bankTransactions",
+      "transport:rest",
+      "field:transactionNumber"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

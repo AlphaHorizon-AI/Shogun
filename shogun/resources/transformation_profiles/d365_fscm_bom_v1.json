@@ -1,0 +1,191 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "d365_fscm_bom_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "D365 F&SCM bill of materials lines",
+  "description": "Normalize D365 F&SCM bill of materials lines records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Microsoft",
+    "product": "Dynamics 365 Finance and Supply Chain Management",
+    "family": "manufacturing"
+  },
+  "source": {
+    "transport": "odata_v4",
+    "api_version": "OData v4; entity schema pinned at activation",
+    "object": "BillOfMaterialsHeadersV2",
+    "record_shape": "header_with_lines",
+    "pagination": "@odata.nextLink",
+    "related_objects": [
+      "BillOfMaterialsLinesV2"
+    ],
+    "company_scope": "dataAreaId",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "bill_of_material",
+    "version": 1,
+    "record_kind": "bill_of_material"
+  },
+  "identity": {
+    "source_key": [
+      "dataAreaId",
+      "BillOfMaterialsId",
+      "BillOfMaterialsLines.LineNumber"
+    ],
+    "canonical_key": [
+      "company_code",
+      "bom_id",
+      "line_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "dataAreaId",
+      "target": "company_code",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "BillOfMaterialsId",
+      "target": "bom_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Name",
+      "target": "name",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "SiteId",
+      "target": "site_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "BillOfMaterialsLines.LineNumber",
+      "target": "line_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "BillOfMaterialsLines.ItemNumber",
+      "target": "component_product_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "BillOfMaterialsLines.Quantity",
+      "target": "component_quantity",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "BillOfMaterialsLines.UnitSymbol",
+      "target": "uom",
+      "type": "string",
+      "required": false,
+      "transforms": [
+        "trim",
+        "uppercase"
+      ]
+    },
+    {
+      "source": "BillOfMaterialsLines.ValidFromDate",
+      "target": "valid_from",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "BillOfMaterialsLines.ValidToDate",
+      "target": "valid_to",
+      "type": "date",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_non_blank",
+      "fields": [
+        "company_code",
+        "bom_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "identity_unique",
+      "rule": "unique_composite",
+      "fields": [
+        "company_code",
+        "bom_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "required_fields_present",
+      "rule": "required_fields_present",
+      "fields": [
+        "company_code",
+        "bom_id",
+        "line_id",
+        "component_product_id",
+        "component_quantity"
+      ]
+    },
+    {
+      "id": "component_quantity_positive",
+      "rule": "greater_than",
+      "field": "component_quantity",
+      "value": 0
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "nested_collection_flattening",
+      "business_rule:required_non_blank",
+      "business_rule:unique_composite",
+      "business_rule:required_fields_present",
+      "business_rule:greater_than"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:BillOfMaterialsHeadersV2",
+      "transport:odata_v4",
+      "field:dataAreaId"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

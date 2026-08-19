@@ -260,19 +260,43 @@ async def test_samurai_receives_template_as_fixed_context(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_samurai_receives_profile_only_from_direct_mapping_predecessor(monkeypatch):
+async def test_one_samurai_receives_one_contract_and_all_other_predecessors(monkeypatch):
+    from shogun.services.transformation_profile_registry import profile_content_hash
+
     captured: dict[str, object] = {}
-    profile = {
-        "id": "supplier_report_v1",
+    resolved_definition = {
+        "id": "ks_lbp_disposition_v2",
         "adapter": "sectioned_record_matrix_v1",
         "parameters": {"section_pattern": r"(?m)^Record: (?P<section_id>\S+)"},
+    }
+    digest = profile_content_hash(resolved_definition)
+    profile = {
+        "id": resolved_definition["id"],
+        "adapter": resolved_definition["adapter"],
+        "parameters": {"section_pattern": "CALLER CONTROLLED AND MUST BE IGNORED"},
+        "model_fallback": True,
+        "registry_version": 2,
+        "content_hash": digest,
+        "lifecycle": "active",
+    }
+    registry_evidence = {
+        "profile_id": resolved_definition["id"],
+        "version": 2,
+        "content_hash": digest,
+        "status": "active",
+        "adapter_id": resolved_definition["adapter"],
+        "adapter_status": "available",
+        "version_id": "version-2",
     }
 
     async def update_state(*_args, **_kwargs):
         return None
 
-    async def execute_samurai(config, _context, _governance, **_kwargs):
+    async def execute_samurai(config, context, _governance, **kwargs):
         captured["profiles"] = config.get("_transformation_profiles")
+        captured["artifacts"] = config.get("_input_artifacts")
+        captured["context"] = context
+        captured["fixed"] = kwargs.get("fixed_context_str")
         return "done"
 
     monkeypatch.setattr(flow_engine, "_update_node_state", update_state)
@@ -281,7 +305,8 @@ async def test_samurai_receives_profile_only_from_direct_mapping_predecessor(mon
     monkeypatch.setattr(flow_engine, "_node_uses_active_skill_context", lambda *_args: False)
 
     mapping_id = str(uuid.uuid4())
-    input_id = str(uuid.uuid4())
+    pdf_ids = [str(uuid.uuid4()) for _ in range(3)]
+    template_id = str(uuid.uuid4())
     node = SimpleNamespace(
         id=uuid.uuid4(),
         flow_id=uuid.uuid4(),
@@ -293,24 +318,112 @@ async def test_samurai_receives_profile_only_from_direct_mapping_predecessor(mon
         mapping_id: SimpleNamespace(
             label="Mapping contract",
             node_type="mapping_rpa",
-            config={"transformation_profile": profile},
+            config={
+                "execution_mode": "contract",
+                "transformation_profile": profile,
+            },
         ),
-        input_id: SimpleNamespace(
-            label="Input",
-            node_type="input",
-            config={"transformation_profile": {"id": "must_be_ignored"}},
+        **{
+            pdf_id: SimpleNamespace(
+                id=pdf_id,
+                label=f"PDF {index}",
+                node_type="office",
+                config={"action": "pdf_read"},
+            )
+            for index, pdf_id in enumerate(pdf_ids, start=1)
+        },
+        template_id: SimpleNamespace(
+            id=template_id,
+            label="Output template",
+            node_type="file_template",
+            config={},
         ),
+    }
+    carrier_output = {
+        "__shogun_mapping_profile_contract__": True,
+        "status": "SUCCESS",
+        "type": "transformation_profile",
+        "profile_id": profile["id"],
+        "adapter": profile["adapter"],
+        "registry_version": 2,
+        "content_hash": digest,
+        "resolved_definition": resolved_definition,
+        "registry_evidence": registry_evidence,
+    }
+    template = {
+        "__shogun_file_template__": True,
+        "template_path": "Templates/output.xlsx",
+        "format": "xlsx",
+        "contract": "24 columns",
+        "manifest": {"logical_columns": 24},
     }
 
     result = await flow_engine._execute_single_node(
         uuid.uuid4(),
         node,
-        {mapping_id: {"status": "SUCCESS"}, input_id: "source"},
+        {
+            mapping_id: carrier_output,
+            pdf_ids[0]: "PDF ONE SOURCE",
+            pdf_ids[1]: "PDF TWO SOURCE",
+            pdf_ids[2]: "PDF THREE SOURCE",
+            template_id: template,
+        },
         node_map,
     )
 
     assert result == "done"
-    assert captured["profiles"] == [profile]
+    assert captured["profiles"] == [resolved_definition]
+    assert "CALLER CONTROLLED" not in str(captured["profiles"])
+    assert "lifecycle" not in captured["profiles"][0]
+    assert all(f"PDF {word} SOURCE" in captured["context"] for word in ("ONE", "TWO", "THREE"))
+    assert "__shogun_mapping_profile_contract__" not in captured["context"]
+    assert "__shogun_mapping_profile_contract__" not in str(captured["artifacts"])
+    assert "FILE TEMPLATE CONTRACT" in captured["fixed"]
+
+
+@pytest.mark.asyncio
+async def test_sap_shaped_input_does_not_implicitly_activate_a_profile(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def update_state(*_args, **_kwargs):
+        return None
+
+    async def execute_samurai(config, context, _governance, **_kwargs):
+        captured["profiles"] = config.get("_transformation_profiles")
+        captured["context"] = context
+        return "model path"
+
+    monkeypatch.setattr(flow_engine, "_update_node_state", update_state)
+    monkeypatch.setattr(flow_engine, "_exec_samurai", execute_samurai)
+    monkeypatch.setattr(flow_engine, "_finalize_node_skills", update_state)
+    monkeypatch.setattr(flow_engine, "_node_uses_active_skill_context", lambda *_args: False)
+
+    source_id = str(uuid.uuid4())
+    node = SimpleNamespace(
+        id=uuid.uuid4(),
+        flow_id=uuid.uuid4(),
+        node_type="samurai",
+        label="Generic extraction",
+        config={"task_description": "Extract every SAP order into rows"},
+    )
+
+    result = await flow_engine._execute_single_node(
+        uuid.uuid4(),
+        node,
+        {source_id: "Sachnummer : 140000\nBestand : 12\n06 140000 ORDER-1"},
+        {
+            source_id: SimpleNamespace(
+                id=source_id,
+                label="SAP PDF",
+                node_type="office",
+                config={"action": "pdf_read"},
+            )
+        },
+    )
+
+    assert result == "model path"
+    assert captured["profiles"] == []
+    assert "Sachnummer : 140000" in captured["context"]
 
 
 @pytest.mark.asyncio

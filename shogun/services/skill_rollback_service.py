@@ -14,6 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.db.models.skill import Skill
 from shogun.db.models.skillopt import SkillVersion
+from shogun.services.enterprise_transformation_skill import (
+    ProtectedSkillMutationError,
+    assert_skill_mutable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +41,15 @@ class SkillRollbackService:
         skill = await self.session.get(Skill, skill_id)
         if not skill:
             return {"status": "error", "message": "Skill not found"}
+
+        try:
+            assert_skill_mutable(skill, "roll back")
+        except ProtectedSkillMutationError as exc:
+            return {
+                "status": "error",
+                "code": "protected_builtin_skill",
+                "message": str(exc),
+            }
 
         if target_version_id:
             target = await self.session.get(SkillVersion, target_version_id)
@@ -97,6 +110,15 @@ class SkillRollbackService:
         if not skill:
             return {"status": "error", "message": "Skill not found"}
 
+        try:
+            assert_skill_mutable(skill, "deprecate")
+        except ProtectedSkillMutationError as exc:
+            return {
+                "status": "error",
+                "code": "protected_builtin_skill",
+                "message": str(exc),
+            }
+
         skill.lifecycle_state = "deprecated"
         await self.session.flush()
 
@@ -117,6 +139,15 @@ class SkillRollbackService:
         skill = await self.session.get(Skill, skill_id)
         if not skill:
             return {"status": "error", "message": "Skill not found"}
+
+        try:
+            assert_skill_mutable(skill, "archive")
+        except ProtectedSkillMutationError as exc:
+            return {
+                "status": "error",
+                "code": "protected_builtin_skill",
+                "message": str(exc),
+            }
 
         skill.lifecycle_state = "archived"
         skill.archived_at = datetime.now(timezone.utc)

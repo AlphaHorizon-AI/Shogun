@@ -1,0 +1,150 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "oracle_fusion_manufacturing_order_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Oracle Fusion manufacturing work order",
+  "description": "Normalize Oracle Fusion manufacturing work order records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Oracle",
+    "product": "Fusion Cloud ERP and SCM",
+    "family": "manufacturing"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "11.13.18.05",
+    "object": "workOrders",
+    "record_shape": "collection",
+    "pagination": "hasMore/offset",
+    "company_scope": "OrganizationId",
+    "record_path": "items"
+  },
+  "canonical_contract": {
+    "id": "production_order",
+    "version": 1,
+    "record_kind": "production_order"
+  },
+  "identity": {
+    "source_key": [
+      "OrganizationId",
+      "WorkOrderId"
+    ],
+    "canonical_key": [
+      "organization_id",
+      "production_order_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "OrganizationId",
+      "target": "organization_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "WorkOrderId",
+      "target": "production_order_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "WorkOrderNumber",
+      "target": "production_order_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "InventoryItemId",
+      "target": "product_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "WorkOrderStatus",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "PlannedStartDate",
+      "target": "scheduled_start_at",
+      "type": "datetime",
+      "required": false
+    },
+    {
+      "source": "PlannedCompletionDate",
+      "target": "scheduled_end_at",
+      "type": "datetime",
+      "required": false
+    },
+    {
+      "source": "WorkOrderQuantity",
+      "target": "ordered_quantity",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "CompletedQuantity",
+      "target": "completed_quantity",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "UOMCode",
+      "target": "uom",
+      "type": "string",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "organization_id",
+        "production_order_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:workOrders",
+      "transport:rest",
+      "field:OrganizationId"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

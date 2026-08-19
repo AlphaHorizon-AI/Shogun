@@ -1,0 +1,146 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "sage_intacct_customer_invoice_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Sage Intacct accounts receivable invoice",
+  "description": "Normalize Sage Intacct accounts receivable invoice records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Sage",
+    "product": "Intacct",
+    "family": "accounting"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "REST v1; object schema pinned at activation",
+    "object": "accounts-receivable/invoices",
+    "record_shape": "collection",
+    "pagination": "links.next",
+    "record_path": "result"
+  },
+  "canonical_contract": {
+    "id": "accounts_receivable_invoice",
+    "version": 1,
+    "record_kind": "accounts_receivable_invoice"
+  },
+  "identity": {
+    "source_key": [
+      "key"
+    ],
+    "canonical_key": [
+      "invoice_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "key",
+      "target": "invoice_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "recordNumber",
+      "target": "invoice_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "customer.id",
+      "target": "customer_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "documentDate",
+      "target": "invoice_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "dueDate",
+      "target": "due_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "currency.baseCurrency",
+      "target": "currency_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "totalEntered",
+      "target": "invoice_total",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "totalDue",
+      "target": "open_balance",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "state",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "modifiedDateTime",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "invoice_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:accounts-receivable/invoices",
+      "transport:rest",
+      "field:key"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

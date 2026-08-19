@@ -1,0 +1,154 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "servicenow_cmdb_ci_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "ServiceNow CMDB configuration item",
+  "description": "Normalize ServiceNow CMDB configuration item records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "ServiceNow",
+    "product": "Now Platform",
+    "family": "cmdb"
+  },
+  "source": {
+    "transport": "table_api",
+    "api_version": "Table API v2",
+    "object": "cmdb_ci",
+    "record_shape": "collection",
+    "pagination": "Link header / sysparm_offset",
+    "record_path": "result"
+  },
+  "canonical_contract": {
+    "id": "configuration_item",
+    "version": 1,
+    "record_kind": "configuration_item"
+  },
+  "identity": {
+    "source_key": [
+      "sys_id"
+    ],
+    "canonical_key": [
+      "configuration_item_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "sys_id",
+      "target": "configuration_item_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "name",
+      "target": "name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "sys_class_name",
+      "target": "class_name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "asset_tag",
+      "target": "asset_tag",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "serial_number",
+      "target": "serial_number",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "install_status",
+      "target": "status",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "operational_status",
+      "target": "operational_status",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "company.value",
+      "target": "company_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "location.value",
+      "target": "location_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "assigned_to.value",
+      "target": "assigned_to_id",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "sys_updated_on",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "configuration_item_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "confidential",
+    "pii_fields": [
+      "assigned_to_id"
+    ],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:cmdb_ci",
+      "transport:table_api",
+      "field:sys_id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

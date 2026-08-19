@@ -1,0 +1,172 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "netsuite_item_receipt_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "NetSuite item receipt lines",
+  "description": "Normalize NetSuite item receipt lines records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Oracle",
+    "product": "NetSuite",
+    "family": "logistics"
+  },
+  "source": {
+    "transport": "suitetalk_rest",
+    "api_version": "record/v1",
+    "object": "itemReceipt",
+    "record_shape": "header_with_lines",
+    "pagination": "links/offset",
+    "related_objects": [
+      "item"
+    ],
+    "company_scope": "subsidiary",
+    "record_path": "items"
+  },
+  "canonical_contract": {
+    "id": "goods_receipt",
+    "version": 1,
+    "record_kind": "goods_receipt"
+  },
+  "identity": {
+    "source_key": [
+      "id",
+      "item.items.line"
+    ],
+    "canonical_key": [
+      "receipt_id",
+      "line_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "id",
+      "target": "receipt_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "tranId",
+      "target": "receipt_number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "createdFrom.id",
+      "target": "source_order_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "tranDate",
+      "target": "receipt_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "subsidiary.id",
+      "target": "company_code",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "item.items.line",
+      "target": "line_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "item.items.item.id",
+      "target": "product_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "item.items.quantity",
+      "target": "quantity",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "item.items.location.id",
+      "target": "location_id",
+      "type": "string",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_non_blank",
+      "fields": [
+        "receipt_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "identity_unique",
+      "rule": "unique_composite",
+      "fields": [
+        "receipt_id",
+        "line_id"
+      ]
+    },
+    {
+      "id": "required_fields_present",
+      "rule": "required_fields_present",
+      "fields": [
+        "receipt_id",
+        "receipt_number",
+        "source_order_id",
+        "receipt_date",
+        "line_id",
+        "product_id",
+        "quantity"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "planned",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization",
+      "nested_collection_flattening",
+      "business_rule:required_non_blank",
+      "business_rule:unique_composite",
+      "business_rule:required_fields_present"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:itemReceipt",
+      "transport:suitetalk_rest",
+      "field:id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

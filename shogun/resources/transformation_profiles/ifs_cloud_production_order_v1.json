@@ -1,0 +1,162 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "ifs_cloud_production_order_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "IFS Cloud shop order",
+  "description": "Normalize IFS Cloud shop order records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "IFS",
+    "product": "IFS Cloud",
+    "family": "manufacturing"
+  },
+  "source": {
+    "transport": "odata_v4",
+    "api_version": "OData v4 projection version pinned at activation",
+    "object": "ShopOrderHandling/ShopOrderSet",
+    "record_shape": "collection",
+    "pagination": "@odata.nextLink",
+    "company_scope": "Contract",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "production_order",
+    "version": 1,
+    "record_kind": "production_order"
+  },
+  "identity": {
+    "source_key": [
+      "Contract",
+      "OrderNo",
+      "ReleaseNo",
+      "SequenceNo"
+    ],
+    "canonical_key": [
+      "site_id",
+      "production_order_id",
+      "release_id",
+      "sequence_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "Contract",
+      "target": "site_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "OrderNo",
+      "target": "production_order_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "ReleaseNo",
+      "target": "release_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "SequenceNo",
+      "target": "sequence_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "PartNo",
+      "target": "product_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "Objstate",
+      "target": "status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "RevisedQtyDue",
+      "target": "ordered_quantity",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "QtyComplete",
+      "target": "completed_quantity",
+      "type": "decimal",
+      "required": false
+    },
+    {
+      "source": "NeedDate",
+      "target": "required_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "EarliestStartDate",
+      "target": "scheduled_start_date",
+      "type": "date",
+      "required": false
+    },
+    {
+      "source": "LatestFinishDate",
+      "target": "scheduled_end_date",
+      "type": "date",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "site_id",
+        "production_order_id",
+        "release_id",
+        "sequence_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:ShopOrderHandling/ShopOrderSet",
+      "transport:odata_v4",
+      "field:Contract"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

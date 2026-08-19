@@ -2441,6 +2441,223 @@ NATIVE_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "risk": "low",
+        "category": "transformation_profiles",
+        "function": {
+            "name": "transformation_profiles_list",
+            "description": (
+                "List governed enterprise transformation profiles and their server-recorded "
+                "lifecycle and adapter availability. Catalogue presence does not imply that a "
+                "profile is active or executable."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "lifecycle": {
+                        "type": "string",
+                        "enum": ["candidate", "validated", "active", "retired"],
+                        "description": "Optional exact lifecycle filter.",
+                    },
+                    "platform": {
+                        "type": "string",
+                        "description": "Optional exact platform filter.",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "low",
+        "category": "transformation_profiles",
+        "function": {
+            "name": "transformation_profiles_get",
+            "description": (
+                "Get one governed transformation profile, including all immutable versions, "
+                "server validation evidence, and the active-version pointer."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "profile_id": {
+                        "type": "string",
+                        "description": "Stable transformation profile identifier.",
+                    },
+                },
+                "required": ["profile_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "medium",
+        "category": "transformation_profiles",
+        "function": {
+            "name": "transformation_profiles_propose",
+            "description": (
+                "Propose a new immutable candidate version in the governed registry. The "
+                "server records SkillOpt provenance; this tool cannot activate the candidate."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "profile_id": {
+                        "type": "string",
+                        "description": "Stable profile identifier shared by its versions.",
+                    },
+                    "display_name": {
+                        "type": "string",
+                        "description": "Human-readable profile name.",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Purpose and supported source shape.",
+                    },
+                    "platform": {
+                        "type": "string",
+                        "description": "Source platform or product family.",
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "Business domain or canonical record kind.",
+                    },
+                    "adapter_id": {
+                        "type": "string",
+                        "description": "Deterministic runtime adapter required by the profile.",
+                    },
+                    "definition": {
+                        "type": "object",
+                        "description": "Complete profile manifest. Credentials and secrets are forbidden.",
+                    },
+                    "parent_version_id": {
+                        "type": "string",
+                        "description": "Optional UUID of the version this candidate evolves.",
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "description": "Non-secret provenance and discovery metadata.",
+                    },
+                },
+                "required": ["profile_id", "display_name", "adapter_id", "definition"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "medium",
+        "category": "transformation_profiles",
+        "function": {
+            "name": "transformation_profiles_validate",
+            "description": (
+                "Run bounded positive and negative fixtures through the candidate's actual "
+                "server adapter. The server derives validation gates and score; callers cannot "
+                "claim that validation passed."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "version_id": {
+                        "type": "string",
+                        "description": "UUID of a candidate profile version.",
+                    },
+                    "positive_fixtures": {
+                        "type": "array",
+                        "description": "Inputs the profile must transform successfully.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "payload": {},
+                                "context": {"type": "object"},
+                                "expected_record_count": {"type": "integer", "minimum": 0},
+                                "expected_contract_id": {"type": "string"},
+                                "expected_record_kind": {"type": "string"},
+                                "expected_headers": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                                "expected_records": {
+                                    "type": "array",
+                                    "items": {"type": "object"},
+                                },
+                            },
+                            "required": ["name", "payload"],
+                        },
+                    },
+                    "negative_fixtures": {
+                        "type": "array",
+                        "description": "Near-matches or invalid inputs the profile must reject.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "payload": {},
+                                "context": {"type": "object"},
+                                "expected_error_code": {"type": "string"},
+                            },
+                            "required": ["name", "payload"],
+                        },
+                    },
+                    "report": {
+                        "type": "object",
+                        "description": "Non-authoritative provenance or comparison notes.",
+                    },
+                },
+                "required": ["version_id", "positive_fixtures", "negative_fixtures"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "high",
+        "category": "transformation_profiles",
+        "function": {
+            "name": "transformation_profiles_promote",
+            "description": (
+                "Promote a server-validated candidate version to active. The registry fails "
+                "closed unless every validation gate passed and its adapter is available."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "version_id": {
+                        "type": "string",
+                        "description": "UUID of a validated profile version.",
+                    },
+                },
+                "required": ["version_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "high",
+        "category": "transformation_profiles",
+        "function": {
+            "name": "transformation_profiles_rollback",
+            "description": (
+                "Roll back an active profile by cloning a previously validated version into a "
+                "new auditable active version. Adapter availability and lifecycle checks remain mandatory."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "profile_id": {
+                        "type": "string",
+                        "description": "Stable transformation profile identifier.",
+                    },
+                    "target_version": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Historical version number to restore by cloning.",
+                    },
+                },
+                "required": ["profile_id", "target_version"],
+            },
+        },
+    },
 ]
 
 
@@ -4494,6 +4711,10 @@ async def execute_native_tool(
         elif name.startswith("mcp_"):
             return await _execute_mcp_tool(name, args, db_session)
 
+        # ── Governed transformation profile registry ────────────────
+        elif name.startswith("transformation_profiles_"):
+            return await _execute_transformation_profile_tool(name, args, db_session)
+
         # ── Dojo / Skill Tools ────────────────────────────────────────
         elif name.startswith("dojo_"):
             return await _execute_dojo_tool(name, args)
@@ -4506,6 +4727,200 @@ async def execute_native_tool(
     except Exception:
         logger.exception("Native skill execution failed")
         return json.dumps({"status": "error", "message": "Native skill execution failed. Check the Shogun logs."})
+
+
+ENTERPRISE_TRANSFORMATION_ARCHITECT_ACTOR = "enterprise-transformation-architect"
+
+
+async def _execute_transformation_profile_tool(
+    name: str,
+    args: dict[str, Any],
+    db_session,
+) -> str:
+    """Execute the architect's governed profile-registry operations.
+
+    Mutations always use the protected architect audit identity and SkillOpt
+    provenance.  In particular, callers cannot supply validation outcomes,
+    lifecycle flags, approval booleans, actors, or origins: the registry derives
+    trust from executable evidence and enforces every state transition.
+    """
+
+    import uuid
+
+    from pydantic import ValidationError
+
+    from shogun.schemas.transformation_profile import (
+        TransformationProfileCandidateCreate,
+        TransformationProfileValidationRequest,
+    )
+    from shogun.services.transformation_profile_registry import (
+        TransformationProfileRegistryError,
+        TransformationProfileRegistryService,
+    )
+
+    service = TransformationProfileRegistryService(db_session)
+    actor = ENTERPRISE_TRANSFORMATION_ARCHITECT_ACTOR
+
+    try:
+        if name == "transformation_profiles_list":
+            lifecycle = str(args.get("lifecycle") or "").strip() or None
+            platform = str(args.get("platform") or "").strip() or None
+            profiles = await service.list_profiles(
+                lifecycle=lifecycle,
+                platform=platform,
+                include_deleted=False,
+            )
+            return json.dumps(
+                {"status": "success", "profiles": profiles, "total": len(profiles)},
+                default=str,
+                ensure_ascii=False,
+            )
+
+        if name == "transformation_profiles_get":
+            profile_id = str(args.get("profile_id") or "").strip()
+            if not profile_id:
+                raise ValueError("profile_id is required")
+            profile = await service.get_profile(profile_id)
+            data = await service.profile_data(profile, include_versions=True)
+            return json.dumps(
+                {"status": "success", "profile": data},
+                default=str,
+                ensure_ascii=False,
+            )
+
+        if name == "transformation_profiles_propose":
+            candidate = TransformationProfileCandidateCreate(
+                profile_id=args.get("profile_id"),
+                display_name=args.get("display_name"),
+                description=args.get("description"),
+                platform=args.get("platform", "generic"),
+                domain=args.get("domain", "document"),
+                adapter_id=args.get("adapter_id"),
+                definition=args.get("definition"),
+                parent_version_id=args.get("parent_version_id"),
+                metadata=args.get("metadata") or {},
+                origin="skillopt",
+                actor=actor,
+            )
+            version = await service.create_candidate(candidate)
+            await db_session.commit()
+            data = await service.version_data(version)
+            return json.dumps(
+                {
+                    "status": "success",
+                    "profile_version": data,
+                    "audit_actor": actor,
+                    "origin": "skillopt",
+                },
+                default=str,
+                ensure_ascii=False,
+            )
+
+        if name == "transformation_profiles_validate":
+            version_id = uuid.UUID(str(args.get("version_id") or ""))
+            evidence = TransformationProfileValidationRequest(
+                positive_fixtures=args.get("positive_fixtures") or [],
+                negative_fixtures=args.get("negative_fixtures") or [],
+                report=args.get("report") or {},
+                actor=actor,
+            )
+            version = await service.validate_candidate(version_id, evidence)
+            await db_session.commit()
+            data = await service.version_data(version)
+            return json.dumps(
+                {
+                    "status": "success",
+                    "profile_version": data,
+                    "audit_actor": actor,
+                    "validation_source": "server_executed_fixtures",
+                },
+                default=str,
+                ensure_ascii=False,
+            )
+
+        if name == "transformation_profiles_promote":
+            version_id = uuid.UUID(str(args.get("version_id") or ""))
+            version = await service.promote(version_id, actor=actor)
+            await db_session.commit()
+            data = await service.version_data(version)
+            return json.dumps(
+                {"status": "success", "profile_version": data, "audit_actor": actor},
+                default=str,
+                ensure_ascii=False,
+            )
+
+        if name == "transformation_profiles_rollback":
+            profile_id = str(args.get("profile_id") or "").strip()
+            if not profile_id:
+                raise ValueError("profile_id is required")
+            target_version = int(args.get("target_version"))
+            if target_version < 1:
+                raise ValueError("target_version must be at least 1")
+            version = await service.rollback(
+                profile_id,
+                target_version=target_version,
+                actor=actor,
+            )
+            await db_session.commit()
+            data = await service.version_data(version)
+            return json.dumps(
+                {"status": "success", "profile_version": data, "audit_actor": actor},
+                default=str,
+                ensure_ascii=False,
+            )
+
+        return json.dumps(
+            {"status": "error", "message": f"Unknown transformation profile tool: {name}"}
+        )
+    except TransformationProfileRegistryError as exc:
+        if name not in {"transformation_profiles_list", "transformation_profiles_get"}:
+            await db_session.rollback()
+        logger.warning("Transformation profile request rejected (%s): %s", name, exc)
+        return json.dumps(
+            {
+                "status": "error",
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+            },
+            ensure_ascii=False,
+        )
+    except ValidationError as exc:
+        await db_session.rollback()
+        errors = [
+            {
+                "location": ".".join(str(part) for part in item.get("loc", ())),
+                "type": item.get("type", "validation_error"),
+            }
+            for item in exc.errors(include_input=False, include_url=False)
+        ]
+        return json.dumps(
+            {
+                "status": "error",
+                "error_type": "ValidationError",
+                "message": "The transformation profile request is invalid.",
+                "errors": errors,
+            },
+            ensure_ascii=False,
+        )
+    except (TypeError, ValueError) as exc:
+        await db_session.rollback()
+        logger.warning("Invalid transformation profile request (%s): %s", name, exc)
+        return json.dumps(
+            {
+                "status": "error",
+                "error_type": type(exc).__name__,
+                "message": "The transformation profile request is invalid.",
+            }
+        )
+    except Exception:
+        await db_session.rollback()
+        logger.exception("Transformation profile tool execution failed (%s)", name)
+        return json.dumps(
+            {
+                "status": "error",
+                "message": "Transformation profile operation failed. Check the Shogun logs.",
+            }
+        )
 
 
 # ── Office Tool Executor ─────────────────────────────────────────────

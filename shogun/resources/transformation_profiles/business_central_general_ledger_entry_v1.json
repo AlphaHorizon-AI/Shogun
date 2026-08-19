@@ -1,0 +1,141 @@
+{
+  "resource_type": "transformation_profile",
+  "manifest_version": "1.0",
+  "id": "business_central_general_ledger_entry_v1",
+  "version": 1,
+  "lifecycle": "candidate",
+  "title": "Business Central general ledger entry",
+  "description": "Normalize Business Central general ledger entry records into a versioned Shogun canonical contract.",
+  "profile_kind": "canonical_ingress",
+  "adapter": "canonical_entity_map_v1",
+  "parameters": {},
+  "platform": {
+    "vendor": "Microsoft",
+    "product": "Dynamics 365 Business Central",
+    "family": "finance"
+  },
+  "source": {
+    "transport": "rest",
+    "api_version": "v2.0",
+    "object": "generalLedgerEntries",
+    "record_shape": "collection",
+    "pagination": "@odata.nextLink",
+    "company_scope": "companyId",
+    "record_path": "value"
+  },
+  "canonical_contract": {
+    "id": "general_ledger_entry",
+    "version": 1,
+    "record_kind": "general_ledger_entry"
+  },
+  "identity": {
+    "source_key": [
+      "id"
+    ],
+    "canonical_key": [
+      "entry_id"
+    ],
+    "conflict_policy": "error"
+  },
+  "field_map": [
+    {
+      "source": "id",
+      "target": "entry_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "entryNumber",
+      "target": "entry_number",
+      "type": "integer",
+      "required": true
+    },
+    {
+      "source": "postingDate",
+      "target": "posting_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "source": "documentNumber",
+      "target": "document_number",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "accountNumber",
+      "target": "account_id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "source": "description",
+      "target": "description",
+      "type": "string",
+      "required": false
+    },
+    {
+      "source": "debitAmount",
+      "target": "debit_amount",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "creditAmount",
+      "target": "credit_amount",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "source": "lastModifiedDateTime",
+      "target": "modified_at",
+      "type": "datetime",
+      "required": false
+    }
+  ],
+  "invariants": [
+    {
+      "id": "identity_complete",
+      "rule": "required_nonempty",
+      "fields": [
+        "entry_id"
+      ]
+    }
+  ],
+  "privacy": {
+    "classification": "internal",
+    "pii_fields": [],
+    "secret_fields": [],
+    "retention": "inherit_flow_policy"
+  },
+  "adapter_requirements": {
+    "adapter": "canonical_entity_map_v1",
+    "minimum_version": 1,
+    "status": "available",
+    "capabilities": [
+      "field_mapping",
+      "type_conversion",
+      "deduplication",
+      "canonical_envelope",
+      "lineage",
+      "invariant_validation",
+      "formula_neutralization"
+    ],
+    "fail_closed": true
+  },
+  "selection": {
+    "positive_fingerprints": [
+      "object:generalLedgerEntries",
+      "transport:rest",
+      "field:id"
+    ],
+    "negative_fingerprints": []
+  },
+  "governance": {
+    "owner": "enterprise_transformation_skill",
+    "promotion": "skillopt_validated",
+    "minimum_positive_fixtures": 3,
+    "minimum_negative_fixtures": 2,
+    "breaking_change_policy": "new_profile_version"
+  }
+}

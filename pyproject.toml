@@ -102,6 +102,8 @@ include = ["shogun*"]
 shogun = [
     "resources/*.json",
     "resources/*.ps1",
+    "resources/transformation_profiles/*.json",
+    "resources/transformation_profiles/*.md",
     "resources/skills/**/*.md",
     "resources/skills/**/*.yaml",
     "ui/static/**/*",

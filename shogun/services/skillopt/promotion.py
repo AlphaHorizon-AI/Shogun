@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shogun.db.models.skill import Skill
 from shogun.db.models.skillopt import SkillOptCandidate
 from shogun.services.base_service import BaseService
+from shogun.services.enterprise_transformation_skill import assert_skill_mutable
 from shogun.services.skillopt.versioning import SkillVersionService
 
 
@@ -25,6 +26,11 @@ class SkillPromotionService(BaseService):
 
         if candidate.status != "validated" or not candidate.validation_score:
             raise ValueError("Candidate must be successfully validated before promotion")
+
+        skill = await self.db.get(Skill, candidate.skill_id)
+        if skill is None:
+            return False
+        assert_skill_mutable(skill, "promote a SkillOpt candidate into")
 
         # Read the candidate content
         try:
@@ -44,7 +50,6 @@ class SkillPromotionService(BaseService):
         )
 
         # Update the active version on the skill
-        skill = await self.db.get(Skill, candidate.skill_id)
         skill.active_version_id = new_version.id
         # The promoted Markdown becomes the canonical skill instructions.
         # Archives is refreshed below, and runtime activation reads from there.

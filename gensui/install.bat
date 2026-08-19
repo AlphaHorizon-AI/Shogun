@@ -19,7 +19,7 @@ echo  +----------------------------------------------------------+
 echo.
 
 :: -- Step 1: Check Python -----------------------------------------
-echo [1/7] Checking Python...
+echo [1/8] Checking Python...
 python --version >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo.
@@ -34,7 +34,7 @@ for /f "tokens=2 delims= " %%v in ('python --version 2^>^&1') do set PY_VER=%%v
 echo        Found Python %PY_VER%
 
 :: -- Step 2: Check Node.js ----------------------------------------
-echo [2/7] Checking Node.js...
+echo [2/8] Checking Node.js...
 node --version >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo.
@@ -49,7 +49,7 @@ for /f "tokens=1 delims= " %%v in ('node --version 2^>^&1') do set NODE_VER=%%v
 echo        Found Node.js %NODE_VER%
 
 :: -- Step 3: Create Python virtual environment --------------------
-echo [3/7] Creating Python virtual environment...
+echo [3/8] Creating Python virtual environment...
 if exist ".venv\Scripts\activate.bat" (
     echo        Existing .venv found — reusing.
 ) else (
@@ -63,7 +63,7 @@ if exist ".venv\Scripts\activate.bat" (
 )
 
 :: -- Step 4: Install Python dependencies --------------------------
-echo [4/7] Installing Gensui server dependencies...
+echo [4/8] Installing Gensui server dependencies...
 call .venv\Scripts\activate.bat
 pip install . --quiet --disable-pip-version-check
 if %ERRORLEVEL% neq 0 (
@@ -74,7 +74,7 @@ if %ERRORLEVEL% neq 0 (
 echo        Server dependencies installed.
 
 :: -- Step 5: Build frontend ---------------------------------------
-echo [5/7] Building Gensui Admin UI...
+echo [5/8] Building Gensui Admin UI...
 if exist "frontend\package.json" (
     cd frontend
     call npm install --silent 2>nul
@@ -86,7 +86,7 @@ if exist "frontend\package.json" (
 )
 
 :: -- Step 6: Create .env if not present ---------------------------
-echo [6/7] Configuring environment...
+echo [6/8] Configuring environment...
 if not exist ".env" (
     copy ".env.example" ".env" >nul 2>&1
     for /f %%i in ('python -c "import secrets; print(secrets.token_urlsafe(32))"') do set ADMIN_SECRET=%%i
@@ -96,8 +96,16 @@ if not exist ".env" (
     echo        .env already exists — keeping existing config.
 )
 
-:: -- Step 7: Start server -----------------------------------------
-echo [7/7] Starting Gensui...
+:: -- Step 7: Create desktop shortcut ------------------------------
+echo [7/8] Creating desktop shortcut...
+if exist "scripts\create_shortcut_win.bat" (
+    call scripts\create_shortcut_win.bat
+) else (
+    echo        Warning: Shortcut script not found.
+)
+
+:: -- Step 8: Start server -----------------------------------------
+echo [8/8] Starting Gensui...
 echo.
 echo  +----------------------------------------------------------+
 echo  :                                                          :
@@ -108,6 +116,8 @@ echo  :   API docs are disabled unless DEBUG=true                :
 echo  :                                                          :
 echo  :   Admin: admin@gensui.local                              :
 echo  :   Password: stored in gensui\.env                       :
+echo  :                                                          :
+echo  :   A Gensui desktop shortcut has been created.            :
 echo  :                                                          :
 echo  :   Press Ctrl+C to stop the server.                       :
 echo  :                                                          :
