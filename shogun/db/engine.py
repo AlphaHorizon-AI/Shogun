@@ -22,13 +22,14 @@ if _is_sqlite:
     engine = create_async_engine(
         settings.database_url,
         echo=settings.debug,
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 30.0},
     )
 
     @event.listens_for(engine.sync_engine, "connect")
     def _set_sqlite_pragma(dbapi_conn, connection_record):
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 else:

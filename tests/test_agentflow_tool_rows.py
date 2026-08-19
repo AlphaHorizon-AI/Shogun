@@ -233,6 +233,146 @@ async def test_native_semantic_failure_uses_shogun_text_adapter(monkeypatch):
     assert "SHOGUN STRUCTURED TOOL PROTOCOL" in _FakeAsyncClient.requests[1]["messages"][-1]["content"]
 
 
+@pytest.mark.asyncio
+async def test_native_empty_rows_use_text_adapter_before_chunk_recovery(monkeypatch):
+    _FakeAsyncClient.responses = [
+        httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "id": "call-empty",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "agentflow_submit_rows",
+                                        "arguments": json.dumps({"rows": []}),
+                                    },
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+        ),
+        httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '<tool_call>{"tool":"agentflow_submit_rows","arguments":'
+                                '{"rows":[["A","B"]]}}</tool_call>'
+                            )
+                        }
+                    }
+                ]
+            },
+        ),
+    ]
+    monkeypatch.setattr(flow_engine.httpx, "AsyncClient", _FakeAsyncClient)
+
+    def require_one_row(rows):
+        if not rows:
+            raise flow_engine.IncompleteMatrixOutputError("This source requires one row")
+
+    rows, _, mode = await flow_engine._call_llm_rows(
+        [{"role": "user", "content": "Extract the required row"}],
+        "gemma4:12b",
+        "http://localhost:11434/v1",
+        {},
+        profile={"mode": "native", "fallback_enabled": True},
+        expected_width=2,
+        timeout=10,
+        max_tokens=1000,
+        temperature=0,
+        seed=None,
+        row_validator=require_one_row,
+    )
+
+    assert rows == [["A", "B"]]
+    assert mode == "text"
+    assert len(_FakeAsyncClient.requests) == 2
+    assert "tools" in _FakeAsyncClient.requests[0]
+    assert "tools" not in _FakeAsyncClient.requests[1]
+
+
+@pytest.mark.asyncio
+async def test_structured_coverage_failure_skips_identical_model_retries(monkeypatch):
+    empty_native = httpx.Response(
+        200,
+        json={
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "call-empty",
+                                "type": "function",
+                                "function": {
+                                    "name": "agentflow_submit_rows",
+                                    "arguments": json.dumps({"rows": []}),
+                                },
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+    )
+    empty_text = httpx.Response(
+        200,
+        json={
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '<tool_call>{"tool":"agentflow_submit_rows","arguments":'
+                            '{"rows":[]}}</tool_call>'
+                        )
+                    }
+                }
+            ]
+        },
+    )
+    _FakeAsyncClient.responses = [empty_native, empty_text]
+    monkeypatch.setattr(flow_engine.httpx, "AsyncClient", _FakeAsyncClient)
+
+    async def record_usage(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(flow_engine, "_record_model_usage", record_usage)
+    provider = SimpleNamespace(id="provider-1", name="Local Ollama", provider_type="ollama")
+    route_key = f"{provider.id}:gemma4:12b"
+
+    def require_one_row(rows):
+        if not rows:
+            raise flow_engine.IncompleteMatrixOutputError("This source requires one row")
+
+    with pytest.raises(flow_engine.ModelCallError) as captured:
+        await flow_engine._call_llm_chain_rows(
+            [{"role": "user", "content": "Extract the required row"}],
+            [(provider, "gemma4:12b", "http://localhost:11434/v1", {})],
+            timeout=10,
+            retry_count=5,
+            context="AgentFlow Samurai test chunk",
+            expected_width=2,
+            max_tokens=1000,
+            routing_context={
+                "tool_calling_profiles": {
+                    route_key: {"mode": "native", "fallback_enabled": True},
+                }
+            },
+            row_validator=require_one_row,
+        )
+
+    assert captured.value.cause_type == "IncompleteMatrixOutputError"
+    assert len(_FakeAsyncClient.requests) == 2
+
+
 def test_agentflow_tool_rejects_wrong_destination_width():
     with pytest.raises(ValueError, match="exactly 3 values"):
         flow_engine._validate_agentflow_rows({"rows": [["A", "B"]]}, 3)

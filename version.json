@@ -1,8 +1,8 @@
 {
-  "version": "1.47.78",
+  "version": "1.47.79",
   "name": "Shogun OS",
-  "build": 229,
+  "build": 230,
   "channel": "stable",
-  "released": "2026-08-14T06:36:14Z",
-  "changelog": "Allow AgentFlow browser nodes to continue after source failures and pass the exact error to downstream Samurai nodes."
+  "released": "2026-08-19T14:52:05Z",
+  "changelog": "Serialize parallel AgentFlow run-state updates and recover structured extraction through bounded native-to-text fallback."
 }

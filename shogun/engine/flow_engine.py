@@ -57,7 +57,18 @@ log = logging.getLogger("shogun.flow_engine")
 # ── Active runs registry (for cancellation) ─────────────────
 _active_runs: dict[str, asyncio.Task] = {}
 _launch_events: dict[str, asyncio.Event] = {}
+_run_state_locks: dict[str, asyncio.Lock] = {}
 _child_run_semaphore: asyncio.Semaphore | None = None
+
+
+def _run_state_lock(run_id: uuid.UUID) -> asyncio.Lock:
+    """Serialize read-modify-write updates to one run's JSON state."""
+    key = str(run_id)
+    lock = _run_state_locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _run_state_locks[key] = lock
+    return lock
 
 
 @dataclass(slots=True)
@@ -404,6 +415,7 @@ async def start_flow_run(
     def _cleanup(t: asyncio.Task):
         _active_runs.pop(str(run_id), None)
         _launch_events.pop(str(run_id), None)
+        _run_state_locks.pop(str(run_id), None)
 
     task.add_done_callback(_cleanup)
 
@@ -4587,6 +4599,7 @@ async def _call_llm_rows(
     max_tokens: int | None,
     temperature: float,
     seed: int | None,
+    row_validator: Callable[[list[list[Any]]], None] | None = None,
 ) -> tuple[list[list[Any]], str, str]:
     """Request rows through the model's persisted tool transport.
 
@@ -4641,6 +4654,7 @@ async def _call_llm_rows(
                 max_tokens=max_tokens,
                 temperature=temperature,
                 seed=seed,
+                row_validator=row_validator,
             )
         raise ValueError(f"LLM API error {response.status_code}: {response.text[:500]}")
 
@@ -4673,6 +4687,8 @@ async def _call_llm_rows(
                 rows = _validate_agentflow_rows({"rows": parsed_rows}, expected_width)
         else:
             rows = _validate_agentflow_rows(call.get("arguments") or {}, expected_width)
+        if row_validator:
+            row_validator(rows)
         return rows, json.dumps(rows, ensure_ascii=False, default=str), mode
     except Exception as parse_error:
         if mode == "native" and bool(profile.get("fallback_enabled", True)):
@@ -4700,7 +4716,10 @@ async def _call_llm_rows(
                 max_tokens=max_tokens,
                 temperature=temperature,
                 seed=seed,
+                row_validator=row_validator,
             )
+        if isinstance(parse_error, IncompleteMatrixOutputError):
+            raise
         raise ValueError(
             "The model did not submit rows through agentflow_submit_rows or valid JSON rows"
         ) from parse_error
@@ -4751,6 +4770,7 @@ async def _call_llm_chain_rows(
                     max_tokens=max_tokens,
                     temperature=temperature,
                     seed=seed,
+                    row_validator=row_validator,
                 )
                 if row_validator:
                     row_validator(rows)
@@ -4804,6 +4824,13 @@ async def _call_llm_chain_rows(
                     1 + retry_count,
                     exc,
                 )
+                # Repeating a syntactically valid but incomplete/malformed row
+                # response with the same prompt and model is rarely useful,
+                # especially for deterministic local routes. The chunk
+                # executor already has targeted subdivision and corrective
+                # retries, and the outer loop can still try the next model.
+                if isinstance(exc, IncompleteMatrixOutputError) or _is_structured_rows_failure(exc):
+                    break
                 if attempt < retry_count:
                     await asyncio.sleep(2**attempt)
     if last_error is None:
@@ -5403,6 +5430,7 @@ def _is_structured_rows_failure(error: Exception) -> bool:
             "did not submit rows",
             "valid json rows",
             "must contain exactly",
+            "requires exactly",
             "row matrix",
             "structured json",
             "expecting value",
@@ -5584,33 +5612,34 @@ async def _record_node_artifact(
     artifact_path: str,
 ) -> None:
     """Associate a generated workspace artifact with its run node."""
-    async with async_session_factory() as session:
-        result = await session.execute(select(AgentFlowRun).where(AgentFlowRun.id == run_id))
-        run = result.scalar_one_or_none()
-        if not run:
-            return
+    async with _run_state_lock(run_id):
+        async with async_session_factory() as session:
+            result = await session.execute(select(AgentFlowRun).where(AgentFlowRun.id == run_id))
+            run = result.scalar_one_or_none()
+            if not run:
+                return
 
-        states = dict(run.node_states or {})
-        node_state = dict(states.get(node_id, {}))
-        node_state["artifact_path"] = artifact_path
-        states[node_id] = node_state
-        run.node_states = states
-        artifacts = list(run.artifacts or [])
-        if not any(item.get("path_or_ref") == artifact_path for item in artifacts if isinstance(item, dict)):
-            artifacts.append(
-                {
-                    "artifact_type": "file",
-                    "path_or_ref": artifact_path,
-                    "created_by_run_id": str(run_id),
-                    "created_by_node_id": node_id,
-                }
-            )
-        run.artifacts = artifacts
-        from sqlalchemy.orm.attributes import flag_modified
+            states = dict(run.node_states or {})
+            node_state = dict(states.get(node_id, {}))
+            node_state["artifact_path"] = artifact_path
+            states[node_id] = node_state
+            run.node_states = states
+            artifacts = list(run.artifacts or [])
+            if not any(item.get("path_or_ref") == artifact_path for item in artifacts if isinstance(item, dict)):
+                artifacts.append(
+                    {
+                        "artifact_type": "file",
+                        "path_or_ref": artifact_path,
+                        "created_by_run_id": str(run_id),
+                        "created_by_node_id": node_id,
+                    }
+                )
+            run.artifacts = artifacts
+            from sqlalchemy.orm.attributes import flag_modified
 
-        flag_modified(run, "node_states")
-        flag_modified(run, "artifacts")
-        await session.commit()
+            flag_modified(run, "node_states")
+            flag_modified(run, "artifacts")
+            await session.commit()
 
 
 async def _update_node_state(
@@ -5622,38 +5651,39 @@ async def _update_node_state(
     failure_event_id: str | None = None,
 ) -> None:
     """Update a single node's execution state in the run record."""
-    async with async_session_factory() as session:
-        result = await session.execute(select(AgentFlowRun).where(AgentFlowRun.id == run_id))
-        run = result.scalar_one_or_none()
-        if not run:
-            return
+    async with _run_state_lock(run_id):
+        async with async_session_factory() as session:
+            result = await session.execute(select(AgentFlowRun).where(AgentFlowRun.id == run_id))
+            run = result.scalar_one_or_none()
+            if not run:
+                return
 
-        states = dict(run.node_states or {})
-        now = datetime.now(timezone.utc).isoformat()
+            states = dict(run.node_states or {})
+            now = datetime.now(timezone.utc).isoformat()
 
-        node_state = states.get(node_id, {})
-        node_state["status"] = status
+            node_state = dict(states.get(node_id, {}))
+            node_state["status"] = status
 
-        if status == "running":
-            node_state["started_at"] = now
-        elif status in ("completed", "failed", "skipped"):
-            node_state["completed_at"] = now
+            if status == "running":
+                node_state["started_at"] = now
+            elif status in ("completed", "failed", "skipped"):
+                node_state["completed_at"] = now
 
-        if output is not None:
-            # Preserve the complete result so View Result and run history match
-            # the generated artifact exactly.
-            node_state["output"] = str(output)
-        if error:
-            node_state["error"] = error[:2000]
-        if failure_event_id:
-            node_state["failure_event_id"] = failure_event_id
+            if output is not None:
+                # Preserve the complete result so View Result and run history match
+                # the generated artifact exactly.
+                node_state["output"] = str(output)
+            if error:
+                node_state["error"] = error[:2000]
+            if failure_event_id:
+                node_state["failure_event_id"] = failure_event_id
 
-        states[node_id] = node_state
-        run.node_states = states
-        from sqlalchemy.orm.attributes import flag_modified
+            states[node_id] = node_state
+            run.node_states = states
+            from sqlalchemy.orm.attributes import flag_modified
 
-        flag_modified(run, "node_states")
-        await session.commit()
+            flag_modified(run, "node_states")
+            await session.commit()
 
 
 async def _update_node_progress(
@@ -5663,27 +5693,28 @@ async def _update_node_progress(
     total: int,
 ) -> None:
     """Persist measurable node progress without changing its execution status."""
-    async with async_session_factory() as session:
-        run = await session.get(AgentFlowRun, run_id)
-        if not run:
-            return
+    async with _run_state_lock(run_id):
+        async with async_session_factory() as session:
+            run = await session.get(AgentFlowRun, run_id)
+            if not run:
+                return
 
-        states = dict(run.node_states or {})
-        node_state = dict(states.get(node_id) or {})
-        if node_state.get("status") != "running":
-            return
+            states = dict(run.node_states or {})
+            node_state = dict(states.get(node_id) or {})
+            if node_state.get("status") != "running":
+                return
 
-        safe_total = max(1, int(total))
-        safe_completed = max(0, min(int(completed), safe_total))
-        node_state["progress_percent"] = round((safe_completed / safe_total) * 100)
-        node_state["progress_completed"] = safe_completed
-        node_state["progress_total"] = safe_total
-        states[node_id] = node_state
-        run.node_states = states
-        from sqlalchemy.orm.attributes import flag_modified
+            safe_total = max(1, int(total))
+            safe_completed = max(0, min(int(completed), safe_total))
+            node_state["progress_percent"] = round((safe_completed / safe_total) * 100)
+            node_state["progress_completed"] = safe_completed
+            node_state["progress_total"] = safe_total
+            states[node_id] = node_state
+            run.node_states = states
+            from sqlalchemy.orm.attributes import flag_modified
 
-        flag_modified(run, "node_states")
-        await session.commit()
+            flag_modified(run, "node_states")
+            await session.commit()
 
 
 async def _record_node_failure_event(
