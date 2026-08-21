@@ -1,4 +1,4 @@
-"""Log and audit event schemas — NIS2/SOC2 compliant."""
+"""Log and audit-event schemas for governance evidence."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from shogun.schemas.common import ShogunBase
 
 
 class ExecutionEventResponse(ShogunBase):
-    """Full event response for the compliance dashboard."""
+    """Full event response for the governance-evidence dashboard."""
 
     id: uuid.UUID
     event_id: str
@@ -69,7 +69,7 @@ class LogExportRequest(ShogunBase):
 
 
 class AuditVerificationResponse(ShogunBase):
-    """Result of an immutable audit chain integrity check."""
+    """Result of an HMAC audit-chain consistency check."""
 
     total_records: int = 0
     verified_records: int = 0

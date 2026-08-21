@@ -26,6 +26,7 @@ async def test_setup_defaults_to_custom_routing_with_selected_model_order(tmp_pa
     monkeypatch.setattr(model_router, "_setup_path", lambda: tmp_path / "setup.json")
 
     payload = SetupCompletePayload(
+        security_incident_acknowledged=True,
         providers=[ProviderSetup(
             provider_type="openai", name="OpenAI", models=["gpt-primary", "gpt-fallback"]
         )],

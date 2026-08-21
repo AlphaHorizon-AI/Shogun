@@ -93,6 +93,23 @@ class CascadeRetrievalService:
     ) -> tuple[list[dict[str, Any]], MemoryRetrievalRun | None]:
         effective_mode: MemoryRetrievalMode = mode or settings.memory_retrieval_mode
         memory_scope = resolve_active_memory_scope(scope)
+        # Connector and other classified requests must never fall back to the
+        # unscoped legacy/shadow result set.  This is an authorization boundary,
+        # not a rollout preference: the cascade pre-authorizes every candidate
+        # against the active principal/conversation dimensions.
+        if effective_mode != "cascade" and any(
+            (
+                memory_scope.user_id,
+                memory_scope.team_id,
+                memory_scope.workspace_id,
+                memory_scope.project_id,
+                memory_scope.workflow_id,
+                memory_scope.conversation_provider,
+                memory_scope.conversation_id,
+                memory_scope.topic_id,
+            )
+        ):
+            effective_mode = "cascade"
         started = time.perf_counter()
         correlation_id = f"mem_{uuid.uuid4().hex}"
         diagnostic: MemoryRetrievalRun | None = None

@@ -21,6 +21,7 @@ from shogun.schemas.common import ApiResponse
 from shogun.services.agent_service import AgentService
 from shogun.services.memory_service import MemoryService
 from shogun.services.mission_service import MissionService
+from shogun.services.release_metadata import get_release_metadata
 from shogun.services.security_service import SecurityService
 
 router = APIRouter(prefix="/system", tags=["System"])
@@ -136,6 +137,8 @@ def _local_model_destination(base_url: str, path: str):
 
 class CollegeTelemetryUpdate(BaseModel):
     enabled: bool
+    notice_version: str | None = None
+    confirmed: bool = False
 
 
 @router.get("/college-telemetry", response_model=ApiResponse)
@@ -148,10 +151,18 @@ async def get_college_telemetry_settings():
 
 @router.put("/college-telemetry", response_model=ApiResponse)
 async def update_college_telemetry_settings(body: CollegeTelemetryUpdate):
-    """Opt this installation into or out of anonymous ecosystem intelligence."""
+    """Opt this installation into or out of pseudonymous ecosystem intelligence."""
     from shogun.services.college_telemetry import save_config
 
-    return ApiResponse(data=save_config(enabled=body.enabled))
+    try:
+        config = save_config(
+            enabled=body.enabled,
+            notice_version=body.notice_version,
+            confirmed=body.confirmed,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ApiResponse(data=config)
 
 
 @router.get("/notifications", response_model=ApiResponse)
@@ -712,7 +723,6 @@ from sqlalchemy import inspect, text
 from shogun.db.engine import engine as _engine, async_session_factory
 
 
-_SHOGUN_VERSION = "1.0.0"
 _DB_PATH = PROJECT_ROOT / "data" / "shogun.db"
 
 
@@ -747,11 +757,18 @@ def _build_zip(table_dump: dict, include_db: bool = True) -> bytes:
     """Bundle manifest + per-table JSON + optional raw .db into a ZIP in memory."""
     buf = io.BytesIO()
     now = datetime.now(timezone.utc)
+    release = get_release_metadata()
 
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         # Manifest
         manifest = {
-            "shogun_version": _SHOGUN_VERSION,
+            "shogun_version": release["version"],
+            "shogun_build": release["build"],
+            "shogun_release_id": release["release_id"],
+            "shogun_git_sha": release["git_sha"],
+            "shogun_distribution_status": release["distribution_status"],
+            "shogun_working_tree_modified": release["working_tree_modified"],
+            "shogun_release_date": release["release_date"],
             "backup_format": "1.0",
             "created_at": now.isoformat(),
             "tables": {t: len(rows) for t, rows in table_dump.items()},
@@ -835,11 +852,18 @@ async def backup_info():
     """Return a preview of what would be included in a backup (row counts per table)."""
     table_dump = await _dump_all_tables()
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
+    release = get_release_metadata()
     return ApiResponse(
         success=True,
         data={
             "filename_preview": f"shogun_backup_{ts}.zip",
-            "shogun_version": _SHOGUN_VERSION,
+            "shogun_version": release["version"],
+            "shogun_build": release["build"],
+            "shogun_release_id": release["release_id"],
+            "shogun_git_sha": release["git_sha"],
+            "shogun_distribution_status": release["distribution_status"],
+            "shogun_working_tree_modified": release["working_tree_modified"],
+            "shogun_release_date": release["release_date"],
             "db_exists": _DB_PATH.exists(),
             "db_size_bytes": _DB_PATH.stat().st_size if _DB_PATH.exists() else 0,
             "tables": {t: len(rows) for t, rows in table_dump.items()},

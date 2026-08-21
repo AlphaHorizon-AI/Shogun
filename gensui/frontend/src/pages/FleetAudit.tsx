@@ -41,6 +41,8 @@ interface TelemetryData {
 interface ComplianceReport {
   report_generated_at: string;
   period: string;
+  report_purpose?: string;
+  assessment_notice?: string;
   fleet: { total_members: number; active_members: number };
   security_events: {
     harakiri_activations: number;
@@ -121,7 +123,7 @@ export default function FleetAudit() {
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'members', label: 'Per Member', icon: Users },
     { id: 'telemetry', label: 'Telemetry', icon: Activity },
-    { id: 'compliance', label: 'Compliance', icon: ShieldCheck },
+    { id: 'compliance', label: 'Governance Evidence', icon: ShieldCheck },
     { id: 'log', label: 'Raw Log', icon: FileSearch },
   ];
 
@@ -131,7 +133,7 @@ export default function FleetAudit() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gensui-50">{t('fleet_audit.title', 'Fleet Audit Dashboard')}</h1>
-          <p className="text-sm text-gensui-400 mt-1">{t('fleet_audit.subtitle', 'Multi-instance audit analytics, compliance reporting, and chain verification')}</p>
+          <p className="text-sm text-gensui-400 mt-1">{t('fleet_audit.subtitle', 'Multi-instance audit analytics, governance-evidence summaries, and chain-link checks')}</p>
         </div>
         <div className="flex gap-2">
           <button onClick={load} className="gensui-btn-secondary flex items-center gap-2 text-xs">
@@ -200,7 +202,7 @@ export default function FleetAudit() {
                     }
                     <div>
                       <div className="text-sm font-bold text-gensui-100">
-                        HMAC Chain {stats.chain_integrity.valid ? 'Verified ✓' : 'BROKEN ✗'}
+                        Chain Links {stats.chain_integrity.valid ? 'Consistent ✓' : 'MISMATCH ✗'}
                       </div>
                       <div className="text-xs text-gensui-400">
                         {stats.chain_integrity.checked} entries verified
@@ -375,14 +377,14 @@ export default function FleetAudit() {
             </div>
           )}
 
-          {/* ── Compliance ── */}
+          {/* ── Governance evidence (legacy API route: compliance) ── */}
           {tab === 'compliance' && compliance && (
             <div className="space-y-6">
               <div className="glass-card p-5 border-l-4 border-l-cyan-500">
                 <div className="flex items-center gap-3 mb-4">
                   <ShieldCheck size={24} className="text-cyan-400" />
                   <div>
-                    <h2 className="text-lg font-bold text-gensui-50">Compliance Report</h2>
+                    <h2 className="text-lg font-bold text-gensui-50">Governance Evidence Summary</h2>
                     <p className="text-xs text-gensui-400">Generated: {new Date(compliance.report_generated_at).toLocaleString()} — Period: {compliance.period.replace('_', ' ')}</p>
                   </div>
                 </div>
@@ -391,6 +393,9 @@ export default function FleetAudit() {
                     <span key={fw} className="text-xs px-2 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-400">{fw}</span>
                   ))}
                 </div>
+                <p className="mt-4 text-xs leading-relaxed text-amber-200/80">
+                  {compliance.assessment_notice || 'This summary can support a human assessment. It does not establish conformity or prove that every relevant event was captured.'}
+                </p>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -436,7 +441,7 @@ export default function FleetAudit() {
                   }
                   <div>
                     <div className="text-sm font-bold text-gensui-100">
-                      Audit Chain Integrity: {compliance.chain_integrity.valid ? 'VERIFIED' : 'COMPROMISED'}
+                      Audit Chain Links: {compliance.chain_integrity.valid ? 'CONSISTENT' : 'MISMATCH DETECTED'}
                     </div>
                     <div className="text-xs text-gensui-400">
                       {compliance.chain_integrity.entries_verified} entries verified — {compliance.chain_integrity.chain_breaks} break(s)

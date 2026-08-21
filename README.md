@@ -17,7 +17,7 @@
 
 Shogun is the AI orchestrator. **The Tenshu** is the browser-based command center where you configure, supervise, and communicate with it. Everything runs locally by default; no Docker or Shogun cloud account is required.
 
-Shogun does not bundle, train, or supply a proprietary LLM or foundation model. It is model-agnostic orchestration software that connects to supported local or cloud-hosted models selected and configured by the deploying organisation. The organisation remains responsible for its model and provider selection, credentials, data, permissions, use cases, human oversight, infrastructure, and output validation. Third-party providers remain responsible for their respective models and services under their terms and applicable law; Alpha Horizon remains responsible for official Shogun code, defaults, connectors, and documentation to the extent required by applicable law.
+Shogun does not bundle, train, or supply a proprietary LLM or foundation model. Shogun is not itself an LLM, foundation model, or general-purpose AI (GPAI) model. It is model-agnostic orchestration software that connects to supported local or cloud-hosted models selected and configured by the deploying organisation. The organisation remains responsible for its model and provider selection, credentials, data, permissions, use cases, human oversight, infrastructure, and output validation. Third-party providers remain responsible for their respective models and services under their terms and applicable law; Alpha Horizon remains responsible for official Shogun code, defaults, connectors, and documentation to the extent required by applicable law.
 
 If you later need to manage several Shogun installations, add **Gensui**, the optional fleet-management platform. Install Shogun first, then Gensui.
 
@@ -47,12 +47,21 @@ Download one installer from the [latest GitHub release](https://github.com/Alpha
 
 The installer downloads Shogun, creates the Python environment, installs dependencies, builds The Tenshu, creates a desktop shortcut, and opens the Setup Wizard.
 
+On first desktop installation, Shogun generates an independent infrastructure
+administrator credential in `<installation directory>/.env`. The file is
+restricted to the installing Windows account plus SYSTEM and Administrators, or
+mode `0600` on macOS/Linux. The launcher carries the credential to the Setup
+Wizard only after `#` in the local URL; browser fragments are not sent in HTTP
+requests, and The Tenshu removes the fragment before its first API request. The
+credential is never included in installer telemetry or printed by the desktop
+installer.
+
 Shogun requires **Python 3.10+**. Frontend builds and CI use **Node.js 22.12+**;
 `.nvmrc` and `.node-version` pin the supported major.
 
 ### Complete the Setup Wizard
 
-The nine-step Setup Wizard guides you through:
+The ten-step Setup Wizard guides you through:
 
 1. Language, Single-user or Team mode, and user identity
 2. Local data directory
@@ -62,9 +71,12 @@ The nine-step Setup Wizard guides you through:
 6. Model-routing profile
 7. Fallback models
 8. Optional Ronin desktop control
-9. Configuration review and activation
+9. Security and incident-reporting information, with an explicit acknowledgement
+10. Configuration review and activation
 
-Changing the language updates the wizard immediately. All setup screens are available in the 15 supported languages.
+Changing the language updates translated wizard content immediately. Shogun provides
+15 language packs; mandatory security and legal wording remains in canonical English
+where reviewed localized wording is not yet available.
 
 ### Single-user and Team mode
 
@@ -106,12 +118,34 @@ The Server installer:
 - Preserves `.env.server` and Docker volumes during upgrades.
 - Keeps The Tenshu bound to `127.0.0.1` by default.
 
-After installation, the Primary Admin opens [http://127.0.0.1:8000/setup](http://127.0.0.1:8000/setup) on the server and selects Single-user or Team mode. Team members communicate through Telegram or Microsoft Teams; they do not receive access to The Tenshu.
+After an interactive installation, the installer prints a private Primary Admin
+bootstrap link (and opens it automatically on Windows). Use that link to select
+Single-user or Team mode. The infrastructure credential follows `#` in the URL:
+browser fragments are not sent in HTTP requests or referrer headers, and The
+Tenshu removes it from the address bar before its first API request. It is then
+kept only in that tab's `sessionStorage`.
 
-Privileged Gensui connection and Nexus peer-invitation actions require the
-generated infrastructure token in Server mode. Paste it into the corresponding
-Tenshu field; it is kept only for the browser-tab session. See the
-[outbound destination security guide](docs/security/outbound-destination-policy.md).
+Treat the full bootstrap link like a credential. Do not put it in a query string,
+bookmark, screenshot, chat, issue, or shared log. When installer output is
+redirected or running under CI, the credential-bearing link is withheld. From a
+private operator terminal in the installation directory, print a fresh copy with:
+
+```bash
+docker compose --env-file .env.server -f docker-compose.server.yml exec -T shogun \
+  python -m shogun.setup_link --origin http://127.0.0.1:8000
+```
+
+The bootstrap link contains the long-lived infrastructure administrator
+credential and is not technically single-use; rotate
+`SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN` if it is disclosed. A bare `/setup` URL
+intentionally cannot authorize Server mode. Team members communicate through
+Telegram or Microsoft Teams; they do not receive access to The Tenshu.
+
+Privileged Gensui connection and Nexus peer-invitation actions reuse the
+infrastructure authorization established by the bootstrap link for that tab.
+If the tab session ends, print and open the private bootstrap link again; the
+explicit token fields remain available for deliberate session reauthorization.
+See the [outbound destination security guide](docs/security/outbound-destination-policy.md).
 
 > **Secure by default:** Do not change `SHOGUN_BIND_ADDRESS` to a public interface without placing The Tenshu behind an authenticated HTTPS reverse proxy. For remote administration, prefer a VPN or SSH tunnel.
 
@@ -129,6 +163,10 @@ for the complete native-versus-headless scope.
 cp .env.server.example .env.server
 # Replace every change-me value in .env.server.
 docker compose --env-file .env.server -f docker-compose.server.yml up -d --build
+
+# Print the private Primary Admin bootstrap link to this terminal.
+docker compose --env-file .env.server -f docker-compose.server.yml exec -T shogun \
+  python -m shogun.setup_link --origin http://127.0.0.1:8000
 ```
 
 Useful commands:
@@ -154,7 +192,10 @@ docker compose --env-file .env.server -f docker-compose.server.yml down
 | **macOS** | Open **Shogun.app** from the Desktop |
 | **Linux developer install** | Open the generated `shogun.desktop` shortcut |
 
-The Tenshu opens at [http://localhost:8000](http://localhost:8000).
+The launcher opens The Tenshu at [http://localhost:8000](http://localhost:8000)
+with the local administrator credential in a temporary URL fragment. The
+fragment is removed immediately and retained only in that browser tab's
+`sessionStorage`.
 
 Updates can be installed from The Tenshu while preserving configuration, databases, and memories. To uninstall, run `uninstall.bat` on Windows or `./uninstall.sh` on macOS/Linux from the Shogun installation directory.
 
@@ -254,9 +295,9 @@ Install and configure each Shogun first. Add Gensui when you need centralized fl
 | **Discovery and rogue detection** | Scan the LAN for enrolled, unenrolled, and unknown Shogun services. |
 | **Enrollment tokens** | Issue, approve, reject, and revoke secure enrollment credentials. |
 | **Groups and posture management** | Organize instances and distribute group or instance-level security policies. |
-| **Remote HARAKIRI** | Trigger governed fleet emergency actions from soft freeze through full termination. |
-| **Central audit** | Aggregate HMAC-chained events, telemetry, compliance reports, and SIEM-ready exports. |
-| **Enterprise identity** | Configure service accounts, API key rotation, OIDC/SSO, role mapping, and domain restrictions. |
+| **Remote HARAKIRI** | Trigger the governed-operation gate and request best-effort cancellation on supported connected paths; verify external processes separately. |
+| **Central audit** | Aggregate available HMAC-chained events, telemetry, governance-evidence summaries, and SIEM-ready exports. |
+| **Enterprise identity configuration** | Stage reserved service-account and SSO provider records. These records are not accepted for API or SSO authentication in the current release. |
 
 ### Install Gensui
 
@@ -294,7 +335,9 @@ For an always-on server, use the Docker Compose configuration in `gensui/`. The 
 
 ## Languages
 
-The Tenshu and Setup Wizard support:
+The Tenshu and Setup Wizard provide the following language packs. Coverage varies by
+surface, and mandatory security or legal text can fall back to canonical English until
+a reviewed translation is available.
 
 | Language | Native name | Code |
 |---|---|---|

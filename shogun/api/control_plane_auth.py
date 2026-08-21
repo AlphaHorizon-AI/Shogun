@@ -20,9 +20,18 @@ _MACHINE_AUTHENTICATED_PREFIXES = (
     "/api/v1/nexus/external/a2a/task",
     "/api/v1/nexus/external/task/",
 )
-_PUBLIC_PATHS = {"/api/v1/health"}
+_PUBLIC_PATHS = {
+    "/api/v1/health",
+    # Product/release identity is intentionally non-sensitive and is required
+    # by the persistent About navigation before an operator token is available.
+    "/api/v1/updates/version",
+}
 _SENSITIVE_STATIC_PREFIXES = ("/uploads/", "/mado/screenshots/", "/ronin/screenshots/")
 _request_windows: dict[tuple[str, str], deque[float]] = {}
+
+
+def _is_public_request(request: Request) -> bool:
+    return request.method in {"GET", "HEAD"} and request.url.path in _PUBLIC_PATHS
 
 
 async def enforce_control_plane_access(request: Request, call_next):
@@ -32,7 +41,7 @@ async def enforce_control_plane_access(request: Request, call_next):
     protected = path.startswith("/api/v1/") or path.startswith(_SENSITIVE_STATIC_PREFIXES)
     if (
         not protected
-        or path in _PUBLIC_PATHS
+        or _is_public_request(request)
         or path in _MACHINE_AUTHENTICATED_PATHS
         or path.startswith(_MACHINE_AUTHENTICATED_PREFIXES)
     ):
@@ -77,7 +86,7 @@ async def add_security_headers(request: Request, call_next):
 
 
 async def enforce_rate_limit(request: Request, call_next):
-    if not request.url.path.startswith("/api/v1/") or request.url.path in _PUBLIC_PATHS:
+    if not request.url.path.startswith("/api/v1/") or _is_public_request(request):
         return await call_next(request)
     client = request.client.host if request.client else "unknown"
     bucket = "read" if request.method in {"GET", "HEAD", "OPTIONS"} else "write"

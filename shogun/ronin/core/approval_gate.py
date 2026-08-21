@@ -11,13 +11,101 @@ app trust), the Approval Gate:
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
+
+from shogun.ronin.policies.ronin_policy_schema import RoninAction, RoninPermissionGate
 
 log = logging.getLogger("shogun.ronin.approval_gate")
+
+ApprovalDecision = Literal["approved", "denied"]
+
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)(password|passcode|secret|token|api[_ -]?key|private[_ -]?key)\s*[:=]\s*\S+"
+)
+_SECRET_FLAG = re.compile(
+    r"(?i)(--?(?:password|passcode|secret|token|api[_-]?key|private[_-]?key))\s+\S+"
+)
+_BEARER_TOKEN = re.compile(r"(?i)(bearer\s+)\S+")
+_URL_USERINFO = re.compile(r"(://)[^/@\s]+@")
+
+
+def action_digest(action: RoninAction) -> str:
+    """Return a canonical digest binding approval to immutable action details."""
+    payload = action.model_dump(mode="json")
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _safe_preview_text(value: Any, *, limit: int = 240) -> str:
+    text = _SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}=[REDACTED]", str(value))
+    text = _SECRET_FLAG.sub(lambda match: f"{match.group(1)} [REDACTED]", text)
+    text = _BEARER_TOKEN.sub(r"\1[REDACTED]", text)
+    text = _URL_USERINFO.sub(r"\1[REDACTED]@", text)
+    return text if len(text) <= limit else f"{text[:limit]}..."
+
+
+def action_preview(
+    action: RoninAction,
+    permission_gates: tuple[RoninPermissionGate, ...],
+) -> dict[str, Any]:
+    """Build a bounded, secret-aware preview for the operator approval UI."""
+    preview: dict[str, Any] = {
+        "action_type": action.action_type,
+        "target": action_target_preview(action, permission_gates),
+        "permission_gates": [gate.value for gate in permission_gates],
+    }
+    if action.value is not None:
+        if action.action_type in {"desktop.type", "browser.type"}:
+            preview["value"] = f"[REDACTED TEXT INPUT: {len(action.value)} characters]"
+        else:
+            preview["value"] = _safe_preview_text(action.value)
+
+    material_metadata: dict[str, Any] = {}
+    for key in (
+        "arguments",
+        "button",
+        "clicks",
+        "elevated",
+        "expected_window",
+        "operation",
+        "interval",
+        "max_retries",
+        "require_admin",
+        "region",
+        "run_as_admin",
+        "semantic_intent",
+        "start_x",
+        "start_y",
+        "verb",
+        "x",
+        "y",
+    ):
+        if key in action.metadata:
+            material_metadata[key] = _safe_preview_text(action.metadata[key])
+    if material_metadata:
+        preview["metadata"] = material_metadata
+    if set(action.metadata) - set(material_metadata):
+        preview["other_metadata_present"] = True
+    return preview
+
+
+def action_target_preview(
+    action: RoninAction,
+    permission_gates: tuple[RoninPermissionGate, ...],
+) -> str | None:
+    """Return a bounded target safe for UI, runtime status, and audit events."""
+    if action.target is None:
+        return None
+    if RoninPermissionGate.CREDENTIAL_ENTRY in permission_gates:
+        return "[CREDENTIAL-ENTRY TARGET REDACTED]"
+    return _safe_preview_text(action.target)
 
 
 @dataclass
@@ -34,6 +122,8 @@ class ApprovalRequest:
     app_name: str | None = None
     app_trust: str | None = None
     screenshot_path: str | None = None
+    action_digest: str | None = None
+    action_preview: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -53,6 +143,8 @@ class ApprovalRequest:
             "app_name": self.app_name,
             "app_trust": self.app_trust,
             "screenshot_path": self.screenshot_path,
+            "action_digest": self.action_digest,
+            "action_preview": self.action_preview,
             "created_at": self.created_at,
             "status": self.status,
             "decision_by": self.decision_by,
@@ -80,6 +172,8 @@ async def request_approval(
     app_name: str | None = None,
     app_trust: str | None = None,
     screenshot_path: str | None = None,
+    action_digest: str | None = None,
+    action_preview: dict[str, Any] | None = None,
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
 ) -> ApprovalRequest:
     """Create an approval request and wait for operator response.
@@ -93,12 +187,14 @@ async def request_approval(
         agent_id=agent_id,
         session_id=session_id,
         action_type=action_type,
-        target=target,
+        target=_safe_preview_text(target) if target else None,
         reason=reason,
         risk_level=risk_level,
         app_name=app_name,
         app_trust=app_trust,
         screenshot_path=screenshot_path,
+        action_digest=action_digest,
+        action_preview=action_preview or {},
     )
 
     event = asyncio.Event()
@@ -143,7 +239,11 @@ async def request_approval(
     return req
 
 
-def respond_to_approval(approval_id: str, decision: str, decided_by: str = "operator") -> bool:
+def respond_to_approval(
+    approval_id: str,
+    decision: ApprovalDecision,
+    decided_by: str = "operator",
+) -> bool:
     """Approve or deny a pending request. Called from the API.
 
     Args:
@@ -153,9 +253,19 @@ def respond_to_approval(approval_id: str, decision: str, decided_by: str = "oper
 
     Returns True if the request was found and responded to.
     """
+    if decision not in ("approved", "denied"):
+        log.warning("Ronin: rejected invalid approval decision for id=%s", approval_id)
+        return False
     req = _pending.get(approval_id)
     if not req:
         log.warning("Ronin: approval response for unknown id=%s", approval_id)
+        return False
+    if req.status != "pending":
+        log.warning(
+            "Ronin: replayed approval response rejected — id=%s existing=%s",
+            approval_id,
+            req.status,
+        )
         return False
 
     req.status = decision
@@ -171,6 +281,17 @@ def respond_to_approval(approval_id: str, decision: str, decided_by: str = "oper
         decision, approval_id, decided_by, req.action_type,
     )
     return True
+
+
+def get_approval_status(approval_id: str) -> str | None:
+    """Return current/recent status so the API can distinguish replay from 404."""
+    pending = _pending.get(approval_id)
+    if pending:
+        return pending.status
+    for request in reversed(_history):
+        if request.id == approval_id:
+            return request.status
+    return None
 
 
 def get_pending() -> list[dict[str, Any]]:

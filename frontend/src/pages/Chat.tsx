@@ -771,6 +771,11 @@ export const ChatConsole = () => {
                 </div>
                 <div className="flex items-center gap-2 px-1 mt-1">
                   <span className="text-[10px] text-shogun-subdued font-bold tracking-wider">{msg.role === 'user' ? operatorName : t('chat.agent_label', 'SHOGUN')}</span>
+                  {msg.role === 'shogun' && (
+                    <span className="rounded border border-cyan-400/25 bg-cyan-400/5 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-cyan-300/80">
+                      {t('chat.ai_agent_disclosure', 'AI agent')}
+                    </span>
+                  )}
                   <span className="text-[10px] text-shogun-subdued opacity-50">{msg.timestamp}</span>
                   {msg.channel === 'telegram' && (
                     <span className="text-[9px] text-sky-400/80 uppercase tracking-wider">Telegram</span>

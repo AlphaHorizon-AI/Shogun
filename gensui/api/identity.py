@@ -10,8 +10,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gensui.api.deps import get_db, require_role
-from gensui.services.identity_service import IdentityService
 from gensui.services.audit_service import AuditService
+from gensui.services.identity_service import IdentityService
 
 router = APIRouter(prefix="/identity", tags=["identity"])
 
@@ -92,6 +92,8 @@ def _sa_to_dict(sa) -> dict:
         "usage_count": sa.usage_count,
         "created_by": sa.created_by,
         "created_at": sa.created_at.isoformat() if sa.created_at else None,
+        "authentication_available": False,
+        "configuration_only": True,
     }
 
 
@@ -138,7 +140,10 @@ async def create_service_account(
     return {
         "account": _sa_to_dict(sa),
         "api_key": raw_key,
-        "warning": "This API key will only be shown once. Store it securely.",
+        "warning": (
+            "This reserved credential is shown once, but no Gensui API endpoint "
+            "accepts service-account keys in this release."
+        ),
     }
 
 
@@ -212,7 +217,10 @@ async def rotate_api_key(
     return {
         "account": _sa_to_dict(sa),
         "api_key": raw_key,
-        "warning": "This API key will only be shown once. Store it securely.",
+        "warning": (
+            "This reserved credential is shown once, but no Gensui API endpoint "
+            "accepts service-account keys in this release."
+        ),
     }
 
 
@@ -240,6 +248,8 @@ def _sso_to_dict(p) -> dict:
         "is_primary": p.is_primary,
         "created_by": p.created_by,
         "created_at": p.created_at.isoformat() if p.created_at else None,
+        "authentication_available": False,
+        "configuration_only": True,
     }
 
 
@@ -260,7 +270,7 @@ async def create_sso_provider(
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_role("owner")),
 ):
-    """Create an SSO/OIDC provider."""
+    """Store an inactive provider configuration for future implementation."""
     svc = IdentityService(db)
     provider = await svc.create_sso_provider(
         name=req.name,
@@ -349,14 +359,9 @@ async def delete_sso_provider(
 async def sso_status(
     db: AsyncSession = Depends(get_db),
 ):
-    """Public endpoint: check if SSO is configured (for login page)."""
-    svc = IdentityService(db)
-    primary = await svc.get_primary_sso_provider()
-    if primary is None:
-        return {"sso_enabled": False}
+    """Report SSO unavailable until a signed-token verifier is implemented."""
     return {
-        "sso_enabled": True,
-        "provider_name": primary.name,
-        "provider_type": primary.provider_type,
-        "provider_id": str(primary.id),
+        "sso_enabled": False,
+        "authentication_available": False,
+        "reason": "Signed OIDC validation and SSO login are not implemented in this release",
     }

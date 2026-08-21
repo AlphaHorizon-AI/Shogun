@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,8 +59,57 @@ async def list_chat_messages(session: AsyncSession, *, limit: int = 200) -> list
     return list(reversed(result.scalars().all()))
 
 
-async def get_chat_context(session: AsyncSession, *, limit: int = 20) -> list[dict[str, str]]:
-    messages = await list_chat_messages(session, limit=limit)
+def _matches_conversation(message: ChatMessage, context: dict[str, Any]) -> bool:
+    """Return whether a Telegram record belongs to the exact active boundary."""
+    stored = (message.message_data or {}).get("telegram_context") or {}
+    expected_thread = context.get("message_thread_id")
+    stored_thread = stored.get("message_thread_id")
+    if (str(stored_thread) if stored_thread is not None else None) != (
+        str(expected_thread) if expected_thread is not None else None
+    ):
+        return False
+    if str(context.get("chat_type") or "").casefold() == "private":
+        expected_sender = str(context.get("sender_id") or "").strip()
+        stored_sender = str(stored.get("sender_id") or "").strip()
+        return bool(expected_sender) and stored_sender == expected_sender
+    return True
+
+
+async def get_chat_context(
+    session: AsyncSession,
+    *,
+    limit: int = 20,
+    channel: str | None = None,
+    external_chat_id: str | None = None,
+    conversation_context: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    if conversation_context is not None and (not channel or not external_chat_id):
+        raise ValueError("Scoped chat context requires channel and external_chat_id")
+
+    if channel or external_chat_id:
+        if not channel or not external_chat_id:
+            raise ValueError("channel and external_chat_id must be supplied together")
+        # The bounded scan may omit old context in very busy conversations, but
+        # it can never admit a different conversation or topic.
+        result = await session.execute(
+            select(ChatMessage)
+            .where(
+                ChatMessage.channel == channel,
+                ChatMessage.external_chat_id == str(external_chat_id),
+            )
+            .order_by(ChatMessage.created_at.desc())
+            .limit(max(limit * 20, 200))
+        )
+        candidates = list(result.scalars().all())
+        if conversation_context is not None:
+            candidates = [
+                message
+                for message in candidates
+                if _matches_conversation(message, conversation_context)
+            ]
+        messages = list(reversed(candidates[:limit]))
+    else:
+        messages = await list_chat_messages(session, limit=limit)
     return [
         {
             "role": "assistant" if message.role in {"assistant", "shogun"} else "user",

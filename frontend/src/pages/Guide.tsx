@@ -62,8 +62,14 @@ import {
 } from "lucide-react";
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
+import { useLocation } from 'react-router-dom';
+import {
+  requestedGuideSection,
+  requestedGuideTab,
+  type GuideTab,
+} from '../lib/guideNavigation';
 
-type DocTab = 'onboarding' | 'architecture' | 'reference' | 'safety';
+type DocTab = GuideTab;
 type GuideCatalog = Record<string, string>;
 
 const guideCatalogModules = import.meta.glob('../i18n/guide/*.json', { eager: false }) as Record<
@@ -114,7 +120,10 @@ function applyGuideCatalog(root: HTMLElement, catalog: GuideCatalog) {
 
 export function Guide() {
   const { t, language } = useTranslation();
-  const [activeTab, setActiveTab] = useState<DocTab>('onboarding');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState<DocTab>(
+    () => requestedGuideTab(window.location.search) ?? 'onboarding'
+  );
   const [activeSection, setActiveSection] = useState<string>('ref-tenshu');
   const guideRootRef = useRef<HTMLDivElement>(null);
   const refContentRef = useRef<HTMLDivElement>(null);
@@ -161,6 +170,24 @@ export function Guide() {
       setActiveSection(sectionId);
     }
   }, []);
+
+  useEffect(() => {
+    const requested = requestedGuideTab(location.search);
+    if (!requested) return;
+    const timer = window.setTimeout(() => setActiveTab(requested), 0);
+    return () => window.clearTimeout(timer);
+  }, [location.search]);
+
+  useEffect(() => {
+    if (activeTab !== 'reference' || !location.hash) return;
+    const sectionId = requestedGuideSection(
+      location.hash,
+      REFERENCE_SECTIONS.map(section => section.id),
+    );
+    if (!sectionId) return;
+    const timer = window.setTimeout(() => scrollToSection(sectionId), 0);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, location.hash, REFERENCE_SECTIONS, scrollToSection]);
 
   const printGrandReference = useCallback(() => {
     const content = refContentRef.current;
@@ -552,7 +579,7 @@ export function Guide() {
                      { term: 'Lattice', def: 'The network of all connected agents (Shogun + Samurai). The lattice distributes work intelligently and ensures no single agent is overwhelmed.', icon: Network, color: 'text-shogun-blue' },
                      { term: 'Constitution', def: 'A set of inviolable rules written in YAML that govern what all agents are allowed to do. Managed in the Kaizen page.', icon: FileText, color: 'text-shogun-gold' },
                      { term: 'Security Posture', def: 'The built-in tier or custom policy selected in Torii. ToolGate turns that selection into capability boundaries and runtime ALLOW, CONFIRM, or BLOCK decisions.', icon: Lock, color: 'text-red-400' },
-                     { term: 'Harakiri', def: 'The emergency kill switch. Instantly freezes all agent activity and locks the system to maximum security (SHRINE).', icon: ShieldCheck, color: 'text-red-400' },
+                     { term: 'Harakiri', def: 'The emergency kill switch. Requests cancellation of supported active agent work and locks the system to the most restrictive built-in posture (SHRINE).', icon: ShieldCheck, color: 'text-red-400' },
                      { term: 'Routing Profile', def: 'A set of rules that decides which AI model handles which type of task. For example: code → GPT-4, research → Perplexity.', icon: GitBranch, color: 'text-shogun-blue' },
                      { term: 'Salience', def: 'A memory importance score (0.0–1.0). High-salience memories are retrieved first. The system auto-adjusts salience over time.', icon: Star, color: 'text-shogun-gold' },
                      { term: 'Reflection Cycle', def: 'An automated self-improvement loop where the AI analyzes its own performance and generates optimization insights. Run from Bushido.', icon: RefreshCw, color: 'text-shogun-blue' },
@@ -593,7 +620,7 @@ export function Guide() {
                      { name: 'Torii (Security)', purpose: 'Select the active built-in tier or custom posture and access the Harakiri kill switch. Custom posture lifecycle is owned by ToolGate.', icon: Lock, color: 'text-red-400' },
                      { name: 'ToolGate (Runtime Permissions)', purpose: 'Create, edit, and delete custom postures; configure capability boundaries; and inspect effective tool verdicts, risk indications, confirmations, and per-tool overrides.', icon: Shield, color: 'text-orange-400' },
                      { name: 'Mado (Browser)', purpose: 'Browser automation layer powered by Playwright. Your AI can navigate to URLs, extract page content, take screenshots, and interact with web pages—within the capability boundaries and runtime verdicts shown in ToolGate.', icon: AppWindow, color: 'text-cyan-400' },
-                     { name: 'Ronin (Desktop Control)', purpose: 'Desktop automation layer. Allows governed mouse, keyboard, screenshot, and native app control. Protected by Posture Guard, App Trust (4 levels), Komainu physical override, and environment detection. Only available at TACTICAL tier or higher.', icon: Crosshair, color: 'text-orange-400' },
+                     { name: 'Ronin (Desktop Control)', purpose: 'Optional desktop automation for governed mouse, keyboard, screenshot, and native-app actions. It is available only when the active security tier is RONIN and an operator separately enables desktop control with the required confirmation.', icon: Crosshair, color: 'text-orange-400' },
                      { name: 'Agent Flow (Workflows)', purpose: 'Visual drag-and-drop workflow builder. Design multi-step AI pipelines by chaining Input, Samurai, Shogun Approval, Logic Gate, Browser, and Output nodes. Execute complex orchestration flows.', icon: Workflow, color: 'text-violet-400' },
                      { name: 'Mail (Email Client)', purpose: 'Full IMAP/SMTP email integration. Browse your inbox, read and compose emails, reply with CC/BCC, navigate folders. Your Shogun can also read, send, and manage emails via native skills.', icon: Mail, color: 'text-sky-400' },
                      { name: 'Calendar', purpose: 'CalDAV calendar integration. View upcoming events, create new ones (with time, location, and description), and manage your schedule. Your Shogun can query and create events via native skills.', icon: CalendarDays, color: 'text-emerald-400' },
@@ -752,7 +779,7 @@ export function Guide() {
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-red-400" /> Emergency Stop (Harakiri)</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">A red button on the dashboard. Pressing it opens a two-step confirmation modal. Once confirmed, <strong>all active agent operations are immediately stopped</strong>. The security posture locks to "SHRINE" (maximum protection). A pulsing red banner appears at the top of Every page until you press "Reset Harakiri".</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">A red button on the dashboard. Pressing it opens a two-step confirmation modal. Once confirmed, the kill switch blocks new governed operations and requests cancellation of supported active Telegram, Teams, Agent Flow, Flow Stack, approval, and Ronin work. Cancellation is best-effort; verify external processes and side effects separately. The security posture locks to "SHRINE" (maximum protection). A pulsing red banner appears until you press "Reset Harakiri".</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-gold" /> Telemetry Feed (Right Sidebar)</div>
@@ -987,7 +1014,7 @@ export function Guide() {
                     </div>
                     <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-violet-400" /> Durable Checkpoints</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Context summaries and state snapshots are saved after each step. If a run is paused or interrupted, it can be resumed from the last checkpoint — no lost progress. Use <strong>Pause</strong> and <strong>Resume</strong> buttons in the Flow Stack dashboard.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Implemented steps can persist context summaries and state snapshots at configured checkpoints. A paused or interrupted run may resume from its last valid checkpoint, but work since that checkpoint or incomplete external side effects may need verification or repetition. Use <strong>Pause</strong> and <strong>Resume</strong> in the Flow Stack dashboard and inspect the recovered state before continuing.</p>
                     </div>
                     <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Package className="w-4 h-4 text-violet-400" /> Artifact Capture</div>
@@ -1596,8 +1623,8 @@ npm start`}</pre>
                     </div>
                     <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-cyan-400" /> OpenClaw College Ecosystem Intelligence</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">In <strong>Updates</strong>, anonymous ecosystem benchmark sharing is enabled by default. The operator can opt out at any time. When enabled, Shogun sends only model/provider, coarse task type, success, bucketed tokens/latency/cost, local-versus-cloud, country code, Shogun version, and a weekly rotating anonymous installation hash.</p>
-                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Never transmitted:</strong> prompts, outputs, files, error contents, agent names, credentials, or exact IP addresses. College publishes rankings only after at least 20 events from five anonymous installations and retains raw telemetry for 31 days.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">OpenClaw College ecosystem intelligence is <strong>disabled by default</strong>. No event is queued or sent until a local administrator explicitly opts in under <strong>Privacy &amp; Telemetry</strong> after reviewing the purpose, exact destination, and fields. When enabled, Shogun sends only <code>eventId</code>, <code>schemaVersion</code>, <code>eventType</code>, <code>occurredAt</code>, <code>installationHash</code>, <code>shogunVersion</code>, <code>country</code>, <code>model</code>, <code>provider</code>, <code>taskType</code>, <code>locality</code>, <code>success</code>, <code>inputTokens</code>, <code>outputTokens</code>, <code>latency</code>, and <code>cost</code> to <code>https://www.openclawcollege.com/api/v1/intelligence/events</code>. The configured model, provider, and task identifiers are sent as text, truncated to 120, 80, and 80 characters respectively; token, latency, and cost values are bucketed, <code>occurredAt</code> is rounded to the UTC hour, <code>country</code> is derived from OS/locale settings, and <code>installationHash</code> is a weekly rotating pseudonymous identifier. The security and incident-reporting acknowledgement is separate and is never sent.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Before opting in:</strong> do not enable College sharing if a configured model, provider, or task identifier contains a tenant, customer, project, person, filename, prompt fragment, credential, secret, or other sensitive value. Prompts, outputs, files, error contents, agent names, credentials, and exact IP addresses are not dedicated application-payload fields, but configured identifiers are transmitted verbatim within the stated length limits. HTTPS delivery necessarily exposes network connection metadata to the recipient and network providers; review the recipient&apos;s current privacy terms before opting in. Shogun does not assert or control the recipient&apos;s retention or publication practices.</p>
                     </div>
                  </div>
               </section>
@@ -1765,7 +1792,7 @@ npm start`}</pre>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-emerald-400" /> File Operations</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Read, create, list, search, and apply patches to files within approved workspaces. Every write creates an automatic SHA-256 snapshot for rollback. <strong>Protected files</strong> (<code className="text-emerald-400">.env</code>, <code className="text-emerald-400">*.pem</code>, <code className="text-emerald-400">*.key</code>, <code className="text-emerald-400">id_rsa*</code>, <code className="text-emerald-400">credentials*</code>) are always blocked.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Read, create, list, search, and apply patches within approved workspaces. Before an IDE write, Shogun keeps an in-memory content restore point for the lifetime of the running process; this is not a durable SHA-256 backup. <strong>Protected files</strong> (<code className="text-emerald-400">.env</code>, <code className="text-emerald-400">*.pem</code>, <code className="text-emerald-400">*.key</code>, <code className="text-emerald-400">id_rsa*</code>, <code className="text-emerald-400">credentials*</code>) require explicit approval and are not added to model context automatically; credential directories remain blocked.</p>
                     </div>
                     <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Terminal className="w-4 h-4 text-emerald-400" /> Terminal & Git</div>
@@ -2006,42 +2033,41 @@ npm start`}</pre>
                        CRITICAL: Understand the Repercussions Before Enabling
                     </h5>
                     <div className="space-y-3 text-xs text-shogun-subdued leading-relaxed">
-                       <p><strong className="text-red-400">Ronin gives the AI direct physical control of your computer.</strong> This is not a sandboxed operation. When enabled, Shogun can move your mouse, press keys, read your screen, interact with any application, and execute OS-level commands. This is fundamentally different from browser automation (Mado), which runs in an isolated Chromium sandbox.</p>
+                       <p><strong className="text-red-400">Ronin can give an AI agent direct desktop input control.</strong> This is not a sandbox boundary. When separately enabled under the RONIN tier, registered capabilities can move the mouse, press keys, capture the screen, and interact with permitted native applications. The built-in Ronin action registry does not provide a general shell-command capability, and all actions remain subject to runtime policy. This differs from browser automation (Mado), which operates through a controlled Chromium session.</p>
                        <div className="bg-[#050508] rounded-lg p-3 border border-red-500/20 space-y-2">
                           <p className="text-red-400 font-bold text-[10px] uppercase tracking-widest">What can go wrong:</p>
                           <ul className="ml-4 list-disc space-y-1.5">
-                             <li><strong className="text-red-400">Data Loss:</strong> The AI can click Delete buttons, overwrite files, or drag items to trash. At CAMPAIGN/RONIN tier, file deletion is allowed or only requires approval but mistakes happen in milliseconds.</li>
-                             <li><strong className="text-red-400">Credential Exposure:</strong> If the AI types into a password field, opens a password manager, or interacts with banking/crypto apps your credentials could be exposed, logged, or transmitted. At RONIN tier, credential entry is ALLOWED with no gate.</li>
-                             <li><strong className="text-red-400">Financial Damage:</strong> The AI can click purchase buttons, submit orders, confirm transactions, or interact with trading platforms. There is no undo for financial actions.</li>
-                             <li><strong className="text-red-400">Software Installation:</strong> At CAMPAIGN tier, software installation requires approval. At RONIN tier, the AI can download and install arbitrary software without asking.</li>
-                             <li><strong className="text-red-400">Admin Escalation:</strong> At RONIN tier, admin escalation is enabled. The AI can accept UAC prompts, run as administrator, and modify system settings.</li>
-                             <li><strong className="text-red-400">External Data Upload:</strong> The AI can open a browser, paste sensitive data, and upload it to external services. At RONIN tier, this is ALLOWED without approval.</li>
+                          <li><strong className="text-red-400">Data Loss:</strong> Approved desktop actions or in-application clicks can still overwrite or remove data. Explicitly classified deletion and mutating raw GUI primitives require approval under the built-in policy, but raw coordinates cannot prove the semantic effect of a click and approval does not guarantee that the intended target is correct.</li>
+                          <li><strong className="text-red-400">Credential Exposure:</strong> Explicit credential-entry operations and applications classified as forbidden remain blocked by the built-in policy; raw typing is treated as high risk and requires approval. The runtime cannot understand every field solely from coordinates, so do not place secrets on screen or approve typing without verifying the focused control.</li>
+                          <li><strong className="text-red-400">Financial Damage:</strong> Critical actions are blocked and sensitive applications require approval under the built-in policy, but approved interactions can still be irreversible. Independently verify every transaction before authorising it.</li>
+                          <li><strong className="text-red-400">Software Installation:</strong> Explicitly classified software installation remains approval-required. Review the source, signature, arguments, requested privileges, and destination before approving any launcher or raw GUI action that could install software.</li>
+                          <li><strong className="text-red-400">Admin Escalation:</strong> Explicit administrative escalation is disabled by the built-in policy. Do not weaken this control or approve a raw GUI action near an elevation prompt without an independent security review.</li>
+                          <li><strong className="text-red-400">External Data Upload:</strong> Explicitly classified external uploads remain approval-required. Browser and Office automation have separate approval controls; raw GUI coordinates cannot identify every destination, so verify the focused application, destination, and data before approving.</li>
                           </ul>
                        </div>
-                       <p className="text-red-400 font-bold">Rule of thumb: If you would not give a stranger unsupervised access to your desktop, do not enable CAMPAIGN or RONIN posture on that machine.</p>
+                       <p className="text-red-400 font-bold">Rule of thumb: If you would not give a stranger supervised access to the current desktop and data, do not enable Ronin Desktop Control on that machine. Prefer a disposable, isolated environment.</p>
                     </div>
                  </div>
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="shogun-card space-y-2">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-orange-400" /> Posture Levels</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">{"Ronin has four posture levels. The active posture is set in Torii \u2192 Security Posture and shown in the Ronin header."}</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Ronin&apos;s policy schema defines six desktop capability states. The standard activation path is narrower: every built-in tier leaves desktop automation disabled, and only the RONIN tier permits an operator to enable <code>desktop_full</code> through a separate warning confirmation.</p>
                        <div className="bg-shogun-bg rounded-lg p-3 space-y-2">
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-[#7a8899] bg-[#7a8899]/10 px-2 py-0.5 rounded">DISABLED</span><span className="text-xs text-shogun-subdued">No desktop access at all. Shrine and Guarded tiers.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-[#7a8899] bg-[#7a8899]/10 px-2 py-0.5 rounded">DISABLED</span><span className="text-xs text-shogun-subdued">The built-in default for SHRINE, GUARDED, TACTICAL, CAMPAIGN, and RONIN until separate desktop enablement.</span></div>
                           <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-shogun-blue bg-shogun-blue/10 px-2 py-0.5 rounded">OBSERVE ONLY</span><span className="text-xs text-shogun-subdued">Screenshots and window listing only. Read-only.</span></div>
                           <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-green-400 bg-green-400/10 px-2 py-0.5 rounded">BROWSER ONLY</span><span className="text-xs text-shogun-subdued">Playwright/Mado browser control only. No desktop.</span></div>
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">DESKTOP LIMITED</span><span className="text-xs text-shogun-subdued">Mouse, keyboard, screenshots. No native apps, no shell, no admin. Tactical tier.</span></div>
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded">DESKTOP FULL</span><span className="text-xs text-shogun-subdued">{"Full control: native apps, shell commands, admin escalation. Campaign/Ronin tier."} <strong className="text-red-400">DANGEROUS.</strong></span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">DESKTOP LIMITED</span><span className="text-xs text-shogun-subdued">A policy-schema state for scoped mouse, keyboard, and screenshots; it is not automatically activated by TACTICAL.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded">DESKTOP FULL</span><span className="text-xs text-shogun-subdued">Broad registered native-app, mouse, keyboard, and screen capabilities after separate operator enablement under RONIN. General shell execution and administrative escalation remain disabled; protected applications, verification, approval, and critical-action gates remain enforced. <strong className="text-red-400">HIGH RISK.</strong></span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded">ADMIN APPROVAL REQUIRED</span><span className="text-xs text-shogun-subdued">An internal schema state; it does not override the built-in <code>ronin_admin_escalation: false</code> control.</span></div>
                        </div>
                     </div>
                     <div className="shogun-card space-y-2">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Crosshair className="w-4 h-4 text-orange-400" /> Where to Configure</div>
                        <p className="text-xs text-shogun-subdued leading-relaxed">Torii selects the governing tier or custom policy. Its inherited desktop ceiling and explicit Ronin boundaries are shown and governed in ToolGate; Ronin cannot widen them from its operational console.</p>
                        <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
-                          <li><strong>SHRINE / GUARDED:</strong> Ronin is disabled. No desktop control at all.</li>
-                          <li><strong>TACTICAL:</strong> Ronin is desktop_limited. Mouse + keyboard + screenshots. 1 session max. Dangerous actions blocked.</li>
-                          <li><strong>CAMPAIGN:</strong> Ronin is desktop_full. Native apps + shell. 5 sessions max. Dangerous actions require approval.</li>
-                          <li><strong>RONIN:</strong> Ronin is desktop_full. Everything allowed. 10 sessions. Admin escalation enabled. <strong className="text-red-400">No safety gates. VM only recommended.</strong></li>
+                          <li><strong>SHRINE / GUARDED / TACTICAL / CAMPAIGN:</strong> Ronin Desktop Control is disabled by the built-in tier constraints.</li>
+                          <li><strong>RONIN:</strong> The tier makes the desktop_full posture eligible, but desktop control remains off until separately enabled with an explicit confirmation. The built-in policy keeps credential entry and administrative escalation blocked; file deletion, external uploads, and software installation require approval; high-risk verification and critical-action gates remain active.</li>
                        </ul>
                        <p className="text-xs text-shogun-subdued leading-relaxed">After selecting a tier, the Ronin constraints appear in the Current Constraints card on the left side of Torii (Ronin Desktop, Ronin Sessions, Mouse/Keyboard).</p>
                     </div>
@@ -2050,24 +2076,24 @@ npm start`}</pre>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="shogun-card space-y-2">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-orange-400" /> Application Trust Levels</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Every application on your OS is classified into one of four trust levels. The Posture Guard evaluates: Agent + Posture + App Trust + Environment = Decision.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Known applications in the registry are assigned one of four trust levels; an unknown process defaults to RESTRICTED rather than being treated as trusted. Posture Guard combines the active policy, registered capability, application trust, and detected environment when evaluating a request.</p>
                        <div className="bg-shogun-bg rounded-lg p-3 space-y-2">
                           <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-green-400 bg-green-400/10 px-2 py-0.5 rounded">TRUSTED</span><span className="text-xs text-shogun-subdued">VS Code, Notepad, Calculator, Shogun. Safe to interact.</span></div>
                           <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded">RESTRICTED</span><span className="text-xs text-shogun-subdued">Chrome, Excel, PowerPoint. Some caution required.</span></div>
                           <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">SENSITIVE</span><span className="text-xs text-shogun-subdued">Outlook, SAP, Salesforce, CRM. Requires elevated posture.</span></div>
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded">FORBIDDEN</span><span className="text-xs text-shogun-subdued">Password managers, banking apps, crypto wallets. <strong className="text-red-400">Always blocked, no override.</strong></span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded">FORBIDDEN</span><span className="text-xs text-shogun-subdued">Password managers, banking apps, and crypto wallets are examples. A process classified FORBIDDEN is denied by Posture Guard; registry coverage and foreground detection must still be verified.</span></div>
                        </div>
                        <p className="text-xs text-shogun-subdued leading-relaxed">The trust registry comes pre-populated with 50+ applications. View and filter them on the App Trust tab in Ronin.</p>
                     </div>
                     <div className="shogun-card space-y-2">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-red-400" /> Komainu Guardian (Physical Override)</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Komainu is a hardware-level safety mechanism. It monitors for human mouse and keyboard activity and can instantly override the AI. Three levels:</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Komainu is a software input listener. While it is running and receiving operating-system mouse or keyboard events, it can request a pause, termination, or Harakiri response according to the configured level. It is not a hardware interlock and may be unavailable or interrupted.</p>
                        <div className="bg-shogun-bg rounded-lg p-3 space-y-2">
                           <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded">LEVEL 1: PAUSE</span><span className="text-xs text-shogun-subdued">Any human input pauses the active Ronin session. Resume manually.</span></div>
                           <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">LEVEL 2: TERMINATE</span><span className="text-xs text-shogun-subdued">Any human input kills the active session immediately.</span></div>
-                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded">LEVEL 3: HARAKIRI</span><span className="text-xs text-shogun-subdued">Any human input triggers full emergency stop for all sessions and agents.</span></div>
+                          <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded">LEVEL 3: HARAKIRI</span><span className="text-xs text-shogun-subdued">Any human input activates the global kill switch and requests cancellation of supported active work.</span></div>
                        </div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Triple-Escape</strong> (press Escape 3 times rapidly) is a hard-coded Level 3 trigger that cannot be disabled, overridden, or circumvented. It always triggers Harakiri.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Triple-Escape:</strong> while the Komainu listener is running and receiving keyboard events, pressing Escape three times within 1.5 seconds requests Harakiri. Ronin/Komainu is unavailable in Server mode; verify the listener and kill switch before relying on this control.</p>
                     </div>
                  </div>
 
@@ -2108,17 +2134,17 @@ npm start`}</pre>
                              </tr>
                           </thead>
                           <tbody className="text-shogun-subdued">
-                             <tr className="border-b border-shogun-border/50"><td className="p-2.5">Credential Entry</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-yellow-400">Approval</td><td className="text-center p-2.5 text-green-400">Allowed</td></tr>
-                             <tr className="border-b border-shogun-border/50"><td className="p-2.5">File Deletion</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-yellow-400">Approval</td><td className="text-center p-2.5 text-green-400">Allowed</td></tr>
-                             <tr className="border-b border-shogun-border/50"><td className="p-2.5">External Uploads</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-yellow-400">Approval</td><td className="text-center p-2.5 text-green-400">Allowed</td></tr>
-                             <tr className="border-b border-shogun-border/50"><td className="p-2.5">Software Install</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-yellow-400">Approval</td><td className="text-center p-2.5 text-green-400">Allowed</td></tr>
+                             <tr className="border-b border-shogun-border/50"><td className="p-2.5">Credential Entry</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-red-400">Blocked</td></tr>
+                             <tr className="border-b border-shogun-border/50"><td className="p-2.5">File Deletion</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-yellow-400">Approval</td><td className="text-center p-2.5 text-yellow-400">Approval</td></tr>
+                             <tr className="border-b border-shogun-border/50"><td className="p-2.5">External Uploads</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-yellow-400">Approval</td><td className="text-center p-2.5 text-yellow-400">Approval</td></tr>
+                             <tr className="border-b border-shogun-border/50"><td className="p-2.5">Software Install</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-yellow-400">Approval</td><td className="text-center p-2.5 text-yellow-400">Approval</td></tr>
                              <tr className="border-b border-shogun-border/50"><td className="p-2.5">Native App Interaction</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-green-400">Allowed</td><td className="text-center p-2.5 text-green-400">Allowed</td></tr>
                              <tr className="border-b border-shogun-border/50"><td className="p-2.5">Shell Commands</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-green-400">Allowed</td><td className="text-center p-2.5 text-green-400">Allowed</td></tr>
-                             <tr><td className="p-2.5 font-bold text-red-400">Admin Escalation (UAC)</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-green-400">Allowed</td></tr>
+                             <tr><td className="p-2.5 font-bold text-red-400">Admin Escalation (UAC)</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-red-400">Blocked</td><td className="text-center p-2.5 text-red-400">Blocked</td></tr>
                           </tbody>
                        </table>
                     </div>
-                    <p className="text-xs text-red-400 font-bold leading-relaxed">At RONIN tier, every dangerous action is allowed WITHOUT operator approval. This means the AI can delete files, enter credentials, install software, and escalate to admin autonomously. Only use RONIN tier in fully isolated, disposable environments (VMs, sandboxes).</p>
+                    <p className="text-xs text-red-400 font-bold leading-relaxed">RONIN is the highest-autonomy built-in tier, not a removal of safety controls. Desktop control requires separate enablement; credential entry and administrative escalation remain blocked; deletion, uploads, installation, Office send, macros, and external Office actions retain approval gates. Use RONIN only in a controlled, preferably isolated test environment and verify the effective policy before relying on it.</p>
                  </div>
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2138,9 +2164,9 @@ npm start`}</pre>
                        <p className="text-xs text-shogun-subdued leading-relaxed">Multiple layers of emergency shutdown:</p>
                        <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
                           <li><strong className="text-red-400">STOP Button:</strong> The red skull button in the Ronin header. Triggers Harakiri.</li>
-                          <li><strong className="text-red-400">Triple-Escape:</strong> Press Escape 3 times rapidly. Hard-coded, cannot be disabled.</li>
+                          <li><strong className="text-red-400">Triple-Escape:</strong> While the Komainu listener is running and receiving keyboard events, three Escapes within 1.5 seconds request Harakiri. Verify the listener before relying on it.</li>
                           <li><strong className="text-yellow-400">Komainu Override:</strong> Any human mouse or keyboard input triggers the configured level.</li>
-                          <li><strong className="text-red-400">Torii Harakiri:</strong> The global kill switch on the Torii page. Stops everything system-wide.</li>
+                          <li><strong className="text-red-400">Torii Harakiri:</strong> The global kill switch on the Torii page. Blocks new governed operations and requests best-effort cancellation of supported active work.</li>
                        </ul>
                     </div>
                  </div>
@@ -2207,7 +2233,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Zap className="w-4 h-4 text-orange-400" /> Simulator, Approvals &amp; Audit</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Use the simulator to preview a tool call with its actual parameters before running it. Calls that require confirmation enter the approval queue and fail closed on denial or timeout. Decisions preserve their policy source and are written to the compliance trail.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Use the simulator to preview a tool call with its actual parameters before running it. Calls that require confirmation enter the approval queue and fail closed on denial or timeout. Instrumented decisions preserve their policy source in governance event records.</p>
                    </div>
                    <div className="shogun-card space-y-2 md:col-span-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><SlidersHorizontal className="w-4 h-4 text-orange-400" /> Advanced Content Controls</div>
@@ -2235,7 +2261,7 @@ npm start`}</pre>
                          <li><strong>GUARDED:</strong> Restricted network. Only approved tools. Everything needs human approval.</li>
                          <li><strong>TACTICAL (DEFAULT):</strong> Balanced autonomy. The AI has scoped file access and can use approved tools on its own.</li>
                          <li><strong>CAMPAIGN:</strong> High autonomy. Broad internet access. Agents can auto-spawn without asking.</li>
-                         <li><strong>RONIN (UNSAFE):</strong> Unrestricted. Only use in completely isolated test environments.</li>
+                         <li><strong>RONIN (HIGH RISK):</strong> Highest governed autonomy. Critical blocks, approvals, verification, and separate Ronin Desktop enablement remain; prefer an isolated test environment.</li>
                       </ul>
                       <p className="text-xs text-shogun-subdued leading-relaxed mt-2">Click a built-in tier or custom posture to activate it. Built-in tiers are protected presets. Use <strong>Manage custom postures in ToolGate</strong> to create or maintain reusable postures, then return here to choose which one is active.</p>
                    </div>
@@ -2249,7 +2275,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-red-500" /> Harakiri Button</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The red button in the top right of the Torii page. Same as the one on the Dashboard — activates the global kill switch. Requires two-step confirmation. Once active, all agents are frozen and the posture locks to SHRINE. Press "Reset Harakiri" to restore normal operation.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The red button in the top right of the Torii page. Same as the one on the Dashboard — activates the global kill switch. It requires two-step confirmation, blocks new governed operations, requests best-effort cancellation of supported active work, and locks the posture to SHRINE. Verify external processes separately. Press "Reset Harakiri" to restore normal operation.</p>
                    </div>
                 </div>
              </section>
@@ -2280,7 +2306,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-shogun-gold" /> Download Audit Log</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">At the bottom of the sidebar. Downloads a JSON file containing the full audit history of all governance changes. Useful for compliance or reviewing what rules were changed and when.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">At the bottom of the sidebar. Downloads available governance-change records as JSON for review. Export contents depend on captured and retained events and do not prove a complete change history.</p>
                    </div>
                 </div>
              </section>
@@ -2442,11 +2468,11 @@ npm start`}</pre>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2 md:col-span-2 border-l-2 border-shogun-blue/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-shogun-blue" /> Dual-Layer Architecture</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Recorded events are written to <strong>two stores</strong>: (1) an <strong>operational SQLite log</strong> (fast, searchable, 90-day retention) for day-to-day monitoring, and (2) an application-level append-only <strong>HMAC-chained audit database</strong> (7-year retention) intended to support evidence collection. Chain verification can identify mismatches in the protected fields of retained records. It does not prevent deletion, prove record completeness, or by itself establish compliance.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Recorded events are written to <strong>two stores</strong>: (1) an <strong>operational SQLite log</strong> for day-to-day monitoring, and (2) a separate application-level append-only <strong>HMAC-chained audit database</strong> intended to support evidence collection. Shogun does not automatically enforce a universal audit-retention period; the deploying organisation must set, operate, and verify retention and protected backups for its use case. Chain verification can identify mismatches in protected fields of available records. It does not prevent deletion, prove record completeness, or by itself establish compliance.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-subdued" /> Event Stream</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The main panel shows every event in chronological order. Each row displays: <strong>timestamp</strong>, <strong>category icon</strong>, <strong>severity badge</strong> (info/warn/error/critical), <strong>result status</strong> (green check for success, red X for denied), the <strong>action description</strong>, <strong>event type tag</strong> (e.g., DECISION.CONTEXT), the <strong>model used</strong>, <strong>tool invoked</strong>, and <strong>trace ID link</strong>. Click any event to expand its detail panel. Toggle between <strong>Live</strong> (auto-refresh every 5 seconds) and <strong>Paused</strong> modes.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The main panel shows recorded events in chronological order. Available fields may include: <strong>timestamp</strong>, <strong>category icon</strong>, <strong>severity badge</strong> (info/warn/error/critical), <strong>result status</strong> (green check for success, red X for denied), the <strong>action description</strong>, <strong>event type tag</strong> (e.g., DECISION.CONTEXT), the <strong>model used</strong>, <strong>tool invoked</strong>, and <strong>trace ID link</strong>. Click a recorded event to expand its available detail panel. Toggle between <strong>Live</strong> (auto-refresh every 5 seconds) and <strong>Paused</strong> modes.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Filter className="w-4 h-4 text-shogun-subdued" /> Category Tabs</div>
@@ -2466,7 +2492,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Link2 className="w-4 h-4 text-shogun-blue" /> Trace Reconstruction</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Every chat turn generates a <strong>trace_id</strong> (e.g., <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">trc_d5ae40fb</code>) that links all events in that workflow — from policy evaluation through memory recall, model selection, tool execution, and decision provenance. Click any trace ID link to open the <strong>Trace Reconstruction modal</strong>, which displays every event in the chain as a numbered timeline. This allows full <strong>workflow reconstruction</strong> for incident investigation.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Instrumented chat and workflow paths may assign a <strong>trace_id</strong> (e.g., <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">trc_d5ae40fb</code>) to correlate recorded policy, memory, model, tool, and provenance events. Click a trace ID link to open the <strong>Trace Reconstruction modal</strong>, which displays the recorded events available for that identifier as a numbered timeline. This supports partial workflow reconstruction for incident investigation; missing events or a missing trace are not proof that an action did not occur.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileKey className="w-4 h-4 text-shogun-gold" /> Event Detail Panel</div>
@@ -2477,7 +2503,7 @@ npm start`}</pre>
                          <li><strong>POLICY:</strong> Security policy reference, decision (allowed/denied), and reason.</li>
                          <li><strong>RISK/TRACE:</strong> Risk score and correlated trace ID.</li>
                          <li><strong>AI Confidence bar:</strong> Color-coded indicator (green ≥ 70%, yellow 40–70%, red &lt; 40%).</li>
-                         <li><strong>Framework badges:</strong> Shows which compliance frameworks apply (SOC2, NIS2, EU_AI_ACT).</li>
+                         <li><strong>Framework badges:</strong> Shows framework tags recorded with the event (SOC2, NIS2, EU_AI_ACT). Tags do not determine legal applicability or compliance.</li>
                          <li><strong>Governance flags:</strong> Human oversight required, evidence completeness, risk level.</li>
                          <li><strong>Detail payload:</strong> Full structured JSON of all event metadata.</li>
                       </ul>
@@ -2510,8 +2536,8 @@ npm start`}</pre>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Key className="w-4 h-4 text-indigo-400" /> Identity Card (Top)</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Displays your Shogun's unique ID and public key. Other Shogun instances need this to verify your messages are authentic. Click the copy icon to put your agent ID on the clipboard for sharing.</p>
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Key className="w-4 h-4 text-indigo-400" /> A2A Endpoint Card (Top)</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Displays this installation&apos;s A2A name and inbound endpoint URL. Click <strong>Copy URL</strong> to copy that endpoint for a peer invitation. The card does not display a public key; workspace peer authentication is established separately during enrollment.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><GitBranch className="w-4 h-4 text-indigo-400" /> Workspace List (Left Column)</div>
@@ -2605,7 +2631,7 @@ npm start`}</pre>
                 </div>
                 <div className="shogun-card space-y-2">
                    <div className="font-bold text-shogun-text flex items-center gap-2"><FileKey className="w-4 h-4 text-indigo-400" /> Audit Trail</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">Every recorded gateway operation produces dual-logged audit events: <strong>Layer 1 (Operational)</strong> in the main SQLite database with 90-day retention, and <strong>Layer 2 (HMAC-chained)</strong> in the application-level append-only audit database with 7-year retention. These records support incident investigation and compliance assessment; they do not themselves establish conformity.</p>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">Instrumented gateway operations produce dual-logged audit events: <strong>Layer 1 (Operational)</strong> in the main SQLite database and <strong>Layer 2 (HMAC-chained)</strong> in a separate application-level append-only audit database. The deploying organisation must configure and verify retention and backups. These records support incident investigation and compliance assessment; they do not prove completeness or themselves establish conformity.</p>
                 </div>
 
                 {/* Outbound Dispatch */}
@@ -2723,7 +2749,7 @@ npm start`}</pre>
                 <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 p-4 space-y-2">
                    <div className="font-bold text-cyan-300 flex items-center gap-2"><Cpu className="w-4 h-4" /> Shogun is an orchestration framework—not an AI model</div>
                    <p className="text-xs text-shogun-subdued leading-relaxed">
-                       Shogun does not bundle, train, or supply a proprietary LLM or foundation model. It is model-agnostic software that connects agents and workflows to AI models selected by the deploying organisation. Models may be cloud-hosted by third parties or hosted locally by the organisation. Alpha Horizon does not own or operate those selected models as part of the locally deployed Shogun product.
+                       Shogun does not bundle, train, or supply a proprietary LLM or foundation model. Shogun is not itself an LLM, foundation model, or general-purpose AI (GPAI) model. It is model-agnostic software that connects agents and workflows to AI models selected by the deploying organisation. Models may be cloud-hosted by third parties or hosted locally by the organisation. Alpha Horizon does not own or operate those selected models as part of the locally deployed Shogun product.
                    </p>
                 </div>
 
@@ -2896,21 +2922,22 @@ npm start`}</pre>
                    <div className="shogun-card space-y-3 border-l-2 border-violet-400/50">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-violet-400" /> Coordinated handling</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">
-                         Alpha Horizon triages reports under its coordinated vulnerability disclosure policy, validates affected versions, develops corrective or mitigating measures, and publishes security guidance when appropriate. Please coordinate public disclosure until affected users have had a reasonable opportunity to apply an available fix.
+                         Alpha Horizon aims to acknowledge and triage security reports promptly. Its coordinated process may validate affected versions and may publish corrective, mitigating, or advisory material where Alpha Horizon determines this appropriate or where required by applicable law. This does not promise a patch for every report or a customer-support response time. Please coordinate public disclosure until affected users have had a reasonable opportunity to apply any available measure.
                       </p>
                       <p className="text-xs text-shogun-subdued leading-relaxed">
-                         Preserve relevant audit exports and follow the report or advisory for remediation guidance. Install verified security updates promptly, then confirm that the reported behavior is resolved.
+                         Preserve relevant audit exports and follow any report or advisory for remediation guidance. When a verified security update or mitigation is made available, review and apply it promptly, then confirm the affected behavior.
                       </p>
                    </div>
 
                    <div className="shogun-card space-y-3 border-l-2 border-emerald-400/50">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><RefreshCw className="w-4 h-4 text-emerald-400" /> Product identity, security period, and updates</div>
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><RefreshCw className="w-4 h-4 text-emerald-400" /> Product identity, vulnerability handling, and updates</div>
                       <ul className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-disc leading-relaxed">
                          <li><strong>Product:</strong> Shogun AFM, release family 1.x. The unique version and build are shown on the Updates page and in <code>version.json</code>.</li>
                          <li><strong>Manufacturer and digital contact:</strong> Alpha Horizon — <a href="https://www.alphahorizon.io/" target="_blank" rel="noopener noreferrer" className="text-emerald-300 hover:underline">alphahorizon.io</a> — <a href="mailto:contact@alphahorizon.io" className="text-emerald-300 hover:underline">contact@alphahorizon.io</a>.</li>
-                          <li><strong>Security vulnerability-handling period:</strong> The published end date for the currently identified official, unmodified Shogun AFM 1.x product line is 31 August 2031. This date does not shorten any longer period required by law or the documented expected-use assessment. A later official release requiring a separate product or security-period assessment will receive its own published end date.</li>
-                          <li><strong>Scope:</strong> The period covers vulnerability intake, assessment, corrective or mitigating security measures, and security updates for defects attributable to official Shogun releases. It is not general technical support, a helpdesk, feature development, compatibility or integration maintenance, LLM or provider compatibility work, an SLA, or support for defects introduced exclusively by third-party modifications. Broader support exists only under a separate written agreement.</li>
-                          <li><strong>Security updates:</strong> Corrective or mitigating measures are published through <a href="https://github.com/AlphaHorizon-AI/Shogun/releases" target="_blank" rel="noopener noreferrer" className="text-emerald-300 hover:underline">official releases</a>, <a href="https://github.com/AlphaHorizon-AI/Shogun/security/advisories" target="_blank" rel="noopener noreferrer" className="text-emerald-300 hover:underline">security advisories</a>, and the Shogun Updates channel when Alpha Horizon determines them appropriate or legally required. Security updates covered by an applicable legal obligation are provided without charge. Shogun checks for updates automatically but installation requires an operator action. Where permitted by applicable law, remediation may require the latest stable official 1.x build; any latest-version correction path remains subject to the conditions imposed by applicable law.</li>
+                          <li><strong>Applicable vulnerability handling:</strong> Alpha Horizon handles security vulnerabilities affecting official, unmodified Shogun releases in accordance with applicable legal obligations and any support or vulnerability-handling period required under applicable law. A release-specific end date is determined and published when applicable law requires it.</li>
+                          <li><strong>Support boundary:</strong> Shogun has no standard maintenance agreement, helpdesk, SLA, or commitment to ongoing feature development, compatibility or integration maintenance, or LLM/provider compatibility work. Security vulnerability handling is separate from general customer support and is performed where Alpha Horizon elects to provide it or where required by applicable law. Broader support exists only under a separate written agreement.</li>
+                          <li><strong>Security updates:</strong> Alpha Horizon may publish corrective or mitigating measures through <a href="https://github.com/AlphaHorizon-AI/Shogun/releases" target="_blank" rel="noopener noreferrer" className="text-emerald-300 hover:underline">official releases</a>, <a href="https://github.com/AlphaHorizon-AI/Shogun/security/advisories" target="_blank" rel="noopener noreferrer" className="text-emerald-300 hover:underline">security advisories</a>, or the Shogun Updates channel where it determines this appropriate or where required by applicable law. This does not promise a patch for every report. Any applicable legal obligation to provide an update without charge is preserved. Installation requires an operator action.</li>
+                          <li><strong>Modified installations:</strong> Customer or third-party modifications are not validated, certified, or maintained by Alpha Horizon. Reports remain welcome so Alpha Horizon can assess whether an issue is also attributable to an official release; Alpha Horizon does not undertake to patch defects introduced by those modifications.</li>
                          <li><strong>Secure decommissioning:</strong> Export records that must be retained, disconnect integrations, revoke credentials and tokens, remove local profiles and workspace data, and securely erase Shogun databases and backups before transferring or disposing of a device.</li>
                       </ul>
                    </div>
@@ -3082,7 +3109,7 @@ npm start`}</pre>
                    <Lock className="w-6 h-6 text-red-400" />
                    <div>
                       <h4 className="text-xl font-bold uppercase tracking-widest">Security Layer</h4>
-                      <p className="text-xs text-shogun-subdued">Defense-in-depth architecture that protects every agent action.</p>
+                      <p className="text-xs text-shogun-subdued">Defense-in-depth controls for governed agent and tool actions.</p>
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3092,15 +3119,15 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-red-400" /> Kaizen Constitution Validator</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Every proposed agent action is validated against the Constitution (written in Kaizen). If an action violates any constitutional rule, it is blocked before execution. The validation happens server-side, so agents cannot bypass it. Rules are evaluated by priority (critical rules are checked first).</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Covered operations routed through the Kaizen constitutional validator are evaluated server-side against enabled rules, in priority order. A detected violation can block the covered action before dispatch. This is one enforcement layer, not proof that every action or external side effect passes through Kaizen; keep privileges narrow and test the controls used by your deployment.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><AlertCircle className="w-4 h-4 text-red-400" /> Harakiri Kill Switch</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">A global emergency mechanism. When activated, <strong>all</strong> agent activity is instantly frozen, the posture locks to SHRINE (maximum protection), and a prominent red banner appears system-wide. Requires a two-step confirmation to activate and a deliberate reset to restore normal operations.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">An application-level emergency mechanism. When activated, it blocks new governed operations, requests best-effort cancellation of supported active work, locks posture to SHRINE, and displays a prominent red banner. External processes and systems may continue; use host-level containment when required. Activation requires two-step confirmation and recovery requires a deliberate reset.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Key className="w-4 h-4 text-red-400" /> Identity & Signing</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Each Shogun instance has a unique ID and cryptographic key pair. All A2A messages are signed, ensuring peers can verify authenticity. API keys for external providers are stored encrypted in the database and never exposed in the frontend.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The built-in workspace peer transport authenticates its A2A envelopes with a per-peer shared-secret HMAC; verify signing and peer authentication separately for every connector you enable. Protected provider-credential APIs store supported credentials encrypted and return masked metadata to the frontend. Environment variables, legacy configuration, plugins, and custom integrations are separate secret paths that require deployment review.</p>
                    </div>
                 </div>
              </section>
@@ -3165,7 +3192,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-shogun-gold" /> Formal Verification</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">All behavioral optimizations proposed by the Bushido engine are verified against the Kaizen constitution before being applied. This ensures that self-improvement never violates the fundamental laws defined by the operator. The system cannot "optimize its way" past your rules.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Bushido proposals routed through the configured Kaizen validation path are checked against enabled rules before application. Review proposed and applied changes and retain independent change controls; this validator is a governance layer, not a guarantee that every optimization or side effect is classified or prevented.</p>
                    </div>
                 </div>
              </section>
@@ -3180,7 +3207,7 @@ npm start`}</pre>
              {/* Introduction */}
              <div className="text-center max-w-3xl mx-auto space-y-4">
                 <h3 className="text-3xl font-bold shogun-title">Safety & Security Protocols</h3>
-                <p className="text-shogun-subdued leading-relaxed">Shogun is built with a defense-in-depth security model. Multiple independent layers work together to ensure that no single failure can compromise the system. This page explains every safety mechanism in detail.</p>
+                <p className="text-shogun-subdued leading-relaxed">Shogun uses multiple security layers intended to reduce the likelihood and impact of a single control failure. Common-mode failures, configuration errors, uninstrumented paths, and host compromise remain possible. This page explains the implemented application controls and their limits.</p>
              </div>
 
              {/* 1. Security Philosophy */}
@@ -3195,7 +3222,7 @@ npm start`}</pre>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                    <div className="shogun-card space-y-2 border-t-2 border-red-400">
                       <div className="font-bold text-shogun-text text-lg">Defense in Depth</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">No single layer is trusted alone. Security is selected at the posture and policy level in Torii, configured and enforced at runtime in ToolGate, constrained constitutionally in Kaizen, and validated again at action execution. An attacker would need to bypass all of these layers simultaneously.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">No single layer should be relied on alone. Torii posture and policy, ToolGate, Kaizen validation, and action-specific checks cover different governed paths. Their coverage can overlap, but they may share dependencies or omit custom paths; test each boundary and combine them with host, identity, network, and monitoring controls.</p>
                    </div>
                    <div className="shogun-card space-y-2 border-t-2 border-orange-400">
                       <div className="font-bold text-shogun-text text-lg">Least Privilege</div>
@@ -3203,7 +3230,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2 border-t-2 border-shogun-gold">
                       <div className="font-bold text-shogun-text text-lg">Fail Closed</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">When in doubt, the system blocks rather than allows. If a constitutional rule is ambiguous, the action is denied. If the security posture cannot be verified, the system defaults to SHRINE (maximum protection). The Harakiri kill switch ensures instant lockdown in emergencies.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">At implemented governance boundaries, unknown executable capabilities and missing or malformed explicit permission-gate values are denied. An agent without a saved posture override inherits the built-in TACTICAL default; a posture-read failure stops the affected request instead of being treated as permission. Harakiri provides a fail-closed gate for new governed operations and best-effort cancellation of supported active work; it is not a guarantee that every external process stops immediately.</p>
                    </div>
                 </div>
              </section>
@@ -3219,11 +3246,11 @@ npm start`}</pre>
                 </div>
                 <div className="space-y-4">
                    {[
-                     { tier: 'SHRINE', subtitle: 'Maximum Protection', color: 'border-green-500 bg-green-500/5', badge: 'text-green-500 bg-green-500/10 border-green-500/30', desc: 'Zero-trust mode. All external connections are blocked. Agents can only process information locally with no filesystem, network, or shell access. No sub-agent spawning. Every action requires explicit human approval. Use this when you suspect a breach, while auditing, or when running highly sensitive operations.', perms: ['Filesystem: None', 'Network: None (local only)', 'Shell: Blocked', 'Sub-agents: Blocked', 'Tools: Disabled', 'Mail: Disabled', 'Calendar: Disabled', 'Cron: Disabled', 'Mado Browser: Disabled', 'Human approval: Everything'] },
-                     { tier: 'GUARDED', subtitle: 'Restricted Operations', color: 'border-blue-500 bg-blue-500/5', badge: 'text-blue-500 bg-blue-500/10 border-blue-500/30', desc: 'Highly restricted. Filesystem access limited to approved directories only. Network restricted to approved endpoints. All tool usage requires human confirmation. Sub-agents limited to 2 maximum. Suitable for production environments where safety takes priority over speed.', perms: ['Filesystem: Allowlist only', 'Network: Approved endpoints only', 'Shell: Blocked', 'Sub-agents: Max 2 (manual)', 'Tools: With approval', 'Mail: Read only', 'Calendar: Read only', 'Cron: View only', 'Mado Browser: Enabled (1 session)', 'Human approval: Most actions'] },
+                     { tier: 'SHRINE', subtitle: 'Maximum Protection', color: 'border-green-500 bg-green-500/5', badge: 'text-green-500 bg-green-500/10 border-green-500/30', desc: 'The most restrictive built-in policy for governed agent operations. It denies governed filesystem, network, shell, delegation, mail, calendar, cron, and Mado Browser capabilities and routes any remaining governed exception through approval. SHRINE is not a host or container network firewall and does not automatically disable separate update checks or explicitly opted-in telemetry services. Use it when you suspect a breach, while auditing, or for highly sensitive operations, together with host-level containment.', perms: ['Filesystem: Denied for governed tools', 'Network: Denied for governed tools', 'Shell: Blocked', 'Sub-agents: Blocked', 'Tools: Disabled by policy', 'Mail: Disabled', 'Calendar: Disabled', 'Cron: Disabled', 'Mado Browser: Disabled', 'Host/network isolation: Separate control'] },
+                     { tier: 'GUARDED', subtitle: 'Restricted Operations', color: 'border-blue-500 bg-blue-500/5', badge: 'text-blue-500 bg-blue-500/10 border-blue-500/30', desc: 'A restricted built-in capability ceiling. For registered native tools that reach ToolGate in standard mode, low- and medium-risk calls are allowed by the risk default, high-risk calls require confirmation, and critical calls are blocked; parameter rules, capability boundaries, and overrides may tighten that result. Validate coverage and endpoint allowlists for the deployment.', perms: ['Filesystem: Allowlist ceiling', 'Network: Endpoint ceiling', 'Shell: Blocked', 'Sub-agents: Max 2 (manual)', 'Tools: Low/medium allow by default', 'High risk: Human confirmation', 'Critical risk: Blocked', 'Mail: Read-only ceiling', 'Calendar: Read-only ceiling', 'Coverage: Instrumented paths'] },
                      { tier: 'TACTICAL', subtitle: 'Balanced (Default)', color: 'border-shogun-gold bg-shogun-gold/5', badge: 'text-shogun-gold bg-shogun-gold/10 border-shogun-gold/30', desc: 'The recommended default. Agents have scoped file access (read and write within designated directories), can use approved tools autonomously, and have filtered network access. Shell commands are still blocked. Up to 5 sub-agents can be spawned. A good balance between productivity and safety.', perms: ['Filesystem: Scoped read/write', 'Network: Filtered (allowlist)', 'Shell: Blocked', 'Sub-agents: Max 5 (manual)', 'Tools: Approved auto-allowed', 'Mail: Read & Send', 'Calendar: Full access', 'Cron: Full access', 'Mado Browser: Headless only', 'Human approval: Dangerous only'] },
-                     { tier: 'CAMPAIGN', subtitle: 'High Autonomy', color: 'border-orange-500 bg-orange-500/5', badge: 'text-orange-500 bg-orange-500/10 border-orange-500/30', desc: 'Extended autonomy for advanced users. Broad filesystem access. Full internet access. Shell commands allowed with logging. Sub-agents can auto-spawn based on policies. Only use this in controlled environments where you have monitoring in place and trust the AI models you are running.', perms: ['Filesystem: Broad access', 'Network: Full internet', 'Shell: Allowed (logged)', 'Sub-agents: Auto-spawn enabled', 'Tools: All enabled', 'Mail: Read & Send', 'Calendar: Full access', 'Cron: Full access', 'Mado Browser: Enabled', 'Human approval: Critical only'] },
-                     { tier: 'RONIN', subtitle: '⚠ Unrestricted', color: 'border-red-500 bg-red-500/5', badge: 'text-red-500 bg-red-500/10 border-red-500/30', desc: 'No restrictions whatsoever. Full filesystem, network, shell, and tool access with zero oversight. ONLY use this in completely isolated sandbox/test environments with no access to production data, external services, or sensitive information. This tier exists for testing and development purposes only.', perms: ['Filesystem: Unrestricted', 'Network: Unrestricted', 'Shell: Unrestricted', 'Sub-agents: Unrestricted', 'Tools: All enabled', 'Mail: Unrestricted', 'Calendar: Unrestricted', 'Cron: Full access', 'Mado Browser: Autonomous', 'Human approval: None'] },
+                     { tier: 'CAMPAIGN', subtitle: 'High Autonomy', color: 'border-orange-500 bg-orange-500/5', badge: 'text-orange-500 bg-orange-500/10 border-orange-500/30', desc: 'Extended autonomy for advanced users. On registered native paths in campaign mode, the risk default allows low-, medium-, and high-risk calls and blocks critical calls; capability boundaries, parameter checks, campaign presets, and explicit overrides may tighten the result. Use only in controlled environments with monitoring and independently validated model, connector, and custom-plugin behavior.', perms: ['Filesystem: Broad policy ceiling', 'Network: Broad policy ceiling', 'Shell: Policy-controlled', 'Sub-agents: Policy-controlled', 'Low/medium/high: Allowed by risk default', 'Critical risk: Blocked', 'Overrides: May tighten', 'Mail: Governed access', 'Mado Browser: Policy-controlled', 'Coverage: Instrumented paths'] },
+                     { tier: 'RONIN', subtitle: '⚠ Highest Autonomy', color: 'border-red-500 bg-red-500/5', badge: 'text-red-500 bg-red-500/10 border-red-500/30', desc: 'The broadest built-in capability tier for governed operations, intended for controlled testing. It permits full filesystem/network policy and shell/tool use, but does not remove safety controls. Ronin desktop control must be enabled separately; forbidden applications and critical actions remain blocked, credential entry and administrative escalation remain disabled, and defined high-risk actions retain approval and verification gates.', perms: ['Filesystem: Full policy', 'Network: Full policy', 'Shell: Enabled', 'Sub-agents: Max 50', 'Tools: Broad access', 'Mail: Governed access', 'Calendar: Governed access', 'Cron: Governed access', 'Mado Browser: Autonomous', 'Human approval: High-risk gates'] },
                    ].map((item) => (
                      <div key={item.tier} className={`shogun-card border-l-4 ${item.color}`}>
                         <div className="flex flex-col md:flex-row md:items-start gap-4">
@@ -3263,7 +3290,7 @@ npm start`}</pre>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-shogun-gold" /> How It Works</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The Constitution is a YAML document written in the Kaizen page. Each rule has a <strong>name</strong>, <strong>description</strong>, <strong>priority level</strong> (critical, high, balanced, medium, low), and <strong>enforcement mode</strong>. Before any agent action is executed, the system checks it against every constitutional rule in priority order. Critical rules are checked first.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The Constitution is a YAML document written in the Kaizen page. Each rule has a <strong>name</strong>, <strong>description</strong>, <strong>priority level</strong> (critical, high, balanced, medium, low), and <strong>enforcement mode</strong>. Covered operations submitted to the validator are checked against enabled applicable rules in priority order, with critical rules evaluated first. Custom or external paths require separate coverage review.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-shogun-gold" /> Enforcement Modes</div>
@@ -3275,7 +3302,7 @@ npm start`}</pre>
                    </div>
                 <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Zap className="w-4 h-4 text-shogun-gold" /> The Mandate</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">In addition to the Constitution (hard rules), the Mandate (Kaizen → Mandate tab) injects soft directives into every AI conversation. While the Constitution blocks actions, the Mandate shapes behavior — tone, language, priorities, and focus areas. Both work together to align the AI with your intentions.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">In addition to the Constitution&apos;s configured validation rules, the Mandate (Kaizen → Mandate tab) supplies soft directives to covered AI conversations. Configured server-side gates can block covered actions; the Mandate shapes behaviour such as tone, language, priorities, and focus. Neither layer guarantees that every external side effect is classified or captured.</p>
                    </div>
                 </div>
               </section>
@@ -3292,7 +3319,7 @@ npm start`}</pre>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-orange-400" /> How It Works</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Torii</strong> selects the built-in tier or custom policy. <strong>ToolGate</strong> loads that policy's stable scope, displays its capability ceiling, and intercepts every native tool call before execution. It combines the inherited risk mode, capability boundary, parameter analysis, per-tool override, and advanced content rules into one effective <strong>ALLOW</strong>, <strong>CONFIRM</strong>, or <strong>BLOCK</strong> verdict.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Torii</strong> selects the built-in tier or custom policy. On registered and instrumented native-tool paths, <strong>ToolGate</strong> loads that policy&apos;s stable scope, displays its capability ceiling, and evaluates a call before execution. It combines the inherited risk mode, capability boundary, parameter analysis, per-tool override, and advanced content rules into one effective <strong>ALLOW</strong>, <strong>CONFIRM</strong>, or <strong>BLOCK</strong> verdict. Custom plugins and uninstrumented execution paths require separate coverage verification.</p>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Katana controls whether a tool is installed or connected, while PostureGuard controls which tools are visible to the agent. ToolGate remains the final runtime authorization layer even for visible, connected tools. A connected email tool can therefore be available in Katana but still require confirmation or be blocked by ToolGate.</p>
                    </div>
                    <div className="shogun-card space-y-2">
@@ -3331,11 +3358,11 @@ npm start`}</pre>
                          <li><strong>Structured mode:</strong> When the AI uses JSON-formatted tool calls (standard mode), ToolGate intercepts in the structured execution pipeline before <code className="bg-shogun-bg px-1 py-0.5 rounded text-shogun-text">execute_native_tool</code> is called.</li>
                          <li><strong>Text mode:</strong> When the AI uses text-based tool invocation (fallback mode), ToolGate intercepts in the text-mode extraction pipeline before the tool function is dispatched.</li>
                       </ul>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">This ensures no tool call can bypass ToolGate regardless of the AI model's response format.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">These built-in structured and text execution paths invoke ToolGate independently of the model&apos;s response format. Custom plugins, integrations, and future execution paths must preserve the same gate; verify coverage for every executable path in your deployment.</p>
                    </div>
                    <div className="shogun-card space-y-2 md:col-span-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-blue" /> Audit Trail</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Every recorded ToolGate decision includes provenance such as tool name, parameters, computed risk, active policy scope and base tier, decision, source, reason, and any matching advanced content rule. Blocked and confirmed events appear in the <strong>Risk</strong> and <strong>Policy</strong> views of Logs. These entries are dual-written to Layer 1 (operational, 90-day retention) and Layer 2 (application-level HMAC-chained records, 7-year retention).</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Recorded ToolGate decisions include provenance such as tool name, parameters, computed risk, active policy scope and base tier, decision, source, reason, and any matching advanced content rule. Blocked and confirmed events appear in the <strong>Risk</strong> and <strong>Policy</strong> views of Logs. These entries are dual-written to Layer 1 (operational) and Layer 2 (separate application-level HMAC-chained records); the deploying organisation controls and verifies retention.</p>
                    </div>
                 </div>
              </section>
@@ -3346,7 +3373,7 @@ npm start`}</pre>
                    <AlertCircle className="w-6 h-6 text-red-500" />
                    <div>
                       <h4 className="text-xl font-bold uppercase tracking-widest">Harakiri — Emergency Protocol</h4>
-                      <p className="text-xs text-shogun-subdued">The nuclear option. When everything else fails, this stops the world.</p>
+                      <p className="text-xs text-shogun-subdued">A last-resort application control that blocks new governed work and requests bounded cancellation.</p>
                    </div>
                 </div>
                 <div className="shogun-card border-l-4 border-red-500 bg-red-500/[0.02] space-y-6">
@@ -3354,11 +3381,11 @@ npm start`}</pre>
                       <div className="space-y-3">
                          <div className="font-bold text-red-400 flex items-center gap-2"><Zap className="w-4 h-4" /> What Happens When Activated</div>
                          <ul className="text-xs text-shogun-subdued space-y-2 ml-4 list-disc leading-relaxed">
-                            <li><strong>All agent activity is immediately frozen.</strong> Running tasks are interrupted mid-execution. No new tasks can be started.</li>
-                            <li><strong>Security posture locks to SHRINE</strong> (maximum protection). Filesystem, network, shell, and tool access are all revoked.</li>
+                            <li><strong>Cancellation is requested for supported active agent work.</strong> Instrumented tasks are interrupted where the runtime supports cancellation, and the restrictive posture blocks supported new work.</li>
+                            <li><strong>Security posture locks to SHRINE.</strong> Governed filesystem, network, shell, and tool capabilities are restricted by that policy; this does not revoke host permissions already held by separate processes.</li>
                             <li><strong>A pulsing red banner appears</strong> at the top of every page in the system, alerting all users that the kill switch is active.</li>
                             <li><strong>A critical log entry is created</strong> with the timestamp and reason for activation.</li>
-                            <li><strong>External connections are severed.</strong> Telegram bot, Nexus peers, and outgoing API calls are all paused.</li>
+                            <li><strong>Supported instrumented connectors receive the emergency state.</strong> This is not a network-isolation guarantee: separately running connectors, peers, provider calls, and host processes must be checked and contained through deployment controls.</li>
                          </ul>
                       </div>
                       <div className="space-y-3">
@@ -3367,7 +3394,7 @@ npm start`}</pre>
                             <li><strong>Two-step confirmation:</strong> You must click the Harakiri button, then confirm in a modal dialog. This prevents accidental activation.</li>
                             <li><strong>Available from two locations:</strong> The Dashboard (Tenshu) and the Security Portal (Torii). Both trigger the same global mechanism.</li>
                             <li><strong>To recover:</strong> Click "Reset Harakiri" on the banner or from the Torii page. The posture returns to TACTICAL (the safe default). You must then manually re-enable any higher postures if desired.</li>
-                            <li><strong>No data is lost.</strong> Harakiri only freezes operations — it does not delete or modify any data, memories, agents, or settings.</li>
+                            <li><strong>Harakiri does not intentionally delete stored data or configuration.</strong> Interrupted work and external systems may still have partial side effects, so inspect state before resuming.</li>
                          </ul>
                       </div>
                    </div>
@@ -3402,7 +3429,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-shogun-blue/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Network className="w-4 h-4 text-shogun-blue" /> Isolate RONIN Environments</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">If you need RONIN (unrestricted) mode for testing, run it on an isolated machine or VM with no access to production data, credential stores, or external services. Never run RONIN on a machine connected to your main network.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">If you need the RONIN high-autonomy tier for testing, prefer an isolated machine or VM with no production data, credential stores, or unnecessary external access. Confirm that the built-in blocked, approval-required, verification, and critical-action controls remain effective, and add host-level containment appropriate to your risk.</p>
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-shogun-blue/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-shogun-blue" /> Backup Before Major Changes</div>
@@ -3481,7 +3508,7 @@ npm start`}</pre>
                       </div>
                       <div className="bg-shogun-card border border-shogun-border rounded-lg p-3 space-y-2">
                          <div className="text-xs font-bold text-shogun-text">Audit Trail</div>
-                         <p className="text-[11px] text-shogun-subdued">Every quarantine and recovery action is logged. The manifest provides a complete history of what was deleted, when, and why.</p>
+                         <p className="text-[11px] text-shogun-subdued">Instrumented quarantine and recovery actions can create manifest entries. The manifest lists available records of what was moved or restored, when, and why; it is not a guaranteed complete deletion history.</p>
                       </div>
                    </div>
                 </div>
@@ -3499,19 +3526,19 @@ npm start`}</pre>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-red-400 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Prompt Injection</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Risk:</strong> Malicious input that tricks the AI into ignoring its rules. <strong>Mitigation:</strong> Constitutional rules are enforced server-side and cannot be overridden by prompt content. The security posture applies independently of the AI's decision-making.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Risk:</strong> Malicious input that attempts to redirect the model or misuse a tool. <strong>Mitigation:</strong> Configured server-side policy and tool gates evaluate covered operations independently of model text and can deny them. This is defense in depth, not a guarantee that prompt injection or every external side effect is prevented; minimise privileges, validate outputs, and supervise high-impact actions.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-red-400 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Credential Exposure</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Risk:</strong> API keys or secrets leaking through agent responses or logs. <strong>Mitigation:</strong> Keys are stored encrypted in the database and never included in prompts or agent context. The frontend never receives raw key values — only masked previews.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Risk:</strong> API keys or secrets leaking through agent responses, logs, configuration, or integrations. <strong>Mitigation:</strong> Use Shogun&apos;s protected provider-credential storage where available; those API paths return masked metadata and are designed to keep stored secrets out of model context. Environment variables, legacy configuration, plugins, logs, manually pasted prompts, and third-party integrations are separate secret paths—review and restrict them, rotate exposed credentials, and never paste secrets into a prompt.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-red-400 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Runaway Agent</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Risk:</strong> An agent entering a loop, spawning unlimited sub-agents, or consuming excessive API credits. <strong>Mitigation:</strong> Spawn policies limit auto-spawning. The Harakiri kill switch provides instant global shutdown. Resource monitoring in Bushido flags anomalies.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Risk:</strong> An agent entering a loop, spawning unlimited sub-agents, or consuming excessive API credits. <strong>Mitigation:</strong> Spawn policies limit auto-spawning. Harakiri blocks new governed operations and requests best-effort cancellation of supported active work; operators must verify external processes. Resource monitoring in Bushido flags anomalies.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-red-400 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Unauthorized Peer Access</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Risk:</strong> A malicious Shogun instance connecting as a peer and injecting harmful tasks. <strong>Mitigation:</strong> All A2A messages are cryptographically signed. Peers must be explicitly invited by URL. Workspace deletion removes all peer access immediately.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Risk:</strong> A malicious Shogun instance connecting as a peer and injecting harmful tasks. <strong>Mitigation:</strong> Supported A2A paths provide signing and peer-authentication controls, and peers require explicit enrollment. Verify those controls for each connector, rotate compromised credentials, and revoke peer access explicitly; deleting a local workspace is not a substitute for remote revocation.</p>
                    </div>
                 </div>
              </section>
@@ -3530,7 +3557,7 @@ npm start`}</pre>
                 {t('guide.disclaimer_title', 'Legal Disclaimer')}
               </h4>
               <p className="text-xs text-shogun-subdued leading-relaxed">
-                {t('guide.disclaimer_body', 'Shogun is a source-available AI-agent orchestration framework that is free to use for permitted purposes under the Shogun AFM Free Use License and provided “as is.” The deploying organisation is responsible for the configuration, selected models and providers, data, permissions, infrastructure, use cases, oversight, and output validation it controls. Alpha Horizon remains responsible for duties that applicable law assigns to official Alpha Horizon releases, and third-party providers remain responsible for their respective models and services under their terms and applicable law. No disclaimer limits rights or responsibilities that cannot legally be excluded.')}
+                {t('guide.disclaimer_body', 'Shogun is a source-available AI-agent orchestration framework that is free to use for permitted purposes under the Shogun AFM Free Use License and provided “as is.” It does not guarantee accuracy, completeness, reliability, or suitability for a particular purpose; use remains at the operator’s risk to the extent permitted by law. The deploying organisation is responsible for the configuration, selected models and providers, data, permissions, infrastructure, use cases, oversight, and output validation it controls. Alpha Horizon remains responsible for duties that applicable law assigns to official Alpha Horizon releases, and third-party providers remain responsible for their respective models and services under their terms and applicable law. No disclaimer limits rights or responsibilities that cannot legally be excluded.')}
               </p>
               <div className="p-3 bg-shogun-bg border border-shogun-border rounded-lg border-l-4 border-l-orange-400">
                 <p className="text-xs font-bold text-shogun-text">

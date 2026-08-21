@@ -15,8 +15,8 @@ jobs:
   python:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
           cache: pip
@@ -36,37 +36,85 @@ jobs:
             shogun/api/gensui_config.py \
             shogun/api/infrastructure_auth.py \
             shogun/api/email.py \
+            shogun/api/setup.py \
+            shogun/api/ronin.py \
+            shogun/api/security.py \
             shogun/api/telemetry.py \
+            shogun/api/updates.py \
             shogun/config.py \
             shogun/integrations/a2a_client.py \
             shogun/services/a2a_crypto.py \
             shogun/services/calendar_service.py \
+            shogun/services/cascade_retrieval.py \
+            shogun/services/chat_sync_service.py \
             shogun/services/comms_permissions.py \
             shogun/services/email_service.py \
             shogun/services/request_context.py \
             shogun/services/startup_notices.py \
             shogun/services/ssrf_guard.py \
+            shogun/services/telegram_poller.py \
             shogun/services/provider_credentials.py \
+            shogun/services/release_metadata.py \
+            shogun/services/college_telemetry.py \
+            shogun/services/event_logger.py \
+            shogun/services/update_checker.py \
             shogun/nexus/security/outbound.py \
+            shogun/ronin/core/audit_logger.py \
+            shogun/ronin/core/approval_gate.py \
+            shogun/ronin/core/action_router.py \
+            shogun/ronin/core/capabilities_registry.py \
+            shogun/ronin/core/posture_guard.py \
+            shogun/ronin/core/ronin_controller.py \
+            shogun/ronin/policies/ronin_policy_schema.py \
+            shogun/schemas/ronin.py \
+            shogun/setup_link.py \
             shogun/telemetry \
+            shogun/telemetry/payload.py \
             telemetry_service \
             gensui/app.py \
             gensui/api/auth.py \
             gensui/api/deps.py \
+            gensui/api/identity.py \
             gensui/config.py \
             gensui/services/audit_service.py \
             gensui/services/auth_service.py \
+            gensui/api/fleet_audit.py \
             gensui/services/identity_service.py \
             gensui/services/request_context.py \
             tests/test_ssrf_guard.py \
             tests/test_gensui_frontend.py \
+            tests/test_gensui_identity_boundaries.py \
+            tests/test_gensui_installer_hardening.py \
             tests/test_install_telemetry.py \
             tests/test_telemetry_ingestion.py \
             tests/test_red_team_hardening.py \
             tests/test_calendar_permissions.py \
             tests/test_security_punch_list.py \
             tests/test_cli_environment.py \
-            tests/test_restart_service.py
+            tests/test_restart_service.py \
+            scripts/generate_release_evidence.py \
+            scripts/write_release_metadata_evidence.py \
+            tests/test_college_telemetry.py \
+            tests/test_cascade_retrieval.py \
+            tests/test_chat_sync.py \
+            tests/test_guide_incident_reporting.py \
+            tests/test_installer_release_provenance.py \
+            tests/test_release_evidence.py \
+            tests/test_release_metadata.py \
+            tests/test_ronin_desktop_control.py \
+            tests/test_ronin_runtime_security_gates.py \
+            tests/test_security_governance_language.py \
+            tests/test_security_parsing_regressions.py \
+            tests/test_security_posture.py \
+            tests/test_security_workflow_gate.py \
+            tests/test_server_mode.py \
+            tests/test_server_setup_url.py \
+            tests/test_setup_routing.py \
+            tests/test_setup_security_incident_acknowledgement.py \
+            tests/test_team_mode_setup.py \
+            tests/test_update_provenance.py \
+            tests/test_update_checker.py \
+            tests/test_updates.py
       - name: Security regression tests
         # The repository-wide suite has unrelated pre-existing failures. Keep
         # this required gate scoped to the remediation's security regressions.
@@ -74,13 +122,36 @@ jobs:
           python -m pytest -q \
             tests/test_ssrf_guard.py \
             tests/test_gensui_frontend.py \
+            tests/test_gensui_identity_boundaries.py \
+            tests/test_gensui_installer_hardening.py \
             tests/test_install_telemetry.py \
             tests/test_telemetry_ingestion.py \
             tests/test_red_team_hardening.py \
             tests/test_calendar_permissions.py \
             tests/test_security_punch_list.py \
             tests/test_cli_environment.py \
-            tests/test_restart_service.py
+            tests/test_restart_service.py \
+            tests/test_college_telemetry.py \
+            tests/test_cascade_retrieval.py \
+            tests/test_chat_sync.py \
+            tests/test_guide_incident_reporting.py \
+            tests/test_installer_release_provenance.py \
+            tests/test_release_evidence.py \
+            tests/test_release_metadata.py \
+            tests/test_ronin_desktop_control.py \
+            tests/test_ronin_runtime_security_gates.py \
+            tests/test_security_governance_language.py \
+            tests/test_security_parsing_regressions.py \
+            tests/test_security_posture.py \
+            tests/test_security_workflow_gate.py \
+            tests/test_server_mode.py \
+            tests/test_server_setup_url.py \
+            tests/test_setup_routing.py \
+            tests/test_setup_security_incident_acknowledgement.py \
+            tests/test_team_mode_setup.py \
+            tests/test_update_provenance.py \
+            tests/test_update_checker.py \
+            tests/test_updates.py
           python scripts/check-telemetry-privacy.py
 
   frontends:
@@ -100,8 +171,8 @@ jobs:
       run:
         working-directory: ${{ matrix.directory }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "22"
           cache: npm
@@ -121,9 +192,9 @@ jobs:
   repository-security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Trivy repository, secret, and misconfiguration scan
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           scan-type: fs
           scan-ref: .
@@ -137,11 +208,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Build telemetry service
         run: docker build --file telemetry_service/Dockerfile --tag shogun-telemetry:ci .
       - name: Scan telemetry image
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: shogun-telemetry:ci
           severity: HIGH,CRITICAL
@@ -179,11 +250,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Build Gensui
         run: docker build --file gensui/Dockerfile --tag shogun-gensui:ci .
       - name: Scan Gensui image
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: shogun-gensui:ci
           severity: HIGH,CRITICAL
@@ -241,9 +312,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Build Shogun Server
-        run: docker build --tag shogun-server:ci .
+        run: docker build --build-arg VCS_REF="${GITHUB_SHA}" --tag shogun-server:ci .
       - name: Prepare Shogun Server environment
         run: |
           cp .env.server.example .env.server
@@ -253,7 +324,7 @@ jobs:
           sed -i 's/change-me-to-an-independent-infrastructure-admin-token/ci-infrastructure-token-0123456789abcdefghijklmnopqrstuvwxyz/' .env.server
           sed -i 's/change-me-to-an-independent-a2a-encryption-key/ci-a2a-encryption-key-0123456789abcdefghijklmnopqrstuvwxyz/' .env.server
       - name: Scan Shogun image
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: shogun-server:ci
           severity: HIGH,CRITICAL

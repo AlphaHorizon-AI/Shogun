@@ -15,6 +15,7 @@ from shogun.ronin.policies.ronin_policy_schema import (
     EnvironmentType,
     PostureDecision,
     RiskLevel,
+    RoninPermissionGate,
     RoninPostureLevel,
 )
 
@@ -39,6 +40,24 @@ _TRUST_ORDER: dict[AppTrustLevel, int] = {
     AppTrustLevel.FORBIDDEN: 3,
 }
 
+_TRI_STATE_PERMISSION_KEYS: dict[RoninPermissionGate, str] = {
+    RoninPermissionGate.CREDENTIAL_ENTRY: "ronin_credential_entry",
+    RoninPermissionGate.FILE_DELETION: "ronin_file_deletion",
+    RoninPermissionGate.EXTERNAL_UPLOADS: "ronin_external_uploads",
+    RoninPermissionGate.INSTALL_SOFTWARE: "ronin_install_software",
+}
+
+
+def _risk_level(value: str | None) -> RiskLevel:
+    """Parse registry risk metadata, treating malformed values as critical."""
+    if value is None:
+        return RiskLevel.LOW
+    try:
+        return RiskLevel(value)
+    except ValueError:
+        log.error("Ronin: invalid capability risk %r; treating it as critical", value)
+        return RiskLevel.CRITICAL
+
 
 def evaluate(
     *,
@@ -52,6 +71,7 @@ def evaluate(
     capability_trust_min: str | None = None,
     capability_risk: str | None = None,
     capability_requires_approval: bool = False,
+    capability_permission_gates: tuple[RoninPermissionGate | str, ...] = (),
 ) -> PostureDecision:
     """Evaluate whether a Ronin action is allowed.
 
@@ -68,13 +88,21 @@ def evaluate(
     """
     ronin_enabled = posture_permissions.get("ronin_enabled", False)
     ronin_posture_str = posture_permissions.get("ronin_posture", "disabled")
+    risk = _risk_level(capability_risk)
 
     # ── 1. Ronin must be enabled ─────────────────────────────────
     if not ronin_enabled:
         return PostureDecision(
             allowed=False,
             reason=f"Ronin is disabled at current posture. Action '{action_type}' blocked.",
-            risk_level=RiskLevel(capability_risk) if capability_risk else RiskLevel.LOW,
+            risk_level=risk,
+        )
+
+    if posture_permissions.get("kill_switch_active", False):
+        return PostureDecision(
+            allowed=False,
+            reason=f"The global kill switch is active. Action '{action_type}' blocked.",
+            risk_level=RiskLevel.CRITICAL,
         )
 
     # ── 2. Parse posture level ───────────────────────────────────
@@ -124,7 +152,13 @@ def evaluate(
         try:
             required_level = RoninPostureLevel(capability_posture_min)
         except ValueError:
-            required_level = RoninPostureLevel.DESKTOP_LIMITED
+            return PostureDecision(
+                allowed=False,
+                reason=(
+                    f"Action '{action_type}' declares an unknown minimum posture and was blocked."
+                ),
+                risk_level=RiskLevel.CRITICAL,
+            )
 
         if _POSTURE_ORDER.get(posture_level, 0) < _POSTURE_ORDER.get(required_level, 0):
             return PostureDecision(
@@ -133,7 +167,7 @@ def evaluate(
                     f"Action '{action_type}' requires posture {required_level.value}. "
                     f"Current posture: {posture_level.value}."
                 ),
-                risk_level=RiskLevel(capability_risk) if capability_risk else RiskLevel.LOW,
+                risk_level=risk,
             )
 
     # ── 6. App trust meets capability minimum ────────────────────
@@ -141,7 +175,13 @@ def evaluate(
         try:
             required_trust = AppTrustLevel(capability_trust_min)
         except ValueError:
-            required_trust = AppTrustLevel.TRUSTED
+            return PostureDecision(
+                allowed=False,
+                reason=(
+                    f"Action '{action_type}' declares an unknown app-trust requirement and was blocked."
+                ),
+                risk_level=RiskLevel.CRITICAL,
+            )
 
         if _TRUST_ORDER.get(app_trust_level, 1) > _TRUST_ORDER.get(required_trust, 0):
             # SENSITIVE apps with non-approval posture → need approval
@@ -175,25 +215,88 @@ def evaluate(
             if not posture_permissions.get("ronin_mouse_enabled", False):
                 return PostureDecision(
                     allowed=False,
-                    reason=f"Mouse control is disabled at current posture.",
+                    reason="Mouse control is disabled at current posture.",
                 )
         if action_suffix in ("type", "hotkey"):
             if not posture_permissions.get("ronin_keyboard_enabled", False):
                 return PostureDecision(
                     allowed=False,
-                    reason=f"Keyboard control is disabled at current posture.",
+                    reason="Keyboard control is disabled at current posture.",
                 )
         if action_suffix == "screenshot":
             if not posture_permissions.get("ronin_screenshots_enabled", False):
                 return PostureDecision(
                     allowed=False,
-                    reason=f"Screenshots are disabled at current posture.",
+                    reason="Screenshots are disabled at current posture.",
                 )
 
-    # ── 8. Check if approval is required ─────────────────────────
-    risk = RiskLevel(capability_risk) if capability_risk else RiskLevel.LOW
+    # ── 8. Action-specific permission gates ──────────────────────
+    resolved_gates: set[RoninPermissionGate] = set()
+    for gate in capability_permission_gates:
+        try:
+            resolved_gates.add(gate if isinstance(gate, RoninPermissionGate) else RoninPermissionGate(gate))
+        except ValueError:
+            return PostureDecision(
+                allowed=False,
+                reason=f"Action '{action_type}' declares an unknown permission gate and was blocked.",
+                risk_level=RiskLevel.CRITICAL,
+            )
 
-    if capability_requires_approval:
+    if RoninPermissionGate.ADMIN_ESCALATION in resolved_gates and posture_permissions.get(
+        "ronin_admin_escalation"
+    ) is not True:
+        return PostureDecision(
+            allowed=False,
+            reason=f"Action '{action_type}' is blocked because administrator escalation is disabled.",
+            risk_level=RiskLevel.CRITICAL,
+        )
+
+    approval_gates: list[RoninPermissionGate] = []
+    for gate in sorted(resolved_gates, key=lambda item: item.value):
+        permission_key = _TRI_STATE_PERMISSION_KEYS.get(gate)
+        if permission_key is None:
+            continue
+        gate_value = posture_permissions.get(permission_key, "blocked")
+        if gate_value == "blocked":
+            return PostureDecision(
+                allowed=False,
+                reason=f"Action '{action_type}' is blocked by {permission_key}.",
+                risk_level=risk,
+            )
+        if gate_value == "approval_required":
+            approval_gates.append(gate)
+            continue
+        if gate_value != "allowed":
+            return PostureDecision(
+                allowed=False,
+                reason=f"Action '{action_type}' has an invalid {permission_key} policy and was blocked.",
+                risk_level=RiskLevel.CRITICAL,
+            )
+
+    # Critical blocking is a hard safety rail; an approval cannot override it.
+    if risk == RiskLevel.CRITICAL and posture_permissions.get("ronin_block_critical_actions", True):
+        return PostureDecision(
+            allowed=False,
+            reason=f"Critical action '{action_type}' is blocked by policy.",
+            risk_level=risk,
+            app_trust=app_trust_level,
+            environment=environment_type,
+        )
+
+    if approval_gates:
+        gate_names = ", ".join(gate.value for gate in approval_gates)
+        return PostureDecision(
+            allowed=False,
+            approval_required=True,
+            reason=f"Action '{action_type}' requires approval ({gate_names}).",
+            risk_level=risk,
+            app_trust=app_trust_level,
+            environment=environment_type,
+        )
+
+    if risk in (RiskLevel.HIGH, RiskLevel.CRITICAL) and posture_permissions.get(
+        "ronin_require_high_risk_approval", True
+    ):
         return PostureDecision(
             allowed=False,
             approval_required=True,
@@ -203,23 +306,15 @@ def evaluate(
             environment=environment_type,
         )
 
-    # ── Check high-risk permission gates ─────────────────────────
-    if action_type in ("os.app_launch",) or risk in (RiskLevel.HIGH, RiskLevel.CRITICAL):
-        tri_state_checks = {
-            "credential_entry": posture_permissions.get("ronin_credential_entry", "blocked"),
-            "file_deletion": posture_permissions.get("ronin_file_deletion", "blocked"),
-            "external_uploads": posture_permissions.get("ronin_external_uploads", "blocked"),
-            "install_software": posture_permissions.get("ronin_install_software", "blocked"),
-        }
-        # If any relevant gate is "blocked" or "approval_required"
-        for gate_name, gate_value in tri_state_checks.items():
-            if gate_value == "approval_required":
-                return PostureDecision(
-                    allowed=False,
-                    approval_required=True,
-                    reason=f"Action '{action_type}' requires approval ({gate_name}).",
-                    risk_level=risk,
-                )
+    if capability_requires_approval:
+        return PostureDecision(
+            allowed=False,
+            approval_required=True,
+            reason=f"Action '{action_type}' requires operator approval (capability policy).",
+            risk_level=risk,
+            app_trust=app_trust_level,
+            environment=environment_type,
+        )
 
     # ── All checks passed ────────────────────────────────────────
     return PostureDecision(

@@ -341,7 +341,9 @@ class TeamsService:
             if action == "activate":
                 return self._response(
                     envelope,
-                    "HARAKIRI ACTIVATED. All agent activity is suspended and posture is now SHRINE.",
+                    "HARAKIRI ACTIVATED. New governed agent operations are blocked, "
+                    "supported active work is being cancelled on a best-effort basis, "
+                    "and posture is now SHRINE.",
                     title="Emergency shutdown active",
                     severity="critical",
                 )

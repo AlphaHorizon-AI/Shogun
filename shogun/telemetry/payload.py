@@ -31,6 +31,9 @@ FORBIDDEN_KEYS = frozenset(
         "tool_output", "credential", "password", "secret", "token", "api_key",
         "telegram", "teams_user", "ip_address", "url", "browser_history", "screenshot",
         "metadata", "stack_trace",
+        "security_incident_acknowledgement", "security_incident_acknowledged",
+        "acknowledged_at", "acknowledged_by_role", "installed_version",
+        "installed_build", "installed_release_identifier", "installed_release_date",
     }
 )
 

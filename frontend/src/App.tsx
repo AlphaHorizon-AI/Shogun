@@ -23,6 +23,7 @@ const Backups = lazy(() => import('./pages/Backups').then(module => ({ default: 
 const Gensui = lazy(() => import('./pages/Gensui').then(module => ({ default: module.Gensui })))
 const SetupWizard = lazy(() => import('./pages/SetupWizard').then(module => ({ default: module.SetupWizard })))
 const PrivacyTelemetry = lazy(() => import('./pages/PrivacyTelemetry').then(module => ({ default: module.PrivacyTelemetry })))
+const About = lazy(() => import('./pages/About').then(module => ({ default: module.About })))
 
 interface SystemNotification {
   id: string
@@ -106,7 +107,7 @@ function TelemetryInvitation() {
       </button>
       <h2 className="pr-8 font-bold text-shogun-gold">Help improve Shogun AFM</h2>
       <p className="mt-2 text-sm leading-relaxed text-shogun-subdued">
-        You may optionally share anonymous installation and weekly activity statistics.
+        You may optionally share pseudonymous installation and weekly activity statistics.
         No prompts, files, memory, messages, identities, or credentials are collected.
         Nothing is sent unless you explicitly opt in.
       </p>
@@ -157,16 +158,36 @@ function BuildRefreshGuard() {
  * Only affects the "/" route on initial load.
  */
 function FirstRunGate({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = useState<'loading' | 'first_run' | 'ready'>('loading')
+  const [status, setStatus] = useState<'loading' | 'first_run' | 'ready' | 'blocked'>('loading')
+  const [failureReason, setFailureReason] = useState('')
   const location = useLocation()
   const { setLanguage } = useTranslation()
 
   useEffect(() => {
     // Only check once, only on initial page load
     fetch('/api/v1/setup/status')
-      .then(r => r.json())
+      .then(async response => {
+        if (!response.ok) {
+          if (response.status === 401) {
+            setFailureReason('Open the private Primary Admin bootstrap link shown by the Server installer.')
+          } else if (response.status === 503) {
+            setFailureReason('The server infrastructure administrator credential is not configured.')
+          } else {
+            setFailureReason(`Setup status could not be loaded (HTTP ${response.status}).`)
+          }
+          setStatus('blocked')
+          return null
+        }
+        return response.json()
+      })
       .then(d => {
-        const complete = d.data?.setup_complete ?? true
+        if (!d) return
+        const complete = d.data?.setup_complete
+        if (typeof complete !== 'boolean') {
+          setFailureReason('The setup service returned an invalid status response.')
+          setStatus('blocked')
+          return
+        }
         if (d.data?.language) {
           setLanguage(d.data.language)
         }
@@ -175,7 +196,10 @@ function FirstRunGate({ children }: { children: React.ReactNode }) {
         }
         setStatus(complete ? 'ready' : 'first_run')
       })
-      .catch(() => setStatus('ready'))
+      .catch(() => {
+        setFailureReason('The setup service is temporarily unavailable.')
+        setStatus('blocked')
+      })
   }, [setLanguage])
 
   if (status === 'loading') {
@@ -183,6 +207,30 @@ function FirstRunGate({ children }: { children: React.ReactNode }) {
       <div className="fixed inset-0 bg-[#0a0e1a] flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-8 h-8 text-[#d4a017] animate-spin" />
         <p className="text-sm text-[#555] font-mono tracking-widest uppercase">Initializing Shogun...</p>
+      </div>
+    )
+  }
+
+  if (status === 'blocked') {
+    return (
+      <div className="fixed inset-0 bg-[#0a0e1a] flex items-center justify-center p-6">
+        <div className="w-full max-w-xl rounded-xl border border-amber-400/30 bg-[#121827] p-8 shadow-2xl">
+          <AlertTriangle className="h-8 w-8 text-amber-400" />
+          <h1 className="mt-5 text-xl font-bold text-white">Primary Admin authorization required</h1>
+          <p className="mt-3 text-sm leading-relaxed text-slate-300">{failureReason}</p>
+          <p className="mt-3 text-sm leading-relaxed text-slate-400">
+            The setup credential is accepted only from the URL fragment, removed before the first API
+            request, and retained only for this browser-tab session. Do not put it in a query string,
+            bookmark, screenshot, or shared log.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-6 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-400/20"
+          >
+            Retry authorization
+          </button>
+        </div>
       </div>
     )
   }
@@ -234,6 +282,7 @@ function AppContent() {
           <Route path="/backups" element={<Shell><Backups /></Shell>} />
           <Route path="/gensui" element={<Shell><Gensui /></Shell>} />
           <Route path="/privacy-telemetry" element={<Shell><PrivacyTelemetry /></Shell>} />
+          <Route path="/about" element={<Shell><About /></Shell>} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

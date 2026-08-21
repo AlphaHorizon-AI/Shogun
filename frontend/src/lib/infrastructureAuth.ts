@@ -22,13 +22,24 @@ export function infrastructureRequestConfig(token: string) {
     : {};
 }
 
-export function consumeInfrastructureTokenFromLocation(): void {
-  if (typeof window === 'undefined' || !window.location.hash) return;
+export function consumeInfrastructureTokenFromLocation(): boolean {
+  if (typeof window === 'undefined' || !window.location.hash) return false;
   const params = new URLSearchParams(window.location.hash.slice(1));
-  const token = params.get('infrastructure_token');
-  if (!token) return;
+  if (!params.has('infrastructure_token')) return false;
+
+  // Remove the credential from visible history synchronously, before React starts
+  // and before any setup-status request can be issued. URL fragments are not sent
+  // in HTTP requests or Referer headers.
+  window.history.replaceState(
+    window.history.state,
+    '',
+    `${window.location.pathname}${window.location.search}`,
+  );
+
+  const token = (params.get('infrastructure_token') || '').trim();
+  if (!token) return false;
   setInfrastructureAdminToken(token);
-  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  return true;
 }
 
 export function installInfrastructureFetchGuard(): void {

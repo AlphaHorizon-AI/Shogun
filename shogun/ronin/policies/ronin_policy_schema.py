@@ -11,7 +11,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 # ── Enums ────────────────────────────────────────────────────────────
 
 
@@ -53,6 +52,24 @@ class RiskLevel(str, Enum):
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+class RoninPermissionGate(str, Enum):
+    """Action semantics governed by Ronin's non-generic permission controls."""
+
+    CREDENTIAL_ENTRY = "credential_entry"
+    FILE_DELETION = "file_deletion"
+    EXTERNAL_UPLOADS = "external_uploads"
+    INSTALL_SOFTWARE = "install_software"
+    ADMIN_ESCALATION = "admin_escalation"
+
+
+class RoninGateDecision(str, Enum):
+    """Tri-state decision for a semantic Ronin permission gate."""
+
+    ALLOWED = "allowed"
+    BLOCKED = "blocked"
+    APPROVAL_REQUIRED = "approval_required"
 
 
 class KomainuLevel(int, Enum):
@@ -127,6 +144,7 @@ class RoninCapability(BaseModel):
     handler: str = ""  # Dotted path to handler function
     app_trust_minimum: AppTrustLevel = AppTrustLevel.TRUSTED
     posture_minimum: RoninPostureLevel = RoninPostureLevel.DESKTOP_LIMITED
+    permission_gates: list[RoninPermissionGate] = Field(default_factory=list)
     enabled: bool = True
 
 
@@ -159,10 +177,10 @@ class RoninPermissions(BaseModel):
     ronin_visible_indicator: bool = True
     ronin_shell_commands: bool = False
     ronin_admin_escalation: bool = False
-    ronin_credential_entry: str = "blocked"  # allowed | blocked | approval_required
-    ronin_file_deletion: str = "blocked"
-    ronin_external_uploads: str = "blocked"
-    ronin_install_software: str = "blocked"
+    ronin_credential_entry: RoninGateDecision = RoninGateDecision.BLOCKED
+    ronin_file_deletion: RoninGateDecision = RoninGateDecision.BLOCKED
+    ronin_external_uploads: RoninGateDecision = RoninGateDecision.BLOCKED
+    ronin_install_software: RoninGateDecision = RoninGateDecision.BLOCKED
     ronin_komainu_level: KomainuLevel = KomainuLevel.PAUSE
     ronin_environment_policy: str = "any"  # any | vm_only | sandbox_only
 

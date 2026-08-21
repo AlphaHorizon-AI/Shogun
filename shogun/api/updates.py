@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from shogun.api.infrastructure_auth import require_infrastructure_admin
+from shogun.services.release_metadata import get_release_metadata, write_release_metadata_evidence
 from shogun.services.update_checker import (
     check_for_updates,
     get_local_version_sync,
@@ -51,7 +52,72 @@ def _with_runtime_version_status(payload: dict) -> dict:
     result["running_version"] = RUNNING_VERSION.get("version", "0.0.0")
     result["running_build"] = RUNNING_VERSION.get("build", 0)
     result["restart_required"] = installed.get("build", 0) != RUNNING_VERSION.get("build", 0)
+    result["release"] = get_release_metadata()
     return result
+
+
+def _full_git_sha(value: object) -> str | None:
+    candidate = str(value or "").strip().lower()
+    if len(candidate) == 40 and all(character in "0123456789abcdef" for character in candidate):
+        return candidate
+    return None
+
+
+async def _download_update_archive(
+    client,
+    *,
+    repo: str,
+    branch: str,
+    token: str,
+    headers: dict[str, str],
+):
+    """Resolve main once and download that immutable source when possible."""
+    warnings: list[str] = []
+    source_commit: str | None = None
+    try:
+        commit_response = await client.get(
+            f"https://api.github.com/repos/{repo}/commits/{branch}",
+            headers=headers,
+        )
+        if commit_response.status_code == 200:
+            source_commit = _full_git_sha(commit_response.json().get("sha"))
+        if source_commit is None:
+            warnings.append(
+                "The update source commit could not be verified; no Git SHA will be claimed."
+            )
+    except Exception as exc:
+        logger.warning("Update commit lookup failed (error_type=%s)", type(exc).__name__)
+        warnings.append(
+            "The update source commit could not be verified; no Git SHA will be claimed."
+        )
+
+    archive_ref = source_commit or branch
+    if token:
+        archive_url = f"https://api.github.com/repos/{repo}/zipball/{archive_ref}"
+    elif source_commit:
+        archive_url = f"https://github.com/{repo}/archive/{source_commit}.zip"
+    else:
+        archive_url = f"https://github.com/{repo}/archive/refs/heads/{branch}.zip"
+
+    logger.info("Downloading update from %s", archive_url)
+    response = await client.get(archive_url, headers=headers)
+    return response, source_commit, warnings, archive_url
+
+
+def _persist_update_release_evidence(
+    root: Path,
+    manifest: dict,
+    source_commit: str | None,
+    warnings: list[str],
+) -> None:
+    """Record provenance without making an already-applied update fail."""
+    try:
+        write_release_metadata_evidence(root, manifest, source_commit)
+    except Exception as exc:
+        logger.warning("Update release evidence could not be written (error_type=%s)", type(exc).__name__)
+        warnings.append(
+            "The update was applied, but local release provenance could not be recorded."
+        )
 
 
 @router.get("/check")
@@ -122,18 +188,14 @@ async def apply_update():
     repo = "AlphaHorizon-AI/Shogun"
     branch = "main"
     token = get_update_token()
-    zip_url = (
-        f"https://api.github.com/repos/{repo}/zipball/{branch}"
-        if token
-        else f"https://github.com/{repo}/archive/refs/heads/{branch}.zip"
-    )
 
     # Find project root
     root = Path(__file__).resolve().parent.parent.parent
+    source_commit: str | None = None
+    warnings: list[str] = []
 
     try:
         # Step 1: Download
-        logger.info("Downloading update from %s", zip_url)
         headers = {"User-Agent": "Shogun-Updater"}
         if token:
             headers.update({
@@ -141,7 +203,14 @@ async def apply_update():
                 "Accept": "application/vnd.github+json",
             })
         async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
-            resp = await client.get(zip_url, headers=headers)
+            resp, source_commit, source_warnings, _archive_url = await _download_update_archive(
+                client,
+                repo=repo,
+                branch=branch,
+                token=token,
+                headers=headers,
+            )
+            warnings.extend(source_warnings)
             if resp.status_code != 200:
                 if resp.status_code in {401, 403, 404}:
                     raise HTTPException(
@@ -171,7 +240,6 @@ async def apply_update():
         if not extracted_dirs or not extracted_dirs[0].is_dir():
             raise HTTPException(status_code=500, detail="ZIP extraction produced no files")
         source = extracted_dirs[0]
-        warnings: list[str] = []
 
         source_frontend_dir = source / "frontend"
         if (source_frontend_dir / "package.json").exists():
@@ -272,12 +340,14 @@ async def apply_update():
 
         # Read the new version
         new_version = json.loads((root / "version.json").read_text(encoding="utf-8"))
+        _persist_update_release_evidence(root, new_version, source_commit, warnings)
 
         return {
             "success": True,
             "files_updated": updated_files,
             "new_version": new_version.get("version", "unknown"),
             "new_build": new_version.get("build", 0),
+            "git_sha": source_commit,
             "changelog": new_version.get("changelog", ""),
             "message": "Update applied successfully. Please restart Shogun to complete the update.",
             "restart_required": True,

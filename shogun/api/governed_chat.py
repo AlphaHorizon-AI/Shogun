@@ -228,7 +228,7 @@ async def _shogun_governed_chat(
             # Pinned memories (always included)
             pinned = await mem_svc.get_pinned(
                 agent_id=agent.id,
-                scope=active_scope if settings.memory_retrieval_mode == "cascade" else None,
+                scope=active_scope,
             )
 
             # Combine and deduplicate

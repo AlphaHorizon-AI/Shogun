@@ -99,6 +99,21 @@ interface ApprovalRequest {
   app_name: string | null;
   app_trust: string | null;
   screenshot_path: string | null;
+  action_digest?: string | null;
+  action_preview?: {
+    action_type: string;
+    target: string | null;
+    value?: string;
+    permission_gates: string[];
+    metadata?: Record<string, string>;
+    active_window?: {
+      process: string;
+      title: string;
+      stable_identifiers: Record<string, string>;
+      stable_identifier_available: boolean;
+    };
+    other_metadata_present?: boolean;
+  };
   created_at: string;
   status: string;
 }
@@ -283,7 +298,7 @@ export function Ronin() {
 
   const respondApproval = async (id: string, decision: 'approved' | 'denied') => {
     try {
-      await axios.post(`/api/v1/ronin/approvals/${id}`, { decision, decided_by: 'operator' });
+      await axios.post(`/api/v1/ronin/approvals/${id}`, { decision });
       setActiveApproval(null);
       await Promise.all([loadApprovals(), loadStatus()]);
     } catch { /* ignore */ }
@@ -314,7 +329,7 @@ export function Ronin() {
   };
 
   const triggerHarakiri = async () => {
-    if (!confirm('⚠️ HARAKIRI: This will stop ALL Ronin activity and close all sessions. Continue?')) return;
+    if (!confirm('⚠️ HARAKIRI: Activate the kill switch, block new Ronin actions, and request cancellation of supported managed sessions? Verify external processes separately.')) return;
     try {
       await axios.post('/api/v1/ronin/harakiri');
       await Promise.all([loadStatus(), loadSessions(), loadApprovals()]);
@@ -322,7 +337,7 @@ export function Ronin() {
   };
 
   const enableDesktopControl = async () => {
-    if (!confirm('Ronin Desktop Control can operate your real mouse, keyboard, windows, and applications. Every action remains visible, verified, and audited. Enable it now?')) return;
+    if (!confirm('Ronin Desktop Control can operate your real mouse, keyboard, windows, and applications. Configured controls request a visible indicator, verification where supported, and audit recording; check action results and audit logs. Enable it now?')) return;
     setControlBusy(true);
     try {
       await axios.post('/api/v1/ronin/desktop/enable', {
@@ -356,7 +371,7 @@ export function Ronin() {
   };
 
   const desktopKillSwitch = async () => {
-    if (!confirm('Stop all Ronin Desktop Control immediately?')) return;
+    if (!confirm('Block new Ronin Desktop Control actions and request cancellation of supported managed sessions?')) return;
     await axios.post('/api/v1/ronin/desktop/kill-switch');
     await loadStatus();
   };
@@ -475,7 +490,7 @@ export function Ronin() {
           <div className="flex items-center gap-2 text-orange-400">
             <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
             <span className="text-[10px] font-black tracking-[0.2em]">RONIN DESKTOP CONTROL ACTIVE</span>
-            <span className="text-[9px] text-orange-300/60">Visible, verified, and audited</span>
+            <span className="text-[9px] text-orange-300/60">Visible indicator · verification and audit requested; check results</span>
           </div>
           <button onClick={desktopKillSwitch} className="px-3 py-1 rounded border border-red-500/40 bg-red-500/10 text-[9px] font-bold text-red-400 hover:bg-red-500/20">KILL SWITCH</button>
         </div>
@@ -1002,7 +1017,7 @@ export function Ronin() {
                   <option value="observe_only">👁️ Observe Only — Screenshots & window listing</option>
                   <option value="browser_only">🌐 Browser Only — Playwright/Mado control</option>
                   <option value="desktop_limited">🖱️ Desktop Limited — Mouse, keyboard, screenshots</option>
-                  <option value="desktop_full">⚡ Desktop Full — Native apps, shell, admin</option>
+                  <option value="desktop_full">⚡ Desktop Full — Governed native apps, mouse & keyboard</option>
                 </select>
               </div>
               <div className="space-y-1.5">
@@ -1085,6 +1100,56 @@ export function Ronin() {
                 <p className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest mb-1">Reason</p>
                 <p className="text-xs text-[#c8d0d8]">{activeApproval.reason}</p>
               </div>
+              {activeApproval.action_preview && (
+                <div className="p-3 bg-[#f97316]/5 rounded-lg border border-[#f97316]/30 space-y-2">
+                  <p className="text-[9px] font-bold text-[#f97316] uppercase tracking-widest">
+                    Material action details
+                  </p>
+                  {activeApproval.action_preview.value && (
+                    <ApprovalField label="Input / Hotkey" value={activeApproval.action_preview.value} highlight />
+                  )}
+                  {activeApproval.action_preview.permission_gates.length > 0 && (
+                    <ApprovalField
+                      label="Permission Gates"
+                      value={activeApproval.action_preview.permission_gates.join(', ')}
+                      highlight
+                    />
+                  )}
+                  {activeApproval.action_preview.metadata && Object.entries(activeApproval.action_preview.metadata).map(
+                    ([key, value]) => <ApprovalField key={key} label={key.replaceAll('_', ' ')} value={value} />,
+                  )}
+                  {activeApproval.action_preview.active_window && (
+                    <ApprovalField
+                      label="Approved Window"
+                      value={[
+                        activeApproval.action_preview.active_window.process,
+                        activeApproval.action_preview.active_window.title,
+                        ...Object.entries(activeApproval.action_preview.active_window.stable_identifiers).map(
+                          ([key, value]) => `${key}=${value}`,
+                        ),
+                      ].filter(Boolean).join(' · ') || '—'}
+                    />
+                  )}
+                  {activeApproval.action_preview.active_window
+                    && !activeApproval.action_preview.active_window.stable_identifier_available && (
+                      <p className="text-[9px] text-[#eab308]">
+                        This platform did not provide a stable window identifier; Ronin will re-check the
+                        process, title, posture, and protected context immediately before execution.
+                      </p>
+                    )}
+                  {activeApproval.action_preview.other_metadata_present && (
+                    <p className="text-[9px] text-[#eab308]">
+                      Additional non-displayed metadata is bound to this approval by the action digest.
+                    </p>
+                  )}
+                  {activeApproval.action_digest && (
+                    <div>
+                      <p className="text-[8px] font-bold text-[#7a8899] uppercase tracking-widest">Action digest</p>
+                      <p className="text-[9px] text-[#c8d0d8] font-mono break-all">{activeApproval.action_digest}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="px-5 py-4 border-t border-[#1a2040] flex items-center justify-between">
               <button

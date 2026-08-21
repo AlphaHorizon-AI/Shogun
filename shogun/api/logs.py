@@ -1,10 +1,10 @@
-"""Log and audit routes — NIS2/SOC2 compliance grade.
+"""Operational-log and HMAC-chain routes for governance evidence.
 
 Provides:
   - Category-filtered event listing
   - Trace correlation reconstruction
   - Audit chain integrity verification
-  - Export for compliance auditors
+  - Evidence export for audit and compliance assessment
   - Operational log management (clear)
 """
 
@@ -40,7 +40,7 @@ async def list_logs(
     limit: int = 200,
     svc: AuditService = Depends(get_audit_service),
 ):
-    """List operational events with NIS2/SOC2 filtering."""
+    """List operational events using governance-oriented filters."""
     from shogun.db.models.execution_event import ExecutionEvent
 
     query = select(ExecutionEvent)
@@ -148,23 +148,23 @@ async def reconstruct_trace(
 
 @router.get("/audit/verify", response_model=ApiResponse)
 async def verify_audit_chain():
-    """Verify the immutable audit chain integrity.
+    """Check the append-only audit log's HMAC-chain consistency.
 
-    Walks the entire HMAC chain and reports any breaks.
-    SOC2 auditors will use this to confirm tamper resistance.
+    Walks the available HMAC chain and reports covered-field mismatches. This
+    does not prove record completeness or establish compliance.
     """
     from shogun.services import immutable_audit
 
     result = immutable_audit.verify_chain()
 
     # If chain is broken, emit an incident
-    if not result.get("intact", True):
+    if not result.get("chain_intact", True):
         try:
             from shogun.services.event_logger import EventLogger
             import asyncio
             asyncio.ensure_future(EventLogger.emit_incident_event(
                 "incident.chain_broken",
-                "AUDIT CHAIN INTEGRITY VIOLATION: tamper detected",
+                "AUDIT CHAIN CONSISTENCY VIOLATION: mismatch detected",
                 severity="critical", risk_score="critical",
                 detail=result,
             ))
@@ -185,10 +185,11 @@ async def export_audit_log(
     format: str = Query("json", description="json or csv"),
     limit: int = 10000,
 ):
-    """Export immutable audit records for compliance review.
+    """Export HMAC-chained audit records for assessment or investigation.
 
-    Downloads from the tamper-resistant audit chain, not the
-    operational log. Includes HMAC hashes for verification.
+    Downloads from the separate append-only audit log, not the operational log.
+    Includes HMAC hashes for verification. The export does not prove record
+    completeness or establish compliance.
     """
     from shogun.services import immutable_audit
 
@@ -231,10 +232,10 @@ async def export_audit_log(
 
 @router.delete("", response_model=ApiResponse)
 async def clear_logs(svc: AuditService = Depends(get_audit_service)):
-    """Clear OPERATIONAL logs only. The immutable audit chain is never deleted.
+    """Clear operational logs only; this route leaves the audit-chain DB intact.
 
-    This distinction is critical for NIS2/SOC2 compliance:
-    operational logs can be rotated, but audit evidence is permanent.
+    Operators with host or database access remain responsible for protecting,
+    retaining, backing up, and independently verifying the separate evidence.
     """
     from shogun.db.models.execution_event import ExecutionEvent
     from sqlalchemy import delete
@@ -247,7 +248,7 @@ async def clear_logs(svc: AuditService = Depends(get_audit_service)):
     await svc.session.execute(delete(ExecutionEvent))
     await svc.session.commit()
 
-    # Log the clearing itself to the immutable audit chain
+    # Record the clearing action in the separate append-only audit log.
     from shogun.services import immutable_audit
     immutable_audit.append(
         event_id=f"evt_clear_{datetime.now().strftime('%Y%m%d%H%M%S')}",

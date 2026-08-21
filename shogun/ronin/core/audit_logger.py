@@ -1,9 +1,11 @@
-"""Ronin Audit Logger — wraps EventLogger for Ronin-specific events.
+"""Ronin Audit Logger — best-effort Ronin-specific EventLogger integration.
 
-Every Ronin action is logged to both Layer 1 (operational SQLite) and
-Layer 2 (immutable HMAC-chained audit chain) via the central EventLogger.
-Ronin events include before/after screenshots, app trust level, environment
-type, capability metadata, and approval status.
+Configured Ronin actions attempt to emit records through the central
+EventLogger. Successful emission may populate the operational database and
+application-level HMAC-chained audit store with available screenshots, trust,
+environment, capability, and approval metadata. Logging failures are reported
+but do not independently stop an action, so operators must verify results and
+the presence of expected audit records.
 """
 
 from __future__ import annotations
@@ -39,10 +41,7 @@ class RoninAuditLogger:
         duration_ms: int | None = None,
         detail: dict[str, Any] | None = None,
     ) -> str:
-        """Emit a Ronin audit event to both log layers.
-
-        Returns the event_id for reference.
-        """
+        """Attempt to emit a Ronin audit event and return its ID, or ``""`` on failure."""
         try:
             from shogun.services.event_logger import EventLogger
 
@@ -157,7 +156,11 @@ class RoninAuditLogger:
         agent_id: str | None = None,
     ) -> str:
         return await RoninAuditLogger.log_action(
-            event_type="ronin.desktop.approval_granted" if decision == "approved" else "ronin.desktop.approval_rejected",
+            event_type=(
+                "ronin.desktop.approval_granted"
+                if decision == "approved"
+                else "ronin.desktop.approval_rejected"
+            ),
             action=f"Ronin approval {decision}: {approval_id}",
             agent_id=agent_id,
             severity="warn" if decision == "denied" else "info",

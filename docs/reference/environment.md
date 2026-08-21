@@ -2,7 +2,7 @@
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN` | empty on desktop; required in server mode | Authorizes A2A peer invitations and Gensui connect/test/disconnect operations |
+| `SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN` | generated in the protected desktop `.env`; required in server mode | Authorizes the operator control plane, including setup, A2A peer invitations, and Gensui operations; launchers carry it in a URL fragment and the frontend retains it only for the tab session |
 | `A2A_DESTINATION_POLICY` | `private_allowed` | A2A outbound policy |
 | `GENSUI_DESTINATION_POLICY` | `loopback_allowed` on desktop; `private_allowed` in server Compose | Gensui outbound policy |
 | `OUTBOUND_ALLOWLIST` | empty | Comma-separated exact hosts, `*.domain` wildcards, IPs, and CIDRs |

@@ -1,9 +1,10 @@
-"""Immutable audit log — HMAC-chained, append-only, tamper-resistant.
+"""HMAC-chained audit log, append-only through the application service.
 
-Layer 2 of the NIS2/SOC2 logging architecture.
-Stored in a separate SQLite database to prevent accidental deletion
-with operational data. Each record is hash-chained to the previous
-one for tamper detection.
+The separate SQLite database reduces accidental coupling to operational-log
+maintenance. Each record is hash-chained to the previous one so verification
+can reveal mismatches in the covered fields. This is tamper-evident application
+behaviour, not immutable storage, and it does not prove that every event was
+captured.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ def _get_audit_db_path() -> Path:
 
 
 def _get_connection() -> sqlite3.Connection:
-    """Get a connection to the immutable audit database."""
+    """Get a connection to the separate append-only audit database."""
     db_path = _get_audit_db_path()
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA journal_mode=WAL")
@@ -139,9 +140,10 @@ def append(
     detail: dict | None = None,
     memory_ids: list | None = None,
 ) -> None:
-    """Append an event to the immutable audit chain.
+    """Append an event to the HMAC-chained audit log.
 
-    This is the ONLY write operation. No updates, no deletes.
+    This module exposes no update or delete operation. A process or database
+    administrator with file access can still alter the underlying SQLite file.
     """
     _ensure_table()
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -174,7 +176,7 @@ def append(
         )
         conn.commit()
     except Exception as e:
-        logger.error("Immutable audit write failed: %s", e)
+        logger.error("Append-only audit write failed: %s", e)
     finally:
         conn.close()
 
@@ -244,7 +246,10 @@ def verify_chain() -> dict:
             "verified_records": verified,
             "chain_intact": True,
             "last_verified_at": datetime.now(timezone.utc).isoformat(),
-            "message": f"All {total} audit records verified. Chain integrity confirmed.",
+            "message": (
+                f"All {total} available audit records matched the HMAC chain. "
+                "This check does not prove record completeness."
+            ),
         }
     finally:
         conn.close()

@@ -60,6 +60,7 @@ def test_manual_defines_model_and_party_responsibility_boundaries() -> None:
     assert "Roles &amp; Responsibilities" in section
     assert "Shogun is an orchestration framework—not an AI model" in section
     assert "does not bundle, train, or supply a proprietary LLM or foundation model" in section
+    assert "not itself an LLM, foundation model, or general-purpose AI (GPAI) model" in section
     assert "model-agnostic" in section
     assert "Models may be cloud-hosted" in section
     assert "hosted locally by the organisation" in section
@@ -120,11 +121,11 @@ def test_security_policy_and_cra_procedure_use_the_same_routes_and_clock() -> No
         assert "14 days" in document
         assert "one month" in document.lower()
 
-    assert "31 August 2031" in policy
-    assert "31 August 2031" in procedure
+    assert "31 August 2031" not in policy
+    assert "31 August 2031" not in procedure
 
 
-def test_2031_commitment_is_security_only_for_official_unmodified_releases() -> None:
+def test_security_handling_is_law_bound_without_a_voluntary_fixed_end_date() -> None:
     guide_source = GUIDE.read_text(encoding="utf-8")
     guide_incident_section = guide_source.split(
         '<section id="ref-incident-reporting"', 1
@@ -139,7 +140,7 @@ def test_2031_commitment_is_security_only_for_official_unmodified_releases() -> 
         normalized = " ".join(
             document.lower().replace("‑", "-").replace("–", "-").split()
         )
-        assert "31 august 2031" in normalized, name
+        assert "31 august 2031" not in normalized, name
         assert "official" in normalized, name
         assert "unmodified" in normalized, name
         assert (
@@ -151,6 +152,7 @@ def test_2031_commitment_is_security_only_for_official_unmodified_releases() -> 
             "not general technical support" in normalized
             or "not a general technical-support" in normalized
             or "does not include general technical support" in normalized
+            or "separate from general customer support" in normalized
         ), name
         assert "helpdesk" in normalized, name
         assert "compatibility" in normalized, name
@@ -159,13 +161,35 @@ def test_2031_commitment_is_security_only_for_official_unmodified_releases() -> 
         assert (
             "modified build" in normalized
             or "third-party modification" in normalized
+            or "customer or third-party modifications" in normalized
         ), name
         assert (
             "service-level agreement" in normalized
-            or "sla-backed" in normalized
+            or "service-level" in normalized
             or "an sla" in normalized
+            or "sla," in normalized
         ), name
         assert "separate written agreement" in normalized, name
+        assert "where required by applicable law" in normalized, name
+        assert (
+            "does not promise a patch for every report" in normalized
+            or "does not promise that every reported issue will result in a patch" in normalized
+        ), name
+
+
+def test_statutory_retention_is_preserved_without_a_voluntary_blanket_term() -> None:
+    policy = SECURITY_POLICY.read_text(encoding="utf-8")
+    procedure = CRA_PROCEDURE.read_text(encoding="utf-8")
+
+    for document in (policy, procedure):
+        normalized = " ".join(document.lower().split())
+        assert "no voluntary fixed retention period" in normalized
+        assert "article 13(9)" in normalized
+        assert "article 13(13)" in normalized
+        assert "13(18)" in normalized
+        assert "at least 10 years after issuance" in normalized
+        assert "whichever is longer" in normalized
+        assert "will remain available" not in normalized
 
 
 def test_issue_chooser_routes_sensitive_reports_away_from_public_issues() -> None:

@@ -22,7 +22,8 @@ import zipfile
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+
+from shogun.services.release_metadata import get_release_metadata
 
 logger = logging.getLogger("shogun.backups")
 
@@ -87,7 +88,7 @@ def save_settings(settings: dict) -> None:
     path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
 
 
-def _safe_label(label: Optional[str]) -> str:
+def _safe_label(label: str | None) -> str:
     if not label:
         return ""
     normalized = re.sub(r"[^A-Za-z0-9_-]+", "-", label.strip()).strip("-_")[:64]
@@ -130,7 +131,7 @@ def _restore_destination(root: Path, member: zipfile.ZipInfo) -> Path | None:
     return candidate
 
 
-def create_backup(label: Optional[str] = None) -> dict:
+def create_backup(label: str | None = None) -> dict:
     """
     Create a backup ZIP of the Shogun installation.
 
@@ -204,9 +205,16 @@ def create_backup(label: Optional[str] = None) -> dict:
 
     # Create ZIP
     try:
+        release = get_release_metadata()
         with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("manifest.json", json.dumps({
-                "shogun_version": "1.0.0",
+                "shogun_version": release["version"],
+                "shogun_build": release["build"],
+                "shogun_release_id": release["release_id"],
+                "shogun_git_sha": release["git_sha"],
+                "shogun_distribution_status": release["distribution_status"],
+                "shogun_working_tree_modified": release["working_tree_modified"],
+                "shogun_release_date": release["release_date"],
                 "backup_format": "1.0",
                 "backup_type": "installation",
                 "created_at": datetime.now(timezone.utc).isoformat(),

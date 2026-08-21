@@ -13,7 +13,7 @@ Alpha Horizon.
   Email may not be end-to-end encrypted; agree a secure exchange method before
   sending secrets or exploit details.
 - Public, non-sensitive reports: <https://github.com/AlphaHorizon-AI/Shogun/issues/new>
-- Disclosure and support policy: [SECURITY.md](../../SECURITY.md)
+- Disclosure and security policy: [SECURITY.md](../../SECURITY.md)
 
 Never ask a reporter to place exploit-enabling details, credentials, personal
 or customer data, prompt content, production telemetry identifiers, or
@@ -113,50 +113,61 @@ updates in the restricted incident record.
 2. **Reproduce and scope.** Use a segregated environment. Identify affected and
    unaffected versions, default configurations, foreseeable misuse, integrated
    components, and the distribution footprint.
-3. **Mitigate.** Publish immediate, safe mitigations when users cannot wait for
-   a complete fix. Do not disclose information that materially increases risk.
-4. **Correct and verify.** Develop the smallest safe correction, add regression
-   tests, run security review, verify update authenticity and rollback/recovery,
-   and document remaining risk.
+3. **Mitigate.** Assess immediate, safe mitigations and publish them where Alpha
+   Horizon determines this appropriate or where required by applicable law. Do
+   not disclose information that materially increases risk.
+4. **Correct and verify.** Where a correction is chosen or legally required,
+   develop the smallest safe correction, add regression tests, run security
+   review, verify update authenticity and rollback/recovery, and document
+   remaining risk.
 5. **Coordinate upstream.** Notify an affected component supplier or maintainer
    through its confidential disclosure channel while retaining responsibility
    for the Shogun product response.
-6. **Notify users.** Inform affected users—and, when appropriate, all users—of
-   the issue, impact, affected releases, mitigation, available correction, and
-   how to install it. Coordinate timing with the reporter and authorities.
-7. **Publish an advisory.** Once safe, publish affected versions, severity,
-   impact, remediation, credit (with permission), and links to verified updates.
+6. **Notify users.** Satisfy applicable user-notification duties. Where Alpha
+   Horizon otherwise chooses to notify users, describe the issue, impact,
+   affected releases, mitigation, available correction, and installation path.
+   Coordinate timing with the reporter and authorities.
+7. **Publish an advisory.** Where appropriate or legally required, publish
+   affected versions, severity, impact, remediation, credit (with permission),
+   and links to verified updates once disclosure is safe.
 8. **Close and learn.** Confirm deployment status, complete required final
    reports, record lessons and risk-control changes, and track all actions to
    completion.
 
 ## Security-update and vulnerability-handling controls
 
-- The security-vulnerability handling period for the currently identified
-  official, unmodified Shogun AFM 1.x product line ends on 31 August 2031. It
-  covers vulnerability intake, assessment, corrective or mitigating measures,
-  and security updates for defects attributable to official release code.
-- That period is not general technical support and does not include a helpdesk,
-  feature development, compatibility maintenance, integration maintenance, LLM
-  or provider compatibility updates, a service-level agreement, or support for
-  defects introduced exclusively by customer-modified builds. Broader support
-  exists only under a separate written agreement.
-- Corrective or mitigating measures are published through the official
-  repository and Shogun Updates channel when Alpha Horizon determines them
-  appropriate or legally required. Security updates covered by an applicable
-  legal obligation are provided without charge.
+- Alpha Horizon handles security vulnerabilities affecting official, unmodified
+  Shogun releases in accordance with applicable legal obligations and any
+  support or vulnerability-handling period required under applicable law.
+- Shogun has no standard maintenance agreement, helpdesk, service-level
+  agreement, or commitment to feature development, compatibility maintenance,
+  integration maintenance, or LLM/provider compatibility work. Security
+  vulnerability handling is separate from general customer support and is
+  performed where Alpha Horizon elects to provide it or where required by law.
+  Broader support exists only under a separate written agreement.
+- Alpha Horizon may publish corrective or mitigating measures through the
+  official repository and Shogun Updates channel where it determines this
+  appropriate or where required by applicable law. This procedure does not
+  promise a patch for every report. A security update is provided without charge
+  where an applicable legal obligation requires that result.
 - Where permitted by applicable law, remediation may require the latest stable
   official 1.x build. Any latest-version correction path remains subject to the
   conditions imposed by applicable law.
-- The published date does not shorten a longer vulnerability-handling period
-  required by law or the documented expected-use assessment. A later official
-  release requiring a separate assessment receives its own published end date.
-- Reports from modified installations remain welcome so Alpha Horizon can
-  determine whether official release code is also affected. Nothing in these
-  controls limits rights or responsibilities that cannot legally be excluded.
-- Each issued security update and advisory must remain available for at least
-  ten years after issuance or for the remainder of the support period,
-  whichever is longer.
+- Customer or third-party modifications are not validated, certified, or
+  maintained by Alpha Horizon. Alpha Horizon does not undertake to patch defects
+  introduced by those modifications. Reports remain welcome so Alpha Horizon
+  can determine whether official release code is also affected. Responsibility
+  for official-release defects and non-excludable rights remains subject to law.
+- No voluntary fixed retention period is created by this procedure. Apply the
+  statutory documentation, disclosure, update-availability, and record-retention
+  periods that govern the relevant release. Where CRA Article 13 applies, retain
+  each qualifying security update made available during the statutory support
+  period for at least 10 years after issuance or for the remainder of that
+  support period, whichever is longer, as required by Article 13(9). Retain
+  technical documentation, the EU declaration of conformity, and user
+  instructions for at least 10 years after the product is placed on the market
+  or for the applicable support period, whichever is longer, as required by
+  Article 13(13) and 13(18).
 - Release documentation must explain secure update installation, material
   security effects of changes, rollback/recovery, and secure decommissioning
   and user-data removal.
@@ -174,7 +185,8 @@ also maintain and validate:
   secure update delivery;
 - manufacturer legal/postal and digital contact details, the EU declaration of
   conformity where applicable, conformity assessment, and CE marking;
-- the published security-period end date for official, unmodified releases and secure commissioning, operation, update,
+- where legally required, a release-specific support-period assessment and
+  published end date, together with the secure commissioning, operation, update,
   change, integration, and decommissioning instructions required by CRA Annex II;
 - named incident roles, coordinator-CSIRT/ENISA access, an EU Login account, and
   a tested 24-hour reporting exercise; and

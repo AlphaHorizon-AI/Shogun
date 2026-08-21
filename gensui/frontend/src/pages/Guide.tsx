@@ -201,8 +201,8 @@ export default function Guide() {
               <Card icon={AlertTriangle} iconColor="text-red-400" title={t('guide.card_actions', 'Actions Card')}>
                 <P>{t('guide.card_actions_desc', 'Three action buttons for this specific instance:')}</P>
                 <ul className="text-xs text-gensui-400 space-y-1 ml-4 list-disc">
-                  <li><strong className="text-amber-400">{t('guide.card_soft_freeze', 'Soft Freeze:')}</strong> {t('guide.card_soft_freeze_desc', 'Triggers a soft Harakiri — suspends all active operations gracefully.')}</li>
-                  <li><strong className="text-red-400">{t('guide.card_hard_stop', 'Hard Stop:')}</strong> {t('guide.card_hard_stop_desc', 'Triggers a hard Harakiri — immediately kills all processes.')}</li>
+                  <li><strong className="text-amber-400">{t('guide.card_soft_freeze', 'Soft Freeze:')}</strong> {t('guide.card_soft_freeze_desc', 'Persists the governed-operation gate and requests best-effort cancellation of supported active work.')}</li>
+                  <li><strong className="text-red-400">{t('guide.card_hard_stop', 'Hard Stop:')}</strong> {t('guide.card_hard_stop_desc', 'Requests urgent cancellation on supported instrumented paths; it does not guarantee that every host or external process stops immediately.')}</li>
                   <li><strong className="text-red-400">{t('guide.card_disable_instance', 'Disable Instance:')}</strong> {t('guide.card_disable_instance_desc', 'Revokes enrollment. The Shogun is disconnected from the fleet permanently until re-enrolled.')}</li>
                 </ul>
               </Card>
@@ -373,7 +373,7 @@ export default function Guide() {
               <FileSearch size={20} className="text-gensui-400" />
               <div>
                 <h2 className="text-lg font-bold text-gensui-100 uppercase tracking-widest">{t('guide.sec_audit_title', 'Audit Log &mdash; HMAC-Chained')}</h2>
-                <p className="text-xs text-gensui-400">{t('guide.sec_audit_desc', 'Tamper-resistant record of every administrative action.')}</p>
+                <p className="text-xs text-gensui-400">{t('guide.sec_audit_desc', 'HMAC-chained records for instrumented administrative actions, with consistency checks for covered fields.')}</p>
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3">
@@ -529,7 +529,7 @@ export default function Guide() {
                 <Lock size={18} className="text-red-400" />
                 <h3 className="text-lg font-bold text-gensui-100">{t('guide.card_injection_governance', 'Prompt Injection Containment')}</h3>
               </div>
-              <P>{t('guide.card_injection_governance_desc', 'When Shogun agents fetch external content (web pages, emails, calendar events), the content is wrapped with [UNTRUSTED EXTERNAL DATA] boundary markers. This prevents the LLM from following instructions embedded in external content.')}</P>
+              <P>{t('guide.card_injection_governance_desc', 'When Shogun agents fetch external content (web pages, emails, calendar events), the content is wrapped with [UNTRUSTED EXTERNAL DATA] boundary markers. The markers help the model treat embedded instructions as untrusted, but do not replace ToolGate policy, least privilege, output review, or other prompt-injection controls.')}</P>
             </div>
 
             {/* Audit & Compliance */}
@@ -538,7 +538,7 @@ export default function Guide() {
                 <FileSearch size={18} className="text-gensui-400" />
                 <h3 className="text-lg font-bold text-gensui-100">{t('guide.card_audit_compliance', 'Audit & Compliance')}</h3>
               </div>
-              <P>{t('guide.card_audit_compliance_desc', 'Every security decision — ToolGate allow/confirm/block/deny, posture changes, harakiri activations, token revocations — is logged to the HMAC-chained immutable audit trail. This provides cryptographically tamper-evident evidence for NIS2, SOC2, and EU AI Act compliance.')}</P>
+              <P>{t('guide.card_audit_compliance_desc', 'Instrumented security decisions — including ToolGate verdicts, posture changes, harakiri activations, and token revocations — are recorded in an append-only HMAC-chained audit log. Chain checks and exports can support investigation and NIS2, SOC 2, or EU AI Act assessments; they do not prove completeness or establish compliance.')}</P>
             </div>
           </section>
 
@@ -548,7 +548,7 @@ export default function Guide() {
               <BarChart3 size={28} className="text-cyan-400" />
               <div>
                 <h2 className="text-2xl font-bold text-gensui-50">{t('guide.sec_fleet_audit_title', 'Fleet Audit Dashboard')}</h2>
-                <p className="text-xs text-gensui-400">{t('guide.sec_fleet_audit_desc', 'Multi-instance audit analytics, compliance reporting, and chain verification.')}</p>
+                <p className="text-xs text-gensui-400">{t('guide.sec_fleet_audit_desc', 'Multi-instance audit analytics, governance-evidence summaries, and chain-link checks.')}</p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -562,13 +562,13 @@ export default function Guide() {
                 <P>{t('guide.card_telemetry_tab_desc', 'Aggregated telemetry breakdown by severity, category, event type (top 20), and per-member distribution. Filterable by date range.')}</P>
               </Card>
               <Card icon={Shield} iconColor="text-cyan-400" title={t('guide.card_compliance_tab', 'Compliance Tab')}>
-                <P>{t('guide.card_compliance_tab_desc', 'NIS2/SOC2/EU AI Act compliance report. Shows fleet size, harakiri activations, posture changes, enrollment events, token revocations, and HMAC chain integrity.')}</P>
+                <P>{t('guide.card_compliance_tab_desc', 'Governance-evidence summary with references relevant to NIS2, SOC 2, and the EU AI Act. It shows fleet size, harakiri activations, posture changes, enrollment events, token revocations, and chain-link checks, but does not determine compliance.')}</P>
               </Card>
               <Card icon={FileSearch} iconColor="text-gensui-400" title={t('guide.card_raw_log_tab', 'Raw Log Tab')}>
-                <P>{t('guide.card_raw_log_tab_desc', 'Full audit log with action filtering. Shows timestamp, actor type, action, target, reason, and IP address.')}</P>
+                <P>{t('guide.card_raw_log_tab_desc', 'Available audit records with action filtering. Displayed fields depend on captured events.')}</P>
               </Card>
               <Card icon={Copy} iconColor="text-purple-400" title={t('guide.card_csv_export', 'CSV Export')}>
-                <P>{t('guide.card_csv_export_desc', 'Export the full audit trail as a CSV file for offline analysis, compliance audits, or SIEM integration. Up to 50,000 entries per export.')}</P>
+                <P>{t('guide.card_csv_export_desc', 'Export up to 50,000 available audit records as CSV for offline analysis, governance review, or SIEM integration. The export does not prove record completeness.')}</P>
               </Card>
             </div>
           </section>
@@ -579,7 +579,7 @@ export default function Guide() {
               <Key size={28} className="text-purple-400" />
               <div>
                 <h2 className="text-2xl font-bold text-gensui-50">{t('guide.sec_identity_title', 'Enterprise Identity')}</h2>
-                <p className="text-xs text-gensui-400">{t('guide.sec_identity_desc', 'Service accounts, API keys, and SSO/OIDC configuration for enterprise environments.')}</p>
+                <p className="text-xs text-gensui-400">{t('guide.sec_identity_desc', 'Reserved service-account and SSO provider configuration. These records are not accepted for authentication in this release.')}</p>
               </div>
             </div>
 
@@ -589,7 +589,7 @@ export default function Guide() {
                 <Key size={18} className="text-amber-400" />
                 <h3 className="text-lg font-bold text-gensui-100">{t('guide.card_service_accounts', 'Service Accounts & API Keys')}</h3>
               </div>
-              <P>{t('guide.card_service_accounts_desc', 'Service accounts provide machine-to-machine API authentication for CI/CD pipelines, SIEM integrations, monitoring systems, and custom automation.')}</P>
+              <P>{t('guide.card_service_accounts_desc', 'Gensui can create and store reserved service-account credential records, but no Gensui API endpoint accepts those keys for authentication in this release. Do not use them as an access-control boundary.')}</P>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="bg-gensui-800 border border-gensui-700 rounded-lg p-3 space-y-1">
                   <div className="text-xs font-bold text-gensui-200">{t('guide.api_key_format', 'API Key Format')}</div>
@@ -597,7 +597,7 @@ export default function Guide() {
                 </div>
                 <div className="bg-gensui-800 border border-gensui-700 rounded-lg p-3 space-y-1">
                   <div className="text-xs font-bold text-gensui-200">{t('guide.key_lifecycle', 'Key Lifecycle')}</div>
-                  <p className="text-[11px] text-gensui-400">{t('guide.key_lifecycle_desc', 'Create → shown once. Rotate → invalidates old key, generates new. Revoke → permanently deactivates. All actions are audit-logged.')}</p>
+                  <p className="text-[11px] text-gensui-400">{t('guide.key_lifecycle_desc', 'Reserved keys can be created, rotated, and revoked as configuration records and the raw value is shown once. They remain unusable for API authentication until an endpoint explicitly wires and enforces the service-account dependency.')}</p>
                 </div>
               </div>
             </div>
@@ -608,7 +608,7 @@ export default function Guide() {
                 <Globe size={18} className="text-purple-400" />
                 <h3 className="text-lg font-bold text-gensui-100">{t('guide.sec_sso_oidc', 'SSO / OIDC Providers')}</h3>
               </div>
-              <P>{t('guide.sec_sso_oidc_desc', 'Configure external identity providers for single sign-on. Gensui supports OpenID Connect (Keycloak, Auth0, Okta, Azure AD, Google), SAML 2.0, and SPIFFE/SPIRE trust domains.')}</P>
+              <P>{t('guide.sec_sso_oidc_desc', 'Provider records may be stored for future integration, but SSO login is unavailable in this release. Signed OIDC-token verification is not implemented; SAML 2.0 and SPIFFE/SPIRE authentication are also not implemented. Stored providers remain inactive and cannot be primary login providers.')}</P>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="bg-gensui-800 border border-gensui-700 rounded-lg p-3 space-y-1">
                   <div className="text-xs font-bold text-gensui-200">{t('guide.oidc_config', 'OIDC Configuration')}</div>
@@ -616,15 +616,15 @@ export default function Guide() {
                 </div>
                 <div className="bg-gensui-800 border border-gensui-700 rounded-lg p-3 space-y-1">
                   <div className="text-xs font-bold text-gensui-200">{t('guide.role_mapping', 'Role Mapping')}</div>
-                  <p className="text-[11px] text-gensui-400">{t('guide.role_mapping_desc', 'Map external IdP roles/groups to Gensui roles. Claim mapping extracts email, name, and role from OIDC tokens.')}</p>
+                  <p className="text-[11px] text-gensui-400">{t('guide.role_mapping_desc', 'Role and claim-mapping values are stored as configuration only. No login verifier currently applies them to an authenticated user.')}</p>
                 </div>
                 <div className="bg-gensui-800 border border-gensui-700 rounded-lg p-3 space-y-1">
                   <div className="text-xs font-bold text-gensui-200">{t('guide.auto_provisioning', 'Auto-Provisioning')}</div>
-                  <p className="text-[11px] text-gensui-400">{t('guide.auto_provisioning_desc', 'Optionally auto-create Gensui admin accounts on first SSO login. Domain allowlisting restricts which email domains can register.')}</p>
+                  <p className="text-[11px] text-gensui-400">{t('guide.auto_provisioning_desc', 'Automatic user provisioning and primary-provider login are forced off until a complete signed-token validation and login flow is implemented.')}</p>
                 </div>
                 <div className="bg-gensui-800 border border-gensui-700 rounded-lg p-3 space-y-1">
                   <div className="text-xs font-bold text-gensui-200">{t('guide.sso_security', 'Security')}</div>
-                  <p className="text-[11px] text-gensui-400">{t('guide.sso_security_desc', 'Client secrets are encrypted at rest. Token validation checks issuer, audience, and expiry. All SSO config changes are logged in the HMAC audit chain.')}</p>
+                  <p className="text-[11px] text-gensui-400">{t('guide.sso_security_desc', 'Stored client secrets are encrypted at rest and instrumented configuration changes may emit audit records. No OIDC signature, issuer, audience, expiry, SAML, or SPIFFE authentication decision is performed in this release.')}</p>
                 </div>
               </div>
             </div>
@@ -638,14 +638,14 @@ export default function Guide() {
               <ShieldAlert size={28} className="text-red-400" />
               <div>
                 <h2 className="text-2xl font-bold text-gensui-50">{t('guide.sec_security_title', 'Safety & Security Protocols')}</h2>
-                <p className="text-xs text-gensui-400">{t('guide.sec_security_desc', 'Comprehensive runtime security architecture protecting every Shogun instance in the fleet.')}</p>
+                <p className="text-xs text-gensui-400">{t('guide.sec_security_desc', 'Runtime security controls available to connected Shogun instances in the operator-managed fleet.')}</p>
               </div>
             </div>
 
             {/* Architecture Overview */}
             <div className="glass-card p-5 space-y-4">
               <h3 className="text-lg font-bold text-gensui-100 flex items-center gap-2"><Shield size={18} className="text-amber-400" /> {t('guide.security_architecture', 'Architecture Overview')}</h3>
-              <P>{t('guide.security_architecture_desc', 'Shogun\'s security architecture is built in 6 layered phases, each independently enforceable. Security decisions flow from Gensui (fleet-wide policy) down to each Shogun instance (runtime enforcement). The system is designed for NIS2, SOC 2, and EU AI Act compliance.')}</P>
+              <P>{t('guide.security_architecture_desc', 'Shogun exposes six layers of security controls, with fleet policy distributed by Gensui and runtime enforcement performed by each connected instance. These controls and their records can support risk management and regulatory assessment, but do not by themselves establish NIS2, SOC 2, or EU AI Act conformity.')}</P>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 {[
                   { phase: '1', title: t('guide.phase1_title', 'ToolGate'), desc: t('guide.phase1_desc', 'Runtime tool enforcement engine'), color: 'text-red-400' },
@@ -653,7 +653,7 @@ export default function Guide() {
                   { phase: '3', title: t('guide.phase3_title', 'Prompt Injection'), desc: t('guide.phase3_desc', 'Untrusted content wrapping'), color: 'text-purple-400' },
                   { phase: '4', title: t('guide.phase4_title', 'Posture Push'), desc: t('guide.phase4_desc', 'Fleet-wide policy sync'), color: 'text-cyan-400' },
                   { phase: '5', title: t('guide.phase5_title', 'Fleet Audit'), desc: t('guide.phase5_desc', 'Multi-instance dashboards'), color: 'text-emerald-400' },
-                  { phase: '6', title: t('guide.phase6_title', 'Enterprise Identity'), desc: t('guide.phase6_desc', 'SPIFFE/OIDC/service accounts'), color: 'text-blue-400' },
+                  { phase: '6', title: t('guide.phase6_title', 'Enterprise Identity'), desc: t('guide.phase6_desc', 'Inactive configuration staging; authentication unavailable'), color: 'text-blue-400' },
                 ].map(p => (
                   <div key={p.phase} className="bg-gensui-800/60 border border-gensui-700/30 rounded-lg p-3">
                     <div className={`text-xs font-bold ${p.color}`}>{t('guide.phase_label', 'Phase')} {p.phase}: {p.title}</div>
@@ -666,7 +666,7 @@ export default function Guide() {
             {/* Phase 1: ToolGate */}
             <div className="glass-card p-5 space-y-4">
               <h3 className="text-lg font-bold text-gensui-100 flex items-center gap-2"><Lock size={18} className="text-red-400" /> {t('guide.security_toolgate', 'Phase 1: ToolGate — Runtime Tool Enforcement')}</h3>
-              <P>{t('guide.security_toolgate_full_desc', 'ToolGate is the core security enforcement engine in Shogun. Every tool call passes through ToolGate before execution. It evaluates the call against the active security posture and returns one of three verdicts: allow, confirm (human-in-the-loop), or block.')}</P>
+              <P>{t('guide.security_toolgate_full_desc', 'ToolGate evaluates instrumented Shogun tool-execution paths against the active security posture and returns allow, confirm (human-in-the-loop), or block. Custom plugins and execution paths require separate coverage verification.')}</P>
               <div className="space-y-3">
                 <div className="bg-gensui-800 border border-gensui-700 rounded-lg p-3">
                   <div className="text-xs font-bold text-gensui-200 mb-1">{t('guide.security_toolgate_eval', 'How ToolGate Evaluates a Call')}</div>
@@ -679,11 +679,11 @@ export default function Guide() {
                 </div>
                 <div className="bg-gensui-800 border border-gensui-700 rounded-lg p-3">
                   <div className="text-xs font-bold text-gensui-200 mb-1">{t('guide.security_toolgate_confirm', 'Confirmation Modal (Human-in-the-Loop)')}</div>
-                  <p className="text-[11px] text-gensui-400 leading-relaxed">{t('guide.security_toolgate_confirm_desc', 'When a tool override is set to confirm, Shogun pauses execution and presents a confirmation modal. The user must explicitly Approve or Deny before the tool executes. Denials are logged to the immutable audit chain.')}</p>
+                  <p className="text-[11px] text-gensui-400 leading-relaxed">{t('guide.security_toolgate_confirm_desc', 'When a tool override is set to confirm, Shogun pauses execution and presents a confirmation modal. The user must explicitly Approve or Deny before the tool executes. Instrumented denials are recorded in the append-only HMAC-chained audit log.')}</p>
                 </div>
                 <div className="bg-gensui-800 border border-gensui-700 rounded-lg p-3">
                   <div className="text-xs font-bold text-gensui-200 mb-1">{t('guide.security_toolgate_audit', 'Audit Logging')}</div>
-                  <p className="text-[11px] text-gensui-400 leading-relaxed">{t('guide.security_toolgate_audit_desc', 'Every ToolGate evaluation is logged with: tool name, arguments, verdict, matched rule/flag, posture name, and timestamp. All logs are written to the HMAC-chained immutable audit chain (Layer 2).')}</p>
+                  <p className="text-[11px] text-gensui-400 leading-relaxed">{t('guide.security_toolgate_audit_desc', 'Instrumented ToolGate evaluations record the tool name, arguments, verdict, matched rule or flag, posture name, and timestamp. Layer 2 is append-only through the application service and HMAC-chained so covered-field mismatches can be detected.')}</p>
                 </div>
               </div>
             </div>
@@ -707,13 +707,13 @@ export default function Guide() {
             {/* Phase 3: Prompt Injection */}
             <div className="glass-card p-5 space-y-4">
               <h3 className="text-lg font-bold text-gensui-100 flex items-center gap-2"><AlertTriangle size={18} className="text-purple-400" /> {t('guide.security_injection', 'Phase 3: Prompt Injection Containment')}</h3>
-              <P>{t('guide.security_injection_full_desc', 'External content (web scrapes, emails, API responses) can contain adversarial instructions designed to hijack the AI agent. Shogun\'s prompt injection containment automatically wraps all untrusted external content with boundary markers.')}</P>
+              <P>{t('guide.security_injection_full_desc', 'External content can contain adversarial instructions. Supported ingestion paths mark designated untrusted content with boundary metadata to help policy and model layers distinguish it; verify connector coverage because marking does not eliminate prompt-injection risk.')}</P>
             </div>
 
             {/* Phase 4: Posture Push */}
             <div className="glass-card p-5 space-y-4">
               <h3 className="text-lg font-bold text-gensui-100 flex items-center gap-2"><Zap size={18} className="text-cyan-400" /> {t('guide.security_posture_push', 'Phase 4: Gensui → Shogun Posture Push')}</h3>
-              <P>{t('guide.security_posture_push_full_desc', 'When a Gensui administrator modifies a security posture, the updated configuration is pushed to all connected Shogun instances via the heartbeat protocol. This ensures fleet-wide policy consistency.')}</P>
+              <P>{t('guide.security_posture_push_full_desc', 'Gensui can deliver updated posture configuration to connected Shogun instances through heartbeat responses. Offline, disconnected, failed, or delayed instances may retain a cached posture; verify acknowledgement and effective state before relying on fleet consistency.')}</P>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="bg-gensui-800 border border-gensui-700 rounded-lg p-3 space-y-1">
                   <div className="text-xs font-bold text-gensui-200">{t('guide.security_posture_push_mechanism', 'Push Mechanism')}</div>
@@ -729,33 +729,34 @@ export default function Guide() {
             {/* Phase 5: Fleet Audit */}
             <div className="glass-card p-5 space-y-4">
               <h3 className="text-lg font-bold text-gensui-100 flex items-center gap-2"><BarChart3 size={18} className="text-emerald-400" /> {t('guide.security_fleet_audit', 'Phase 5: Fleet Audit Views')}</h3>
-              <P>{t('guide.security_fleet_audit_full_desc', 'Multi-instance audit dashboard providing fleet-wide visibility into security events, compliance status, and HMAC chain integrity.')}</P>
+              <P>{t('guide.security_fleet_audit_full_desc', 'Multi-instance audit dashboard providing operator-visible security events, governance evidence, and chain-link checks. It does not determine regulatory or certification status.')}</P>
             </div>
 
             {/* Phase 6: Enterprise Identity */}
             <div className="glass-card p-5 space-y-4">
               <h3 className="text-lg font-bold text-gensui-100 flex items-center gap-2"><Key size={18} className="text-blue-400" /> {t('guide.security_enterprise_id', 'Phase 6: Enterprise Identity')}</h3>
-              <P>{t('guide.security_enterprise_id_full_desc', 'SPIFFE/SPIRE trust domains, Keycloak/OIDC SSO, and service accounts for M2M authentication.')}</P>
+              <P>{t('guide.security_enterprise_id_full_desc', 'Gensui stores reserved service-account and provider configuration, but does not accept service-account keys or implement OIDC, SAML, or SPIFFE authentication in this release.')}</P>
             </div>
 
-            {/* Immutable Audit Chain */}
+            {/* Append-only Audit Chain */}
             <div className="glass-card p-5 space-y-4">
-              <h3 className="text-lg font-bold text-gensui-100 flex items-center gap-2"><FileSearch size={18} className="text-gensui-400" /> {t('guide.security_immutable_chain', 'Immutable Audit Chain (HMAC-SHA256)')}</h3>
-              <P>{t('guide.security_immutable_chain_full_desc', 'All security events are dual-written: Layer 1 (operational SQLite, 90-day retention) for fast queries, and Layer 2 (immutable HMAC-chained SQLite, 7-year retention) for compliance. Layer 2 is append-only — no updates, no deletes. Each record\'s HMAC is derived from its content + the previous record\'s HMAC, creating a tamper-evident chain.')}</P>
+              <h3 className="text-lg font-bold text-gensui-100 flex items-center gap-2"><FileSearch size={18} className="text-gensui-400" /> {t('guide.security_immutable_chain', 'Append-only HMAC Audit Chain (HMAC-SHA256)')}</h3>
+              <P>{t('guide.security_immutable_chain_full_desc', 'Instrumented security events are dual-written to an operational store and a separate HMAC-chained store. The application service exposes append operations rather than update or delete operations; administrators with host or database access must still protect the underlying storage. Chain checks can reveal covered-field or link mismatches, but do not prove that every event was captured or establish compliance.')}</P>
             </div>
 
             {/* Security Postures Detail */}
             <div className="glass-card p-5 space-y-4">
               <h3 className="text-lg font-bold text-gensui-100 flex items-center gap-2"><Shield size={18} className="text-amber-400" /> {t('guide.security_postures_detail', 'Security Postures')}</h3>
-              <P>{t('guide.security_postures_detail_full_desc', 'Security postures define the complete permission profile for a Shogun instance. Each posture contains 14 boolean permission flags, a severity level (0–100), and optional per-tool overrides.')}</P>
+              <P>{t('guide.security_postures_detail_full_desc', 'Security postures configure 14 instrumented Shogun capability flags, a severity level, and optional per-tool overrides. They are not a complete host, network, or custom-plugin security boundary; verify coverage for every deployed execution path.')}</P>
               <div className="bg-gensui-800 border border-gensui-700 rounded-lg p-3">
                 <div className="text-xs font-bold text-gensui-200 mb-2">{t('guide.security_posture_levels', 'Built-in Posture Levels')}</div>
                 <div className="space-y-1 text-[11px] text-gensui-400">
-                  <div className="flex justify-between"><span className="text-emerald-400 font-bold">PERMISSIVE (L5)</span><span>{t('guide.posture_permissive', 'All flags enabled, no tool overrides')}</span></div>
-                  <div className="flex justify-between"><span className="text-cyan-400 font-bold">STANDARD (L10)</span><span>{t('guide.posture_standard', 'Default — all enabled, production-ready')}</span></div>
-                  <div className="flex justify-between"><span className="text-amber-400 font-bold">RESTRICTED (L50)</span><span>{t('guide.posture_restricted', 'External access disabled, controlled tools')}</span></div>
-                  <div className="flex justify-between"><span className="text-red-400 font-bold">LOCKDOWN (L90)</span><span>{t('guide.posture_lockdown', 'Most flags disabled, minimal operations')}</span></div>
-                  <div className="flex justify-between"><span className="text-red-500 font-bold">PARANOID (L100)</span><span>{t('guide.posture_paranoid', 'Maximum restriction, audit everything')}</span></div>
+                  <div className="flex justify-between"><span className="text-emerald-400 font-bold">OPEN (L0)</span><span>{t('guide.posture_open', 'All 14 instrumented flags enabled; intended for trusted local development')}</span></div>
+                  <div className="flex justify-between"><span className="text-sky-400 font-bold">OBSERVE_ONLY (L5)</span><span>{t('guide.posture_observe_only', 'Same enabled flags while Gensui monitors; not an enforcement guarantee')}</span></div>
+                  <div className="flex justify-between"><span className="text-cyan-400 font-bold">STANDARD (L10)</span><span>{t('guide.posture_standard', 'Default operational configuration; validate it for the deployed use case')}</span></div>
+                  <div className="flex justify-between"><span className="text-amber-400 font-bold">RESTRICTED (L30)</span><span>{t('guide.posture_restricted', 'Blocks Mado, autonomous scheduling, external web/API, and file writes; external models, tools, and Nexus remain enabled')}</span></div>
+                  <div className="flex justify-between"><span className="text-violet-400 font-bold">LOCAL_ONLY (L40)</span><span>{t('guide.posture_local_only', 'Blocks external models, web, and APIs while retaining configured local-model and local-tool paths')}</span></div>
+                  <div className="flex justify-between"><span className="text-red-400 font-bold">LOCKDOWN (L90)</span><span>{t('guide.posture_lockdown', 'Disables most instrumented capabilities; memory read and policy/heartbeat operations remain')}</span></div>
                 </div>
               </div>
             </div>

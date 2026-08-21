@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -310,26 +311,54 @@ async def enable_desktop_control(body: dict[str, Any]):
     posture = await _get_agent_posture()
     if posture.get("active_tier") != "ronin":
         raise HTTPException(status_code=403, detail="Ronin Desktop Control is only available in Ronin posture")
+    if posture.get("kill_switch_active", False):
+        raise HTTPException(
+            status_code=409,
+            detail="The global kill switch is active. Reset it through the dedicated recovery control first.",
+        )
     if body.get("confirmation") != "ENABLE RONIN DESKTOP CONTROL":
         raise HTTPException(status_code=400, detail="Explicit warning confirmation is required")
 
-    bool_fields = (
+    configurable_bool_fields = (
         "ronin_screenshots_enabled",
         "ronin_mouse_enabled",
         "ronin_keyboard_enabled",
         "ronin_window_management_enabled",
         "ronin_native_apps_enabled",
+    )
+    for field in configurable_bool_fields:
+        if field in body and type(body[field]) is not bool:
+            raise HTTPException(status_code=422, detail=f"'{field}' must be a boolean")
+    non_negotiable_true = (
         "ronin_require_verification",
         "ronin_require_high_risk_approval",
         "ronin_block_critical_actions",
         "ronin_visible_indicator",
     )
+    for field in non_negotiable_true:
+        if field in body and body[field] is not True:
+            raise HTTPException(status_code=422, detail=f"'{field}' cannot be weakened in Ronin posture")
+    if "ronin_max_sessions" in body and type(body["ronin_max_sessions"]) is not int:
+        raise HTTPException(status_code=422, detail="'ronin_max_sessions' must be an integer")
+    protected = body.get("ronin_protected_applications")
+    if protected is not None and (
+        not isinstance(protected, list) or not all(isinstance(item, str) for item in protected)
+    ):
+        raise HTTPException(status_code=422, detail="'ronin_protected_applications' must be a list of strings")
     posture.update(
         {
             "ronin_enabled": True,
             "ronin_posture": "desktop_full",
-            "ronin_max_sessions": max(1, int(body.get("ronin_max_sessions", 3))),
-            "kill_switch_active": False,
+            "ronin_max_sessions": max(1, min(body.get("ronin_max_sessions", 3), 10)),
+            "ronin_require_verification": True,
+            "ronin_require_high_risk_approval": True,
+            "ronin_block_critical_actions": True,
+            "ronin_visible_indicator": True,
+            "ronin_admin_escalation": False,
+            "ronin_credential_entry": "blocked",
+            "ronin_file_deletion": "approval_required",
+            "ronin_external_uploads": "approval_required",
+            "ronin_install_software": "approval_required",
         }
     )
     defaults = {
@@ -338,15 +367,13 @@ async def enable_desktop_control(body: dict[str, Any]):
         "ronin_keyboard_enabled": True,
         "ronin_window_management_enabled": True,
         "ronin_native_apps_enabled": True,
-        "ronin_require_verification": True,
-        "ronin_require_high_risk_approval": True,
-        "ronin_block_critical_actions": True,
-        "ronin_visible_indicator": True,
     }
-    for field in bool_fields:
-        posture[field] = bool(body.get(field, defaults[field]))
-    if isinstance(body.get("ronin_protected_applications"), list):
-        posture["ronin_protected_applications"] = [str(item) for item in body["ronin_protected_applications"]]
+    for field in configurable_bool_fields:
+        posture[field] = body.get(field, defaults[field])
+    if protected is not None:
+        posture["ronin_protected_applications"] = list(
+            dict.fromkeys([*posture.get("ronin_protected_applications", []), *protected])
+        )
     await _save_agent_posture(posture)
     try:
         from shogun.api.setup import _read_setup, _write_setup
@@ -564,7 +591,6 @@ async def desktop_wait_for_file(body: dict[str, Any]):
 async def desktop_kill_switch():
     from shogun.api.security import _get_agent_posture, _save_agent_posture
     from shogun.ronin.core.audit_logger import RoninAuditLogger
-    from shogun.ronin.core.komainu import stop_komainu
     from shogun.ronin.desktop.observation_service import get_observer
 
     posture = await _get_agent_posture()
@@ -582,7 +608,8 @@ async def desktop_kill_switch():
         _write_setup(setup)
     except Exception:
         pass
-    stop_komainu()
+    # Keep Komainu running: the guardian remains an additional safety layer
+    # while the persisted kill switch blocks new governed actions.
     get_observer().pause("Ronin Desktop kill switch activated")
     await RoninAuditLogger.log_action(
         event_type="ronin.desktop.kill_switch_triggered",
@@ -620,11 +647,15 @@ async def list_approvals():
 @router.post("/approvals/{approval_id}")
 async def respond_approval(approval_id: str, body: RoninApprovalRequest):
     """Approve or deny a pending action."""
-    from shogun.ronin.core.approval_gate import respond_to_approval
+    from shogun.ronin.core.approval_gate import get_approval_status, respond_to_approval
     from shogun.ronin.core.audit_logger import RoninAuditLogger
 
-    success = respond_to_approval(approval_id, body.decision, body.decided_by)
+    # The caller cannot choose its audit identity. This route is an operator
+    # control-plane action; infrastructure authentication is enforced upstream.
+    success = respond_to_approval(approval_id, body.decision, "operator")
     if not success:
+        if get_approval_status(approval_id) is not None:
+            raise HTTPException(status_code=409, detail=f"Approval request '{approval_id}' was already decided")
         raise HTTPException(status_code=404, detail=f"Approval request '{approval_id}' not found")
 
     await RoninAuditLogger.log_approval_response(
@@ -640,13 +671,13 @@ async def respond_approval(approval_id: str, body: RoninApprovalRequest):
 
 @router.post("/harakiri")
 async def ronin_harakiri():
-    """Emergency stop all Ronin activity."""
+    """Persist the Ronin kill switch, then cancel supported active work."""
     from shogun.ronin.core.approval_gate import cancel_all
     from shogun.ronin.core.audit_logger import RoninAuditLogger
-    from shogun.ronin.core.komainu import stop_komainu
 
-    # Stop Komainu
-    stop_komainu()
+    # Persist the fail-closed gate before attempting best-effort cancellation.
+    # If persistence fails, this endpoint fails instead of claiming safety.
+    await desktop_kill_switch()
 
     # Cancel all pending approvals
     cancel_all("harakiri")
@@ -665,7 +696,17 @@ async def ronin_harakiri():
 
     await RoninAuditLogger.log_harakiri("api_triggered")
 
-    return ApiResponse(success=True, data={"harakiri": True, "message": "All Ronin activity stopped"})
+    return ApiResponse(
+        success=True,
+        data={
+            "harakiri": True,
+            "kill_switch_active": True,
+            "message": (
+                "New governed Ronin actions are blocked; pending approvals were cancelled "
+                "and supported Ronin sessions were marked closed."
+            ),
+        },
+    )
 
 
 # ── Audit Trail ──────────────────────────────────────────────────────

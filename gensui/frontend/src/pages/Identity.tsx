@@ -14,6 +14,7 @@ interface ServiceAccount {
   rate_limit_rpm: number; is_active: boolean; expires_at: string | null;
   last_used_at: string | null; last_used_ip: string | null; usage_count: number;
   created_by: string | null; created_at: string | null;
+  authentication_available?: boolean; configuration_only?: boolean;
 }
 
 interface SSOProvider {
@@ -25,13 +26,14 @@ interface SSOProvider {
   auto_create_users: boolean; auto_activate_users: boolean;
   allowed_domains: string | null; is_active: boolean; is_primary: boolean;
   created_by: string | null; created_at: string | null;
+  authentication_available?: boolean; configuration_only?: boolean;
 }
 
 const ROLES = ['readonly', 'auditor', 'operator', 'admin'];
 const PROVIDER_TYPES = [
-  { value: 'oidc', label: 'OpenID Connect' },
-  { value: 'saml', label: 'SAML 2.0' },
-  { value: 'spiffe', label: 'SPIFFE/SPIRE' },
+  { value: 'oidc', label: 'OpenID Connect (stored configuration only)' },
+  { value: 'saml', label: 'SAML 2.0 (not implemented)' },
+  { value: 'spiffe', label: 'SPIFFE/SPIRE (not implemented)' },
 ];
 
 export default function Identity() {
@@ -130,7 +132,7 @@ export default function Identity() {
   };
 
   const deleteSSO = async (id: string) => {
-    if (!confirm('Delete this SSO provider? Users will no longer be able to login via this provider.')) return;
+    if (!confirm('Delete this stored provider configuration? No login path currently uses it.')) return;
     try { await api.delete(`/identity/sso-providers/${id}`); load(); } catch (e) { console.error(e); }
   };
 
@@ -139,7 +141,14 @@ export default function Identity() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gensui-50">{t('identity.title', 'Enterprise Identity')}</h1>
-        <p className="text-sm text-gensui-400 mt-1">{t('identity.subtitle', 'Service accounts, API keys, and SSO/OIDC configuration')}</p>
+        <p className="text-sm text-gensui-400 mt-1">{t('identity.subtitle', 'Reserved identity configuration; service-account and SSO authentication are not available in this release')}</p>
+      </div>
+
+      <div className="glass-card p-4 border-l-4 border-l-amber-500 text-xs text-gensui-300 leading-relaxed">
+        <strong className="text-amber-400">Authentication unavailable:</strong>{' '}
+        This page can store reserved service-account and provider configuration, but Gensui APIs do not accept
+        service-account keys and no OIDC, SAML, or SPIFFE login verifier is implemented in this release. Do not rely
+        on these records for access control.
       </div>
 
       {/* Tabs */}
@@ -166,9 +175,9 @@ export default function Identity() {
       {newKey && (
         <div className="glass-card p-4 border-l-4 border-l-amber-500 space-y-2">
           <div className="flex items-center gap-2 text-amber-400 text-sm font-bold">
-            <Key size={16} /> API Key Generated — Copy Now!
+            <Key size={16} /> Reserved Credential Generated — Not Accepted by Gensui APIs
           </div>
-          <p className="text-xs text-gensui-400">This key will only be shown once. Store it securely.</p>
+          <p className="text-xs text-gensui-400">This value is shown once for configuration staging. It does not authenticate any Gensui API endpoint in this release.</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 bg-gensui-900 border border-gensui-700 rounded px-3 py-2 text-xs text-gensui-200 font-mono">
               {showKey ? newKey : '•'.repeat(newKey.length)}
@@ -197,7 +206,7 @@ export default function Identity() {
             <div className="space-y-4">
               <div className="flex justify-end">
                 <button onClick={() => setShowCreate(!showCreate)} className="gensui-btn-primary flex items-center gap-2 text-xs">
-                  <Plus size={14} /> Create Service Account
+                  <Plus size={14} /> Create Reserved Credential Record
                 </button>
               </div>
 
@@ -255,7 +264,7 @@ export default function Identity() {
                         </td>
                         <td>
                           {sa.is_active
-                            ? <span className="flex items-center gap-1 text-xs text-emerald-400"><CheckCircle size={12} /> Active</span>
+                            ? <span className="flex items-center gap-1 text-xs text-amber-400"><XCircle size={12} /> Stored — auth unavailable</span>
                             : <span className="flex items-center gap-1 text-xs text-red-400"><XCircle size={12} /> Revoked</span>
                           }
                         </td>
@@ -291,14 +300,14 @@ export default function Identity() {
             <div className="space-y-4">
               <div className="flex justify-end">
                 <button onClick={() => setShowSSOCreate(!showSSOCreate)} className="gensui-btn-primary flex items-center gap-2 text-xs">
-                  <Plus size={14} /> Add SSO Provider
+                  <Plus size={14} /> Store Provider Configuration
                 </button>
               </div>
 
               {/* Create SSO Form */}
               {showSSOCreate && (
                 <div className="glass-card p-5 space-y-4 border-l-4 border-l-purple-500">
-                  <h3 className="text-sm font-bold text-gensui-100">New SSO/OIDC Provider</h3>
+                  <h3 className="text-sm font-bold text-gensui-100">Store Inactive SSO/OIDC Configuration</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs text-gensui-400 block mb-1">Provider Name</label>
@@ -334,17 +343,17 @@ export default function Identity() {
                     </div>
                     <div className="flex items-end gap-4">
                       <label className="flex items-center gap-2 text-xs text-gensui-300 cursor-pointer">
-                        <input type="checkbox" checked={ssoAutoCreate} onChange={e => setSsoAutoCreate(e.target.checked)} className="rounded" />
-                        Auto-create users
+                        <input type="checkbox" checked={false} disabled className="rounded" />
+                        Auto-create users (unavailable)
                       </label>
                       <label className="flex items-center gap-2 text-xs text-gensui-300 cursor-pointer">
-                        <input type="checkbox" checked={ssoPrimary} onChange={e => setSsoPrimary(e.target.checked)} className="rounded" />
-                        Primary (login page)
+                        <input type="checkbox" checked={false} disabled className="rounded" />
+                        Primary login (unavailable)
                       </label>
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={createSSO} disabled={!ssoName} className="gensui-btn-primary text-xs">Create Provider</button>
+                    <button onClick={createSSO} disabled={!ssoName} className="gensui-btn-primary text-xs">Store Inactive Configuration</button>
                     <button onClick={() => setShowSSOCreate(false)} className="gensui-btn-secondary text-xs">Cancel</button>
                   </div>
                 </div>
@@ -362,6 +371,9 @@ export default function Identity() {
                             <h3 className="text-sm font-bold text-gensui-100">{p.name}</h3>
                             <span className="text-[10px] px-2 py-0.5 rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-400 uppercase">
                               {p.provider_type}
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400">
+                              AUTH UNAVAILABLE
                             </span>
                             {p.is_primary && (
                               <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400">
@@ -416,7 +428,7 @@ export default function Identity() {
                   <div className="glass-card p-8 text-center text-gensui-500">
                     <Globe size={32} className="mx-auto mb-3 opacity-30" />
                     <p className="text-sm">No SSO providers configured</p>
-                    <p className="text-xs mt-1">Add an OIDC provider (Keycloak, Auth0, Okta, Azure AD) to enable single sign-on.</p>
+                    <p className="text-xs mt-1">Provider configuration can be staged, but single sign-on is not implemented in this release.</p>
                   </div>
                 )}
               </div>

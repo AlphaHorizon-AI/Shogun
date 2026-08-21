@@ -25,11 +25,16 @@ from shogun.services.provider_credentials import (
 from shogun.services.ssrf_guard import SSRFValidationError, validate_outbound_url
 
 
-def _request(path: str, host: str, headers: list[tuple[bytes, bytes]] | None = None) -> Request:
+def _request(
+    path: str,
+    host: str,
+    headers: list[tuple[bytes, bytes]] | None = None,
+    method: str = "GET",
+) -> Request:
     return Request({
         "type": "http",
         "http_version": "1.1",
-        "method": "GET",
+        "method": method,
         "scheme": "http",
         "path": path,
         "raw_path": path.encode(),
@@ -101,6 +106,37 @@ async def test_server_control_plane_requires_configured_admin_token(monkeypatch)
     )
     assert denied.status_code == 401
     assert accepted.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_only_exact_release_identity_path_is_public_in_updates_api(monkeypatch):
+    monkeypatch.setattr(settings, "deployment_mode", "server")
+    monkeypatch.setattr(settings, "infrastructure_admin_token", "correct-secret")
+
+    async def allowed(_request):
+        return Response(status_code=204)
+
+    version = await enforce_control_plane_access(
+        _request("/api/v1/updates/version", "192.168.1.20"),
+        allowed,
+    )
+    trailing_slash = await enforce_control_plane_access(
+        _request("/api/v1/updates/version/", "192.168.1.20"),
+        allowed,
+    )
+    apply_update = await enforce_control_plane_access(
+        _request("/api/v1/updates/apply", "192.168.1.20"),
+        allowed,
+    )
+    version_post = await enforce_control_plane_access(
+        _request("/api/v1/updates/version", "192.168.1.20", method="POST"),
+        allowed,
+    )
+
+    assert version.status_code == 204
+    assert trailing_slash.status_code == 401
+    assert apply_update.status_code == 401
+    assert version_post.status_code == 401
 
 
 def test_model_provider_response_redacts_nested_credentials():

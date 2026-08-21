@@ -1,10 +1,11 @@
-"""Execution event ORM model — NIS2/SOC2 + EU AI Act audit log.
+"""Execution-event ORM model for governance and investigation records.
 
 Every event captures WHO did WHAT, WHEN, WHY, WITH WHAT PERMISSIONS,
 USING WHICH MODEL, ON WHICH DATA, WITH WHICH RESULT.
 
-EU AI Act extension adds: decision provenance, confidence tracking,
-use-case context, governance flags, and human oversight records.
+Optional governance fields capture decision provenance, confidence tracking,
+use-case context, governance flags, and human-oversight records. Their presence
+does not establish regulatory conformity or record completeness.
 """
 
 from __future__ import annotations
@@ -19,11 +20,12 @@ from shogun.db.base import Base, GUID, JSONType, UUIDMixin
 
 
 class ExecutionEvent(Base, UUIDMixin):
-    """NIS2/SOC2-compliant event record.
+    """Operational event record that can support governance assessments.
 
     Two-layer design:
-      Layer 1 (this table): Operational logs — fast, searchable, 90-day retention
-      Layer 2 (immutable_audit.db): Tamper-resistant, HMAC-chained, 7-year retention
+      Layer 1 (this table): Operational logs — fast and searchable
+      Layer 2 (immutable_audit.db): HMAC-chained and append-only through the
+      application service; retention is managed by the deploying organisation
     """
 
     __tablename__ = "execution_events"

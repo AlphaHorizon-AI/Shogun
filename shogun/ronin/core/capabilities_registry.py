@@ -15,7 +15,9 @@ from typing import Any
 from shogun.ronin.policies.ronin_policy_schema import (
     AppTrustLevel,
     RiskLevel,
+    RoninAction,
     RoninCapability,
+    RoninPermissionGate,
     RoninPostureLevel,
 )
 
@@ -66,50 +68,56 @@ _BUILTIN_CAPABILITIES: list[dict[str, Any]] = [
     {
         "name": "desktop.click",
         "category": "desktop",
-        "risk_level": "low",
+        "risk_level": "high",
         "description": "Click at a position or on a located element",
         "posture_minimum": "desktop_limited",
         "app_trust_minimum": "restricted",
+        "requires_approval": True,
     },
     {
         "name": "desktop.double_click",
         "category": "desktop",
-        "risk_level": "low",
+        "risk_level": "high",
         "description": "Double-click at a position or on a located element",
         "posture_minimum": "desktop_limited",
         "app_trust_minimum": "restricted",
+        "requires_approval": True,
     },
     {
         "name": "desktop.right_click",
         "category": "desktop",
-        "risk_level": "low",
+        "risk_level": "high",
         "description": "Right-click at a position",
         "posture_minimum": "desktop_limited",
         "app_trust_minimum": "restricted",
+        "requires_approval": True,
     },
     {
         "name": "desktop.type",
         "category": "desktop",
-        "risk_level": "medium",
+        "risk_level": "high",
         "description": "Type text using the keyboard",
         "posture_minimum": "desktop_limited",
         "app_trust_minimum": "restricted",
+        "requires_approval": True,
     },
     {
         "name": "desktop.hotkey",
         "category": "desktop",
-        "risk_level": "medium",
+        "risk_level": "high",
         "description": "Press a keyboard shortcut (e.g. Ctrl+S, Alt+F4)",
         "posture_minimum": "desktop_limited",
         "app_trust_minimum": "restricted",
+        "requires_approval": True,
     },
     {
         "name": "desktop.drag",
         "category": "desktop",
-        "risk_level": "medium",
+        "risk_level": "high",
         "description": "Drag from one position to another",
         "posture_minimum": "desktop_limited",
         "app_trust_minimum": "restricted",
+        "requires_approval": True,
     },
     {
         "name": "desktop.scroll",
@@ -130,18 +138,20 @@ _BUILTIN_CAPABILITIES: list[dict[str, Any]] = [
     {
         "name": "desktop.key_down",
         "category": "desktop",
-        "risk_level": "medium",
+        "risk_level": "high",
         "description": "Hold a keyboard key",
         "posture_minimum": "desktop_full",
         "app_trust_minimum": "trusted",
+        "requires_approval": True,
     },
     {
         "name": "desktop.key_up",
         "category": "desktop",
-        "risk_level": "medium",
+        "risk_level": "high",
         "description": "Release a keyboard key",
         "posture_minimum": "desktop_full",
         "app_trust_minimum": "trusted",
+        "requires_approval": True,
     },
     # ── Browser ──
     {
@@ -301,6 +311,7 @@ def _seed_builtins() -> None:
             posture_minimum=RoninPostureLevel(cap_data.get("posture_minimum", "desktop_limited")),
             app_trust_minimum=AppTrustLevel(cap_data.get("app_trust_minimum", "trusted")),
             requires_approval=cap_data.get("requires_approval", False),
+            permission_gates=cap_data.get("permission_gates", []),
             handler=cap_data.get("handler", ""),
             enabled=True,
         )
@@ -347,3 +358,122 @@ def classify_risk(action_type: str) -> RiskLevel:
         return cap.risk_level
     log.warning("Ronin: unknown action type '%s' — defaulting to HIGH risk", action_type)
     return RiskLevel.HIGH
+
+
+_CREDENTIAL_CONTEXT_MARKERS = (
+    "credential",
+    "password",
+    "passcode",
+    "private key",
+    "recovery phrase",
+    "seed phrase",
+)
+_INSTALL_LAUNCH_MARKERS = (
+    "install",
+    "installer",
+    "msiexec",
+    "setup.exe",
+    "setup.msi",
+    "winget ",
+    "choco ",
+    "brew install",
+    "apt install",
+    "apt-get install",
+    "dnf install",
+    "yum install",
+    "pip install",
+    "npm install",
+)
+_ADMIN_LAUNCH_MARKERS = (
+    "runas",
+    "run as administrator",
+    "-verb runas",
+    "sudo ",
+    "pkexec",
+    "elevat",
+)
+
+
+def resolve_permission_gates(action: RoninAction) -> tuple[RoninPermissionGate, ...]:
+    """Resolve only the permission gates whose semantics apply to ``action``.
+
+    Registered capability declarations are authoritative. Conservative action
+    name and intent checks cover generic desktop/OS primitives so a caller
+    cannot bypass a gate merely by using ``desktop.click`` or ``os.app_launch``.
+    The resolver never trusts caller metadata to *remove* a declared gate.
+    """
+    capability = _registry.get(action.action_type)
+    gates = set(capability.permission_gates if capability else ())
+
+    action_type = action.action_type.casefold().replace("-", "_")
+    suffix = action_type.rsplit(".", 1)[-1]
+    context_values = [action.target, action.value, action.reason]
+    context_values.extend(
+        action.metadata.get(key)
+        for key in (
+            "arguments",
+            "expected_window",
+            "field_name",
+            "operation",
+            "selector",
+            "semantic_intent",
+            "verb",
+        )
+    )
+    context = " ".join(str(value) for value in context_values if value is not None).casefold()
+
+    if suffix in {"delete", "delete_file", "remove_file", "unlink", "rmtree"} or any(
+        marker in action_type for marker in ("file_deletion", "file.delete", "filesystem.delete")
+    ):
+        gates.add(RoninPermissionGate.FILE_DELETION)
+    if suffix in {"upload", "external_upload", "upload_file"} or any(
+        marker in action_type for marker in ("external_upload", "file.upload", "network.upload")
+    ):
+        gates.add(RoninPermissionGate.EXTERNAL_UPLOADS)
+    if suffix in {"install", "install_software", "package_install"} or "software.install" in action_type:
+        gates.add(RoninPermissionGate.INSTALL_SOFTWARE)
+    if suffix in {"elevate", "admin_escalation", "run_as_admin"} or any(
+        marker in action_type for marker in ("admin.escal", "os.elevat")
+    ):
+        gates.add(RoninPermissionGate.ADMIN_ESCALATION)
+    if suffix in {"enter_credentials", "credential_entry"} or any(
+        marker in action_type for marker in ("credential.enter", "credentials.enter")
+    ):
+        gates.add(RoninPermissionGate.CREDENTIAL_ENTRY)
+
+    if action_type in {"desktop.type", "browser.type"} and any(
+        marker in context for marker in _CREDENTIAL_CONTEXT_MARKERS
+    ):
+        gates.add(RoninPermissionGate.CREDENTIAL_ENTRY)
+
+    if action_type.startswith("desktop."):
+        if "delete" in context and any(marker in context for marker in ("file", "folder", "document")):
+            gates.add(RoninPermissionGate.FILE_DELETION)
+        if "upload" in context:
+            gates.add(RoninPermissionGate.EXTERNAL_UPLOADS)
+        if any(marker in context for marker in ("install", "installer", "setup wizard")):
+            gates.add(RoninPermissionGate.INSTALL_SOFTWARE)
+        if any(marker in context for marker in _ADMIN_LAUNCH_MARKERS):
+            gates.add(RoninPermissionGate.ADMIN_ESCALATION)
+        if action_type in {"desktop.hotkey", "desktop.key_down", "desktop.key_up"}:
+            normalized_keys = context.replace(" ", "").replace("-", "+")
+            if "shift+delete" in normalized_keys or (
+                "delete" in normalized_keys and any(marker in context for marker in ("file", "folder", "document"))
+            ):
+                gates.add(RoninPermissionGate.FILE_DELETION)
+
+    if action_type == "os.app_launch":
+        launch_context = " ".join(
+            str(value)
+            for value in (action.target, action.value, action.metadata.get("arguments"))
+            if value is not None
+        ).casefold()
+        if any(marker in launch_context for marker in _INSTALL_LAUNCH_MARKERS):
+            gates.add(RoninPermissionGate.INSTALL_SOFTWARE)
+        if any(marker in launch_context for marker in _ADMIN_LAUNCH_MARKERS) or any(
+            action.metadata.get(key) is True
+            for key in ("elevated", "require_admin", "run_as_admin")
+        ):
+            gates.add(RoninPermissionGate.ADMIN_ESCALATION)
+
+    return tuple(sorted(gates, key=lambda gate: gate.value))

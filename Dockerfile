@@ -9,11 +9,14 @@ RUN npm run build
 
 FROM python:3.12-slim AS runtime
 
+ARG VCS_REF=unknown
+
 LABEL org.opencontainers.image.title="Shogun AFM"
 LABEL org.opencontainers.image.description="Shogun and The Tenshu production server"
 LABEL org.opencontainers.image.vendor="Alpha Horizon"
 LABEL org.opencontainers.image.authors="Michael Peric / Alpha Horizon"
 LABEL org.opencontainers.image.source="https://github.com/AlphaHorizon-AI/Shogun"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.url="https://www.alphahorizon.io/shogun/"
 LABEL org.opencontainers.image.licenses="Shogun AFM Free Use License"
 
@@ -27,6 +30,7 @@ ENV PYTHONUNBUFFERED=1 \
     SHOGUN_PRODUCT="Shogun AFM" \
     SHOGUN_DISTRIBUTION_CHANNEL=official_docker \
     SHOGUN_SOURCE_REPOSITORY=https://github.com/AlphaHorizon-AI/Shogun
+ENV SHOGUN_GIT_SHA=${VCS_REF}
 
 WORKDIR /app
 

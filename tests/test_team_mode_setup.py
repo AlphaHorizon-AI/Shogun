@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -19,6 +21,7 @@ from shogun.services.telegram_poller import _effective_telegram_config
 
 def team_payload() -> SetupCompletePayload:
     return SetupCompletePayload(
+        security_incident_acknowledged=True,
         operator_name="Michael",
         installation_mode="team",
         team_members=[
@@ -40,12 +43,14 @@ def team_payload() -> SetupCompletePayload:
 def test_team_mode_requires_one_admin_and_channel_identity():
     with pytest.raises(ValidationError, match="at least one Team Member"):
         SetupCompletePayload(
+            security_incident_acknowledged=True,
             installation_mode="team",
             team_members=[TeamMemberSetup(display_name="Admin", is_primary=True, channel="web")],
         )
 
     with pytest.raises(ValidationError, match="Telegram user ID"):
         SetupCompletePayload(
+            security_incident_acknowledged=True,
             installation_mode="team",
             team_members=[
                 TeamMemberSetup(display_name="Admin", is_primary=True, channel="web"),
@@ -86,6 +91,14 @@ async def test_team_setup_persists_members_and_pinned_memories(tmp_path, monkeyp
         assert len(memories) == 3
         assert all(memory.is_pinned and memory.memory_type == "persona" for memory in memories)
         assert saved_setup["installation_mode"] == "team"
+        acknowledgement = saved_setup["security_incident_acknowledgement"]
+        assert acknowledgement["record_version"] == 1
+        assert acknowledgement["acknowledged_by_role"] == "primary_admin"
+        assert acknowledgement["installed_version"]
+        assert acknowledgement["installed_build"] is not None
+        assert acknowledgement["installed_release_identifier"]
+        assert "security and incident reporting information" in acknowledgement["statement"]
+        assert datetime.fromisoformat(acknowledgement["acknowledged_at"]).tzinfo is not None
 
         alice = await resolve_channel_member(session, channel="telegram", external_user_id="1001")
         bob = await resolve_channel_member(

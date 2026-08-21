@@ -4,6 +4,7 @@
 # ═══════════════════════════════════════════════════════════════
 
 set -e
+umask 077
 
 # Ensure we run from the script's own directory
 cd "$(dirname "$0")"
@@ -78,6 +79,10 @@ if [ -z "$PYTHON_CMD" ]; then
     fi
     exit 1
 fi
+if ! "$PYTHON_CMD" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
+    echo -e "${RED}  ERROR: Python 3.10 or newer is required.${NC}"
+    exit 1
+fi
 
 PY_VER=$($PYTHON_CMD --version 2>&1)
 echo -e "       Found ${GREEN}${PY_VER}${NC}"
@@ -93,6 +98,10 @@ if ! command -v node &>/dev/null; then
         echo "  Install via: sudo apt install nodejs npm"
         echo "  Or use nvm: https://github.com/nvm-sh/nvm"
     fi
+    exit 1
+fi
+if ! node -e "const [major,minor]=process.versions.node.split('.').map(Number); process.exit((major>22||major===22&&minor>=12)&&major<25?0:1)"; then
+    echo -e "${RED}  ERROR: Node.js 22.12 or newer, but lower than 25, is required.${NC}"
     exit 1
 fi
 
@@ -117,6 +126,16 @@ echo -e "${GOLD}[4/8]${NC} Installing Python dependencies..."
 pip install ".[office]" --quiet --disable-pip-version-check
 echo -e "       ${GREEN}Python dependencies installed.${NC}"
 
+# Create/repair .env atomically before any application command imports settings.
+# The helper never prints secret values; the installer also suppresses its status.
+$PYTHON_CMD -m shogun.environment_bootstrap --root "$(pwd)" >/dev/null
+chmod 600 .env
+if ! $PYTHON_CMD -c "import stat; from pathlib import Path; p=Path('.env'); raise SystemExit(0 if p.is_file() and stat.S_IMODE(p.stat().st_mode) == 0o600 else 1)"; then
+    echo -e "${RED}  ERROR: Could not protect the local environment file.${NC}"
+    exit 1
+fi
+echo -e "       ${GREEN}Protected local administrator credential created.${NC}"
+
 # Optional installation telemetry — separate from licence acceptance and off by default.
 if [ "$TELEMETRY_MODE" = "ask" ]; then
     echo ""
@@ -127,7 +146,7 @@ if [ "$TELEMETRY_MODE" = "ask" ]; then
     echo "  local paths, hostnames, or hardware identifiers."
     echo "  Exact schema: docs/telemetry.md"
     echo "  Privacy notice: https://www.alphahorizon.io/shogun/telemetry-privacy/"
-    read -r -p "  Share anonymous installation statistics? [y/N]: " TELEMETRY_CHOICE
+    read -r -p "  Share pseudonymous installation statistics? [y/N]: " TELEMETRY_CHOICE
     if [[ "$TELEMETRY_CHOICE" =~ ^[Yy]$ ]]; then
         TELEMETRY_MODE="on"
         TELEMETRY_NOTICE="1.0"
@@ -230,21 +249,7 @@ echo -e "${GREEN}  ║                                                          
 echo -e "${GREEN}  ╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# Wait for backend to be ready, then open browser (background)
-(
-    for i in $(seq 1 90); do
-        if curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/v1/health 2>/dev/null | grep -q '^200$'; then
-            if [ "$PLATFORM" = "macOS" ]; then
-                open "http://localhost:8000/setup" 2>/dev/null || true
-            else
-                xdg-open "http://localhost:8000/setup" 2>/dev/null || true
-            fi
-            exit 0
-        fi
-        sleep 1
-    done
-    echo "  Warning: Server did not respond in time. Open http://localhost:8000/setup manually."
-) &
-
-# Start the server (blocking)
+# The Python launcher adds the URL-encoded credential after '#'. The frontend
+# consumes and scrubs that fragment before its first API request.
+export SHOGUN_BROWSER_URL=http://localhost:8000/setup
 $PYTHON_CMD -m shogun

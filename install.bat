@@ -43,6 +43,13 @@ if %ERRORLEVEL% neq 0 (
     pause
     exit /b 1
 )
+python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo  ERROR: Python 3.10 or newer is required.
+    pause
+    exit /b 1
+)
 
 for /f "tokens=2 delims= " %%v in ('python --version 2^>^&1') do set PY_VER=%%v
 echo        Found Python %PY_VER%
@@ -53,8 +60,15 @@ node --version >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo.
     echo  ERROR: Node.js is not installed or not in PATH.
-    echo  Please install Node.js 18+ from https://nodejs.org
+    echo  Please install Node.js 22.12+ ^(but lower than 25^) from https://nodejs.org
     echo.
+    pause
+    exit /b 1
+)
+node -e "const [major,minor]=process.versions.node.split('.').map(Number); process.exit((major>22||major===22&&minor>=12)&&major<25?0:1)" >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo  ERROR: Node.js 22.12 or newer, but lower than 25, is required.
     pause
     exit /b 1
 )
@@ -95,6 +109,21 @@ if %ERRORLEVEL% neq 0 (
 )
 echo        Python dependencies installed.
 
+:: -- Step 4a: Create the protected local control-plane credential --
+:: The helper writes only to .env and never prints the generated secrets.
+python -m shogun.environment_bootstrap --root "%CD%" >nul 2>&1
+if errorlevel 1 (
+    echo  ERROR: Failed to create the protected local environment file.
+    pause
+    exit /b 1
+)
+if not exist ".env" (
+    echo  ERROR: The protected local environment file was not created.
+    pause
+    exit /b 1
+)
+echo        Protected local administrator credential created.
+
 :: -- Optional installation telemetry (unchecked/off by default) --
 if /I "%TELEMETRY_MODE%"=="ask" (
     echo.
@@ -105,7 +134,7 @@ if /I "%TELEMETRY_MODE%"=="ask" (
     echo  people, credentials, local paths, hostnames, or hardware IDs.
     echo  Exact schema: docs\telemetry.md
     echo  Privacy: https://www.alphahorizon.io/shogun/telemetry-privacy/
-    set /p "TELEMETRY_CHOICE= Share anonymous installation statistics? [y/N]: "
+    set /p "TELEMETRY_CHOICE= Share pseudonymous installation statistics? [y/N]: "
     if /I "!TELEMETRY_CHOICE!"=="y" (
         set "TELEMETRY_MODE=on"
         set "TELEMETRY_NOTICE=1.0"

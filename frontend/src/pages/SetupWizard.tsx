@@ -3,7 +3,8 @@ import {
   Globe, FolderOpen, User, Shield, Cpu, FileText, Zap, ChevronRight,
   ChevronLeft, Check, CheckCircle2, AlertCircle, Database, HardDrive,
   Settings, ScrollText, X, GripVertical, Loader2, Sparkles, Crosshair,
-  Monitor, Mouse, Keyboard, Camera, AlertTriangle, Users, UserPlus, Server
+  Monitor, Mouse, Keyboard, Camera, AlertTriangle, Users, UserPlus, Server,
+  ExternalLink, ShieldAlert, Mail
 } from 'lucide-react';
 import axios from 'axios';
 import { AVAILABLE_LANGUAGES, useTranslation } from '../i18n';
@@ -39,7 +40,7 @@ interface SetupWizardProps {
 
 // ── Constants ──────────────────────────────────────────────────
 
-const TOTAL_STEPS = 9;
+const TOTAL_STEPS = 10;
 
 const PROVIDER_CARDS = [
   { type: 'openai',     label: 'OpenAI',      icon: '⚡', color: '#10a37f' },
@@ -220,7 +221,10 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
   const [roninAcknowledged, setRoninAcknowledged] = useState(false);
   const [serverMode, setServerMode] = useState(false);
 
-  // Step 9: Completing
+  // Step 9: Security & Incident Reporting
+  const [securityIncidentAcknowledged, setSecurityIncidentAcknowledged] = useState(false);
+
+  // Step 10: Completing
   const [completing, setCompleting] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [completionError, setCompletionError] = useState<string | null>(null);
@@ -256,6 +260,10 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
       t(key),
     );
   };
+
+  const securityText = (key: string, fallback: string) => (
+    t(`setup.security_${key}`, fallback)
+  );
 
   const routingProfiles = ROUTING_PROFILES.map(item => ({
     ...item,
@@ -458,6 +466,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
         fallback_models: fallbackModels,
         routing_profile: routingProfile,
         ronin_enabled: roninEnabled,
+        security_incident_acknowledged: securityIncidentAcknowledged,
       });
 
       // Store language & operator in localStorage
@@ -1511,9 +1520,138 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
       }
 
       // ═══════════════════════════════════════════════════════════
-      // STEP 9: Complete Setup
+      // STEP 9: Security & Incident Reporting
       // ═══════════════════════════════════════════════════════════
-      case 9: {
+      case 9:
+        return (
+          <div className="space-y-6">
+            <div className="text-center">
+              <ShieldAlert className="w-12 h-12 text-red-400 mx-auto mb-4" />
+              <h2 className="text-3xl font-bold text-white">
+                {securityText('title', 'Security & Incident Reporting')}
+              </h2>
+              <p className="text-sm text-[#888] mt-2 max-w-2xl mx-auto">
+                {securityText('subtitle', 'Know how to report a suspected Shogun vulnerability and what to do if compromise may be active.')}
+              </p>
+            </div>
+
+            <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-[#0d1117] border border-[#3b82f6]/30 rounded-xl p-5 space-y-4">
+                <div>
+                  <h3 className="text-sm font-bold text-[#60a5fa] uppercase tracking-widest">
+                    {securityText('reporting_title', 'Security reporting')}
+                  </h3>
+                  <p className="text-xs text-[#aaa] mt-2 leading-relaxed">
+                    {securityText('reporting_body', 'Report suspected vulnerabilities affecting Shogun promptly. Choose the channel that matches the sensitivity of the report.')}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <a
+                    href="https://github.com/AlphaHorizon-AI/Shogun/issues/new"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between rounded-lg border border-[#2a2f3e] bg-[#050508] px-3 py-2.5 text-xs font-bold text-white hover:border-[#3b82f6]/60"
+                  >
+                    {securityText('public_issue', 'Public non-sensitive issue reporting')}
+                    <ExternalLink className="w-3.5 h-3.5 text-[#60a5fa]" />
+                  </a>
+                  <a
+                    href="https://github.com/AlphaHorizon-AI/Shogun/security/advisories/new"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2.5 text-xs font-bold text-red-200 hover:border-red-400/60"
+                  >
+                    {securityText('private_report', 'Private vulnerability reporting')}
+                    <Shield className="w-3.5 h-3.5 text-red-400" />
+                  </a>
+                  <a
+                    href="mailto:contact@alphahorizon.io?subject=Shogun%20Security%20Report"
+                    className="flex items-center justify-between rounded-lg border border-[#2a2f3e] bg-[#050508] px-3 py-2.5 text-xs font-bold text-white hover:border-[#d4a017]/60"
+                  >
+                    {securityText('contact', 'Security contact: contact@alphahorizon.io')}
+                    <Mail className="w-3.5 h-3.5 text-[#d4a017]" />
+                  </a>
+                </div>
+                <p className="text-[10px] text-[#777] leading-relaxed">
+                  {securityText('manual_submission', 'Shogun does not automatically upload reports, logs, prompts, customer data, credentials, or system information. Before manually attaching logs, inspect and redact sensitive information.')}
+                </p>
+              </div>
+
+              <div className="bg-red-500/5 border border-red-500/25 rounded-xl p-5 space-y-3">
+                <h3 className="text-sm font-bold text-red-300 uppercase tracking-widest flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  {securityText('sensitive_title', 'Do not publish sensitive information')}
+                </h3>
+                <p className="text-xs text-red-100/80 leading-relaxed">
+                  {securityText('sensitive_body', 'Never place exploit code, production credentials, access tokens, private keys, personal data, production customer data, or sensitive infrastructure information in a public GitHub Issue.')}
+                </p>
+                <p className="text-[10px] text-[#999] leading-relaxed">
+                  {securityText('email_warning', 'Email is a contact channel. Do not email credentials, production secrets, or highly sensitive customer data unless a suitable secure exchange method has first been established.')}
+                </p>
+              </div>
+            </div>
+
+            <div className="max-w-4xl mx-auto bg-orange-500/5 border border-orange-500/25 rounded-xl p-5">
+              <h3 className="text-sm font-bold text-orange-300 uppercase tracking-widest mb-3">
+                {securityText('compromise_title', 'If there may be an active compromise')}
+              </h3>
+              <ol className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-xs text-[#bbb] leading-relaxed list-decimal pl-5">
+                <li>{securityText('compromise_stop', 'Stop the affected workflow where appropriate.')}</li>
+                <li>{securityText('compromise_isolate', 'Isolate the affected Shogun instance from untrusted networks where appropriate.')}</li>
+                <li>{securityText('compromise_preserve', 'Preserve logs, audit records, and timestamps. Do not delete evidence.')}</li>
+                <li>{securityText('compromise_rotate', 'Rotate or revoke potentially exposed credentials from a trusted system.')}</li>
+                <li>{securityText('compromise_procedure', "Follow your organisation's own security incident procedures.")}</li>
+                <li>{securityText('compromise_report', 'Report suspected Shogun vulnerabilities through the appropriate security channel.')}</li>
+              </ol>
+            </div>
+
+            <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 text-xs leading-relaxed">
+              <div className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-4">
+                <h3 className="font-bold text-white mb-2">{securityText('boundary_title', 'Responsibility boundary')}</h3>
+                <p className="text-[#999]">
+                  {securityText('boundary_body', "Alpha Horizon assesses reports affecting official, unmodified Shogun releases. The deploying organisation operates its instance, infrastructure, integrations, credentials, permissions, data, and incident response. Alpha Horizon is not the deploying organisation's SOC or incident-response provider.")}
+                </p>
+              </div>
+              <div className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-4">
+                <h3 className="font-bold text-white mb-2">{securityText('regulatory_title', 'Regulatory escalation')}</h3>
+                <p className="text-[#999]">
+                  {securityText('regulatory_body', 'Alpha Horizon maintains a regulatory-escalation process where it has an applicable statutory obligation concerning an official Shogun release. Not every defect or reported vulnerability is automatically reportable to ENISA or another authority.')}
+                </p>
+              </div>
+            </div>
+
+            <div className="max-w-4xl mx-auto bg-[#d4a017]/5 border border-[#d4a017]/30 rounded-xl p-5 space-y-4">
+              <p className="text-[11px] text-[#aaa] leading-relaxed">
+                {securityText('post_install', 'After installation, the complete Incident Reporting guidance remains available from the persistent Incident Reporting item in the Shogun sidebar.')}
+              </p>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={securityIncidentAcknowledged}
+                  onChange={event => setSecurityIncidentAcknowledged(event.target.checked)}
+                  className="mt-1 accent-[#d4a017] w-4 h-4 shrink-0"
+                />
+                <div>
+                  <p className="text-sm font-bold text-white leading-relaxed">
+                    {securityText('acknowledgement', 'I acknowledge that I have been provided with the Shogun security and incident reporting information and know where to report suspected security vulnerabilities.')}
+                  </p>
+                  <p className="text-[10px] text-[#888] mt-1 leading-relaxed">
+                    {installationMode === 'team'
+                      ? securityText('team_record', 'The Primary Admin acknowledgement is sufficient for this Team Mode installation.')
+                      : securityText('single_record', 'This acknowledgement is made by the installer/administrator.')}
+                    {' '}
+                    {securityText('local_record', 'A UTC timestamp and the installed Shogun version/build are recorded locally only and are not sent to Alpha Horizon as telemetry.')}
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+        );
+
+      // ═══════════════════════════════════════════════════════════
+      // STEP 10: Complete Setup
+      // ═══════════════════════════════════════════════════════════
+      case 10: {
         if (completed) {
           return (
             <div className="flex flex-col items-center justify-center min-h-[400px] animate-in fade-in zoom-in duration-700">
@@ -1659,7 +1797,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
         </div>
 
         {/* Navigation */}
-        {step < 9 && step !== 8 && (
+        {step < TOTAL_STEPS && step !== 8 && (
           <div className="flex items-center justify-between mt-10 max-w-3xl mx-auto">
             <button
               onClick={goBack}
@@ -1678,7 +1816,10 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
             ) : null}
             <button
               onClick={goNext}
-              disabled={step === 1 && (!operatorName.trim() || !teamSetupValid)}
+              disabled={
+                (step === 1 && (!operatorName.trim() || !teamSetupValid))
+                || (step === 9 && !securityIncidentAcknowledged)
+              }
               className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[#3b82f6] hover:bg-[#3b82f6]/80 text-sm font-bold text-white shadow-lg shadow-[#3b82f6]/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
             >
               {t('setup.next')} <ChevronRight className="w-4 h-4" />

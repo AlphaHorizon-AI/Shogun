@@ -2036,9 +2036,10 @@ async def _exec_samurai(
             if not transformation_profile.get("model_fallback", False):
                 raise
             log.warning(
-                "Transformation profile %s failed closed validation; explicit model fallback is enabled: %s",
+                "Transformation profile %s failed closed validation; explicit model fallback is enabled "
+                "(error_type=%s)",
                 transformation_profile.get("id"),
-                deterministic_error,
+                type(deterministic_error).__name__,
             )
             # Once the operator opts into a model fallback, use the completely
             # generic extraction path. Profile-aware source splitting and row

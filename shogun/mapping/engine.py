@@ -71,10 +71,16 @@ def _json_from_text(text: str) -> Any:
     try:
         return json.loads(stripped)
     except json.JSONDecodeError:
-        fenced = re.search(r"```(?:json)?\s*([\s\S]*?)```", stripped, re.IGNORECASE)
-        if fenced:
+        fence_start = stripped.find("```")
+        fence_end = stripped.find("```", fence_start + 3) if fence_start >= 0 else -1
+        if fence_start >= 0 and fence_end > fence_start:
+            fenced_body = stripped[fence_start + 3:fence_end].strip()
+            if fenced_body[:4].casefold() == "json" and (
+                len(fenced_body) == 4 or fenced_body[4].isspace()
+            ):
+                fenced_body = fenced_body[4:].lstrip()
             try:
-                return json.loads(fenced.group(1).strip())
+                return json.loads(fenced_body)
             except json.JSONDecodeError:
                 pass
         decoder = json.JSONDecoder()

@@ -9,7 +9,7 @@ Do not expose the telemetry service until every item is independently verified:
 - reverse-proxy logs omit or irreversibly redact source IP addresses;
 - HMAC and identity-proxy secrets are stored in a managed secret store;
 - SSO named accounts, required Alpha Horizon group, MFA, and least privilege tested;
-- database backups, restore, purge, and the 24-hour deletion SLA tested;
+- database backups, restore, purge, deletion handling, and backup expiry tested;
 - security scans, fuzzing, replay, injection, flood, token, and privilege tests pass;
 - disabled-client packet capture shows zero connections to the telemetry domain.
 

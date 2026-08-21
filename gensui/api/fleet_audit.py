@@ -1,4 +1,4 @@
-"""Fleet Audit API — fleet-wide audit dashboard, analytics, compliance, and export."""
+"""Fleet Audit API — fleet-wide audit, analytics, governance evidence, and export."""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ async def compliance_report(
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_role("owner", "auditor")),
 ):
-    """Generate a NIS2/SOC2/EU AI Act compliance report."""
+    """Generate a governance-evidence summary; this does not establish conformity."""
     svc = FleetAuditService(db)
     return await svc.get_compliance_report()
 

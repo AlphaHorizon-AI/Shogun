@@ -1,9 +1,9 @@
-"""Fleet Audit Service — multi-instance audit analytics and compliance reporting.
+"""Fleet Audit Service — multi-instance analytics and governance evidence.
 
 Extends the base AuditService with fleet-wide views:
 - Per-member event breakdown
 - Category/severity/action statistics
-- Fleet compliance dashboard data
+- Fleet governance-evidence dashboard data
 - Audit chain verification per member
 - CSV export support
 """
@@ -25,7 +25,7 @@ from gensui.services.audit_service import AuditService
 
 
 class FleetAuditService:
-    """Fleet-wide audit analytics and compliance reporting."""
+    """Fleet-wide audit analytics and governance-evidence summaries."""
 
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -248,10 +248,14 @@ class FleetAuditService:
             "by_member": by_member,
         }
 
-    # ── Compliance Report ────────────────────────────────────
+    # ── Governance Evidence (legacy compliance endpoint) ─────
 
     async def get_compliance_report(self) -> dict:
-        """Generate a compliance-ready report for NIS2/SOC2/EU AI Act."""
+        """Summarize governance evidence relevant to selected frameworks.
+
+        The legacy endpoint name remains for API compatibility. Its output is
+        evidence for human assessment, not a compliance determination.
+        """
         now = datetime.now(timezone.utc)
         last_30d = now - timedelta(days=30)
 
@@ -313,6 +317,12 @@ class FleetAuditService:
         return {
             "report_generated_at": now.isoformat(),
             "period": "last_30_days",
+            "report_purpose": "governance_evidence",
+            "assessment_notice": (
+                "This summary can support a human NIS2, SOC 2, or EU AI Act "
+                "assessment. It does not establish conformity or prove that "
+                "every relevant event was captured."
+            ),
             "fleet": {
                 "total_members": total_members,
                 "active_members": active_members,

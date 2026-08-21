@@ -1,7 +1,9 @@
 """Mado Browser Service — Playwright-based browser automation engine.
 
-Provides secure, governed browser automation for Shogun agents and workflows.
-All actions are validated against Torii posture and emitted as audit events.
+Provides policy-governed browser automation for Shogun agents and workflows.
+Supported actions pass through the active Torii/ToolGate checks and attempt to
+emit audit events. Operators must still verify results and expected audit
+records; this service is not a complete browser or host-security boundary.
 
 Architecture:
     Shogun / Samurai → Torii Permission Layer → Mado → Playwright → Managed Chromium

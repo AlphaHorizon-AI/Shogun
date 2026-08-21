@@ -68,3 +68,29 @@ async def test_private_repository_error_requests_access_token(monkeypatch):
 
     assert await update_checker._fetch_remote_version() is None
     assert update_checker._last_fetch_error["auth_required"] is True
+
+
+@pytest.mark.asyncio
+async def test_structured_release_notes_are_bounded_and_malformed_values_are_ignored(monkeypatch):
+    async def remote():
+        return {
+            "version": "1.6.0",
+            "build": 36,
+            "security_changes": ["  safe note  ", 42, "", "x" * 700],
+            "breaking_changes": {"not": "a list"},
+        }
+
+    monkeypatch.setattr(
+        update_checker,
+        "_get_local_version",
+        lambda: {"version": "1.5.5", "build": 35},
+    )
+    monkeypatch.setattr(update_checker, "_fetch_remote_version", remote)
+    monkeypatch.setattr(update_checker, "update_token_configured", lambda: False)
+    update_checker._cached_result = None
+    update_checker._last_check = None
+
+    result = await update_checker.check_for_updates(force=True)
+
+    assert result["security_changes"] == ["safe note", "x" * 500]
+    assert result["breaking_changes"] == []

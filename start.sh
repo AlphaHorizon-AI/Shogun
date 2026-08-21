@@ -47,33 +47,15 @@ if [ ! -f "frontend/dist/index.html" ]; then
     echo -e "  ${GREEN}✅  Frontend built.${NC}"
 fi
 
-# Detect OS for browser open
-OS="$(uname -s)"
-
 echo -e "  ${GREEN}🌐  Shogun is starting at http://localhost:8000${NC}"
 echo "  📖  Your browser will open automatically."
 echo ""
 echo "  Press Ctrl+C to stop the server."
 echo ""
 
-# Wait for backend to be ready, then open browser (background)
-(
-    for i in $(seq 1 90); do
-        if curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/v1/health 2>/dev/null | grep -q '^200$'; then
-            if [ "$OS" = "Darwin" ]; then
-                open "http://localhost:8000" 2>/dev/null || true
-            else
-                xdg-open "http://localhost:8000" 2>/dev/null || true
-            fi
-            exit 0
-        fi
-        sleep 1
-    done
-    echo "  Warning: Server did not respond in time. Open http://localhost:8000 manually."
-) &
-
 # Start the server (blocking). A UI restart request leaves a marker that makes
 # this launcher supervise a clean stop/start cycle.
+export SHOGUN_BROWSER_URL=http://localhost:8000
 export SHOGUN_LAUNCHER_MANAGED=true
 while true; do
     set +e

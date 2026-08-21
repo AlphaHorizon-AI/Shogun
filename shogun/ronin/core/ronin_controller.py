@@ -9,13 +9,19 @@ Orchestrates the full action pipeline:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from typing import Any
 
 from shogun.ronin.core import app_trust_registry, capabilities_registry
 from shogun.ronin.core.action_router import route_action
-from shogun.ronin.core.approval_gate import request_approval
+from shogun.ronin.core.approval_gate import (
+    action_digest,
+    action_preview,
+    action_target_preview,
+    request_approval,
+)
 from shogun.ronin.core.audit_logger import RoninAuditLogger
 from shogun.ronin.core.environment_detector import detect_environment
 from shogun.ronin.core.komainu import (
@@ -25,6 +31,7 @@ from shogun.ronin.core.posture_guard import evaluate as evaluate_posture
 from shogun.ronin.policies.ronin_policy_schema import (
     AppTrustLevel,
     EnvironmentInfo,
+    PostureDecision,
     RoninAction,
     RoninActionStatus,
     RoninResult,
@@ -60,6 +67,136 @@ class RoninController:
             )
         return self._environment
 
+    async def _collect_security_context(
+        self,
+        action: RoninAction,
+    ) -> tuple[dict[str, Any], str | None, AppTrustLevel, dict[str, Any] | None]:
+        """Read the live policy and foreground context used for a decision."""
+        posture_permissions = await self._get_posture_permissions()
+        current_app: str | None = None
+        app_trust_level = AppTrustLevel.RESTRICTED
+        active_window: dict[str, Any] | None = None
+        if action.action_type.startswith(("desktop.", "os.")):
+            try:
+                from shogun.ronin.adapters.base_adapter import get_adapter
+
+                adapter = get_adapter()
+                if adapter:
+                    active_window = adapter.get_active_window()
+                    if action.action_type.startswith("desktop.") and action.action_type != "desktop.screenshot":
+                        foreground_process = adapter.get_foreground_process()
+                        if foreground_process:
+                            current_app = foreground_process
+                            app_trust_level = app_trust_registry.get_trust_level(foreground_process)
+            except Exception as exc:
+                log.debug("Ronin: foreground security context detection failed: %s", exc)
+        return posture_permissions, current_app, app_trust_level, active_window
+
+    def _evaluate_security_context(
+        self,
+        action: RoninAction,
+        capability: Any,
+        posture_permissions: dict[str, Any],
+        app_trust_level: AppTrustLevel,
+        active_window: dict[str, Any] | None,
+    ) -> tuple[PostureDecision, Any | None]:
+        """Combine desktop and posture decisions; any hard denial wins."""
+        desktop_decision = None
+        if action.action_type.startswith(("desktop.", "os.")):
+            from shogun.ronin.core.desktop_permission_engine import get_desktop_permission_engine
+
+            desktop_decision = get_desktop_permission_engine().evaluate(
+                action,
+                posture_permissions,
+                active_window=active_window,
+            )
+
+        permission_gates = capabilities_registry.resolve_permission_gates(action)
+        posture_decision = evaluate_posture(
+            action_type=action.action_type,
+            agent_id=action.agent_id,
+            current_posture=posture_permissions.get("ronin_posture", "disabled"),
+            posture_permissions=posture_permissions,
+            app_trust_level=app_trust_level,
+            environment_type=self._environment.environment_type if self._environment else None,
+            capability_posture_min=capability.posture_minimum.value,
+            capability_trust_min=capability.app_trust_minimum.value,
+            capability_risk=capability.risk_level.value,
+            capability_requires_approval=capability.requires_approval,
+            capability_permission_gates=permission_gates,
+        )
+        if desktop_decision and not desktop_decision.allowed and not desktop_decision.approval_required:
+            return (
+                PostureDecision(
+                    allowed=False,
+                    reason=desktop_decision.reason,
+                    risk_level=capability.risk_level,
+                ),
+                desktop_decision,
+            )
+        if not posture_decision.allowed and not posture_decision.approval_required:
+            return posture_decision, desktop_decision
+
+        approval_reasons = []
+        if desktop_decision and desktop_decision.approval_required:
+            approval_reasons.append(desktop_decision.reason)
+        if posture_decision.approval_required:
+            approval_reasons.append(posture_decision.reason)
+        if approval_reasons:
+            return (
+                PostureDecision(
+                    allowed=False,
+                    approval_required=True,
+                    reason=" ".join(dict.fromkeys(approval_reasons)),
+                    risk_level=capability.risk_level,
+                    app_trust=app_trust_level,
+                    environment=self._environment.environment_type if self._environment else None,
+                ),
+                desktop_decision,
+            )
+        return posture_decision, desktop_decision
+
+    @staticmethod
+    def _window_identity(active_window: dict[str, Any] | None) -> dict[str, Any]:
+        window = active_window or {}
+        identifiers = {
+            key: str(window[key])
+            for key in ("handle", "hwnd", "id", "window_id")
+            if window.get(key) not in (None, "")
+        }
+        return {
+            "process": str(window.get("process", "")),
+            "title": str(window.get("title", "")),
+            "stable_identifiers": identifiers,
+            "stable_identifier_available": bool(identifiers),
+        }
+
+    @staticmethod
+    def _security_snapshot(
+        *,
+        action: RoninAction,
+        capability: Any,
+        posture_permissions: dict[str, Any],
+        current_app: str | None,
+        app_trust_level: AppTrustLevel,
+        active_window: dict[str, Any] | None,
+    ) -> str:
+        """Bind an approval to the material policy and UI context it reviewed."""
+        relevant_posture = {
+            key: value
+            for key, value in posture_permissions.items()
+            if key.startswith("ronin_") or key in {"active_tier", "kill_switch_active"}
+        }
+        material = {
+            "action_digest": action_digest(action),
+            "capability": capability.model_dump(mode="json"),
+            "posture": relevant_posture,
+            "current_app": current_app,
+            "app_trust": app_trust_level.value,
+            "active_window": RoninController._window_identity(active_window),
+        }
+        return json.dumps(material, sort_keys=True, separators=(",", ":"), default=str)
+
     async def execute(self, action: RoninAction) -> RoninResult:
         """Execute a Ronin action through the full pipeline.
 
@@ -82,102 +219,64 @@ class RoninController:
 
         # ── 3. Capability lookup ─────────────────────────────────
         capability = capabilities_registry.get_capability(action_type)
-        cap_posture_min = capability.posture_minimum.value if capability else None
-        cap_trust_min = capability.app_trust_minimum.value if capability else None
-        cap_risk = (
-            capability.risk_level.value if capability else action.risk_level.value if action.risk_level else "high"
+        if capability is None or not capability.enabled:
+            reason = f"Unknown or disabled Ronin capability '{action_type}' was blocked."
+            log.warning("Ronin: %s", reason)
+            await RoninAuditLogger.log_action_blocked(
+                action_type=action_type,
+                reason=reason,
+                agent_id=action.agent_id,
+                session_id=action.session_id,
+                risk_level="critical",
+            )
+            return RoninResult(
+                status=RoninActionStatus.BLOCKED,
+                action_type=action_type,
+                error=reason,
+            )
+
+        # Caller-provided risk metadata never lowers the registered capability.
+        cap_risk = capability.risk_level.value
+        permission_gates = capabilities_registry.resolve_permission_gates(action)
+        safe_target = action_target_preview(action, permission_gates)
+        posture_permissions, current_app, app_trust_level, active_window = (
+            await self._collect_security_context(action)
         )
-        cap_requires_approval = capability.requires_approval if capability else False
 
-        if not capability:
-            log.warning("Ronin: unknown capability '%s' — applying HIGH risk defaults", action_type)
-
-        # ── 4. Get current foreground app and trust level ────────
-        app_trust_level = AppTrustLevel.RESTRICTED
-        current_app: str | None = None
-
-        # Only check foreground app for desktop actions
-        if action_type.startswith("desktop.") and action_type != "desktop.screenshot":
-            try:
-                from shogun.ronin.adapters.base_adapter import get_adapter
-
-                adapter = get_adapter()
-                if adapter:
-                    fg_process = adapter.get_foreground_process()
-                    if fg_process:
-                        current_app = fg_process
-                        app_trust_level = app_trust_registry.get_trust_level(fg_process)
-            except Exception as exc:
-                log.debug("Ronin: foreground app detection failed: %s", exc)
-
-        # ── 5. Get posture permissions ───────────────────────────
-        posture_permissions = await self._get_posture_permissions()
-
-        # The full desktop surface has an additional, non-bypassable Ronin-only
-        # permission gate. Browser actions remain governed by Mado.
         if action_type.startswith(("desktop.", "os.")):
-            from shogun.ronin.core.desktop_permission_engine import get_desktop_permission_engine
-            from shogun.ronin.desktop.observation_service import get_observer
-
-            active_window = None
-            try:
-                from shogun.ronin.adapters.base_adapter import get_adapter
-
-                adapter = get_adapter()
-                active_window = adapter.get_active_window() if adapter else None
-            except Exception:
-                pass
             await RoninAuditLogger.log_action(
                 event_type="ronin.desktop.action_requested",
                 action=f"Desktop action requested: {action_type}",
                 agent_id=action.agent_id,
                 session_id=action.session_id,
                 action_type=action_type,
-                target=action.target,
+                target=safe_target,
                 risk_level=cap_risk,
                 detail={
                     "posture": posture_permissions.get("active_tier"),
                     "stack_run_id": action.metadata.get("stack_run_id"),
                 },
             )
-            desktop_decision = get_desktop_permission_engine().evaluate(
-                action, posture_permissions, active_window=active_window
-            )
-            if not desktop_decision.allowed and not desktop_decision.approval_required:
-                get_observer().record(
-                    "ronin.desktop.action_blocked",
-                    desktop_decision.reason,
-                    action_type=action_type,
-                )
-                await RoninAuditLogger.log_action_blocked(
-                    action_type=action_type,
-                    reason=desktop_decision.reason,
-                    agent_id=action.agent_id,
-                    session_id=action.session_id,
-                    risk_level=desktop_decision.risk_tier,
-                )
-                return RoninResult(
-                    status=RoninActionStatus.BLOCKED,
-                    action_type=action_type,
-                    error=desktop_decision.reason,
-                )
 
-        # ── 6. Posture guard evaluation ──────────────────────────
-        decision = evaluate_posture(
-            action_type=action_type,
-            agent_id=action.agent_id,
-            current_posture=posture_permissions.get("ronin_posture", "disabled"),
-            posture_permissions=posture_permissions,
-            app_trust_level=app_trust_level,
-            environment_type=self._environment.environment_type if self._environment else None,
-            capability_posture_min=cap_posture_min,
-            capability_trust_min=cap_trust_min,
-            capability_risk=cap_risk,
-            capability_requires_approval=cap_requires_approval,
+        # ── 4. Combine desktop and posture decisions ─────────────
+        decision, _desktop_decision = self._evaluate_security_context(
+            action,
+            capability,
+            posture_permissions,
+            app_trust_level,
+            active_window,
         )
 
-        # ── 7. Handle blocked / approval-required ────────────────
+        # ── 5. Handle blocked / approval-required ────────────────
         if not decision.allowed and not decision.approval_required:
+            if action_type.startswith(("desktop.", "os.")):
+                from shogun.ronin.desktop.observation_service import get_observer
+
+                get_observer().record(
+                    "ronin.desktop.action_blocked",
+                    decision.reason,
+                    action_type=action_type,
+                )
             await RoninAuditLogger.log_action_blocked(
                 action_type=action_type,
                 reason=decision.reason,
@@ -198,8 +297,17 @@ class RoninController:
                 error=decision.reason,
             )
 
+        initial_action_digest = action_digest(action)
+        approval_snapshot = self._security_snapshot(
+            action=action,
+            capability=capability,
+            posture_permissions=posture_permissions,
+            current_app=current_app,
+            app_trust_level=app_trust_level,
+            active_window=active_window,
+        )
+        approval_id: str | None = None
         if decision.approval_required:
-            # ── Request operator approval via WebSocket modal ────
             try:
                 from shogun.ronin.desktop.screenshot_controller import take_screenshot_raw
 
@@ -207,17 +315,24 @@ class RoninController:
             except Exception:
                 screenshot_path = None
 
+            preview = action_preview(action, permission_gates)
+            preview["active_window"] = self._window_identity(active_window)
+            approval_target = preview.get("target")
+            preview["target"] = approval_target
             approval = await request_approval(
                 agent_id=action.agent_id,
                 session_id=action.session_id,
                 action_type=action_type,
-                target=action.target,
+                target=approval_target,
                 reason=decision.reason,
                 risk_level=cap_risk,
                 app_name=current_app,
                 app_trust=app_trust_level.value,
                 screenshot_path=screenshot_path,
+                action_digest=initial_action_digest,
+                action_preview=preview,
             )
+            approval_id = approval.id
 
             if approval.status != "approved":
                 return RoninResult(
@@ -227,6 +342,77 @@ class RoninController:
                     approval_id=approval.id,
                 )
 
+            if approval.action_digest != initial_action_digest or action_digest(action) != initial_action_digest:
+                reason = "Action details changed while approval was pending; the approval was invalidated."
+                await RoninAuditLogger.log_action_blocked(
+                    action_type=action_type,
+                    reason=reason,
+                    agent_id=action.agent_id,
+                    session_id=action.session_id,
+                    risk_level=cap_risk,
+                )
+                return RoninResult(
+                    status=RoninActionStatus.BLOCKED,
+                    action_type=action_type,
+                    error=reason,
+                    approval_id=approval.id,
+                )
+
+            # Approval may remain open for five minutes. Re-read every material
+            # security input before treating it as authorization.
+            if komainu_is_paused():
+                return RoninResult(
+                    status=RoninActionStatus.KOMAINU_PAUSED,
+                    action_type=action_type,
+                    error="Ronin was paused while approval was pending.",
+                    approval_id=approval.id,
+                )
+            refreshed_capability = capabilities_registry.get_capability(action_type)
+            if refreshed_capability is None or not refreshed_capability.enabled:
+                return RoninResult(
+                    status=RoninActionStatus.BLOCKED,
+                    action_type=action_type,
+                    error="The capability was removed or disabled while approval was pending.",
+                    approval_id=approval.id,
+                )
+            posture_permissions, current_app, app_trust_level, active_window = (
+                await self._collect_security_context(action)
+            )
+            refreshed_decision, _ = self._evaluate_security_context(
+                action,
+                refreshed_capability,
+                posture_permissions,
+                app_trust_level,
+                active_window,
+            )
+            refreshed_snapshot = self._security_snapshot(
+                action=action,
+                capability=refreshed_capability,
+                posture_permissions=posture_permissions,
+                current_app=current_app,
+                app_trust_level=app_trust_level,
+                active_window=active_window,
+            )
+            if (
+                refreshed_snapshot != approval_snapshot
+                or (not refreshed_decision.allowed and not refreshed_decision.approval_required)
+            ):
+                reason = "Security posture or active application context changed after approval; submit a new request."
+                await RoninAuditLogger.log_action_blocked(
+                    action_type=action_type,
+                    reason=reason,
+                    agent_id=action.agent_id,
+                    session_id=action.session_id,
+                    risk_level=cap_risk,
+                )
+                return RoninResult(
+                    status=RoninActionStatus.BLOCKED,
+                    action_type=action_type,
+                    error=reason,
+                    approval_id=approval.id,
+                )
+            capability = refreshed_capability
+
         if action_type.startswith(("desktop.", "os.")):
             await RoninAuditLogger.log_action(
                 event_type="ronin.desktop.action_allowed",
@@ -234,7 +420,7 @@ class RoninController:
                 agent_id=action.agent_id,
                 session_id=action.session_id,
                 action_type=action_type,
-                target=action.target,
+                target=safe_target,
                 risk_level=cap_risk,
                 detail={"posture": posture_permissions.get("active_tier"), "permission_result": "allowed"},
             )
@@ -257,8 +443,8 @@ class RoninController:
         from shogun.ronin.desktop.verification_service import get_verifier
 
         observer.resume()
-        observer.set_next_action({"action_type": action_type, "target": action.target})
-        observer.record("ronin.desktop.action_started", f"Started {action_type}", target=action.target)
+        observer.set_next_action({"action_type": action_type, "target": safe_target})
+        observer.record("ronin.desktop.action_started", f"Started {action_type}", target=safe_target)
         non_repeatable = action_type in {
             "desktop.type",
             "desktop.hotkey",
@@ -266,6 +452,8 @@ class RoninController:
             "desktop.key_up",
             "os.app_launch",
             "os.app_close",
+            "ronin.stop",
+            "ronin.harakiri",
         }
         try:
             from shogun.api.setup import _read_setup
@@ -279,6 +467,70 @@ class RoninController:
         after_state: dict[str, Any] = {}
         while True:
             observer.set_retry_count(attempt)
+            pre_route_error: str | None = None
+            pre_route_status = RoninActionStatus.BLOCKED
+            if komainu_is_paused():
+                pre_route_error = "Ronin was paused before action execution."
+                pre_route_status = RoninActionStatus.KOMAINU_PAUSED
+            elif action_digest(action) != initial_action_digest:
+                pre_route_error = "Action details changed after security evaluation; execution was blocked."
+            else:
+                live_capability = capabilities_registry.get_capability(action_type)
+                if live_capability is None or not live_capability.enabled:
+                    pre_route_error = "The registered capability was removed or disabled before execution."
+                else:
+                    live_posture, live_app, live_trust, live_window = await self._collect_security_context(action)
+                    live_decision, _ = self._evaluate_security_context(
+                        action,
+                        live_capability,
+                        live_posture,
+                        live_trust,
+                        live_window,
+                    )
+                    live_snapshot = self._security_snapshot(
+                        action=action,
+                        capability=live_capability,
+                        posture_permissions=live_posture,
+                        current_app=live_app,
+                        app_trust_level=live_trust,
+                        active_window=live_window,
+                    )
+                    if approval_id:
+                        if live_snapshot != approval_snapshot:
+                            pre_route_error = (
+                                "Security posture or active application context changed after approval; "
+                                "execution was blocked."
+                            )
+                        elif not live_decision.allowed and not live_decision.approval_required:
+                            pre_route_error = live_decision.reason
+                    elif not live_decision.allowed:
+                        pre_route_error = (
+                            f"Security re-check did not allow execution: {live_decision.reason}"
+                        )
+                    if pre_route_error is None:
+                        capability = live_capability
+                        posture_permissions = live_posture
+                        current_app = live_app
+                        app_trust_level = live_trust
+
+            if pre_route_error is not None:
+                await RoninAuditLogger.log_action_blocked(
+                    action_type=action_type,
+                    reason=pre_route_error,
+                    agent_id=action.agent_id,
+                    session_id=action.session_id,
+                    app_trust=app_trust_level.value,
+                    risk_level=cap_risk,
+                )
+                result = RoninResult(
+                    status=pre_route_status,
+                    action_type=action_type,
+                    target=safe_target,
+                    error=pre_route_error,
+                    approval_id=approval_id,
+                )
+                observer.pause(pre_route_error)
+                break
             result = await route_action(action)
             try:
                 after_state = await observer.capture_state(
@@ -290,6 +542,7 @@ class RoninController:
 
             after_window = after_state.get("active_window")
             if action_type.startswith(("desktop.", "os.")) and after_window:
+                from shogun.ronin.core.desktop_permission_engine import get_desktop_permission_engine
                 from shogun.ronin.desktop.dialog_service import get_dialog_service
 
                 dialog = get_dialog_service().classify(after_window)
@@ -311,7 +564,7 @@ class RoninController:
                         result = RoninResult(
                             status=RoninActionStatus.BLOCKED,
                             action_type=action_type,
-                            target=action.target,
+                            target=safe_target,
                             error=dialog.reason,
                         )
                         observer.pause(dialog.reason)
@@ -323,7 +576,7 @@ class RoninController:
                     result = RoninResult(
                         status=RoninActionStatus.BLOCKED,
                         action_type=action_type,
-                        target=action.target,
+                        target=safe_target,
                         error=protected_decision.reason,
                     )
                     observer.pause(protected_decision.reason)
@@ -341,7 +594,7 @@ class RoninController:
                     agent_id=action.agent_id,
                     session_id=action.session_id,
                     action_type=action_type,
-                    target=action.target,
+                    target=safe_target,
                     result="started",
                     risk_level=cap_risk,
                 )
@@ -382,7 +635,7 @@ class RoninController:
                     agent_id=action.agent_id,
                     session_id=action.session_id,
                     action_type=action_type,
-                    target=action.target,
+                    target=safe_target,
                     result="retrying",
                     severity="warn",
                     risk_level=cap_risk,
@@ -400,7 +653,7 @@ class RoninController:
                     agent_id=action.agent_id,
                     session_id=action.session_id,
                     action_type=action_type,
-                    target=action.target,
+                    target=safe_target,
                     result="exhausted",
                     severity="warn",
                     risk_level=cap_risk,
@@ -434,7 +687,7 @@ class RoninController:
             agent_id=action.agent_id,
             session_id=action.session_id,
             action_type=action_type,
-            target=action.target,
+            target=safe_target,
             result=result.status.value,
             severity="info" if result.status == RoninActionStatus.SUCCESS else "warn",
             risk_level=cap_risk,
@@ -468,7 +721,7 @@ class RoninController:
                     agent_id=action.agent_id,
                     session_id=action.session_id,
                     action_type=action_type,
-                    target=action.target,
+                    target=safe_target,
                     result=result.status.value,
                     severity="info" if result.status == RoninActionStatus.SUCCESS else "warn",
                     risk_level=cap_risk,

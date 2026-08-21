@@ -79,17 +79,26 @@ def require_role(*allowed_roles: str):
 
 # ── API Key Auth (Service Accounts) ──────────────────────────
 
+SERVICE_ACCOUNT_AUTHENTICATION_AVAILABLE = False
+
+
 async def get_api_key_identity(
     x_api_key: str = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> dict | None:
-    """Validate a service account API key from X-API-Key header.
+    """Fail closed until service-account authentication is wired to API routes.
 
-    Returns a dict with the service account identity, or None if no key provided.
-    Raises 401 if key is provided but invalid.
+    Stored service-account records are configuration scaffolding. No Gensui API
+    endpoint currently accepts them as authorization evidence.
     """
     if not x_api_key:
         return None
+
+    if not SERVICE_ACCOUNT_AUTHENTICATION_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Service-account API-key authentication is not available in this release",
+        )
 
     from gensui.services.identity_service import IdentityService
     svc = IdentityService(db)

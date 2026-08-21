@@ -855,9 +855,13 @@ def _parse_payload(payload: Any) -> Any:
     text = payload.strip()
     if not text:
         raise MappingInputError("Transformation profile input is empty")
-    fenced = re.fullmatch(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
-    if fenced:
-        text = fenced.group(1)
+    if text.startswith("```") and text.endswith("```"):
+        fenced_body = text[3:-3].strip()
+        if fenced_body[:4].casefold() == "json" and (
+            len(fenced_body) == 4 or fenced_body[4].isspace()
+        ):
+            fenced_body = fenced_body[4:].lstrip()
+        text = fenced_body
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:

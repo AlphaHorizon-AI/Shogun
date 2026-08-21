@@ -765,11 +765,9 @@ def create_app() -> FastAPI:
     # Used by Gensui network scanner to identify Shogun instances on the LAN.
     @app.get("/api/v1/health")
     async def health_check():
-        import json
-        version_file = PROJECT_ROOT / "version.json"
-        version_info = {}
-        if version_file.exists():
-            version_info = json.loads(version_file.read_text(encoding="utf-8"))
+        from shogun.services.release_metadata import get_release_metadata
+
+        version_info = get_release_metadata()
 
         shogun_id = None
         try:
@@ -782,7 +780,7 @@ def create_app() -> FastAPI:
             "service": "shogun",
             "status": "ok",
             "version": version_info.get("version", "unknown"),
-            "name": version_info.get("name", "Shogun AFM"),
+            "name": version_info.get("product", "Shogun AFM"),
             "build": version_info.get("build"),
             "deployment_mode": settings.deployment_mode,
             "instance_name": settings.instance_name if hasattr(settings, "instance_name") else None,

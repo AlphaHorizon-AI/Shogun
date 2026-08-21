@@ -9,7 +9,7 @@
 #  macOS: Double-click this file, or: chmod +x Shogun-Install.command && ./Shogun-Install.command
 # ═══════════════════════════════════════════════════════════════
 
-set -e
+set -euo pipefail
 
 # Colors
 GOLD='\033[1;33m'
@@ -40,9 +40,16 @@ echo ""
 REPO="AlphaHorizon-AI/Shogun"
 BRANCH="main"
 INSTALL_DIR="$HOME/Shogun"
-ZIP_URL="https://github.com/$REPO/archive/refs/heads/$BRANCH.zip"
-ZIP_FILE="/tmp/shogun-download.zip"
-EXTRACT_DIR="/tmp/shogun-extract"
+TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/shogun-install.XXXXXXXX")"
+ZIP_FILE="$TEMP_ROOT/shogun-download.zip"
+EXTRACT_DIR="$TEMP_ROOT/extract"
+SETUP_BACKUP="$TEMP_ROOT/setup.json"
+
+cleanup() {
+    rm -rf "$TEMP_ROOT"
+}
+trap cleanup EXIT
+umask 077
 
 # Detect OS
 OS="$(uname -s)"
@@ -78,6 +85,10 @@ if [ -z "$PYTHON_CMD" ]; then
     echo ""
     exit 1
 fi
+if ! "$PYTHON_CMD" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
+    echo -e "  ${RED}❌  Python 3.10 or newer is required.${NC}"
+    exit 1
+fi
 
 PY_VER=$($PYTHON_CMD --version 2>&1)
 echo -e "  ${GREEN}✅  $PY_VER${NC}"
@@ -86,9 +97,13 @@ echo -e "  ${GREEN}✅  $PY_VER${NC}"
 if ! command -v node &>/dev/null; then
     echo -e "  ${RED}❌  Node.js is not installed.${NC}"
     echo ""
-    echo -e "  ${GRAY}Shogun requires Node.js v18+ to build the interface.${NC}"
+    echo -e "  ${GRAY}Shogun requires Node.js 22.12+ (but lower than 25) to build the interface.${NC}"
     echo -e "  ${GRAY}Please install it from https://nodejs.org/ or via your package manager.${NC}"
     echo ""
+    exit 1
+fi
+if ! node -e "const [major,minor]=process.versions.node.split('.').map(Number); process.exit((major>22||major===22&&minor>=12)&&major<25?0:1)"; then
+    echo -e "  ${RED}❌  Node.js 22.12 or newer, but lower than 25, is required.${NC}"
     exit 1
 fi
 
@@ -96,11 +111,30 @@ NODE_VER=$(node --version 2>&1)
 echo -e "  ${GREEN}✅  Node.js $NODE_VER${NC}"
 echo ""
 
+# Resolve first, then download that immutable commit. This prevents main from
+# advancing between archive selection and provenance recording.
+if ! COMMIT_RESPONSE="$(curl -fsSL \
+    -H 'Accept: application/vnd.github+json' \
+    -H 'User-Agent: Shogun-Installer' \
+    "https://api.github.com/repos/$REPO/commits/$BRANCH")"; then
+    echo -e "  ${RED}❌  GitHub did not return the source commit.${NC}"
+    exit 1
+fi
+SOURCE_COMMIT="$(printf '%s\n' "$COMMIT_RESPONSE" | sed -nE 's/^[[:space:]]*"sha":[[:space:]]*"([0-9a-fA-F]{40})",?[[:space:]]*$/\1/p' | sed -n '1p')"
+if [[ ! "$SOURCE_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    echo -e "  ${RED}❌  GitHub did not return a verifiable source commit.${NC}"
+    echo -e "  ${GRAY}Installation stopped instead of downloading a mutable branch archive.${NC}"
+    exit 1
+fi
+SOURCE_COMMIT="$(printf '%s' "$SOURCE_COMMIT" | tr 'A-F' 'a-f')"
+ZIP_URL="https://github.com/$REPO/archive/$SOURCE_COMMIT.zip"
+
 # ══════════════════════════════════════════════════════════════
 echo -e "  ${GOLD}══════════════════════════════════════════════════${NC}"
 echo -e "  ${GOLD}  📥  Downloading Shogun from GitHub...${NC}"
 echo -e "  ${GOLD}══════════════════════════════════════════════════${NC}"
 echo ""
+echo "      Source commit: $SOURCE_COMMIT"
 echo "      $ZIP_URL"
 echo ""
 
@@ -117,13 +151,12 @@ echo ""
 # ── Extract ────────────────────────────────────────────────────
 echo -e "  ${GOLD}📦  Extracting to $INSTALL_DIR...${NC}"
 
-rm -rf "$EXTRACT_DIR"
 mkdir -p "$EXTRACT_DIR"
 unzip -qo "$ZIP_FILE" -d "$EXTRACT_DIR"
 
-EXTRACTED="$EXTRACT_DIR/Shogun-$BRANCH"
+EXTRACTED="$EXTRACT_DIR/Shogun-$SOURCE_COMMIT"
 
-if [ ! -d "$EXTRACTED" ]; then
+if [ ! -f "$EXTRACTED/version.json" ]; then
     echo -e "  ${RED}❌  Extraction failed.${NC}"
     read -p "  Press Enter to exit..." _
     exit 1
@@ -131,27 +164,39 @@ fi
 
 # Backup config if upgrading
 if [ -f "$INSTALL_DIR/configs/setup.json" ]; then
-    cp "$INSTALL_DIR/configs/setup.json" /tmp/shogun_setup_backup.json 2>/dev/null || true
+    cp "$INSTALL_DIR/configs/setup.json" "$SETUP_BACKUP"
+    chmod 600 "$SETUP_BACKUP"
 fi
 
 # Copy files (preserve data/ and venv/)
 mkdir -p "$INSTALL_DIR"
 if command -v rsync &>/dev/null; then
-    rsync -a --exclude='/data/' --exclude='/venv/' --exclude='/node_modules/' --exclude='/frontend/node_modules/' \
+    rsync -a --exclude='/data/' --exclude='/venv/' --exclude='/.venv/' --exclude='/node_modules/' --exclude='/frontend/node_modules/' \
         "$EXTRACTED/" "$INSTALL_DIR/"
 else
-    cp -R "$EXTRACTED"/* "$INSTALL_DIR/"
+    cp -R "$EXTRACTED/." "$INSTALL_DIR/"
 fi
 
 # Restore config backup
-if [ -f /tmp/shogun_setup_backup.json ]; then
+if [ -f "$SETUP_BACKUP" ]; then
     mkdir -p "$INSTALL_DIR/configs"
-    mv /tmp/shogun_setup_backup.json "$INSTALL_DIR/configs/setup.json"
+    cp "$SETUP_BACKUP" "$INSTALL_DIR/configs/setup.json"
 fi
 
-# Cleanup
-rm -f "$ZIP_FILE"
-rm -rf "$EXTRACT_DIR"
+if ! cmp -s "$EXTRACTED/version.json" "$INSTALL_DIR/version.json"; then
+    echo -e "  ${RED}❌  Installation verification failed; release provenance was not recorded.${NC}"
+    exit 1
+fi
+
+if "$PYTHON_CMD" "$INSTALL_DIR/scripts/write_release_metadata_evidence.py" \
+    --root "$INSTALL_DIR" --git-sha "$SOURCE_COMMIT" >/dev/null 2>&1; then
+    echo -e "  ${GREEN}✅  Release provenance recorded.${NC}"
+else
+    echo -e "  ${GOLD}⚠️  Release provenance could not be recorded.${NC}"
+fi
+
+cleanup
+trap - EXIT
 
 echo -e "  ${GREEN}✅  Extracted to $INSTALL_DIR${NC}"
 echo ""

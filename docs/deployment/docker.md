@@ -9,7 +9,25 @@ changes the binding.
 cp .env.server.example .env.server
 # Replace every change-me value.
 docker compose --env-file .env.server -f docker-compose.server.yml up -d --build
+
+# Print the private Primary Admin bootstrap link to this terminal.
+docker compose --env-file .env.server -f docker-compose.server.yml exec -T shogun \
+  python -m shogun.setup_link --origin http://127.0.0.1:8000
 ```
+
+Use the installer-generated or explicitly printed bootstrap link for the first
+Server-mode setup. Its infrastructure credential is URL-encoded after `#`, so it
+is not sent in an HTTP request or referrer header. The frontend removes that
+fragment synchronously before its first API request and retains the credential
+only in the browser tab's `sessionStorage`. A bare `/setup` URL has no Server-mode
+authorization.
+
+Treat the complete link as a long-lived administrator credential: do not put it
+in a query string, bookmark, screenshot, chat, issue, or shared log. Redirected
+and CI installer output withholds it unless the operator explicitly passes
+`--show-setup-link`. Rotate `SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN` if the link is
+disclosed. If `SHOGUN_PORT` is not `8000`, pass the matching localhost origin to
+`shogun.setup_link`.
 
 The profile runs as UID/GID 10001 with a read-only root filesystem, all Linux
 capabilities dropped, `no-new-privileges`, dedicated PostgreSQL and Qdrant

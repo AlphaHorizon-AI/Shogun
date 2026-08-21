@@ -183,7 +183,13 @@ class SetupCompletePayload(BaseModel):
     fallback_models: list[str]          # ["providerUUID::modelName", ...]
     constitution: str | None
     mandate: str | None
+    security_incident_acknowledged: Literal[True]
 ```
+
+`security_incident_acknowledged` is required. The client sends the literal value
+`true` only after showing the security and incident-reporting information and the
+installer or Primary Admin explicitly acknowledges it. The API rejects an absent or
+false value; it does not infer acknowledgement from continuing through the wizard.
 
 ### ProviderSetup Schema
 
@@ -225,8 +231,17 @@ POST /setup/complete
   ├─ 3. Write constitution.yaml (if provided)
   ├─ 4. Write mandate.md (if provided)
   ├─ 5. Create data directory (if custom path)
-  └─ 6. Write setup.json (marks setup_complete=true)
+  └─ 6. Write setup.json (marks setup_complete=true and stores the local
+        security_incident_acknowledgement record)
 ```
+
+The server generates `security_incident_acknowledgement` rather than accepting a
+client-supplied record. It includes the acknowledgement statement and UTC timestamp,
+the acknowledging role (`installer` or `primary_admin`), and the installed release's
+version, build, identifier, and release date. This record remains in local
+`setup.json`, is returned by `GET /setup/status`, and is excluded from telemetry. It
+records that the information was presented and acknowledged; it is not evidence of a
+regulatory conformity assessment or of incident-response performance.
 
 ### API Key Storage
 

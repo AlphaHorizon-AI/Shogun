@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from shogun.schemas.common import ShogunBase
-
 
 # ── Session schemas ──────────────────────────────────────────────────
 
@@ -80,8 +79,7 @@ class RoninActionResult(ShogunBase):
 
 class RoninApprovalRequest(ShogunBase):
     """Respond to a pending approval."""
-    decision: str  # "approved" | "denied"
-    decided_by: str = "operator"
+    decision: Literal["approved", "denied"]
 
 
 class RoninApprovalResponse(ShogunBase):
@@ -96,6 +94,8 @@ class RoninApprovalResponse(ShogunBase):
     app_name: str | None = None
     app_trust: str | None = None
     screenshot_path: str | None = None
+    action_digest: str | None = None
+    action_preview: dict[str, Any] = Field(default_factory=dict)
     created_at: str
     status: str
 

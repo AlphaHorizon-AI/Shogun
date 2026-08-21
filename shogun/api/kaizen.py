@@ -176,9 +176,10 @@ def _extract_mandate_summary(content: str, max_lines: int = 30) -> str:
 
 def get_governance_context() -> dict:
     """Return key rules and mandate summary for system prompt injection.
-    
-    Called by any LLM execution path (Shogun chat, Samurai spawns, missions)
-    to ensure constitutional governance is always enforced.
+
+    Known LLM call sites use this context as one governance input. Runtime
+    enforcement also depends on each call site's integration and the separate
+    policy/tool gates; prompt context alone does not guarantee enforcement.
     """
     constitution_content = _ensure_file(CONSTITUTION_PATH, DEFAULT_CONSTITUTION)
     mandate_content = _ensure_file(MANDATE_PATH, DEFAULT_MANDATE)
@@ -367,7 +368,7 @@ async def list_revisions(document_type: str | None = None):
 
 @router.get("/audit-log")
 async def download_audit_log():
-    """Export full audit log as downloadable JSON."""
+    """Export available Kaizen audit records as downloadable JSON."""
     async with async_session_factory() as session:
         result = await session.execute(
             select(KaizenRevision).order_by(desc(KaizenRevision.created_at)).limit(200)

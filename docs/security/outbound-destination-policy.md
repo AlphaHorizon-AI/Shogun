@@ -41,11 +41,16 @@ If DNS returns a mixture of allowed and blocked addresses, the request fails.
 
 ## Infrastructure authorization
 
-Server mode requires `SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN`. Paste that value into
-the Infrastructure Admin Token field in the Gensui or Nexus screen. The browser
-keeps it in `sessionStorage`, so it disappears when that tab session ends.
-Desktop mode without a configured token accepts these privileged operations only
-from a loopback client.
+Server mode requires `SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN`. The Server installer
+provides a private bootstrap link with the URL-encoded credential after `#`.
+Fragments are not sent in HTTP requests or referrer headers; The Tenshu removes
+the fragment synchronously before its first API request and keeps the credential
+only in `sessionStorage`, so it disappears when that tab session ends. Do not put
+the token in a query string, bookmark, screenshot, chat, issue, or shared log.
+
+The infrastructure-token fields in Gensui and Nexus remain available for an
+explicit session reauthorization. Desktop mode without a configured token
+accepts privileged operations only from a loopback client.
 
 Blocked requests emit a structured `outbound_request_blocked` security log with
 the actor, endpoint class, normalized hostname, policy, reason, and correlation

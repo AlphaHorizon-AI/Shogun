@@ -546,7 +546,14 @@ async def _seed_memories():
             {
                 "memory_type": "semantic",
                 "title": "Security Tier Definitions and Implications",
-                "content": "Shogun operates under five security tiers, each progressively expanding agent permissions: SHRINE (maximum lockdown — no network, no shell, scoped filesystem, all skills require approval), GUARDED (default — allowlisted network, scoped filesystem, skills require approval), TACTICAL (expanded — full filesystem, allowlisted network, shell disabled, skills auto-approved), CAMPAIGN (full access — all permissions enabled except kill switch remains active), RONIN (open — all permissions, kill switch disabled, maximum autonomy). The active tier determines what tools agents can invoke and what boundaries they must respect.",
+                "content": (
+                    "Shogun operates under five security tiers that progressively expand governed agent permissions: "
+                    "SHRINE (the most restrictive governed policy), GUARDED, TACTICAL (the built-in default), "
+                    "CAMPAIGN, and RONIN (the broadest governed capability tier). RONIN is not unrestricted: "
+                    "critical blocks, approval and verification gates, and the kill switch remain in force, while "
+                    "Ronin desktop control requires separate explicit enablement. The active tier sets a ceiling on "
+                    "which governed tools agents may invoke and which boundaries apply."
+                ),
                 "summary": "Complete reference for the five security tiers (Shrine → Ronin) and their permission implications.",
                 "relevance_score": 0.80,
                 "importance_score": 0.85,

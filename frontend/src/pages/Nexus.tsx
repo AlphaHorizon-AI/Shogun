@@ -888,7 +888,7 @@ export function Nexus() {
                   <p>• The external agent uses the token as a Bearer header to authenticate</p>
                   <p>• <strong>Inbound:</strong> The agent POSTs tasks to <code className="text-shogun-text bg-shogun-card px-1 rounded">/api/v1/nexus/external/a2a/task</code></p>
                   <p>• <strong>Outbound:</strong> Shogun dispatches tasks to the agent's endpoint URL</p>
-                  <p>• All traffic is audited in L1 (operational) and L2 (immutable) logs</p>
+                  <p>• Governed traffic is recorded in L1 (operational) and L2 (append-only HMAC-chained) logs</p>
                 </div>
 
                 <div className="flex gap-3 pt-1">

@@ -52,47 +52,52 @@ applicable legal basis, retention periods, and data-subject rights must also be
 stated in the distribution-specific privacy notice before an EU production
 release.
 
-## Official releases and security-vulnerability handling period
+## Official releases, vulnerability handling, and support boundaries
 
 An official release is a version and build published by Alpha Horizon through
-its official release channel and identified in `version.json`.
+its official release channel and identified in `version.json`. Alpha Horizon
+handles security vulnerabilities affecting official, unmodified Shogun
+releases in accordance with applicable legal obligations and any support or
+vulnerability-handling period required under applicable law.
 
-| Release family | Security vulnerability handling | Published end date |
-| --- | --- | --- |
-| Official, unmodified Shogun AFM 1.x | Latest stable official 1.x build | 31 August 2031 |
-
-This security-vulnerability handling period covers vulnerability intake,
-assessment, corrective or mitigating security measures, and security updates
-for defects attributable to official, unmodified Shogun releases. It is not
-general technical support and does not include a helpdesk, feature development,
-compatibility maintenance, integration maintenance, LLM or provider
-compatibility updates, a service-level agreement, or support for defects
-introduced exclusively by customer-modified builds. Broader support exists only
-under a separate written agreement.
-
-Corrective or mitigating measures are published through official
+Alpha Horizon may publish corrective or mitigating measures through official
 [Releases](https://github.com/AlphaHorizon-AI/Shogun/releases), published
 [security advisories](https://github.com/AlphaHorizon-AI/Shogun/security/advisories),
-and the Shogun **Updates** channel when Alpha Horizon determines them appropriate
-or legally required. Security updates covered by an applicable legal obligation
-are provided without charge. Shogun checks for updates automatically, but
-installation requires an operator action. Where permitted by applicable law,
-remediation may require installation of the latest stable official 1.x build;
-any latest-version correction path remains subject to the conditions imposed by
-applicable law.
+or the Shogun **Updates** channel where Alpha Horizon determines this appropriate
+or where required by applicable law. This policy does not promise that every
+reported issue will result in a patch. Where an applicable legal obligation
+requires a security update to be provided without charge, that obligation is
+preserved. Installation requires an operator action, and remediation may require
+installation of a later official build where permitted by applicable law.
 
-31 August 2031 is the published end date for the currently identified official,
-unmodified Shogun AFM 1.x product line. It does not shorten a longer period
-required by law or by the documented expected-use assessment. A later official
-release requiring a separate product or security-period assessment will receive
-its own published end date. Reports from modified installations remain welcome
-so Alpha Horizon can determine whether an official release is also affected.
-Nothing in this policy limits rights or responsibilities that cannot legally be
-excluded.
+Shogun is provided without a standard maintenance agreement, helpdesk,
+service-level agreement, or commitment to ongoing feature development,
+compatibility maintenance, integration maintenance, or LLM/provider
+compatibility work. Security vulnerability handling for official releases is
+separate from general customer support and is performed where Alpha Horizon
+elects to provide it or where required by applicable law. Broader support exists
+only under a separate written agreement.
 
-Issued security updates and their accompanying advisories will remain
-available for at least ten years after issuance or for the remainder of the
-applicable security-vulnerability handling period, whichever is longer.
+Customer or third-party modifications are not validated, certified, or
+maintained by Alpha Horizon, and Alpha Horizon does not undertake to patch or
+support defects introduced by those modifications. Reports from modified
+installations remain welcome so Alpha Horizon can determine whether an issue is
+also attributable to an official release. Responsibility for issues attributable
+to official Alpha Horizon releases remains subject to applicable law. Nothing in
+this policy limits rights or responsibilities that cannot legally be excluded.
+
+No voluntary fixed retention period is created by this policy. Security updates,
+advisories, technical documentation, user instructions, and incident records are
+retained or made available for the periods required by applicable statutory
+documentation, disclosure, update-availability, and record-retention obligations.
+In particular, where Article 13 of the EU Cyber Resilience Act applies to a
+release, each qualifying security update made available during the statutory
+support period remains available for at least 10 years after issuance or for
+the remainder of that support period, whichever is longer, as required by
+Article 13(9). Technical documentation, the EU declaration of conformity, and
+user instructions remain available for at least 10 years after the product is
+placed on the market or for the applicable support period, whichever is longer,
+as required by Article 13(13) and 13(18).
 
 ## What to include
 
@@ -121,10 +126,13 @@ Containment does not replace reporting the incident.
 
 ## Coordinated vulnerability disclosure
 
-Alpha Horizon will:
+Alpha Horizon aims to acknowledge and triage security reports promptly. No
+specific customer-support response time is promised by this policy.
 
-1. acknowledge and triage the report, with a target human acknowledgement
-   within three business days;
+For reports affecting official releases, Alpha Horizon's coordinated process
+may include the following steps as appropriate:
+
+1. acknowledge and triage the report;
 2. validate affected versions, assess severity and exploitation evidence, and
    identify third-party components where relevant;
 3. maintain contact with the reporter when clarification or coordinated testing
@@ -140,6 +148,22 @@ Alpha Horizon will:
 Please coordinate public disclosure of an unpatched vulnerability with Alpha
 Horizon. Regulatory reporting or an immediate risk to users may require a
 different disclosure timeline.
+
+## Security verification and AI-assisted red teaming
+
+Shogun preserves automated security regression tests, dependency and code
+scanning, and conventional review controls. Alpha Horizon may also use
+AI-assisted adversarial review or red-team exercises to identify hypotheses and
+test cases for human investigation. Useful findings and the regression tests
+created from accepted findings are retained with the relevant development or
+release records where practical.
+
+AI-assisted red teaming supplements rather than replaces threat modelling,
+secure code review, dependency management, reproducible testing, penetration
+testing where appropriate, human assessment, and incident handling. Neither an
+AI-assisted review nor a passing automated test guarantees security, record
+completeness, regulatory conformity, or suitability for a particular
+deployment.
 
 ## CRA incident escalation
 

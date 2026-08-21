@@ -10,6 +10,8 @@ from pathlib import Path
 
 import httpx
 
+from shogun.services.release_metadata import get_release_metadata
+
 logger = logging.getLogger("shogun.updates")
 
 # ── Configuration ────────────────────────────────────────────────
@@ -22,6 +24,14 @@ CHECK_INTERVAL_HOURS = 6
 _cached_result: dict | None = None
 _last_check: datetime | None = None
 _last_fetch_error: dict | None = None
+
+
+def _release_notes(value: object) -> list[str]:
+    """Bound remote structured notes before they reach the browser."""
+    if not isinstance(value, list):
+        return []
+    notes = [item.strip()[:500] for item in value if isinstance(item, str) and item.strip()]
+    return notes[:50]
 
 
 def _credential_file() -> Path:
@@ -68,19 +78,12 @@ def update_token_configured() -> bool:
 
 def _get_local_version() -> dict:
     """Read the local version.json from the project root."""
-    # Walk up from this file to find the project root
-    root = Path(__file__).resolve().parent.parent.parent
-    version_file = root / "version.json"
-
-    if not version_file.exists():
-        logger.warning("Local version.json not found at %s", version_file)
-        return {"version": "0.0.0", "build": 0, "channel": "unknown", "released": "", "changelog": ""}
-
-    try:
-        return json.loads(version_file.read_text(encoding="utf-8"))
-    except Exception as e:
-        logger.error("Failed to read local version.json: %s", e)
-        return {"version": "0.0.0", "build": 0, "channel": "unknown", "released": "", "changelog": ""}
+    metadata = get_release_metadata()
+    return {
+        **metadata,
+        # Retain the historic key used by update responses and clients.
+        "released": metadata.get("release_date") or "",
+    }
 
 
 async def _fetch_remote_version() -> dict | None:
@@ -198,6 +201,9 @@ async def check_for_updates(force: bool = False) -> dict:
             "auth_required": fetch_error.get("auth_required", False),
             "token_configured": fetch_error.get("token_configured", update_token_configured()),
             "http_status": fetch_error.get("http_status"),
+            "local_release": local,
+            "security_changes": [],
+            "breaking_changes": [],
         }
     else:
         local_build = local.get("build", 0)
@@ -215,6 +221,9 @@ async def check_for_updates(force: bool = False) -> dict:
             "last_checked": now,
             "auth_required": False,
             "token_configured": update_token_configured(),
+            "local_release": local,
+            "security_changes": _release_notes(remote.get("security_changes")) if update_available else [],
+            "breaking_changes": _release_notes(remote.get("breaking_changes")) if update_available else [],
         }
 
     _cached_result = result

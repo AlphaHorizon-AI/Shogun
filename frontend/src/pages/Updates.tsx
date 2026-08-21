@@ -19,6 +19,8 @@ interface UpdateStatus {
   running_version?: string;
   running_build?: number;
   restart_required?: boolean;
+  security_changes?: string[];
+  breaking_changes?: string[];
 }
 
 export const Updates = () => {
@@ -233,6 +235,24 @@ export const Updates = () => {
               {t('updates_page.released')}: {new Date(status.released).toLocaleDateString()}
             </p>
           )}
+        </div>
+      )}
+
+      {status?.update_available && Boolean(status.security_changes?.length) && (
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6">
+          <h3 className="text-sm font-semibold text-blue-300 mb-2">Security changes</h3>
+          <ul className="list-disc ml-5 space-y-1 text-sm text-shogun-text">
+            {status.security_changes?.map(item => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {status?.update_available && Boolean(status.breaking_changes?.length) && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-6">
+          <h3 className="text-sm font-semibold text-amber-300 mb-2">Known breaking changes</h3>
+          <ul className="list-disc ml-5 space-y-1 text-sm text-shogun-text">
+            {status.breaking_changes?.map(item => <li key={item}>{item}</li>)}
+          </ul>
         </div>
       )}
 

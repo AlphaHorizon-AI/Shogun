@@ -197,7 +197,7 @@ class IdentityService:
         created_by: str | None = None,
     ) -> SSOProvider:
         """Create an SSO/OIDC provider configuration."""
-        # Encrypt client secret (simple XOR for now — replace with real encryption in production)
+        # Encrypt the staged client secret with the authenticated-encryption helper below.
         encrypted_secret = None
         if client_secret:
             encrypted_secret = self._encrypt_secret(client_secret)
@@ -214,10 +214,13 @@ class IdentityService:
             claim_mapping_json=claim_mapping,
             default_role=default_role,
             role_mapping_json=role_mapping,
-            auto_create_users=auto_create_users,
-            auto_activate_users=auto_activate_users,
+            # Authentication is deliberately unavailable until signed-token
+            # verification and a login callback are implemented end to end.
+            auto_create_users=False,
+            auto_activate_users=False,
             allowed_domains=allowed_domains,
-            is_primary=is_primary,
+            is_active=False,
+            is_primary=False,
             created_by=created_by,
         )
         self.session.add(provider)
@@ -242,13 +245,8 @@ class IdentityService:
         return result.scalars().first()
 
     async def get_primary_sso_provider(self) -> SSOProvider | None:
-        """Get the primary (login page) SSO provider."""
-        result = await self.session.execute(
-            select(SSOProvider)
-            .where(SSOProvider.is_primary.is_(True))
-            .where(SSOProvider.is_active.is_(True))
-        )
-        return result.scalars().first()
+        """Return no provider until signed-token verification is implemented."""
+        return None
 
     async def update_sso_provider(
         self,
@@ -270,6 +268,13 @@ class IdentityService:
             if hasattr(provider, key) and key not in ("id", "client_secret_encrypted"):
                 setattr(provider, key, value)
 
+        # Stored provider records cannot become an authentication path in this
+        # release. This also repairs legacy records changed through this method.
+        provider.is_active = False
+        provider.is_primary = False
+        provider.auto_create_users = False
+        provider.auto_activate_users = False
+
         provider.updated_at = datetime.now(timezone.utc)
         await self.session.flush()
         await self.session.refresh(provider)
@@ -288,9 +293,9 @@ class IdentityService:
     async def validate_oidc_token(self, token: str, provider_id: uuid.UUID | None = None) -> dict | None:
         """Validate an OIDC token against a configured provider.
 
-        Returns the decoded claims if valid, None otherwise.
-        This is a simplified implementation — production should use
-        proper JWKS verification from the provider's discovery endpoint.
+        Authentication is unavailable in this release, so this method always
+        fails closed. A future implementation must verify issuer discovery,
+        JWKS signatures, audience, expiry, and key rotation end to end.
         """
         # Get provider
         if provider_id:

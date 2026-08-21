@@ -58,9 +58,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $response = Invoke
 if not errorlevel 1 (
     echo.
     echo   Shogun is already running. Opening the Tenshu...
-    start "" "http://localhost:8000"
-    timeout /t 2 /nobreak >nul
-    exit /b 0
+    set "SHOGUN_BROWSER_URL=http://localhost:8000"
+    set "SHOGUN_MANAGED_BROWSER=true"
+    python -m shogun
+    exit /b !ERRORLEVEL!
 )
 
 echo   Shogun is starting at http://localhost:8000

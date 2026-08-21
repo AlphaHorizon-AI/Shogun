@@ -1,9 +1,12 @@
-"""Event Logger — NIS2/SOC2 + EU AI Act compliant central event emitter.
+"""Central event emitter for governance evidence and incident investigation.
 
-Every significant action in Shogun flows through this service.
-Events are dual-written:
-  Layer 1: SQLite operational log (fast, searchable, 90-day retention)
-  Layer 2: Immutable audit chain (HMAC-chained, append-only, 7-year retention)
+Instrumented Shogun actions can emit events through this service. Events are
+dual-written:
+  Layer 1: SQLite operational log (fast, searchable, operator-managed retention)
+  Layer 2: HMAC-chained, append-only audit log (operator-managed retention)
+
+The records can support an organisation's assessment; they do not prove event
+completeness or establish NIS2, SOC 2, or EU AI Act conformity.
 
 Usage:
     from shogun.services.event_logger import EventLogger
@@ -38,11 +41,12 @@ logger = logging.getLogger(__name__)
 
 
 class EventLogger:
-    """NIS2/SOC2-compliant event-centric logger.
+    """Event-centric logger for governance and investigation records.
 
     Two-layer write:
-      Layer 1: Operational log (main SQLite) — fast, searchable, 90-day retention
-      Layer 2: Immutable audit log (separate SQLite) — append-only, HMAC-chained
+      Layer 1: Operational log (main SQLite) — fast and searchable
+      Layer 2: Separate SQLite log — append-only through this service and
+      HMAC-chained so verification can reveal covered-field mismatches
     """
 
     # ── Trace Context Manager ─────────────────────────────────
@@ -92,7 +96,7 @@ class EventLogger:
         use_case_context: dict[str, Any] | None = None,
         db_session=None,
     ) -> str:
-        """Emit an event to both operational and immutable audit layers.
+        """Emit an event to the operational and append-only audit layers.
 
         Returns the event_id for reference.
         """
@@ -150,7 +154,7 @@ class EventLogger:
         except Exception as e:
             logger.error("Operational log write failed: %s", e)
 
-        # ── Layer 2: Immutable audit chain (sync SQLite, separate DB) ──
+        # ── Layer 2: Append-only HMAC chain (sync SQLite, separate DB) ──
         try:
             immutable_audit.append(
                 event_id=event_id,
@@ -174,7 +178,7 @@ class EventLogger:
                 memory_ids=memory_ids,
             )
         except Exception as e:
-            logger.error("Immutable audit write failed: %s", e)
+            logger.error("Append-only audit write failed: %s", e)
 
         return event_id
 

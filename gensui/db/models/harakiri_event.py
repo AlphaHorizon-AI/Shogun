@@ -1,4 +1,4 @@
-"""Harakiri event model — immutable audit trail for all kill-switch actions."""
+"""Harakiri event model for recorded kill-switch actions."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from gensui.db.base import Base, UUIDMixin, JSONType
 
 
 class HarakiriEvent(Base, UUIDMixin):
-    """An immutable record of a Harakiri action."""
+    """A persisted record of a Harakiri action and its mutable execution state."""
 
     __tablename__ = "harakiri_events"
 

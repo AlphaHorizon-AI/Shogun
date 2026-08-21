@@ -920,7 +920,9 @@ async def _process_telegram_message(
             await send_telegram_message(
                 bot_token,
                 chat_id,
-                "⛩️ *HARAKIRI ACTIVATED*\n\nAll agent activity is suspended. Posture is now SHRINE.",
+                "⛩️ *HARAKIRI ACTIVATED*\n\nNew governed agent operations are blocked, "
+                "supported active work is being cancelled on a best-effort basis, "
+                "and posture is now SHRINE.",
                 message_thread_id=message_thread_id,
                 allow_during_harakiri=True,
             )
@@ -971,7 +973,17 @@ async def _process_telegram_message(
             )
             prompt_msg = member_context_text(prompt_msg, member, channel="Telegram")
             prompt_msg, chat_attachments = await _prepare_telegram_visual_context(session, prompt_msg, attachments)
-            history = await get_chat_context(session, limit=20)
+            history = await get_chat_context(
+                session,
+                limit=20,
+                channel="telegram",
+                external_chat_id=chat_id,
+                conversation_context=telegram_context or {
+                    "chat_id": chat_id,
+                    "chat_type": "private",
+                    "sender_id": chat_id,
+                },
+            )
             await append_chat_message(
                 session,
                 channel="telegram",

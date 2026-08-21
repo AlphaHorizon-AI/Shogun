@@ -1,0 +1,88 @@
+name: Bug report (public and non-sensitive)
+description: Report an ordinary Shogun defect that is safe to discuss publicly.
+title: "[Bug]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a Shogun bug.
+
+        **This issue will be public.** Do not include credentials, tokens, private keys, personal/customer data, prompts, production identifiers, unredacted logs, exploit-enabling details, or a suspected unpatched vulnerability. Use [Private Vulnerability Reporting](https://github.com/AlphaHorizon-AI/Shogun/security/advisories/new) for sensitive security reports.
+
+  - type: checkboxes
+    id: public_safety
+    attributes:
+      label: Public-report confirmation
+      options:
+        - label: This is an ordinary non-sensitive bug, not a confidential vulnerability report.
+          required: true
+        - label: I have inspected text and attachments and removed secrets, personal/customer data, prompts, production identifiers, and exploit-enabling details.
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Shogun version and build
+      description: Find this on the About or Updates page.
+      placeholder: "For example: 1.47.83, build 234"
+    validations:
+      required: true
+
+  - type: input
+    id: source_commit
+    attributes:
+      label: Source commit (if shown)
+      description: Copy the Git SHA from About. Leave blank if this build does not embed it.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment type
+      options:
+        - Desktop — Windows
+        - Desktop — macOS
+        - Desktop — Linux
+        - Server — Docker
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: component
+    attributes:
+      label: Affected component
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Safe reproduction steps
+      description: Include only information suitable for a public repository.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Inspect logs and screenshots for sensitive data before attaching them.
+    validations:
+      required: false

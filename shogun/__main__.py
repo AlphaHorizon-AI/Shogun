@@ -8,7 +8,6 @@ Enables:
 from __future__ import annotations
 
 import os
-import secrets
 import shutil
 import sys
 import traceback
@@ -38,37 +37,9 @@ def _reexec_in_project_venv() -> None:
 
 
 def _secure_env_file(env_path: Path) -> None:
-    text = env_path.read_text(encoding="utf-8")
-    secured = text.replace(
-        "SECRET_KEY=change-me-to-a-random-64-char-string",
-        f"SECRET_KEY={secrets.token_urlsafe(48)}",
-    ).replace(
-        "VAULT_ENCRYPTION_KEY=change-me-to-a-fernet-base64-key",
-        f"VAULT_ENCRYPTION_KEY={secrets.token_urlsafe(48)}",
-    ).replace(
-        "SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN=change-me-to-a-random-infrastructure-token",
-        f"SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN={secrets.token_urlsafe(48)}",
-    ).replace(
-        "A2A_ENCRYPTION_KEY=change-me-to-a-dedicated-a2a-encryption-key",
-        f"A2A_ENCRYPTION_KEY={secrets.token_urlsafe(48)}",
-    )
-    if "SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN=\n" in secured:
-        secured = secured.replace(
-            "SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN=\n",
-            f"SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN={secrets.token_urlsafe(48)}\n",
-        )
-    if secured.rstrip().endswith("SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN="):
-        secured = secured.rstrip() + secrets.token_urlsafe(48) + "\n"
-    if "SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN=" not in secured:
-        secured = secured.rstrip() + (
-            f"\nSHOGUN_INFRASTRUCTURE_ADMIN_TOKEN={secrets.token_urlsafe(48)}\n"
-        )
-    if "A2A_ENCRYPTION_KEY=" not in secured:
-        secured = secured.rstrip() + f"\nA2A_ENCRYPTION_KEY={secrets.token_urlsafe(48)}\n"
-    if "DEPLOYMENT_MODE=server" not in secured:
-        secured = secured.replace("API_HOST=0.0.0.0", "API_HOST=127.0.0.1")
-    if secured != text:
-        env_path.write_text(secured, encoding="utf-8")
+    from shogun.environment_bootstrap import secure_environment_file
+
+    secure_environment_file(env_path)
 
 
 def _ensure_env_file() -> None:
@@ -83,37 +54,16 @@ def _ensure_env_file() -> None:
         _secure_env_file(env_path)
         return
 
-    # Try to find .env.example relative to CWD or package root
-    candidates = [
-        Path(".env.example"),
-        Path(__file__).resolve().parent.parent / ".env.example",
-    ]
-    for example in candidates:
-        if example.exists():
-            shutil.copy(example, env_path)
-            _secure_env_file(env_path)
-            print("[INFO] Created .env from .env.example - edit it to configure API keys.")
-            return
+    from shogun.environment_bootstrap import ensure_desktop_environment
 
-    # No example found — write sensible defaults inline
-    project_root = Path(__file__).resolve().parent.parent
-    env_path.write_text(
-        f"APP_ENV=production\n"
-        f"DEBUG=false\n"
-        f"API_HOST=127.0.0.1\n"
-        f"API_PORT=8000\n"
-        f"DATABASE_URL=sqlite+aiosqlite:///{project_root}/data/shogun.db\n"
-        f"QDRANT_PATH={project_root}/data/qdrant\n"
-        f"SECRET_KEY={secrets.token_urlsafe(48)}\n"
-        f"VAULT_ENCRYPTION_KEY={secrets.token_urlsafe(48)}\n"
-        f"SHOGUN_INFRASTRUCTURE_ADMIN_TOKEN={secrets.token_urlsafe(48)}\n"
-        f"A2A_ENCRYPTION_KEY={secrets.token_urlsafe(48)}\n"
-        f"VAULT_PATH={project_root}/vault\n"
-        f"LOG_PATH={project_root}/logs\n"
-        f"CONFIG_PATH={project_root}/configs\n",
-        encoding="utf-8",
+    cwd_example = Path.cwd() / ".env.example"
+    example_path = cwd_example if cwd_example.is_file() else project_root / ".env.example"
+    _path, created = ensure_desktop_environment(
+        project_root,
+        example_path=example_path,
     )
-    print(f"[INFO] Created {env_path} with defaults.")
+    if created:
+        print("[INFO] Created a protected local environment file.")
 
 
 def _auto_bootstrap() -> None:
@@ -169,7 +119,13 @@ def _existing_shogun_is_ready(health_url: str) -> bool:
         return False
 
 
-def _open_browser_when_ready(url: str, health_url: str, timeout_seconds: int = 180) -> None:
+def _open_browser_when_ready(
+    url: str,
+    health_url: str,
+    timeout_seconds: int = 180,
+    *,
+    wait: bool = False,
+) -> None:
     """Open the local UI as soon as the server responds."""
     import os
     import threading
@@ -264,7 +220,10 @@ def _open_browser_when_ready(url: str, health_url: str, timeout_seconds: int = 1
                 except Exception as fallback_exc:
                     log(f"os.startfile fallback failed: {fallback_exc}")
 
-    threading.Thread(target=worker, name="shogun-browser-opener", daemon=True).start()
+    if wait:
+        worker()
+    else:
+        threading.Thread(target=worker, name="shogun-browser-opener", daemon=True).start()
 
 
 def _record_startup_failure(exc: BaseException) -> Path:
@@ -303,15 +262,15 @@ def main() -> None:
     # Step 3: Resolve the local endpoints and avoid a second competing server.
     url = _browser_url(settings.api_host, settings.api_port)
     if settings.deployment_mode == "desktop" and settings.infrastructure_admin_token:
-        from urllib.parse import quote
+        from shogun.environment_bootstrap import build_desktop_browser_url
 
-        url = f"{url}#infrastructure_token={quote(settings.infrastructure_admin_token, safe='')}"
+        url = build_desktop_browser_url(url, settings.infrastructure_admin_token)
     health_url = f"http://localhost:{settings.api_port}/api/v1/health"
 
     if _port_in_use(settings.api_host, settings.api_port):
         if _existing_shogun_is_ready(health_url):
             print(f"[INFO] Shogun is already running on port {settings.api_port}.")
-            _open_browser_when_ready(url, health_url)
+            _open_browser_when_ready(url, health_url, wait=True)
             return
         raise RuntimeError(
             f"Port {settings.api_port} is already in use by another application. "

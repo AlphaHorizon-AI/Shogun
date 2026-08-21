@@ -192,10 +192,10 @@ class SecurityPostureResponse(ShogunBase):
     ronin_visible_indicator: bool = True
     ronin_shell_commands: bool = False
     ronin_admin_escalation: bool = False
-    ronin_credential_entry: str = "blocked"
-    ronin_file_deletion: str = "blocked"
-    ronin_external_uploads: str = "blocked"
-    ronin_install_software: str = "blocked"
+    ronin_credential_entry: Literal["allowed", "blocked", "approval_required"] = "blocked"
+    ronin_file_deletion: Literal["allowed", "blocked", "approval_required"] = "blocked"
+    ronin_external_uploads: Literal["allowed", "blocked", "approval_required"] = "blocked"
+    ronin_install_software: Literal["allowed", "blocked", "approval_required"] = "blocked"
     ronin_komainu_level: int = 1
     ronin_environment_policy: str = "any"
 

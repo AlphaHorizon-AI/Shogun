@@ -271,20 +271,27 @@ async def _route_os(action: RoninAction, suffix: str) -> RoninResult:
 async def _route_ronin_internal(action: RoninAction, suffix: str) -> RoninResult:
     """Route ronin.* internal control actions."""
     if suffix == "stop":
+        from shogun.ronin.core.approval_gate import cancel_all
+        from shogun.ronin.core.komainu import pause_komainu
+        from shogun.ronin.desktop.observation_service import get_observer
+
+        pause_komainu()
+        cancel_all("ronin_stop")
+        get_observer().pause("Ronin stop action requested")
         return RoninResult(
             status=RoninActionStatus.SUCCESS,
             action_type=action.action_type,
-            result_data={"stopped": True},
+            result_data={"paused": True, "scope": "ronin_runtime"},
         )
 
     elif suffix == "harakiri":
-        from shogun.ronin.core.komainu import _trigger_level3_harakiri
+        from shogun.api.ronin import ronin_harakiri
 
-        _trigger_level3_harakiri("agent_requested")
+        response = await ronin_harakiri()
         return RoninResult(
             status=RoninActionStatus.SUCCESS,
             action_type=action.action_type,
-            result_data={"harakiri": True},
+            result_data=dict(response.data or {}),
         )
 
     return RoninResult(

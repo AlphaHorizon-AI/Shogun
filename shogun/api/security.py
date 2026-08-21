@@ -270,6 +270,63 @@ TIER_CONSTRAINTS: dict[str, dict] = {
     },
 }
 
+_RONIN_TRI_STATE_FIELDS = {
+    "ronin_credential_entry",
+    "ronin_file_deletion",
+    "ronin_external_uploads",
+    "ronin_install_software",
+}
+_RONIN_TRI_STATE_VALUES = {"allowed", "blocked", "approval_required"}
+
+
+def _posture_value_error(key: str, value: object) -> str | None:
+    """Return a validation error for a persisted posture field, if any."""
+    if key not in _DEFAULT_POSTURE:
+        return "unknown posture field"
+    default = _DEFAULT_POSTURE[key]
+    if default is None:
+        if value is not None and not isinstance(value, str):
+            return "must be a string or null"
+    elif isinstance(default, bool):
+        if type(value) is not bool:
+            return "must be a boolean"
+    elif isinstance(default, int):
+        if type(value) is not int:
+            return "must be an integer"
+    elif isinstance(default, str):
+        if not isinstance(value, str):
+            return "must be a string"
+    elif isinstance(default, list):
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            return "must be a list of strings"
+    else:
+        return "has an unsupported field type"
+    if key in _RONIN_TRI_STATE_FIELDS and value not in _RONIN_TRI_STATE_VALUES:
+        return "must be allowed, blocked, or approval_required"
+    return None
+
+
+def _validated_stored_posture(stored: object) -> dict:
+    """Drop malformed legacy values so the safe defaults remain effective."""
+    if not isinstance(stored, dict):
+        return {}
+    validated: dict = {}
+    for key, value in stored.items():
+        error = _posture_value_error(key, value)
+        if error is None:
+            validated[key] = value
+        else:
+            # Do not interpolate values: posture records can contain secrets in
+            # malformed legacy installations.
+            import logging
+
+            logging.getLogger("shogun.security").warning(
+                "Discarded invalid persisted posture field %s: %s",
+                key,
+                error,
+            )
+    return validated
+
 
 async def _get_agent_posture() -> dict:
     """Read security posture from primary Shogun agent's bushido_settings."""
@@ -292,7 +349,7 @@ async def _get_agent_posture() -> dict:
         if not agent:
             return dict(_DEFAULT_POSTURE)
         bushido = agent.bushido_settings or {}
-        stored = bushido.get(_POSTURE_KEY, {})
+        stored = _validated_stored_posture(bushido.get(_POSTURE_KEY, {}))
         posture = {**_DEFAULT_POSTURE, **stored}
         if agent.security_policy_id:
             from shogun.db.models.security_policy import SecurityPolicy
@@ -394,6 +451,20 @@ async def update_security_posture(body: dict):
     old_tier = current.get("active_tier", "tactical")
     allowed_fields = set(_DEFAULT_POSTURE.keys()) - {"active_tier", "kill_switch_enabled"}
     updates = {k: v for k, v in body.items() if k in allowed_fields}
+    for key, value in updates.items():
+        error = _posture_value_error(key, value)
+        if error is not None:
+            raise HTTPException(status_code=422, detail=f"Invalid posture field '{key}': {error}")
+    tier_constraints = TIER_CONSTRAINTS.get(old_tier, {})
+    for key, value in updates.items():
+        if key in tier_constraints and value != tier_constraints[key]:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Posture field '{key}' is fixed by the active {old_tier} tier. "
+                    "Select another posture or use its dedicated control endpoint."
+                ),
+            )
     current.update(updates)
     # ── Apply tier-specific constraints when active_tier changes ──
     new_tier = current.get("active_tier", "tactical")
@@ -659,7 +730,7 @@ async def activate_kill_switch():
         )
         await EventLogger.emit_oversight_event(
             "oversight.emergency_shutdown",
-            "Operator initiated emergency shutdown of all AI operations",
+            "Operator blocked new governed operations and requested supported cancellation",
             detail={"action": "kill_switch_activated", "new_posture": "shrine"},
         )
     except Exception:
@@ -668,7 +739,10 @@ async def activate_kill_switch():
         data={
             **posture,
             "cancelled": cancelled,
-            "message": "All agent activity suspended. Posture set to SHRINE.",
+            "message": (
+                "New governed operations are blocked, supported cancellation was requested, "
+                "and posture is set to SHRINE. Verify external processes separately."
+            ),
         }
     )
 

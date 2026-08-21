@@ -33,7 +33,17 @@ interface Preview {
 
 interface CollegeTelemetrySettings {
   enabled: boolean;
+  consent_notice_version: string;
+  consented_at: string | null;
+  purpose: string;
+  recipient: string;
+  request_method: string;
+  endpoint: string;
+  request_envelope: string;
+  network_disclosure: string;
+  identifier_warning: string;
   shared_fields: string[];
+  shared_field_details: Array<{ field: string; description: string }>;
   never_shared: string[];
   last_delivery: { state: string; at: string | null; error: string | null };
 }
@@ -53,6 +63,7 @@ export function PrivacyTelemetry() {
   const [collegeTelemetry, setCollegeTelemetry] = useState<CollegeTelemetrySettings | null>(null);
   const [savingCollegeTelemetry, setSavingCollegeTelemetry] = useState(false);
   const [collegeTelemetryError, setCollegeTelemetryError] = useState('');
+  const [collegeTelemetryConfirmed, setCollegeTelemetryConfirmed] = useState(false);
 
   const config = useCallback(() => infrastructureRequestConfig(token), [token]);
   const loadCollegeTelemetry = useCallback(async () => {
@@ -97,8 +108,11 @@ export function PrivacyTelemetry() {
     try {
       const response = await axios.put('/api/v1/system/college-telemetry', {
         enabled: !collegeTelemetry.enabled,
+        notice_version: collegeTelemetry.consent_notice_version,
+        confirmed: collegeTelemetry.enabled ? false : collegeTelemetryConfirmed,
       });
       setCollegeTelemetry(response.data.data);
+      setCollegeTelemetryConfirmed(false);
     } catch (caught) {
       setCollegeTelemetryError(axios.isAxiosError(caught)
         ? String(caught.response?.data?.detail || caught.message)
@@ -167,32 +181,67 @@ export function PrivacyTelemetry() {
               <div>
                 <h2 className="text-sm font-semibold text-white">OpenClaw College ecosystem intelligence</h2>
                 <p className="mt-1 max-w-xl text-xs leading-relaxed text-shogun-subdued">
-                  Contribute anonymous, coarse model-performance signals to ecosystem benchmarks. Sharing is on by default and can be disabled at any time.
+                  Optional outbound intelligence sharing. It is disabled by default and no event is queued or sent until a local administrator explicitly opts in.
                 </p>
               </div>
             </div>
             <button
               onClick={() => void toggleCollegeTelemetry()}
-              disabled={!collegeTelemetry || savingCollegeTelemetry}
-              className="shrink-0 text-cyan-300 disabled:opacity-40"
+              disabled={!collegeTelemetry || savingCollegeTelemetry || (!collegeTelemetry.enabled && !collegeTelemetryConfirmed)}
+              className="flex shrink-0 items-center gap-2 rounded-lg border border-cyan-500/30 px-3 py-1.5 text-xs font-semibold text-cyan-300 disabled:opacity-40"
               title={collegeTelemetry?.enabled ? 'Disable ecosystem sharing' : 'Enable ecosystem sharing'}
             >
               {collegeTelemetry?.enabled ? <ToggleRight className="h-9 w-9" /> : <ToggleLeft className="h-9 w-9 text-shogun-subdued" />}
+              {collegeTelemetry?.enabled ? 'Disable sharing' : 'Enable sharing'}
             </button>
           </div>
+          {collegeTelemetry && (
+            <div className="space-y-2 rounded-lg border border-shogun-border bg-black/20 p-4 text-[11px] leading-relaxed text-shogun-subdued">
+              <p><strong className="text-shogun-text">Purpose:</strong> {collegeTelemetry.purpose}</p>
+              <p><strong className="text-shogun-text">Recipient:</strong> {collegeTelemetry.recipient}</p>
+              <p className="break-all"><strong className="text-shogun-text">Destination:</strong> <code>{collegeTelemetry.request_method} {collegeTelemetry.endpoint}</code></p>
+              <p><strong className="text-shogun-text">Request envelope:</strong> <code>{collegeTelemetry.request_envelope}</code></p>
+              <p><strong className="text-shogun-text">Connection metadata:</strong> {collegeTelemetry.network_disclosure}</p>
+            </div>
+          )}
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
               <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-emerald-300"><ShieldCheck className="h-3.5 w-3.5" /> Never shared</div>
-              <p className="text-[11px] leading-relaxed text-shogun-subdued">Prompts, outputs, files, agent names, credentials, exact IP addresses, or error contents.</p>
+              <ul className="space-y-1 text-[11px] leading-relaxed text-shogun-subdued">
+                {(collegeTelemetry?.never_shared || []).map((field) => <li key={field}>• {field}</li>)}
+              </ul>
             </div>
             <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/[0.04] p-4">
-              <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-cyan-300">Coarse signals only</div>
-              <p className="text-[11px] leading-relaxed text-shogun-subdued">Model, provider, task category, success, bucketed usage, local/cloud, country code, Shogun version, and a weekly rotating anonymous ID.</p>
+              <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-cyan-300">Identifiers and bucketed metrics sent</div>
+              <ul className="space-y-1 text-[11px] leading-relaxed text-shogun-subdued">
+                {(collegeTelemetry?.shared_field_details || []).map((item) => (
+                  <li key={item.field}>• <code className="text-shogun-text">{item.field}</code> — {item.description}</li>
+                ))}
+              </ul>
             </div>
           </div>
+          {collegeTelemetry && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-3 text-xs leading-relaxed text-amber-200">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span><strong>Check configured names before opting in.</strong> {collegeTelemetry.identifier_warning}</span>
+            </div>
+          )}
+          {collegeTelemetry && !collegeTelemetry.enabled && (
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-cyan-500/20 bg-cyan-500/[0.04] p-4">
+              <input
+                type="checkbox"
+                checked={collegeTelemetryConfirmed}
+                onChange={(event) => setCollegeTelemetryConfirmed(event.target.checked)}
+                className="mt-0.5"
+              />
+              <span className="text-xs leading-relaxed text-shogun-text">
+                I choose to send the fields listed above to {collegeTelemetry.recipient} at <code>{collegeTelemetry.endpoint}</code> for the stated benchmarking purpose, and accept College telemetry notice version {collegeTelemetry.consent_notice_version}. This optional choice is separate from installation telemetry, the licence, and the mandatory security and incident-reporting acknowledgement.
+              </span>
+            </label>
+          )}
           {collegeTelemetryError && <p className="text-xs text-red-300">{collegeTelemetryError}</p>}
           <div className="flex items-center justify-between text-[11px] text-shogun-subdued">
-            <span>Status: <strong className={collegeTelemetry?.enabled ? 'text-emerald-300' : 'text-shogun-text'}>{collegeTelemetry?.enabled ? 'Contributing anonymously' : 'Not sharing'}</strong></span>
+            <span>Status: <strong className={collegeTelemetry?.enabled ? 'text-emerald-300' : 'text-shogun-text'}>{collegeTelemetry?.enabled ? 'Contributing pseudonymous signals' : 'Not sharing'}</strong></span>
             <a href="https://www.openclawcollege.com/#/dashboard" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-cyan-300 hover:underline">View ecosystem insights <ExternalLink className="h-3 w-3" /></a>
           </div>
         </section>
@@ -203,7 +252,7 @@ export function PrivacyTelemetry() {
               <div>
                 <div className="flex items-center gap-2">
                   {status.enabled ? <Radio className="h-5 w-5 text-emerald-400" /> : <EyeOff className="h-5 w-5 text-shogun-subdued" />}
-                  <h2 className="font-bold">Anonymous installation telemetry: {status.enabled ? 'Enabled' : 'Disabled'}</h2>
+                  <h2 className="font-bold">Pseudonymous installation telemetry: {status.enabled ? 'Enabled' : 'Disabled'}</h2>
                 </div>
                 <p className="mt-2 text-sm text-shogun-subdued">
                   Shogun shares at most one small weekly status signal. No prompts, files,
@@ -232,7 +281,7 @@ export function PrivacyTelemetry() {
                 <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-shogun-border p-3">
                   <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-1" />
                   <span className="text-sm">
-                    I choose to share anonymous installation statistics and accept telemetry
+                    I choose to share pseudonymous installation statistics and accept telemetry
                     notice version {status.required_consent_version}. This choice is separate
                     from the Shogun licence.
                   </span>

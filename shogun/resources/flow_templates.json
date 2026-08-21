@@ -8325,7 +8325,7 @@
           "position_x": 300,
           "position_y": 200,
           "config": {
-            "task_description": "Draft a comprehensive privacy policy:\n1. Information collected\n2. How information is used\n3. Information sharing and disclosure\n4. Data retention\n5. User rights (GDPR compliant)\n6. Cookie policy\n7. Security measures\n8. Children's privacy\n9. Policy changes\n10. Contact information",
+            "task_description": "Draft a privacy-policy working document for qualified review:\n1. Information collected\n2. How information is used\n3. Information sharing and disclosure\n4. Data retention\n5. Data-subject rights and other GDPR-relevant considerations\n6. Cookie policy\n7. Security measures\n8. Children's privacy\n9. Policy changes\n10. Contact information\nClearly identify assumptions, jurisdiction-specific gaps, and items requiring privacy or legal review. Do not claim the draft establishes GDPR compliance.",
             "timeout": 120,
             "retry_count": 1,
             "failure_action": "retry"

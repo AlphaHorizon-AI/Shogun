@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VCS_REF: ${VCS_REF:-unknown}
     image: shogun-server:local
     container_name: shogun-server
     restart: unless-stopped
@@ -28,7 +30,6 @@ services:
       SHOGUN_TELEMETRY: ${SHOGUN_TELEMETRY:-off}
       SHOGUN_TELEMETRY_NOTICE_VERSION: ${SHOGUN_TELEMETRY_NOTICE_VERSION:-}
       SHOGUN_DISTRIBUTION_CHANNEL: official_docker
-      SHOGUN_BUILD_ID: ${SHOGUN_BUILD_ID:-161}
       A2A_DESTINATION_POLICY: ${A2A_DESTINATION_POLICY:-private_allowed}
       GENSUI_DESTINATION_POLICY: ${GENSUI_DESTINATION_POLICY:-private_allowed}
       OUTBOUND_ALLOWLIST: ${OUTBOUND_ALLOWLIST:-}

@@ -15,12 +15,19 @@ from shogun.config import PROJECT_ROOT, settings
 from shogun.db.engine import async_session_factory
 from shogun.schemas.common import ApiResponse
 from shogun.services.provider_credentials import protect_provider_config
+from shogun.services.release_metadata import get_release_metadata
 
 router = APIRouter(prefix="/setup", tags=["Setup"])
 
 SETUP_JSON = Path(settings.config_path) / "setup.json"
 CONSTITUTION_PATH = Path(settings.config_path) / "constitution.yaml"
 MANDATE_PATH = Path(settings.config_path) / "mandate.md"
+
+SECURITY_INCIDENT_ACKNOWLEDGEMENT_VERSION = 1
+SECURITY_INCIDENT_ACKNOWLEDGEMENT_STATEMENT = (
+    "I acknowledge that I have been provided with the Shogun security and incident "
+    "reporting information and know where to report suspected security vulnerabilities."
+)
 
 RONIN_DESKTOP_DEFAULTS = {
     "enabled": False,
@@ -137,10 +144,36 @@ def _read_setup() -> dict:
     if SETUP_JSON.exists():
         try:
             setup = json.loads(SETUP_JSON.read_text(encoding="utf-8"))
-            setup["ronin_desktop_control"] = {
+            ronin_config = {
                 **RONIN_DESKTOP_DEFAULTS,
                 **setup.get("ronin_desktop_control", {}),
             }
+            # These controls are safety invariants, not user preferences. A
+            # stale or manually edited setup file cannot weaken the runtime.
+            for key in (
+                "audit_all_actions",
+                "critical_actions_blocked",
+                "high_risk_requires_approval",
+                "kill_switch_enabled",
+                "require_visible_indicator",
+                "verification_required",
+            ):
+                ronin_config[key] = True
+            ronin_config["minimum_posture"] = "ronin"
+            ronin_config["allow_sensitive_apps"] = False
+            for key in ("protected_applications", "blocked_keywords_in_window_titles"):
+                configured = ronin_config.get(key, [])
+                if not isinstance(configured, list):
+                    configured = []
+                ronin_config[key] = list(
+                    dict.fromkeys(
+                        [
+                            *RONIN_DESKTOP_DEFAULTS[key],
+                            *(item for item in configured if isinstance(item, str)),
+                        ]
+                    )
+                )
+            setup["ronin_desktop_control"] = ronin_config
             setup["mado"] = {**MADO_DEFAULTS, **setup.get("mado", {})}
             setup["benchmark_mode"] = {
                 **BENCHMARK_MODE_DEFAULTS,
@@ -169,6 +202,34 @@ def _write_setup(data: dict) -> None:
     SETUP_JSON.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
+def _installation_release_metadata() -> dict:
+    """Read the installed release manifest without contacting any remote service."""
+    return get_release_metadata(PROJECT_ROOT)
+
+
+def _security_incident_acknowledgement(installation_mode: str) -> dict:
+    """Create the local audit record for the installer's required acknowledgement."""
+    release = _installation_release_metadata()
+    version = str(release.get("version") or "0.0.0")
+    build = release.get("build")
+    if build in (None, ""):
+        build = "unknown"
+    return {
+        "record_version": SECURITY_INCIDENT_ACKNOWLEDGEMENT_VERSION,
+        "statement": SECURITY_INCIDENT_ACKNOWLEDGEMENT_STATEMENT,
+        "acknowledged_at": datetime.now(timezone.utc).isoformat(),
+        "acknowledged_by_role": (
+            "primary_admin" if installation_mode == "team" else "installer"
+        ),
+        "installed_version": version,
+        "installed_build": build,
+        "installed_release_identifier": str(
+            release.get("release_id") or f"{version}+build.{build}"
+        ),
+        "installed_release_date": release.get("release_date"),
+    }
+
+
 @router.get("/status", response_model=ApiResponse)
 async def get_setup_status():
     """Return whether setup has been completed, plus path info."""
@@ -184,6 +245,9 @@ async def get_setup_status():
             "ronin_available": settings.deployment_mode == "desktop",
             "data_path": setup.get("data_path", str(PROJECT_ROOT / "data")),
             "config_path": str(settings.config_path),
+            "security_incident_acknowledgement": setup.get(
+                "security_incident_acknowledgement"
+            ),
         }
     )
 
@@ -241,6 +305,7 @@ class SetupCompletePayload(BaseModel):
     fallback_models: list[str] = Field(default_factory=list)
     routing_profile: str = "custom"
     ronin_enabled: bool = False
+    security_incident_acknowledged: Literal[True]
 
     @model_validator(mode="after")
     def validate_team_setup(self):
@@ -505,6 +570,9 @@ async def complete_setup(payload: SetupCompletePayload):
         "agent_name": payload.agent_name,
         "providers_created": len(created_provider_ids),
         "ronin_enabled": payload.ronin_enabled,
+        "security_incident_acknowledgement": _security_incident_acknowledgement(
+            payload.installation_mode
+        ),
     }
     _write_setup(setup_data)
 

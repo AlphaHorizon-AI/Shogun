@@ -96,6 +96,52 @@ async def cascade_context(monkeypatch):
             project_id="alpha",
             scope_status="classified",
         ),
+        MemoryRecord(
+            agent_id=agent_id,
+            memory_type="episodic",
+            title="Alice Telegram private memory",
+            content="Only Alice may retrieve this Telegram memory.",
+            user_id="telegram:alice",
+            conversation_provider="telegram",
+            conversation_id="telegram-alice",
+            is_pinned=True,
+            scope_status="classified",
+        ),
+        MemoryRecord(
+            agent_id=agent_id,
+            memory_type="episodic",
+            title="Bob Telegram private memory",
+            content="Only Bob may retrieve this Telegram memory.",
+            user_id="telegram:bob",
+            conversation_provider="telegram",
+            conversation_id="telegram-bob",
+            is_pinned=True,
+            scope_status="classified",
+        ),
+        MemoryRecord(
+            agent_id=agent_id,
+            memory_type="episodic",
+            title="Alice Teams private memory",
+            content="Only Alice may retrieve this Teams memory.",
+            user_id="microsoft_teams:alice",
+            team_id="team-one",
+            conversation_provider="microsoft_teams",
+            conversation_id="teams-alice",
+            is_pinned=True,
+            scope_status="classified",
+        ),
+        MemoryRecord(
+            agent_id=agent_id,
+            memory_type="episodic",
+            title="Bob Teams private memory",
+            content="Only Bob may retrieve this Teams memory.",
+            user_id="microsoft_teams:bob",
+            team_id="team-one",
+            conversation_provider="microsoft_teams",
+            conversation_id="teams-bob",
+            is_pinned=True,
+            scope_status="classified",
+        ),
     ]
     vector = _ScopedVectorStore(records)
     monkeypatch.setattr(memory_service, "get_vector_store", lambda: vector)
@@ -133,22 +179,97 @@ async def test_cascade_pre_authorizes_ids_and_blocks_cross_scope_memory(cascade_
 
 
 @pytest.mark.asyncio
-async def test_shadow_mode_keeps_legacy_results_and_records_cascade_difference(cascade_context):
+@pytest.mark.parametrize("mode", ["legacy", "shadow"])
+async def test_classified_scope_forces_authorized_cascade_even_during_rollout(cascade_context, mode):
     session, agent_id, records, _vector = cascade_context
     results, diagnostic = await CascadeRetrievalService(session).run(
         query="decision",
         agent_id=agent_id,
         scope=MemoryScopeEnvelope(project_id="alpha"),
-        mode="shadow",
+        mode=mode,
         limit=10,
     )
 
-    assert "Project Beta decision" in {item["title"] for item in results}
+    titles = {item["title"] for item in results}
+    assert "Project Alpha decision" in titles
+    assert "Project Beta decision" not in titles
     assert diagnostic is not None
-    excluded_ids = {item["memory_id"] for item in diagnostic.excluded_json}
-    assert str(records[1].id) in excluded_ids
+    assert diagnostic.mode == "cascade"
     assert diagnostic.query_hash
     assert "decision" not in diagnostic.query_hash
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mode", "scope", "expected", "forbidden"),
+    [
+        (
+            "legacy",
+            MemoryScopeEnvelope(
+                user_id="telegram:bob",
+                conversation_provider="telegram",
+                conversation_id="telegram-bob",
+            ),
+            "Bob Telegram private memory",
+            "Alice Telegram private memory",
+        ),
+        (
+            "shadow",
+            MemoryScopeEnvelope(
+                user_id="telegram:bob",
+                conversation_provider="telegram",
+                conversation_id="telegram-bob",
+            ),
+            "Bob Telegram private memory",
+            "Alice Telegram private memory",
+        ),
+        (
+            "legacy",
+            MemoryScopeEnvelope(
+                user_id="microsoft_teams:bob",
+                team_id="team-one",
+                conversation_provider="microsoft_teams",
+                conversation_id="teams-bob",
+            ),
+            "Bob Teams private memory",
+            "Alice Teams private memory",
+        ),
+        (
+            "shadow",
+            MemoryScopeEnvelope(
+                user_id="microsoft_teams:bob",
+                team_id="team-one",
+                conversation_provider="microsoft_teams",
+                conversation_id="teams-bob",
+            ),
+            "Bob Teams private memory",
+            "Alice Teams private memory",
+        ),
+    ],
+)
+async def test_connector_member_scope_blocks_other_members_regular_and_pinned_memory(
+    cascade_context,
+    mode,
+    scope,
+    expected,
+    forbidden,
+):
+    session, agent_id, _records, _vector = cascade_context
+
+    results, diagnostic = await CascadeRetrievalService(session).run(
+        query="private memory",
+        agent_id=agent_id,
+        scope=scope,
+        mode=mode,
+        limit=20,
+    )
+    pinned = await MemoryService(session).get_pinned(agent_id=agent_id, scope=scope)
+
+    assert expected in {item["title"] for item in results}
+    assert forbidden not in {item["title"] for item in results}
+    assert expected in {item.title for item in pinned}
+    assert forbidden not in {item.title for item in pinned}
+    assert diagnostic is not None and diagnostic.mode == "cascade"
 
 
 @pytest.mark.asyncio
