@@ -374,7 +374,7 @@ def _static_profile_validation(
                         )
                     try:
                         re.compile(nested)
-                    except re.error as exc:
+                    except (RecursionError, re.error) as exc:
                         raise TransformationProfileRegistryError(
                             f"Invalid regex at {child_path}: {exc}"
                         ) from exc
@@ -391,7 +391,7 @@ def _static_profile_validation(
                             )
                         try:
                             re.compile(pattern)
-                        except re.error as exc:
+                        except (RecursionError, re.error) as exc:
                             raise TransformationProfileRegistryError(
                                 f"Invalid regex at {child_path}[{index}]: {exc}"
                             ) from exc
@@ -1524,6 +1524,91 @@ class TransformationProfileRegistryService:
                 "version_id": str(version.id),
             },
         }
+
+    async def list_active_definitions(self) -> list[dict[str, Any]]:
+        """Return every executable active profile as an integrity-checked envelope.
+
+        This bulk resolver is intended for trusted in-process selectors such as
+        Source Intelligence.  Definitions are never exposed by its preview API.
+        A corrupt active row fails the complete lookup closed instead of being
+        silently omitted and changing profile-selection behavior.
+        """
+
+        rows = (
+            await self.session.execute(
+                select(
+                    RegisteredTransformationProfile,
+                    TransformationProfileVersion,
+                    TransformationAdapter,
+                )
+                .outerjoin(
+                    TransformationProfileVersion,
+                    TransformationProfileVersion.id
+                    == RegisteredTransformationProfile.active_version_id,
+                )
+                .outerjoin(
+                    TransformationAdapter,
+                    TransformationAdapter.adapter_id
+                    == TransformationProfileVersion.adapter_id,
+                )
+                .where(
+                    RegisteredTransformationProfile.is_deleted.is_(False),
+                    RegisteredTransformationProfile.lifecycle_status == "active",
+                )
+                .order_by(RegisteredTransformationProfile.profile_key)
+            )
+        ).all()
+        resolved: list[dict[str, Any]] = []
+        for profile, version, adapter in rows:
+            if version is None or version.status != "active":
+                raise TransformationProfileLifecycleError(
+                    f"Transformation profile '{profile.profile_key}' has no valid active version."
+                )
+            if version.profile_id != profile.id:
+                raise TransformationProfileLifecycleError(
+                    f"Transformation profile '{profile.profile_key}' has an invalid active pointer."
+                )
+            if profile_content_hash(version.definition) != version.content_hash:
+                raise TransformationProfileLifecycleError(
+                    f"Transformation profile '{profile.profile_key}' failed its registry integrity check."
+                )
+            _static_profile_validation(
+                version.definition,
+                expected_profile_id=profile.profile_key,
+                expected_adapter_id=version.adapter_id,
+            )
+            if (
+                adapter is None
+                or version.required_adapter_status != "available"
+                or adapter.status != "available"
+            ):
+                adapter_status = adapter.status if adapter is not None else "unavailable"
+                raise TransformationAdapterUnavailableError(
+                    f"Transformation profile '{profile.profile_key}' requires adapter "
+                    f"'{version.adapter_id}', which is {adapter_status}."
+                )
+            resolved.append(
+                {
+                    "definition": json.loads(json.dumps(version.definition)),
+                    "registry_evidence": {
+                        "profile_id": profile.profile_key,
+                        "version": version.version_number,
+                        "content_hash": version.content_hash,
+                        "status": "active",
+                        "adapter_id": version.adapter_id,
+                        "adapter_status": "available",
+                        "version_id": str(version.id),
+                    },
+                    "profile_metadata": {
+                        "display_name": profile.display_name,
+                        "platform": profile.platform,
+                        "domain": profile.domain,
+                        "protected": profile.protected,
+                        "bundled": profile.bundled,
+                    },
+                }
+            )
+        return resolved
 
     async def profile_data(
         self,

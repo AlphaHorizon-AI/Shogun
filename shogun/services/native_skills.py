@@ -2446,6 +2446,61 @@ NATIVE_TOOLS = [
         "risk": "low",
         "category": "transformation_profiles",
         "function": {
+            "name": "transformation_sources_inspect",
+            "description": (
+                "Inspect bounded text or structured source artifacts against every active "
+                "governed transformation profile. Returns only a safe exact, ambiguous, or "
+                "unknown resolution with evidence and specialist guidance; never executes a "
+                "profile or returns profile definitions."
+            ),
+            "parameters": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "artifacts": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 16,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "source_id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 255,
+                                },
+                                "label": {"type": "string", "maxLength": 500},
+                                "text": {"type": "string", "maxLength": 2097152},
+                                "payload": {},
+                                "context": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        "transport": {"type": "string", "maxLength": 100},
+                                        "object": {"type": "string", "maxLength": 500},
+                                        "record_shape": {"type": "string", "maxLength": 100},
+                                        "record_path": {"type": "string", "maxLength": 500},
+                                        "content_type": {"type": "string", "maxLength": 255},
+                                        "file_name": {"type": "string", "maxLength": 500},
+                                        "connector": {"type": "string", "maxLength": 100},
+                                        "platform_hint": {"type": "string", "maxLength": 100},
+                                    },
+                                },
+                            },
+                            "required": ["source_id"],
+                        },
+                    },
+                },
+                "required": ["artifacts"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "risk": "low",
+        "category": "transformation_profiles",
+        "function": {
             "name": "transformation_profiles_list",
             "description": (
                 "List governed enterprise transformation profiles and their server-recorded "
@@ -2869,7 +2924,14 @@ async def execute_native_tool(
     operator_confirmed_permissions: set[tuple[str, str]] | None = None,
 ) -> str:
     """Route tool execution from LLM to underlying services."""
-    logger.info(f"Executing native skill: {name} with args {args}")
+    if name == "transformation_sources_inspect":
+        logger.info(
+            "Executing native skill: %s with %d bounded source artifact(s)",
+            name,
+            len(args.get("artifacts") or []),
+        )
+    else:
+        logger.info("Executing native skill: %s with args %s", name, args)
     confirmed_permissions = operator_confirmed_permissions or set()
     
     try:
@@ -4712,7 +4774,10 @@ async def execute_native_tool(
             return await _execute_mcp_tool(name, args, db_session)
 
         # ── Governed transformation profile registry ────────────────
-        elif name.startswith("transformation_profiles_"):
+        elif (
+            name.startswith("transformation_profiles_")
+            or name == "transformation_sources_inspect"
+        ):
             return await _execute_transformation_profile_tool(name, args, db_session)
 
         # ── Dojo / Skill Tools ────────────────────────────────────────
@@ -4749,9 +4814,14 @@ async def _execute_transformation_profile_tool(
 
     from pydantic import ValidationError
 
+    from shogun.schemas.source_intelligence import SourceIntelligenceRequest
     from shogun.schemas.transformation_profile import (
         TransformationProfileCandidateCreate,
         TransformationProfileValidationRequest,
+    )
+    from shogun.services.source_intelligence import (
+        SourceIntelligenceError,
+        SourceIntelligenceService,
     )
     from shogun.services.transformation_profile_registry import (
         TransformationProfileRegistryError,
@@ -4762,6 +4832,22 @@ async def _execute_transformation_profile_tool(
     actor = ENTERPRISE_TRANSFORMATION_ARCHITECT_ACTOR
 
     try:
+        if name == "transformation_sources_inspect":
+            if "private_profiles" in args:
+                raise ValueError(
+                    "Private profile definitions cannot be passed through the Architect tool."
+                )
+            request = SourceIntelligenceRequest(artifacts=args.get("artifacts") or [])
+            result = await SourceIntelligenceService(db_session).inspect(request)
+            return json.dumps(
+                {
+                    "status": "success",
+                    "resolution": result.model_dump(mode="json"),
+                    "read_only": True,
+                },
+                ensure_ascii=False,
+            )
+
         if name == "transformation_profiles_list":
             lifecycle = str(args.get("lifecycle") or "").strip() or None
             platform = str(args.get("platform") or "").strip() or None
@@ -4872,9 +4958,10 @@ async def _execute_transformation_profile_tool(
         return json.dumps(
             {"status": "error", "message": f"Unknown transformation profile tool: {name}"}
         )
-    except TransformationProfileRegistryError as exc:
+    except (TransformationProfileRegistryError, SourceIntelligenceError) as exc:
         if name not in {"transformation_profiles_list", "transformation_profiles_get"}:
-            await db_session.rollback()
+            if name != "transformation_sources_inspect":
+                await db_session.rollback()
         logger.warning("Transformation profile request rejected (%s): %s", name, exc)
         return json.dumps(
             {

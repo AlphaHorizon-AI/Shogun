@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 from copy import deepcopy
 from typing import Any, Literal
+
+import regex as timeout_regex
 
 from shogun.mapping.schema import (
     PRIVATE_TRANSFORMATION_PROFILE_FORMAT,
@@ -33,10 +36,21 @@ PRIVATE_PROFILE_EXECUTION_MODES: dict[str, Literal["contract", "profile"]] = {
     "sectioned_record_matrix_v1": "contract",
     "canonical_entity_map_v1": "profile",
 }
+MAX_PRIVATE_SOURCE_PATTERNS = 32
 
 
 class PrivateTransformationProfileError(ValueError):
     """A portable private profile failed bounded server validation."""
+
+
+class PrivateTransformationProfileRegexError(PrivateTransformationProfileError):
+    """A private profile regex is invalid or unsafe to evaluate."""
+
+
+class PrivateTransformationProfileRegexTimeoutError(
+    PrivateTransformationProfileRegexError
+):
+    """A private profile regex exceeded its caller-supplied evaluation budget."""
 
 
 def _profile_definition(value: Any) -> dict[str, Any]:
@@ -119,15 +133,165 @@ def _validate_sectioned_matrix_profile(definition: dict[str, Any]) -> None:
         )
 
 
+def _regex_tree_contains_flexible_repeat(value: Any) -> bool:
+    """Inspect the stdlib parser tree without evaluating caller-controlled text."""
+
+    for operation, argument in value:
+        operation_name = str(operation)
+        if operation_name in {"MAX_REPEAT", "MIN_REPEAT", "POSSESSIVE_REPEAT"}:
+            minimum, maximum, child = argument
+            if minimum != maximum or _regex_tree_contains_flexible_repeat(child):
+                return True
+        elif operation_name == "SUBPATTERN":
+            if _regex_tree_contains_flexible_repeat(argument[-1]):
+                return True
+        elif operation_name == "BRANCH":
+            if any(_regex_tree_contains_flexible_repeat(branch) for branch in argument[1]):
+                return True
+        elif operation_name in {"ASSERT", "ASSERT_NOT", "ATOMIC_GROUP"}:
+            child = argument[-1] if operation_name != "ATOMIC_GROUP" else argument
+            if _regex_tree_contains_flexible_repeat(child):
+                return True
+    return False
+
+
+def _validate_private_regex_complexity(pattern: str, path: str) -> None:
+    """Reject constructs with known catastrophic-backtracking risk.
+
+    Runtime matching is separately time-bounded.  This static gate keeps
+    obviously hostile patterns out of portable profile files altogether and
+    protects other deterministic adapters that use the stdlib regex engine.
+    """
+
+    try:
+        # ``re._parser`` is the parser used by the supported stdlib ``re``
+        # engine.  Parsing performs no source-text evaluation and lets us
+        # reject unsafe structure without maintaining a second regex parser.
+        try:
+            from re import _parser as re_parser
+        except ImportError:  # Python 3.10 compatibility.
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                import sre_parse as re_parser
+
+        parsed = re_parser.parse(pattern, 0)
+    except (ImportError, RecursionError, re.error, ValueError) as exc:
+        raise PrivateTransformationProfileRegexError(
+            f"Regex at {path} could not pass safety analysis: {exc}"
+        ) from exc
+
+    def visit(value: Any, *, inside_flexible_repeat: bool = False) -> None:
+        for operation, argument in value:
+            operation_name = str(operation)
+            if operation_name in {"GROUPREF", "GROUPREF_EXISTS"}:
+                raise PrivateTransformationProfileRegexError(
+                    f"Unsafe regex at {path}: backreferences are not allowed in private profiles."
+                )
+            if operation_name in {"MAX_REPEAT", "MIN_REPEAT", "POSSESSIVE_REPEAT"}:
+                minimum, maximum, child = argument
+                flexible = minimum != maximum
+                repeats_many = flexible and maximum > 1
+                if repeats_many and _regex_tree_contains_flexible_repeat(child):
+                    raise PrivateTransformationProfileRegexError(
+                        f"Unsafe regex at {path}: nested variable quantifiers are not allowed."
+                    )
+                visit(
+                    child,
+                    inside_flexible_repeat=inside_flexible_repeat or repeats_many,
+                )
+                continue
+            if operation_name == "SUBPATTERN":
+                visit(argument[-1], inside_flexible_repeat=inside_flexible_repeat)
+                continue
+            if operation_name == "BRANCH":
+                branches = argument[1]
+                if inside_flexible_repeat and any(branch.getwidth()[0] == 0 for branch in branches):
+                    raise PrivateTransformationProfileRegexError(
+                        f"Unsafe regex at {path}: an empty alternative is repeated."
+                    )
+                for branch in branches:
+                    visit(branch, inside_flexible_repeat=inside_flexible_repeat)
+                continue
+            if operation_name in {"ASSERT", "ASSERT_NOT", "ATOMIC_GROUP"}:
+                child = argument[-1] if operation_name != "ATOMIC_GROUP" else argument
+                visit(child, inside_flexible_repeat=inside_flexible_repeat)
+
+    visit(parsed)
+
+
 def _compile_private_regex(pattern: str, path: str) -> None:
     if len(pattern) > 10_000:
-        raise PrivateTransformationProfileError(
+        raise PrivateTransformationProfileRegexError(
             f"Regex at {path} exceeds the 10,000-character safety limit."
         )
     try:
         re.compile(pattern)
-    except re.error as exc:
-        raise PrivateTransformationProfileError(f"Invalid regex at {path}: {exc}") from exc
+    except (RecursionError, re.error) as exc:
+        raise PrivateTransformationProfileRegexError(
+            f"Invalid regex at {path}: {exc}"
+        ) from exc
+    _validate_private_regex_complexity(pattern, path)
+    try:
+        timeout_regex.compile(pattern)
+    except (RecursionError, timeout_regex.error) as exc:
+        raise PrivateTransformationProfileRegexError(
+            f"Invalid regex at {path}: {exc}"
+        ) from exc
+
+
+def _validate_private_source_patterns(parameters: dict[str, Any]) -> None:
+    patterns = parameters.get("required_source_patterns")
+    if patterns is None:
+        return
+    if not isinstance(patterns, list):
+        raise PrivateTransformationProfileRegexError(
+            "Private transformation profile required_source_patterns must be an array."
+        )
+    if len(patterns) > MAX_PRIVATE_SOURCE_PATTERNS:
+        raise PrivateTransformationProfileRegexError(
+            "Private transformation profile exceeds the 32 source-fingerprint regex limit."
+        )
+    for index, pattern in enumerate(patterns):
+        if not isinstance(pattern, str):
+            raise PrivateTransformationProfileRegexError(
+                f"Regex at $.parameters.required_source_patterns[{index}] must be a string."
+            )
+        _compile_private_regex(
+            pattern,
+            f"$.parameters.required_source_patterns[{index}]",
+        )
+
+
+def compile_private_source_regex(pattern: str, *, path: str) -> Any:
+    """Return a timeout-capable compiled regex after the import safety gate."""
+
+    _compile_private_regex(pattern, path)
+    return timeout_regex.compile(pattern)
+
+
+def bounded_private_regex_search(
+    compiled: Any,
+    text: str,
+    *,
+    timeout_seconds: float,
+    path: str,
+) -> bool:
+    """Evaluate one private fingerprint within an explicit wall-clock budget."""
+
+    if timeout_seconds <= 0:
+        raise PrivateTransformationProfileRegexTimeoutError(
+            "Private source fingerprint inspection exceeded its total time budget."
+        )
+    try:
+        return compiled.search(
+            text,
+            timeout=timeout_seconds,
+            concurrent=True,
+        ) is not None
+    except TimeoutError as exc:
+        raise PrivateTransformationProfileRegexTimeoutError(
+            f"Private source fingerprint at {path} exceeded its evaluation time budget."
+        ) from exc
 
 
 def _execution_mode_for_adapter(adapter_id: str) -> Literal["contract", "profile"]:
@@ -167,6 +331,13 @@ def validate_private_profile_definition(
             f"Transformation adapter '{adapter_id}' is not available in this installation."
         )
 
+    parameters = definition.get("parameters", {})
+    if not isinstance(parameters, dict):
+        raise PrivateTransformationProfileError(
+            "Private transformation profile parameters must be an object."
+        )
+    _validate_private_source_patterns(parameters)
+
     try:
         report = _static_profile_validation(
             definition,
@@ -178,11 +349,6 @@ def validate_private_profile_definition(
 
     if adapter_id == "sectioned_record_matrix_v1":
         _validate_sectioned_matrix_profile(definition)
-    parameters = definition.get("parameters", {})
-    if not isinstance(parameters, dict):
-        raise PrivateTransformationProfileError(
-            "Private transformation profile parameters must be an object."
-        )
     model_fallback = definition.get("model_fallback", False)
     if not isinstance(model_fallback, bool):
         raise PrivateTransformationProfileError(
@@ -230,7 +396,7 @@ class PrivateTransformationProfileService:
         execution_mode: Literal["contract", "profile"] | None = None,
         display_name: str | None = None,
     ) -> dict[str, Any]:
-        definition, _report = validate_private_profile_definition(
+        definition, report = validate_private_profile_definition(
             _profile_definition(profile),
             execution_mode=execution_mode,
         )
@@ -241,6 +407,7 @@ class PrivateTransformationProfileService:
         ).model_dump(mode="json")
         return {
             "filename": _safe_filename(str(definition["id"]), display_name),
+            "execution_mode": report["execution_mode"],
             "document": document,
             "profile_reference": _private_profile_reference(
                 definition,
@@ -310,7 +477,7 @@ class PrivateTransformationProfileService:
             )
         except (TypeError, ValueError) as exc:
             raise PrivateTransformationProfileError(str(exc)) from exc
-        definition, _report = validate_private_profile_definition(portable.profile)
+        definition, report = validate_private_profile_definition(portable.profile)
         digest = profile_content_hash(definition)
         if portable.content_hash != digest:
             raise PrivateTransformationProfileError(
@@ -322,6 +489,7 @@ class PrivateTransformationProfileService:
         ).model_dump(mode="json")
         return {
             "filename": _safe_filename(str(definition["id"])),
+            "execution_mode": report["execution_mode"],
             "document": normalized_document,
             "profile_reference": _private_profile_reference(
                 definition,

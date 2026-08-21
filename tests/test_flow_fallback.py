@@ -834,7 +834,7 @@ Format: xlsx
 
 
 def test_samurai_rejects_multiple_explicit_transformation_profiles():
-    with pytest.raises(ValueError, match="multiple Mapping/RPA transformation profiles"):
+    with pytest.raises(ValueError, match="multiple transformation profiles"):
         flow_engine._active_transformation_profile(
             {
                 "_transformation_profiles": [

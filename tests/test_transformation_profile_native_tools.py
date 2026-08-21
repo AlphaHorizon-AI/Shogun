@@ -13,6 +13,7 @@ from shogun.services import native_skills
 from shogun.services.tool_gate import TOOL_RISK_REGISTRY
 
 TOOL_RISKS = {
+    "transformation_sources_inspect": "low",
     "transformation_profiles_list": "low",
     "transformation_profiles_get": "low",
     "transformation_profiles_propose": "medium",
@@ -26,7 +27,7 @@ def _tool_map() -> dict[str, dict]:
     return {
         item["function"]["name"]: item
         for item in native_skills.NATIVE_TOOLS
-        if item["function"]["name"].startswith("transformation_profiles_")
+        if item["function"]["name"].startswith("transformation_")
     }
 
 
@@ -64,6 +65,70 @@ def test_profile_tools_declare_governed_risks_and_no_client_trust_flags() -> Non
         "positive_fixtures",
         "negative_fixtures",
     }
+    inspection = tools["transformation_sources_inspect"]["function"]["parameters"]
+    assert inspection["additionalProperties"] is False
+    assert inspection["properties"]["artifacts"]["maxItems"] == 16
+    assert "private_profiles" not in inspection["properties"]
+
+
+@pytest.mark.asyncio
+async def test_source_inspection_native_tool_returns_only_safe_resolution(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class SafeResult:
+        def model_dump(self, *, mode):
+            assert mode == "json"
+            return {
+                "outcome": "unknown",
+                "execution_allowed": False,
+                "candidates": [],
+                "specialist_skill": "enterprise-transformation-architect",
+            }
+
+    class FakeSourceIntelligence:
+        def __init__(self, session):
+            captured["session"] = session
+
+        async def inspect(self, request):
+            captured["request"] = request
+            return SafeResult()
+
+    monkeypatch.setattr(
+        "shogun.services.source_intelligence.SourceIntelligenceService",
+        FakeSourceIntelligence,
+    )
+    db = _db()
+    response = json.loads(
+        await native_skills.execute_native_tool(
+            "transformation_sources_inspect",
+            {
+                "artifacts": [
+                    {
+                        "source_id": "input-1",
+                        "payload": {"InvoiceId": "I-1"},
+                        "context": {"transport": "rest", "object": "invoices"},
+                    }
+                ]
+            },
+            db,
+        )
+    )
+
+    assert response == {
+        "status": "success",
+        "resolution": {
+            "outcome": "unknown",
+            "execution_allowed": False,
+            "candidates": [],
+            "specialist_skill": "enterprise-transformation-architect",
+        },
+        "read_only": True,
+    }
+    request = captured["request"]
+    assert request.private_profiles == []
+    assert request.artifacts[0].payload == {"InvoiceId": "I-1"}
+    db.commit.assert_not_awaited()
+    db.rollback.assert_not_awaited()
 
 
 @pytest.mark.asyncio

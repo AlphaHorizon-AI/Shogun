@@ -754,6 +754,10 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     "skills_request_activation": {"risk": "low",   "category": "skills"},
     "skills_explain_active":     {"risk": "low",   "category": "skills"},
     "skills_report_outcome":     {"risk": "low",   "category": "skills"},
+    "transformation_sources_inspect": {
+        "risk": "low",
+        "category": "transformation_profiles",
+    },
     "transformation_profiles_list":     {"risk": "low",   "category": "transformation_profiles"},
     "transformation_profiles_get":      {"risk": "low",   "category": "transformation_profiles"},
     "transformation_profiles_propose":  {"risk": "medium", "category": "transformation_profiles"},

@@ -9,11 +9,19 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from importlib.resources import files
+from time import monotonic
 from typing import Any
 
+import regex
+
 SUPPORTED_ADAPTER = "sectioned_record_matrix_v1"
+PROFILE_REGEX_OPERATION_TIMEOUT_SECONDS = 1.0
+PROFILE_TRANSFORMATION_TIMEOUT_SECONDS = 20.0
 
 
 @dataclass(slots=True)
@@ -36,6 +44,89 @@ class _RecordHeaderBinding:
 
     position: int
     source_by_target: dict[str, str]
+
+
+@dataclass(slots=True)
+class _RegexExecutionBudget:
+    """Shared fail-closed budget for every dynamic regex in one execution."""
+
+    profile_id: str
+    started_at: float = field(default_factory=monotonic)
+
+    def operation_timeout(self, label: str) -> float:
+        remaining = PROFILE_TRANSFORMATION_TIMEOUT_SECONDS - (monotonic() - self.started_at)
+        if remaining <= 0:
+            raise self.timeout_error(label)
+        return min(PROFILE_REGEX_OPERATION_TIMEOUT_SECONDS, remaining)
+
+    def check_total(self, label: str) -> None:
+        if monotonic() - self.started_at > PROFILE_TRANSFORMATION_TIMEOUT_SECONDS:
+            raise self.timeout_error(label)
+
+    def timeout_error(self, label: str) -> ValueError:
+        return ValueError(
+            f"Transformation profile '{self.profile_id}' regex operation for {label} "
+            "exceeded its bounded execution budget."
+        )
+
+
+class _BoundedPattern:
+    """Timeout-enforcing facade over a profile-supplied ``regex`` pattern."""
+
+    __slots__ = ("_budget", "_compiled", "_label")
+
+    def __init__(
+        self,
+        compiled: regex.Pattern,
+        *,
+        label: str,
+        budget: _RegexExecutionBudget,
+    ) -> None:
+        self._compiled = compiled
+        self._label = label
+        self._budget = budget
+
+    @property
+    def groupindex(self) -> dict[str, int]:
+        return self._compiled.groupindex
+
+    def finditer(self, text: str) -> Iterator[regex.Match]:
+        timeout = self._budget.operation_timeout(self._label)
+
+        def iterate() -> Iterator[regex.Match]:
+            try:
+                for match in self._compiled.finditer(text, timeout=timeout):
+                    self._budget.check_total(self._label)
+                    yield match
+            except TimeoutError as exc:
+                raise self._budget.timeout_error(self._label) from exc
+
+        return iterate()
+
+    def search(self, text: str) -> regex.Match | None:
+        timeout = self._budget.operation_timeout(self._label)
+        try:
+            result = self._compiled.search(text, timeout=timeout)
+        except TimeoutError as exc:
+            raise self._budget.timeout_error(self._label) from exc
+        self._budget.check_total(self._label)
+        return result
+
+
+_ACTIVE_REGEX_BUDGET: ContextVar[_RegexExecutionBudget | None] = ContextVar(
+    "structured_transformation_regex_budget",
+    default=None,
+)
+
+
+@contextmanager
+def _profile_regex_budget(profile_id: str) -> Iterator[_RegexExecutionBudget]:
+    budget = _RegexExecutionBudget(profile_id=profile_id)
+    token = _ACTIVE_REGEX_BUDGET.set(budget)
+    try:
+        yield budget
+    finally:
+        _ACTIVE_REGEX_BUDGET.reset(token)
 
 
 _MONTH_NAMES = {
@@ -119,29 +210,32 @@ def try_deterministic_matrix_transform(
     """
 
     profile_id, parameters = _profile_parameters(profile)
-    _validate_required_source_patterns(source_context, parameters, profile_id)
-    headers, logical_width = _excel_template_contract(fixed_context, parameters, profile_id)
-    sections = _parse_sections(source_context, parameters, profile_id)
-    planning_columns = _planning_month_columns(headers, parameters, profile_id)
-    rows = _build_rows(
-        sections,
-        logical_width,
-        planning_columns,
-        parameters,
-        profile_id,
-    )
-    if not rows:
-        raise ValueError(f"Transformation profile '{profile_id}' produced no rows.")
-    if any(len(row) != logical_width for row in rows):
-        raise ValueError(
-            f"Transformation profile '{profile_id}' produced a row outside the "
-            f"{logical_width}-column template contract."
+    with _profile_regex_budget(profile_id) as budget:
+        _validate_required_source_patterns(source_context, parameters, profile_id)
+        headers, logical_width = _excel_template_contract(fixed_context, parameters, profile_id)
+        budget.check_total("template validation")
+        sections = _parse_sections(source_context, parameters, profile_id)
+        planning_columns = _planning_month_columns(headers, parameters, profile_id)
+        rows = _build_rows(
+            sections,
+            logical_width,
+            planning_columns,
+            parameters,
+            profile_id,
         )
-    return DeterministicMatrixResult(
-        adapter_id=SUPPORTED_ADAPTER,
-        profile_id=profile_id,
-        rows=rows,
-    )
+        budget.check_total("matrix construction")
+        if not rows:
+            raise ValueError(f"Transformation profile '{profile_id}' produced no rows.")
+        if any(len(row) != logical_width for row in rows):
+            raise ValueError(
+                f"Transformation profile '{profile_id}' produced a row outside the "
+                f"{logical_width}-column template contract."
+            )
+        return DeterministicMatrixResult(
+            adapter_id=SUPPORTED_ADAPTER,
+            profile_id=profile_id,
+            rows=rows,
+        )
 
 
 def deterministic_profile_source_units(
@@ -150,17 +244,19 @@ def deterministic_profile_source_units(
 ) -> list[str]:
     """Split source text at the explicit profile's section boundaries."""
 
-    _profile_id, parameters = _profile_parameters(profile)
-    pattern = _required_pattern(parameters, "section_pattern")
-    matches = list(pattern.finditer(str(source_context or "")))
-    if not matches:
-        return [source_context] if source_context else []
-    units: list[str] = []
-    for index, match in enumerate(matches):
-        start = 0 if index == 0 else match.start()
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(source_context)
-        units.append(source_context[start:end])
-    return units
+    profile_id, parameters = _profile_parameters(profile)
+    with _profile_regex_budget(profile_id) as budget:
+        pattern = _required_pattern(parameters, "section_pattern")
+        matches = list(pattern.finditer(str(source_context or "")))
+        if not matches:
+            return [source_context] if source_context else []
+        units: list[str] = []
+        for index, match in enumerate(matches):
+            start = 0 if index == 0 else match.start()
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(source_context)
+            units.append(source_context[start:end])
+        budget.check_total("source unit splitting")
+        return units
 
 
 def expected_deterministic_matrix_rows(
@@ -170,22 +266,24 @@ def expected_deterministic_matrix_rows(
     """Count rows required by a profile without relying on domain heuristics."""
 
     profile_id, parameters = _profile_parameters(profile)
-    sections = _parse_sections(source_context, parameters, profile_id)
-    total = 0
-    for section in sections:
-        for rule in _row_rules(parameters):
-            kind = str(rule.get("kind") or "").strip().lower()
-            if kind == "section":
-                total += int(_section_condition_matches(section, rule.get("when")))
-            elif kind == "record":
-                total += len(_matching_records(section, rule, profile_id))
-            elif kind == "aggregate":
-                total += int(any(_record_matches(record, rule.get("match")) for record in section.records))
-            else:
-                raise ValueError(
-                    f"Transformation profile '{profile_id}' has unsupported row rule kind '{kind}'."
-                )
-    return total
+    with _profile_regex_budget(profile_id) as budget:
+        sections = _parse_sections(source_context, parameters, profile_id)
+        total = 0
+        for section in sections:
+            for rule in _row_rules(parameters):
+                kind = str(rule.get("kind") or "").strip().lower()
+                if kind == "section":
+                    total += int(_section_condition_matches(section, rule.get("when")))
+                elif kind == "record":
+                    total += len(_matching_records(section, rule, profile_id))
+                elif kind == "aggregate":
+                    total += int(any(_record_matches(record, rule.get("match")) for record in section.records))
+                else:
+                    raise ValueError(
+                        f"Transformation profile '{profile_id}' has unsupported row rule kind '{kind}'."
+                    )
+        budget.check_total("expected row counting")
+        return total
 
 
 def _profile_parameters(profile: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -210,8 +308,9 @@ def _validate_required_source_patterns(
     parameters: dict[str, Any],
     profile_id: str,
 ) -> None:
-    for raw_pattern in parameters.get("required_source_patterns") or []:
-        if not re.search(str(raw_pattern), source_context or ""):
+    for index, raw_pattern in enumerate(parameters.get("required_source_patterns") or []):
+        pattern = _compile_pattern(raw_pattern, f"required source pattern {index + 1}")
+        if not pattern.search(source_context or ""):
             raise ValueError(
                 f"Runtime source does not match transformation profile '{profile_id}'."
             )
@@ -270,7 +369,7 @@ def _parse_sections(
 
 def _record_header_bindings(
     section_text: str,
-    record_pattern: re.Pattern[str],
+    record_pattern: _BoundedPattern,
     parameters: dict[str, Any],
     profile_id: str,
 ) -> list[_RecordHeaderBinding]:
@@ -818,8 +917,12 @@ def _planning_month_columns(
         for value in template.get("backlog_headers") or []
     }
     future_patterns = [
-        re.compile(str(value), re.IGNORECASE)
-        for value in template.get("future_header_patterns") or []
+        _compile_pattern(
+            value,
+            f"future header pattern {index + 1}",
+            flags=regex.IGNORECASE,
+        )
+        for index, value in enumerate(template.get("future_header_patterns") or [])
     ]
     columns: dict[str, int] = {}
     for index, header in enumerate(headers):
@@ -909,16 +1012,29 @@ def _convert_value(value: Any, value_type: Any) -> Any:
     raise ValueError(f"Unsupported transformation profile value type '{normalized_type}'.")
 
 
-def _compile_pattern(value: Any, label: str) -> re.Pattern[str]:
+def _compile_pattern(
+    value: Any,
+    label: str,
+    *,
+    flags: int = 0,
+) -> _BoundedPattern:
     if not isinstance(value, str) or not value:
         raise ValueError(f"Transformation profile requires a regex for {label}.")
+    # Static profile validation imports this compiler to inspect group names
+    # without executing the pattern.  Runtime entry points always install one
+    # shared profile budget; the standalone budget preserves that compile-only
+    # validation API without creating an unbounded execution path.
+    budget = _ACTIVE_REGEX_BUDGET.get() or _RegexExecutionBudget(
+        profile_id="schema_validation"
+    )
     try:
-        return re.compile(value)
-    except re.error as exc:
+        compiled = regex.compile(value, flags)
+    except regex.error as exc:
         raise ValueError(f"Transformation profile has an invalid regex for {label}: {exc}") from exc
+    return _BoundedPattern(compiled, label=label, budget=budget)
 
 
-def _required_pattern(parameters: dict[str, Any], key: str) -> re.Pattern[str]:
+def _required_pattern(parameters: dict[str, Any], key: str) -> _BoundedPattern:
     return _compile_pattern(parameters.get(key), key)
 
 

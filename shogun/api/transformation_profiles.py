@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.api.deps import get_db
 from shogun.schemas.common import ApiResponse
+from shogun.schemas.source_intelligence import SourceIntelligenceRequest
 from shogun.schemas.transformation_profile import (
     PrivateTransformationProfileExportRequest,
     PrivateTransformationProfileImportRequest,
@@ -21,6 +22,11 @@ from shogun.schemas.transformation_profile import (
 from shogun.services.private_transformation_profiles import (
     PrivateTransformationProfileError,
     PrivateTransformationProfileService,
+)
+from shogun.services.source_intelligence import (
+    SourceIntelligenceConfigurationError,
+    SourceIntelligenceError,
+    SourceIntelligenceService,
 )
 from shogun.services.transformation_profile_registry import (
     ProtectedTransformationProfileError,
@@ -83,6 +89,22 @@ async def list_transformation_adapters(db: AsyncSession = Depends(get_db)):
     service = TransformationProfileRegistryService(db)
     records = await service.list_adapters()
     return ApiResponse(data=records, meta={"total": len(records)})
+
+
+@router.post("/source-intelligence/preview", response_model=ApiResponse)
+async def preview_source_intelligence(
+    body: SourceIntelligenceRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Inspect sources without executing a profile or invoking a model."""
+
+    try:
+        result = await SourceIntelligenceService(db).inspect(body)
+    except SourceIntelligenceConfigurationError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except SourceIntelligenceError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return ApiResponse(data=result.model_dump(mode="json"))
 
 
 @router.post("/sync-bundled", response_model=ApiResponse)

@@ -51,6 +51,7 @@ dependencies = [
     "caldav>=1.4.0",
     "pypdf>=4.0.0",
     "PyYAML>=6.0.2",
+    "regex>=2024.11.6",
 ]
 
 [project.optional-dependencies]

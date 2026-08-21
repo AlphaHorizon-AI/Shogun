@@ -5,11 +5,11 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from shogun.mapping.schema import MappingConfig
+from shogun.mapping.schema import MappingConfig, MappingTransformationProfile
 from shogun.schemas.common import ShogunBase
 
 
@@ -130,6 +130,53 @@ class CalendarReadNodeConfig(BaseModel):
         return self
 
 
+class SamuraiTransformationConfig(BaseModel):
+    """Profile-selection controls persisted on a Samurai node.
+
+    ``profile`` covers both immutable registry pins and portable private
+    profile files.  The profile reference itself distinguishes those trust
+    sources; callers cannot choose a weaker resolution path with another
+    string flag.
+    """
+
+    transformation_mode: Literal["general", "auto", "profile"] = "general"
+    transformation_profile: MappingTransformationProfile | None = None
+    transformation_candidates: list[MappingTransformationProfile] = Field(
+        default_factory=list,
+        max_length=32,
+    )
+
+    @model_validator(mode="after")
+    def validate_profile_selection(self):
+        if self.transformation_mode == "profile" and self.transformation_profile is None:
+            raise ValueError("samurai profile mode requires a transformation_profile")
+        if self.transformation_mode != "profile" and self.transformation_profile is not None:
+            raise ValueError(
+                "samurai transformation_profile is only allowed when transformation_mode is profile"
+            )
+        if self.transformation_mode != "auto" and self.transformation_candidates:
+            raise ValueError(
+                "samurai transformation_candidates are only allowed when transformation_mode is auto"
+            )
+        if any(not candidate.is_private_file for candidate in self.transformation_candidates):
+            raise ValueError(
+                "samurai auto transformation_candidates must be portable private profile references"
+            )
+        return self
+
+
+def normalize_samurai_transformation_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Validate Samurai transformation controls without narrowing other config."""
+
+    normalized = SamuraiTransformationConfig.model_validate(config).model_dump(
+        mode="json",
+        exclude_none=True,
+    )
+    if not normalized.get("transformation_candidates"):
+        normalized.pop("transformation_candidates", None)
+    return {**config, **normalized}
+
+
 class AgentFlowNodeCreate(BaseModel):
     """Payload for creating a single node."""
 
@@ -151,6 +198,8 @@ class AgentFlowNodeCreate(BaseModel):
             self.config = EmailReadNodeConfig.model_validate(self.config).model_dump()
         if self.node_type == "calendar_read":
             self.config = CalendarReadNodeConfig.model_validate(self.config).model_dump()
+        if self.node_type == "samurai":
+            self.config = normalize_samurai_transformation_config(self.config)
         if self.node_type == "mapping_rpa":
             self.config = MappingConfig.model_validate(self.config).model_dump(mode="json")
         return self

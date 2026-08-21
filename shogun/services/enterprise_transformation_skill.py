@@ -14,6 +14,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.db.models.skill import Skill
+from shogun.services.enterprise_transformation_specialists import (
+    ENTERPRISE_TRANSFORMATION_SPECIALIST_SLUGS,
+)
 
 ENTERPRISE_TRANSFORMATION_SKILL_SLUG = "enterprise-transformation-architect"
 ENTERPRISE_TRANSFORMATION_SKILL_PATH = (
@@ -23,8 +26,11 @@ ENTERPRISE_TRANSFORMATION_SKILL_PATH = (
     / ENTERPRISE_TRANSFORMATION_SKILL_SLUG
     / "SKILL.md"
 )
-PROTECTED_BUILTIN_SKILL_SLUGS = frozenset({ENTERPRISE_TRANSFORMATION_SKILL_SLUG})
+PROTECTED_BUILTIN_SKILL_SLUGS = frozenset(
+    {ENTERPRISE_TRANSFORMATION_SKILL_SLUG, *ENTERPRISE_TRANSFORMATION_SPECIALIST_SLUGS}
+)
 ENTERPRISE_TRANSFORMATION_PROFILE_TOOLS = [
+    "transformation_sources_inspect",
     "transformation_profiles_list",
     "transformation_profiles_get",
     "transformation_profiles_propose",

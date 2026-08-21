@@ -1,8 +1,8 @@
 {
-  "version": "1.47.81",
+  "version": "1.47.82",
   "name": "Shogun OS",
-  "build": 232,
+  "build": 233,
   "channel": "stable",
-  "released": "2026-08-21T06:40:39Z",
-  "changelog": "Activate validated enterprise transformation profiles and add portable private profile import and export."
+  "released": "2026-08-21T07:47:50Z",
+  "changelog": "Add Samurai source intelligence, direct deterministic enterprise profile execution, and protected platform specialist skills without requiring a Mapping/RPA node."
 }

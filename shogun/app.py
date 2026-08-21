@@ -360,6 +360,9 @@ async def lifespan(app: FastAPI):
         from shogun.services.enterprise_transformation_skill import (
             ensure_enterprise_transformation_skill,
         )
+        from shogun.services.enterprise_transformation_specialists import (
+            ensure_enterprise_transformation_specialist_skills,
+        )
         from shogun.services.transformation_profile_registry import (
             TransformationProfileRegistryService,
         )
@@ -367,6 +370,7 @@ async def lifespan(app: FastAPI):
         async with async_session_factory() as session:
             await SkillActivationService(session).ensure_defaults()
             await ensure_enterprise_transformation_skill(session)
+            await ensure_enterprise_transformation_specialist_skills(session)
             await TransformationProfileRegistryService(session).sync_bundled_profiles()
             await session.commit()
         from shogun.services.stack_orchestrator import recover_interrupted_stack_runs

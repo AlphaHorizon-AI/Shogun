@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from copy import deepcopy
 
 import pytest
@@ -13,8 +14,10 @@ from shogun.mapping.errors import MappingSchemaError
 from shogun.mapping.schema import MappingConfig
 from shogun.services.private_transformation_profiles import (
     PrivateTransformationProfileError,
+    PrivateTransformationProfileRegexError,
     PrivateTransformationProfileService,
 )
+from shogun.services.transformation_profile_registry import profile_content_hash
 
 
 def _sectioned_profile() -> dict:
@@ -98,7 +101,8 @@ def test_private_profile_export_import_is_hash_pinned_and_flow_local():
         display_name="Supplier confidential schedule",
     )
 
-    assert set(exported) == {"filename", "document", "profile_reference"}
+    assert set(exported) == {"filename", "execution_mode", "document", "profile_reference"}
+    assert exported["execution_mode"] == "contract"
     assert exported["filename"] == "Supplier-confidential-schedule.shogun-profile.json"
     assert exported["document"]["format"] == "shogun.private-transformation-profile"
     assert exported["document"]["content_hash"] == exported["profile_reference"][
@@ -110,6 +114,7 @@ def test_private_profile_export_import_is_hash_pinned_and_flow_local():
     assert reference["private_file"]["definition"] == _sectioned_profile()
 
     imported = service.import_document(exported["document"])
+    assert imported["execution_mode"] == "contract"
     assert imported["profile_reference"] == reference
     config = MappingConfig.model_validate(
         {
@@ -152,6 +157,61 @@ def test_private_profile_file_enforces_two_megabyte_limit_and_mode_compatibility
         service.export_profile(oversized)
     with pytest.raises(PrivateTransformationProfileError, match="executes in 'contract'"):
         service.export_profile(_sectioned_profile(), execution_mode="profile")
+
+
+def test_private_profile_import_rejects_pathological_source_regex_quickly():
+    service = PrivateTransformationProfileService()
+    pathological = _sectioned_profile()
+    pathological["parameters"]["required_source_patterns"] = [r"(a+)+$"]
+    document = {
+        "format": "shogun.private-transformation-profile",
+        "format_version": 1,
+        "content_hash": profile_content_hash(pathological),
+        "profile": pathological,
+    }
+
+    started = time.monotonic()
+    with pytest.raises(
+        PrivateTransformationProfileRegexError,
+        match="nested variable quantifiers",
+    ):
+        service.import_document(document)
+
+    assert time.monotonic() - started < 0.5
+
+
+def test_private_profile_import_rejects_deeply_nested_source_regex():
+    service = PrivateTransformationProfileService()
+    deeply_nested = _sectioned_profile()
+    deeply_nested["parameters"]["required_source_patterns"] = [
+        ("(" * 600) + "a" + (")" * 600)
+    ]
+    document = {
+        "format": "shogun.private-transformation-profile",
+        "format_version": 1,
+        "content_hash": profile_content_hash(deeply_nested),
+        "profile": deeply_nested,
+    }
+
+    with pytest.raises(
+        PrivateTransformationProfileRegexError,
+        match="Invalid regex|could not pass safety analysis",
+    ):
+        service.import_document(document)
+
+
+def test_private_canonical_profile_enforces_source_pattern_limit():
+    service = PrivateTransformationProfileService()
+    oversized = _canonical_profile()
+    oversized["parameters"]["required_source_patterns"] = [
+        rf"marker-{index}" for index in range(33)
+    ]
+
+    with pytest.raises(
+        PrivateTransformationProfileRegexError,
+        match="32 source-fingerprint regex limit",
+    ):
+        service.export_profile(oversized)
 
 
 @pytest.mark.anyio
@@ -269,7 +329,13 @@ async def test_private_profile_import_export_api_returns_assignable_reference(cl
     )
     assert exported.status_code == 200
     exported_data = exported.json()["data"]
-    assert set(exported_data) == {"filename", "document", "profile_reference"}
+    assert set(exported_data) == {
+        "filename",
+        "execution_mode",
+        "document",
+        "profile_reference",
+    }
+    assert exported_data["execution_mode"] == "contract"
 
     imported = await client.post(
         "/api/v1/transformation-profiles/private-files/import",
@@ -278,7 +344,13 @@ async def test_private_profile_import_export_api_returns_assignable_reference(cl
     )
     assert imported.status_code == 200
     imported_data = imported.json()["data"]
-    assert set(imported_data) == {"filename", "document", "profile_reference"}
+    assert set(imported_data) == {
+        "filename",
+        "execution_mode",
+        "document",
+        "profile_reference",
+    }
+    assert imported_data["execution_mode"] == "contract"
     MappingConfig.model_validate(
         {
             "execution_mode": "contract",

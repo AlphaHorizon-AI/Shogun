@@ -95,6 +95,19 @@ import {
   type TransformationProfileExecutionMode,
   type TransformationProfileOption,
 } from '../lib/transformationProfileOptions';
+import {
+  appendSamuraiAutoCandidate,
+  configureSamuraiForPrivateProfile,
+  configureSamuraiForRegistryProfile,
+  configureSamuraiTransformationChoice,
+  isSamuraiContractProfile,
+  MAX_SAMURAI_PRIVATE_CANDIDATES,
+  removeSamuraiAutoCandidate,
+  samuraiTransformationBadge,
+  samuraiTransformationChoice,
+  samuraiTransformationConfigurationError,
+  type SamuraiTransformationChoice,
+} from '../lib/samuraiTransformation';
 import { useTemplateCatalog } from '../i18n/templateCatalog';
 
 
@@ -497,6 +510,12 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
       <div className="px-3 py-2 space-y-1">
         {type === 'samurai' && (
           <>
+            <div className="flex items-center gap-1">
+              <Sparkles className="w-2.5 h-2.5 text-[#d4a017]/70" />
+              <span className="truncate text-[8px] font-bold uppercase text-[#d4a017]/80">
+                {samuraiTransformationBadge(config)}
+              </span>
+            </div>
             {config.instruction_file?.path ? (
               <div className="flex items-center gap-1">
                 <Paperclip className="w-2.5 h-2.5 text-[#d4a017]/70" />
@@ -1013,6 +1032,484 @@ const transformationProfileStatusLabel = (profile: TransformationProfileSummary)
   const status = transformationProfileOptionStatus(profile);
   return status === 'ready' ? `${profile.lifecycle || 'active'} · ready` : status;
 };
+
+type SamuraiProfileReference = {
+  id?: string;
+  adapter?: string;
+  parameters?: Record<string, unknown>;
+  model_fallback?: boolean;
+  registry_version?: number;
+  content_hash?: string;
+  private_file?: {
+    filename?: string;
+    source_filename?: string;
+    content_hash?: string;
+    [key: string]: unknown;
+  };
+};
+
+function SamuraiTransformationFields({ config, updateConfig }: { config: Record<string, unknown>; updateConfig: (k: string, v: unknown) => void }) {
+  const configuredChoice = samuraiTransformationChoice(config);
+  const profile = config.transformation_profile && typeof config.transformation_profile === 'object' && !Array.isArray(config.transformation_profile)
+    ? config.transformation_profile as SamuraiProfileReference
+    : null;
+  const [emptyProfileChoice, setEmptyProfileChoice] = useState<'catalogue' | 'private'>(
+    configuredChoice === 'private' ? 'private' : 'catalogue',
+  );
+  const choice = config.transformation_mode === 'profile' && !profile
+    ? emptyProfileChoice
+    : configuredChoice;
+  const privateFile = profile?.private_file && typeof profile.private_file === 'object' && !Array.isArray(profile.private_file)
+    ? profile.private_file
+    : null;
+  const isPrivateProfile = Boolean(privateFile);
+  const isRegistryPinned = Boolean(
+    profile
+    && Number.isInteger(profile.registry_version)
+    && typeof profile.content_hash === 'string',
+  );
+  const [registryProfiles, setRegistryProfiles] = useState<TransformationProfileSummary[]>([]);
+  const [registryProfilesLoading, setRegistryProfilesLoading] = useState(true);
+  const [registryProfilesError, setRegistryProfilesError] = useState<string | null>(null);
+  const [selectingRegistryProfile, setSelectingRegistryProfile] = useState<string | null>(null);
+  const [profileSelectionError, setProfileSelectionError] = useState<string | null>(null);
+  const [privateProfileBusy, setPrivateProfileBusy] = useState<'export' | 'import' | null>(null);
+  const [privateProfileError, setPrivateProfileError] = useState<string | null>(null);
+  const [privateProfileNotice, setPrivateProfileNotice] = useState<string | null>(null);
+  const privateProfileInputRef = useRef<HTMLInputElement>(null);
+  const [autoCandidateBusy, setAutoCandidateBusy] = useState(false);
+  const [autoCandidateError, setAutoCandidateError] = useState<string | null>(null);
+  const [autoCandidateNotice, setAutoCandidateNotice] = useState<string | null>(null);
+  const autoCandidateInputRef = useRef<HTMLInputElement>(null);
+  const autoCandidates = Array.isArray(config.transformation_candidates)
+    ? config.transformation_candidates.filter((candidate): candidate is SamuraiProfileReference => (
+        Boolean(candidate) && typeof candidate === 'object' && !Array.isArray(candidate)
+      ))
+    : [];
+
+  const loadRegistryProfiles = useCallback(async () => {
+    setRegistryProfilesLoading(true);
+    setRegistryProfilesError(null);
+    try {
+      const response = await axios.get('/api/v1/transformation-profiles');
+      const records = response.data?.data;
+      setRegistryProfiles(Array.isArray(records) ? records : []);
+    } catch (error: unknown) {
+      setRegistryProfiles([]);
+      setRegistryProfilesError(apiErrorMessage(error, 'Could not load the governed profile catalog.'));
+    } finally {
+      setRegistryProfilesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    axios.get('/api/v1/transformation-profiles')
+      .then((response) => {
+        if (cancelled) return;
+        const records = response.data?.data;
+        setRegistryProfiles(Array.isArray(records) ? records : []);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setRegistryProfiles([]);
+        setRegistryProfilesError(apiErrorMessage(error, 'Could not load the governed profile catalog.'));
+      })
+      .finally(() => {
+        if (!cancelled) setRegistryProfilesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const contractProfiles = useMemo(
+    () => registryProfiles.filter(isSamuraiContractProfile),
+    [registryProfiles],
+  );
+  const groupedContractProfiles = useMemo(() => {
+    const lifecycleRank: Record<string, number> = { active: 0, validated: 1, candidate: 2, planned: 3, retired: 4 };
+    const records = [...contractProfiles].sort((left, right) => {
+      const lifecycleOrder = (lifecycleRank[left.lifecycle || ''] ?? 99) - (lifecycleRank[right.lifecycle || ''] ?? 99);
+      if (lifecycleOrder !== 0) return lifecycleOrder;
+      const platformOrder = (left.platform || 'Other').localeCompare(right.platform || 'Other');
+      if (platformOrder !== 0) return platformOrder;
+      return (left.display_name || left.profile_id).localeCompare(right.display_name || right.profile_id);
+    });
+    const groups = new Map<string, TransformationProfileSummary[]>();
+    records.forEach((item) => {
+      const key = `${item.platform || 'Document'} · ${item.lifecycle || 'unknown'}`;
+      groups.set(key, [...(groups.get(key) || []), item]);
+    });
+    return Array.from(groups.entries()).map(([label, profiles]) => ({ label, profiles }));
+  }, [contractProfiles]);
+  const readyContractCount = contractProfiles.filter(isSelectableTransformationProfile).length;
+  const blockedContractCount = contractProfiles.length - readyContractCount;
+  const structuredProfileCount = registryProfiles.length - contractProfiles.length;
+  const selectedRegistryProfile = profile
+    ? registryProfiles.find((item) => item.profile_id === profile.id)
+    : null;
+  const selectedSourceRequirement = selectedRegistryProfile
+    ? transformationProfileSourceLabel(selectedRegistryProfile.source_requirement)
+    : null;
+  const catalogueValue = selectingRegistryProfile
+    || (choice === 'catalogue' && profile?.id ? profile.id : '');
+
+  const updateChoice = (nextChoice: SamuraiTransformationChoice) => {
+    if (nextChoice === 'catalogue' || nextChoice === 'private') setEmptyProfileChoice(nextChoice);
+    setProfileSelectionError(null);
+    setPrivateProfileError(null);
+    setPrivateProfileNotice(null);
+    updateConfig('__replace__', configureSamuraiTransformationChoice(config, nextChoice));
+  };
+
+  const selectRegistryProfile = async (profileId: string) => {
+    if (!profileId) return;
+    const summary = contractProfiles.find((item) => item.profile_id === profileId);
+    if (!summary || !isSelectableTransformationProfile(summary)) {
+      setProfileSelectionError(summary
+        ? `This document contract cannot execute: ${transformationProfileOptionStatus(summary)}.`
+        : 'This profile is not a Samurai-compatible document contract.');
+      return;
+    }
+
+    setSelectingRegistryProfile(profileId);
+    setProfileSelectionError(null);
+    try {
+      const response = await axios.get(`/api/v1/transformation-profiles/${encodeURIComponent(profileId)}`);
+      const detail = response.data?.data as TransformationProfileDetail | undefined;
+      if (
+        !detail
+        || detail.profile_id !== profileId
+        || !isSamuraiContractProfile(detail)
+        || !isSelectableTransformationProfile(detail)
+      ) {
+        throw new Error('The registry document contract is no longer selectable. Refresh the catalog and try again.');
+      }
+      const versions = Array.isArray(detail.versions) ? detail.versions : [];
+      const activeVersion = versions.find((item) =>
+        item.status === 'active'
+        && (detail.active_version_id ? item.id === detail.active_version_id : item.version === detail.active_version)
+      );
+      const adapterId = activeVersion?.adapter_id || detail.adapter_id;
+      const adapterStatus = activeVersion?.adapter_status || detail.adapter_status;
+      const requiredAdapterStatus = activeVersion?.required_adapter_status || detail.required_adapter_status;
+      if (
+        !activeVersion
+        || !adapterId
+        || adapterStatus !== 'available'
+        || requiredAdapterStatus !== 'available'
+        || !Number.isInteger(activeVersion.version)
+        || !/^[a-fA-F0-9]{64}$/.test(activeVersion.content_hash || '')
+      ) {
+        throw new Error('The active document contract is not executable by Samurai.');
+      }
+      const profileReference = {
+        id: profileId,
+        adapter: adapterId,
+        parameters: {},
+        model_fallback: false,
+        registry_version: activeVersion.version,
+        content_hash: activeVersion.content_hash.toLowerCase(),
+      };
+      updateConfig('__replace__', configureSamuraiForRegistryProfile(config, summary, profileReference));
+    } catch (error: unknown) {
+      setProfileSelectionError(apiErrorMessage(error, 'Could not pin the selected document contract.'));
+    } finally {
+      setSelectingRegistryProfile(null);
+    }
+  };
+
+  const importPrivateProfileFile = async (file: File) => {
+    setPrivateProfileError(null);
+    setPrivateProfileNotice(null);
+    if (file.size > MAX_PRIVATE_PROFILE_FILE_BYTES) {
+      setPrivateProfileError('Private profile files must be 2 MB or smaller.');
+      return;
+    }
+    setPrivateProfileBusy('import');
+    try {
+      const document = parsePrivateProfileDocument(await file.text());
+      const response = await axios.post('/api/v1/transformation-profiles/private-files/import', { document });
+      const imported = response.data?.data;
+      const importedProfile = imported?.profile_reference;
+      if (!importedProfile || typeof importedProfile !== 'object' || Array.isArray(importedProfile)) {
+        throw new Error('The server did not return a usable private profile reference.');
+      }
+      if (imported.execution_mode !== 'contract' && imported.execution_mode !== 'profile') {
+        throw new Error('The imported private profile has no server-validated execution mode.');
+      }
+      updateConfig('__replace__', configureSamuraiForPrivateProfile(config, importedProfile));
+      setPrivateProfileNotice(`Imported ${imported.filename || file.name} as a locked local ${imported.execution_mode} profile.`);
+    } catch (error: unknown) {
+      setPrivateProfileError(apiErrorMessage(error, `Could not import '${file.name}'.`));
+    } finally {
+      setPrivateProfileBusy(null);
+    }
+  };
+
+  const importAutoCandidateFile = async (file: File) => {
+    setAutoCandidateError(null);
+    setAutoCandidateNotice(null);
+    if (file.size > MAX_PRIVATE_PROFILE_FILE_BYTES) {
+      setAutoCandidateError('Private profile files must be 2 MB or smaller.');
+      return;
+    }
+    setAutoCandidateBusy(true);
+    try {
+      const document = parsePrivateProfileDocument(await file.text());
+      const response = await axios.post('/api/v1/transformation-profiles/private-files/import', { document });
+      const imported = response.data?.data;
+      const importedProfile = imported?.profile_reference;
+      if (!importedProfile || typeof importedProfile !== 'object' || Array.isArray(importedProfile)) {
+        throw new Error('The server did not return a usable private profile reference.');
+      }
+      if (imported.execution_mode !== 'contract' && imported.execution_mode !== 'profile') {
+        throw new Error('The imported private candidate has no server-validated execution mode.');
+      }
+      updateConfig('__replace__', appendSamuraiAutoCandidate(config, importedProfile));
+      setAutoCandidateNotice(`Added ${String(importedProfile.id || imported.filename || file.name)} to Auto-detect.`);
+    } catch (error: unknown) {
+      setAutoCandidateError(apiErrorMessage(error, `Could not import '${file.name}'.`));
+    } finally {
+      setAutoCandidateBusy(false);
+    }
+  };
+
+  const savePrivateProfileFile = async () => {
+    if (!profile || !isPrivateProfile) return;
+    setPrivateProfileBusy('export');
+    setPrivateProfileError(null);
+    setPrivateProfileNotice(null);
+    try {
+      const response = await axios.post('/api/v1/transformation-profiles/private-files/export', {
+        profile,
+        execution_mode: 'contract',
+        display_name: profile.id,
+      });
+      const exported = response.data?.data;
+      if (!exported?.document || typeof exported.document !== 'object') {
+        throw new Error('The server did not return a private profile document.');
+      }
+      const result = await savePrivateProfileDocument(exported.document, exported.filename || profile.id);
+      if (result === 'saved') setPrivateProfileNotice('Saved a local copy. Nothing was published to the governed catalog.');
+    } catch (error: unknown) {
+      setPrivateProfileError(apiErrorMessage(error, 'Could not save the private profile file.'));
+    } finally {
+      setPrivateProfileBusy(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-lg border border-[#d4a017]/25 bg-[#d4a017]/5 p-3">
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-[#d4a017]">
+            <Sparkles className="h-3 w-3" /> Transformation
+          </label>
+          <span className="rounded-full border border-[#d4a017]/25 bg-[#d4a017]/10 px-2 py-0.5 text-[8px] font-bold uppercase text-[#facc15]">
+            {samuraiTransformationBadge(config)}
+          </span>
+        </div>
+        <select
+          value={choice}
+          onChange={(event) => updateChoice(event.target.value as SamuraiTransformationChoice)}
+          className="w-full cursor-pointer rounded-lg border border-[#1a2040] bg-[#050508] p-2 text-xs text-[#c8d0d8] outline-none transition-colors focus:border-[#d4a017]"
+        >
+          <option value="general">General LLM extraction</option>
+          <option value="auto">Auto-detect known source</option>
+          <option value="catalogue">Pinned catalogue document profile</option>
+          <option value="private">Imported private profile</option>
+        </select>
+        <p className="text-[8px] leading-relaxed text-[#7a8899]">
+          {choice === 'general'
+            ? 'Uses the selected model and task instructions. Existing flows keep this behavior by default.'
+            : choice === 'auto'
+              ? 'Source Intelligence checks every active catalogue profile plus your private candidates. One validated match executes deterministically; unfamiliar sources are classified and routed to the right specialist, but unknown or ambiguous mappings stop safely.'
+              : choice === 'catalogue'
+                ? 'Pins one governed PDF/document contract by version and integrity hash. Structured REST, OData, and API profiles remain in Mapping / RPA.'
+                : 'Runs an integrity-locked local document or structured-ingress profile without publishing its private rules to the governed catalog.'}
+        </p>
+      </div>
+
+      {choice === 'auto' && (
+        <div className="space-y-2 rounded border border-[#60a5fa]/25 bg-[#60a5fa]/5 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-[9px] font-bold uppercase tracking-widest text-[#60a5fa]">Private Auto-detect Candidates</label>
+            <span className="text-[8px] font-bold text-[#93c5fd]">{autoCandidates.length}/{MAX_SAMURAI_PRIVATE_CANDIDATES}</span>
+          </div>
+          <p className="text-[8px] leading-relaxed text-[#7a8899]">
+            Governed catalogue profiles are considered automatically. Add private source profiles that exist only on this installation; their rules stay inside the integrity-locked flow reference.
+          </p>
+          {autoCandidates.length > 0 && (
+            <div className="space-y-1">
+              {autoCandidates.map((candidate, index) => {
+                const candidateFile = candidate.private_file && typeof candidate.private_file === 'object'
+                  ? candidate.private_file
+                  : null;
+                return (
+                  <div key={`${candidate.id || 'private'}:${String(candidateFile?.content_hash || index)}`} className="flex items-center justify-between gap-2 rounded border border-[#60a5fa]/20 bg-[#050508]/70 px-2 py-1.5">
+                    <div className="min-w-0 text-[8px]">
+                      <p className="truncate font-bold text-[#bfdbfe]">{candidate.id || 'Private source profile'}</p>
+                      <p className="truncate font-mono text-[#7a8899]">{String(candidateFile?.content_hash || '').slice(0, 12)}…</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateConfig('__replace__', removeSamuraiAutoCandidate(config, index))}
+                      className="shrink-0 rounded p-1 text-[#ef4444] hover:bg-[#ef4444]/10"
+                      title="Remove private Auto-detect candidate"
+                      aria-label={`Remove ${candidate.id || 'private profile'} from Auto-detect`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={autoCandidateBusy || autoCandidates.length >= MAX_SAMURAI_PRIVATE_CANDIDATES}
+            onClick={() => autoCandidateInputRef.current?.click()}
+            className="flex items-center gap-1 rounded border border-[#60a5fa]/30 bg-[#60a5fa]/10 px-2 py-1 text-[8px] font-bold text-[#bfdbfe] disabled:opacity-40"
+          >
+            {autoCandidateBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+            Add private candidate
+          </button>
+          <input
+            ref={autoCandidateInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              if (file) void importAutoCandidateFile(file);
+            }}
+          />
+          {autoCandidateError && <p className="text-[8px] text-[#ef4444]">{autoCandidateError}</p>}
+          {autoCandidateNotice && <p className="text-[8px] text-[#22c55e]">{autoCandidateNotice}</p>}
+          <p className="text-[8px] leading-relaxed text-[#60a5fa]/70">
+            No match or more than one valid match stops the flow. Auto-detect never silently switches to general LLM extraction.
+          </p>
+        </div>
+      )}
+
+      {choice === 'catalogue' && (
+        <div className="space-y-2 rounded border border-[#2dd4bf]/25 bg-[#2dd4bf]/5 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-[9px] font-bold uppercase tracking-widest text-[#2dd4bf]">Document Contract Catalogue</label>
+            <button
+              type="button"
+              onClick={() => void loadRegistryProfiles()}
+              disabled={registryProfilesLoading}
+              className="flex items-center gap-1 text-[8px] font-bold text-[#2dd4bf] disabled:opacity-50"
+            >
+              <RefreshCw className={cn('h-3 w-3', registryProfilesLoading && 'animate-spin')} /> Refresh
+            </button>
+          </div>
+          <select
+            value={catalogueValue}
+            disabled={registryProfilesLoading || Boolean(selectingRegistryProfile)}
+            onChange={(event) => void selectRegistryProfile(event.target.value)}
+            className="w-full rounded border border-[#1a2040] bg-[#050508] p-2 text-[10px] text-[#c8d0d8] outline-none focus:border-[#2dd4bf] disabled:opacity-60"
+          >
+            <option value="">Select a ready document contract…</option>
+            {profile?.id && !contractProfiles.some((item) => item.profile_id === profile.id) && (
+              <option value={profile.id} disabled>{profile.id} · saved reference unavailable</option>
+            )}
+            {groupedContractProfiles.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.profiles.map((item) => (
+                  <option key={item.profile_id} value={item.profile_id} disabled={!isSelectableTransformationProfile(item)}>
+                    {item.display_name || item.profile_id} · {transformationProfileStatusLabel(item)}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {registryProfilesLoading && <p className="text-[8px] text-[#7a8899]">Loading governed profile catalogue…</p>}
+          {selectingRegistryProfile && <p className="text-[8px] text-[#2dd4bf]">Resolving and pinning the active version…</p>}
+          {registryProfilesError && <p className="text-[8px] text-[#ef4444]">{registryProfilesError} The saved reference was preserved.</p>}
+          {!registryProfilesLoading && !registryProfilesError && (
+            <p className="text-[8px] leading-relaxed text-[#7a8899]">
+              {contractProfiles.length} document contract{contractProfiles.length === 1 ? '' : 's'} · {readyContractCount} ready
+              {blockedContractCount > 0 ? ` · ${blockedContractCount} blocked` : ''}. {structuredProfileCount} structured enterprise profile{structuredProfileCount === 1 ? '' : 's'} remain available in Mapping / RPA.
+            </p>
+          )}
+          {profileSelectionError && <p className="text-[8px] text-[#ef4444]">{profileSelectionError}</p>}
+          {selectedRegistryProfile && !isSelectableTransformationProfile(selectedRegistryProfile) && (
+            <p className="text-[8px] text-[#f59e0b]">This saved contract is {transformationProfileStatusLabel(selectedRegistryProfile)} and cannot execute.</p>
+          )}
+          {selectedSourceRequirement && <p className="text-[8px] text-[#7a8899]">Required source: {selectedSourceRequirement}</p>}
+          {isRegistryPinned && profile && (
+            <div className="rounded border border-[#22c55e]/25 bg-[#22c55e]/5 px-2 py-1.5 text-[8px] text-[#22c55e]">
+              {profile.id} · registry v{profile.registry_version} · {String(profile.content_hash).slice(0, 12)}… · immutable pin
+            </div>
+          )}
+        </div>
+      )}
+
+      {choice === 'private' && (
+        <div className="space-y-2 rounded border border-[#a78bfa]/25 bg-[#a78bfa]/5 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-[9px] font-bold uppercase tracking-widest text-[#a78bfa]">Local Private Profile</label>
+            {isPrivateProfile && <span className="text-[8px] font-bold uppercase text-[#c4b5fd]">Integrity locked</span>}
+          </div>
+          <p className="text-[8px] leading-relaxed text-[#7a8899]">
+            Import a server-validated <span className="font-mono text-[#c4b5fd]">.shogun-profile.json</span> contract or structured-ingress profile. It remains a private flow reference and is not added to the public catalogue.
+          </p>
+          {isPrivateProfile && profile && (
+            <div className="rounded border border-[#a78bfa]/20 bg-[#050508]/70 px-2 py-1.5 text-[8px] text-[#c4b5fd]">
+              <p className="truncate font-bold">{profile.id}</p>
+              <p className="truncate font-mono text-[#8b9aaa]">
+                {profile.adapter || 'adapter unavailable'} · {String(privateFile?.content_hash || '').slice(0, 12)}…
+              </p>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              disabled={Boolean(privateProfileBusy)}
+              onClick={() => privateProfileInputRef.current?.click()}
+              className="flex items-center gap-1 rounded border border-[#a78bfa]/30 bg-[#a78bfa]/10 px-2 py-1 text-[8px] font-bold text-[#c4b5fd] disabled:opacity-40"
+            >
+              {privateProfileBusy === 'import' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+              {isPrivateProfile ? 'Replace private file' : 'Import private file'}
+            </button>
+            {isPrivateProfile && (
+              <button
+                type="button"
+                disabled={Boolean(privateProfileBusy)}
+                onClick={() => void savePrivateProfileFile()}
+                className="flex items-center gap-1 rounded border border-[#a78bfa]/30 bg-[#a78bfa]/10 px-2 py-1 text-[8px] font-bold text-[#c4b5fd] disabled:opacity-40"
+              >
+                {privateProfileBusy === 'export' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Save local copy
+              </button>
+            )}
+            <input
+              ref={privateProfileInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (file) void importPrivateProfileFile(file);
+              }}
+            />
+          </div>
+          {privateProfileError && <p className="text-[8px] text-[#ef4444]">{privateProfileError}</p>}
+          {privateProfileNotice && <p className="text-[8px] text-[#22c55e]">{privateProfileNotice}</p>}
+          {isPrivateProfile && profile && (
+            <p className="text-[8px] leading-relaxed text-[#7a8899]">
+              {profile.model_fallback === true ? 'This private contract permits governed model fallback.' : 'Fail closed: profile validation errors stop the flow.'}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string, any>; updateConfig: (k: string, v: any) => void }) {
   const mappings = Array.isArray(config.mappings) ? config.mappings : [];
@@ -2645,6 +3142,8 @@ function NodeInspector({
                 placeholder="Describe what this Samurai should do..."
               />
             </div>
+
+            <SamuraiTransformationFields config={config} updateConfig={updateConfig} />
 
             {governedSamuraiReadTools.length > 0 && (
               <div className="rounded-lg border border-[#22c55e]/30 bg-[#22c55e]/10 p-2.5">
@@ -4642,7 +5141,9 @@ export function AgentFlowCanvas({
       });
 
       const paletteItem = NODE_PALETTE.find((p) => p.type === nodeType);
-      const initialConfig = nodeType === 'email_read' ? {
+      const initialConfig = nodeType === 'samurai' ? {
+        transformation_mode: 'general',
+      } : nodeType === 'email_read' ? {
         folder: 'INBOX',
         page: 1,
         per_page: 10,
@@ -4714,6 +5215,15 @@ export function AgentFlowCanvas({
         return false;
       }
       for (const node of nodes) {
+        if (node.type === 'samurai') {
+          const samuraiConfig = (node.data?.config || {}) as Record<string, unknown>;
+          const transformationError = samuraiTransformationConfigurationError(samuraiConfig);
+          if (transformationError) {
+            window.alert(`${String(node.data?.label || 'Samurai')}: ${transformationError}.`);
+            return false;
+          }
+          continue;
+        }
         if (node.type !== 'mapping_rpa') continue;
         const mappingConfig = (node.data?.config || {}) as Record<string, any>;
         const executionMode = mappingConfig.execution_mode || 'transform';

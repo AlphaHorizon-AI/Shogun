@@ -48,6 +48,7 @@ async def test_bootstrap_creates_protected_enterprise_transformation_skill(skill
     assert skill.is_deleted is False
     assert skill.local_path == str(ENTERPRISE_TRANSFORMATION_SKILL_PATH)
     assert "SkillOpt evolves the transformation-profile registry" in skill.body_text
+    assert "transformation_sources_inspect" in skill.requires_tools
     assert "document text" in skill.brief_text
 
 

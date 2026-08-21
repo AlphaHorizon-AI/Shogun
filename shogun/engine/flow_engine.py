@@ -164,6 +164,14 @@ class MalformedMatrixOutputError(ValueError):
     """Raised when a model response cannot be decoded as the required row matrix."""
 
 
+class SourceIntelligenceResolutionError(ValueError):
+    """Auto profile selection failed with safe, auditable evidence."""
+
+    def __init__(self, message: str, evidence: dict[str, Any]):
+        super().__init__(message)
+        self.source_intelligence = deepcopy(evidence)
+
+
 _FLOW_ARTIFACT_MARKER = "__shogun_flow_artifact__"
 _MAPPING_PROFILE_CARRIER_MARKER = "__shogun_mapping_profile_contract__"
 
@@ -812,13 +820,32 @@ async def _execute_single_node(
     node_id = str(node.id)
     await _update_node_state(run_id, node_id, "running")
 
-    config = node.config or {}
+    config = dict(node.config or {})
     node_type = node.node_type
 
-    # Transformation profiles are capabilities of explicit upstream
-    # Mapping/RPA nodes. They are not inferred from prompts, filenames, source
-    # text, or global runtime state.
+    samurai_transformation_mode = "general"
+    samurai_transformation_profile: Any | None = None
+    samurai_transformation_candidates: list[Any] = []
+    if node_type == "samurai":
+        from shogun.schemas.agent_flow import (
+            SamuraiTransformationConfig,
+            normalize_samurai_transformation_config,
+        )
+
+        config = normalize_samurai_transformation_config(config)
+        samurai_transformation = SamuraiTransformationConfig.model_validate(config)
+        samurai_transformation_mode = samurai_transformation.transformation_mode
+        samurai_transformation_profile = samurai_transformation.transformation_profile
+        samurai_transformation_candidates = list(
+            samurai_transformation.transformation_candidates
+        )
+
+    # Transformation profiles may arrive through the legacy upstream
+    # Mapping/RPA contract or through an explicit Samurai profile-selection
+    # mode. Auto mode delegates bounded inspection to Source Intelligence;
+    # prompts and filenames alone never become execution authority.
     upstream_transformation_profiles: list[dict[str, Any]] = []
+    transformation_profile_evidence: list[dict[str, Any]] = []
     transformation_profile_carrier_ids: set[str] = set()
     if node_type == "samurai":
         from shogun.mapping.schema import MappingConfig
@@ -831,6 +858,14 @@ async def _execute_single_node(
             if predecessor_config.get("transformation_profile") is None:
                 continue
             mapping_config = MappingConfig.model_validate(predecessor_config)
+            if mapping_config.execution_mode == "transform":
+                # A normal Mapping/RPA transform may retain profile metadata in
+                # an old template or imported configuration.  Its output is
+                # ordinary source data for downstream nodes; only the explicit
+                # contract mode is allowed to attach a Samurai execution
+                # contract.  Never reinterpret transform-mode metadata as
+                # trusted profile authority.
+                continue
             profile = mapping_config.transformation_profile
             if profile is None:
                 continue
@@ -843,6 +878,9 @@ async def _execute_single_node(
                 )
                 transformation_profile_carrier_ids.add(predecessor_id)
                 upstream_transformation_profiles.append(resolved_profile)
+                transformation_profile_evidence.append(
+                    deepcopy(predecessor_output.get("registry_evidence") or {})
+                )
                 continue
             elif mapping_config.execution_mode == "profile":
                 # Structured enterprise ingress profiles execute inside their
@@ -876,12 +914,27 @@ async def _execute_single_node(
         )
         upstream_transformation_profiles = [active_profile] if active_profile else []
 
+        if samurai_transformation_mode != "general" and upstream_transformation_profiles:
+            raise ValueError(
+                "Samurai direct/auto transformation selection conflicts with an upstream "
+                "Mapping/RPA transformation-profile contract. Use exactly one selection path."
+            )
+        if samurai_transformation_mode == "profile":
+            if samurai_transformation_profile is None:  # Schema validation is intentionally defensive.
+                raise ValueError("Samurai profile mode requires a transformation_profile.")
+            resolved_profile, resolved_evidence = await _resolve_direct_samurai_profile(
+                samurai_transformation_profile
+            )
+            upstream_transformation_profiles = [resolved_profile]
+            transformation_profile_evidence = [resolved_evidence]
+
     # Build context string from predecessor outputs
     context_parts: list[str] = []
     chunkable_context_parts: list[str] = []
     fixed_context_parts: list[str] = []
     input_artifacts: list[dict[str, Any]] = []
     transformation_source_contexts: list[dict[str, str]] = []
+    transformation_source_inputs: list[dict[str, Any]] = []
     for pred_id, output in predecessor_outputs.items():
         pred_node = node_map.get(pred_id)
         pred_label = pred_node.label if pred_node else pred_id
@@ -891,7 +944,8 @@ async def _execute_single_node(
             # advertised to the model as a business artifact.
             continue
         if output is not None:
-            input_artifacts.append(_flow_artifact_descriptor(pred_node, output))
+            artifact_descriptor = _flow_artifact_descriptor(pred_node, output)
+            input_artifacts.append(artifact_descriptor)
             if isinstance(output, dict) and output.get("__shogun_file_template__"):
                 from shogun.services.file_template import format_template_guidance
 
@@ -923,6 +977,44 @@ async def _execute_single_node(
                         "content": output_text,
                     }
                 )
+                predecessor_config = dict(getattr(pred_node, "config", None) or {})
+                action = str(predecessor_config.get("action") or "").lower()
+                inferred_transport = (
+                    predecessor_config.get("source_transport")
+                    or predecessor_config.get("transport")
+                    or (
+                        predecessor_config.get("input_type")
+                        if predecessor_config.get("input_type") in {"api", "event", "nexus", "subflow"}
+                        else None
+                    )
+                    or {
+                        "pdf_read": "pdf",
+                        "excel_read": "excel",
+                        "word_read": "word",
+                        "pptx_read": "powerpoint",
+                    }.get(action)
+                )
+                source_path = str(artifact_descriptor.get("source_path") or "")
+                transformation_source_inputs.append(
+                    {
+                        "source_id": str(pred_id),
+                        "label": str(pred_label),
+                        "raw_output": output,
+                        "text_output": output_text,
+                        "context": {
+                            "transport": inferred_transport,
+                            "object": predecessor_config.get("source_object")
+                            or predecessor_config.get("object"),
+                            "record_shape": predecessor_config.get("record_shape"),
+                            "record_path": predecessor_config.get("record_path"),
+                            "content_type": predecessor_config.get("content_type")
+                            or artifact_descriptor.get("kind"),
+                            "file_name": Path(source_path).name if source_path else None,
+                            "connector": predecessor_config.get("connector"),
+                            "platform_hint": predecessor_config.get("platform_hint"),
+                        },
+                    }
+                )
     context_str = "\n\n".join(context_parts) if context_parts else ""
     chunkable_context_str = "\n\n".join(chunkable_context_parts)
     fixed_context_str = "\n\n".join(fixed_context_parts)
@@ -942,6 +1034,29 @@ async def _execute_single_node(
             "task_description": await _resolve_samurai_task_description(config),
             "_instruction_file_resolved": True,
         }
+
+    if node_type == "samurai" and samurai_transformation_mode == "auto":
+        resolved_profile, resolved_evidence = await _resolve_auto_samurai_profile(
+            source_inputs=transformation_source_inputs,
+            private_profiles=samurai_transformation_candidates,
+            config={
+                **config,
+                "_flow_id": str(node.flow_id),
+                "_node_id": node_id,
+                "_run_id": str(run_id),
+            },
+            governance_context=governance_context or {},
+        )
+        upstream_transformation_profiles = [resolved_profile]
+        transformation_profile_evidence = [resolved_evidence]
+
+    if node_type == "samurai" and upstream_transformation_profiles:
+        transformation_profile_evidence = [
+            _require_runtime_transformation_profile_evidence(
+                upstream_transformation_profiles[0],
+                transformation_profile_evidence,
+            )
+        ]
 
     # Order 9: node-level skill activation. Compact briefs influence model
     # execution but never extend the node's tool or posture permissions. Keep
@@ -998,27 +1113,45 @@ async def _execute_single_node(
         elif node_type == "file_template":
             result = await _exec_file_template(config)
         elif node_type == "samurai":
-            result = await _exec_samurai(
-                {
-                    **config,
-                    "_flow_id": str(node.flow_id),
-                    "_node_id": node_id,
-                    "_run_id": str(run_id),
-                    "_input_artifacts": input_artifacts,
-                    "_output_contracts": list(downstream_contracts or []),
-                    "_transformation_profiles": upstream_transformation_profiles,
-                    "_transformation_source_contexts": transformation_source_contexts,
-                },
-                chunkable_context_str,
-                governance_context or {},
-                fixed_context_str=fixed_context_str,
-                progress_callback=lambda completed, total: _update_node_progress(
-                    run_id,
-                    node_id,
-                    completed,
-                    total,
-                ),
+            samurai_runtime_config = {
+                **config,
+                "_flow_id": str(node.flow_id),
+                "_node_id": node_id,
+                "_run_id": str(run_id),
+                "_input_artifacts": input_artifacts,
+                "_output_contracts": list(downstream_contracts or []),
+                "_transformation_profiles": upstream_transformation_profiles,
+                "_transformation_profile_evidence": transformation_profile_evidence,
+                "_transformation_source_contexts": transformation_source_contexts,
+            }
+            active_samurai_profile = (
+                upstream_transformation_profiles[0]
+                if len(upstream_transformation_profiles) == 1
+                else None
             )
+            if (
+                active_samurai_profile
+                and active_samurai_profile.get("adapter") == "canonical_entity_map_v1"
+            ):
+                result = await _exec_samurai_enterprise_profile(
+                    samurai_runtime_config,
+                    active_samurai_profile,
+                    transformation_profile_evidence[0],
+                    transformation_source_inputs,
+                )
+            else:
+                result = await _exec_samurai(
+                    samurai_runtime_config,
+                    chunkable_context_str,
+                    governance_context or {},
+                    fixed_context_str=fixed_context_str,
+                    progress_callback=lambda completed, total: _update_node_progress(
+                        run_id,
+                        node_id,
+                        completed,
+                        total,
+                    ),
+                )
         elif node_type == "email_read":
             result = await _exec_email_read(config)
         elif node_type == "calendar_read":
@@ -1860,12 +1993,16 @@ async def _exec_samurai(
     expected_matrix_width = int(matrix_width_match.group(1)) if matrix_width_match else None
 
     transformation_profile = _active_transformation_profile(config)
+    transformation_profile_evidence = _active_transformation_profile_evidence(
+        config,
+        transformation_profile,
+    )
     if transformation_profile and not requires_matrix_output:
-        raise ValueError("A Mapping/RPA transformation profile requires a matrix output contract.")
+        raise ValueError("A document transformation profile requires a matrix output contract.")
     if transformation_profile:
         if not context_str or not fixed_context_str:
             raise ValueError(
-                "A Mapping/RPA transformation profile requires runtime source data and a file template."
+                "A document transformation profile requires runtime source data and a file template."
             )
         try:
             source_contexts = config.get("_transformation_source_contexts") or [
@@ -1916,11 +2053,25 @@ async def _exec_samurai(
                 except Exception as progress_error:
                     log.warning("Could not persist AgentFlow node progress: %s", progress_error)
             log.info(
-                "AgentFlow Samurai used transformation profile %s with adapter %s for %d validated row(s)",
+                "AgentFlow Samurai used transformation profile %s with adapter %s for %d validated row(s) "
+                "(source=%s, version=%s, hash=%s)",
                 deterministic.profile_id,
                 deterministic.adapter_id,
                 len(deterministic.rows),
+                (transformation_profile_evidence or {}).get("source")
+                or (transformation_profile_evidence or {}).get("profile_source")
+                or "legacy",
+                (transformation_profile_evidence or {}).get("version") or "unrecorded",
+                (transformation_profile_evidence or {}).get("content_hash") or "unrecorded",
             )
+            if transformation_profile_evidence:
+                await _record_samurai_transformation_profile_event(
+                    config,
+                    deterministic.profile_id,
+                    deterministic.adapter_id,
+                    len(deterministic.rows),
+                    transformation_profile_evidence,
+                )
             return json.dumps(deterministic.rows, ensure_ascii=False, default=str)
 
     # Resolve agent persona
@@ -2682,8 +2833,8 @@ def _active_transformation_profile(config: dict[str, Any]) -> dict[str, Any] | N
     if len(raw_profiles) > 1:
         profile_ids = ", ".join(str(profile.get("id") or "unnamed") for profile in raw_profiles)
         raise ValueError(
-            "Samurai received multiple Mapping/RPA transformation profiles "
-            f"({profile_ids}). Connect exactly one profiled Mapping/RPA predecessor."
+            "Samurai received multiple transformation profiles "
+            f"({profile_ids}). Select or connect exactly one profile."
         )
     if not raw_profiles:
         return None
@@ -2692,6 +2843,113 @@ def _active_transformation_profile(config: dict[str, Any]) -> dict[str, Any] | N
     # fields back into the profile that deterministic execution consumes.
     MappingTransformationProfile.model_validate(raw_profiles[0])
     return deepcopy(raw_profiles[0])
+
+
+def _active_transformation_profile_evidence(
+    config: dict[str, Any],
+    profile: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Return one trusted runtime evidence envelope without exposing mechanics."""
+
+    raw_evidence = config.get("_transformation_profile_evidence") or []
+    if isinstance(raw_evidence, dict):
+        raw_evidence = [raw_evidence]
+    if not isinstance(raw_evidence, list) or any(
+        not isinstance(item, dict) for item in raw_evidence
+    ):
+        raise ValueError("Samurai transformation profile evidence must be a list of objects.")
+    if len(raw_evidence) > 1:
+        raise ValueError("Samurai received multiple transformation profile evidence envelopes.")
+    if not raw_evidence:
+        return None
+    if profile is None:
+        raise ValueError("Samurai received transformation profile evidence without a profile.")
+    evidence = deepcopy(raw_evidence[0])
+    if (
+        str(evidence.get("profile_id") or "") != str(profile.get("id") or "")
+        or str(evidence.get("adapter_id") or "") != str(profile.get("adapter") or "")
+    ):
+        raise ValueError("Samurai transformation profile evidence does not match its active profile.")
+    return evidence
+
+
+def _require_runtime_transformation_profile_evidence(
+    profile: dict[str, Any],
+    raw_evidence: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Require one immutable evidence envelope before runtime activation."""
+
+    from shogun.services.transformation_profile_registry import profile_content_hash
+
+    if (
+        not isinstance(raw_evidence, list)
+        or len(raw_evidence) != 1
+        or not isinstance(raw_evidence[0], dict)
+        or not raw_evidence[0]
+    ):
+        raise ValueError(
+            "Samurai transformation profile activation requires trusted registry or private-file evidence."
+        )
+    evidence = _active_transformation_profile_evidence(
+        {"_transformation_profile_evidence": raw_evidence},
+        profile,
+    )
+    if evidence is None:
+        raise ValueError(
+            "Samurai transformation profile activation requires trusted registry or private-file evidence."
+        )
+    version = evidence.get("version")
+    content_hash = str(evidence.get("content_hash") or "").lower()
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise ValueError("Samurai transformation profile evidence has no valid version pin.")
+    if not re.fullmatch(r"[a-f0-9]{64}", content_hash):
+        raise ValueError("Samurai transformation profile evidence has no valid content-hash pin.")
+    if content_hash != profile_content_hash(profile):
+        raise ValueError(
+            "Samurai transformation profile evidence does not match the resolved profile definition."
+        )
+    return evidence
+
+
+async def _record_samurai_transformation_profile_event(
+    config: dict[str, Any],
+    profile_id: str,
+    adapter_id: str,
+    row_count: int,
+    evidence: dict[str, Any],
+) -> None:
+    """Record profile provenance without placing its definition in the audit log."""
+
+    try:
+        from shogun.services.event_logger import EventLogger
+
+        detail = {
+            "flow_id": str(config.get("_flow_id") or ""),
+            "flow_run_id": str(config.get("_run_id") or ""),
+            "node_id": str(config.get("_node_id") or ""),
+            "profile_id": profile_id,
+            "adapter_id": adapter_id,
+            "profile_version": evidence.get("version"),
+            "content_hash": evidence.get("content_hash"),
+            "profile_source": evidence.get("source") or evidence.get("profile_source"),
+            "selection_mode": evidence.get("selection_mode") or "upstream_contract",
+            "rows_validated": row_count,
+        }
+        source_resolution = evidence.get("source_intelligence")
+        if isinstance(source_resolution, dict):
+            detail["source_intelligence"] = deepcopy(source_resolution)
+        await EventLogger.emit(
+            category="decision",
+            event_type="agent_flow.samurai.transformation_profile.executed",
+            action=f"Samurai executed transformation profile '{profile_id}'",
+            result="success",
+            trace_id=str(config.get("_run_id") or "") or None,
+            detail=detail,
+        )
+    except Exception:
+        # Audit storage must not corrupt an otherwise deterministic output; the
+        # structured engine log above retains the same immutable profile pins.
+        log.exception("Could not write Samurai transformation-profile execution audit event")
 
 
 def _validate_transformation_profile_sources(
@@ -3901,6 +4159,395 @@ async def _resolve_registered_enterprise_profile(profile: Any) -> tuple[dict[str
         raise
     except TransformationProfileRegistryError as exc:
         raise MappingSchemaError(str(exc), field="transformation_profile") from exc
+
+
+async def _resolve_direct_samurai_profile(
+    raw_profile: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Resolve and revalidate a profile attached directly to one Samurai.
+
+    Registry profiles must carry an immutable version/hash pin. Portable
+    private files carry their complete definition and hash and are validated
+    locally. No caller-supplied profile mechanics are executed directly.
+    """
+
+    from shogun.mapping.errors import MappingSchemaError
+    from shogun.mapping.schema import MappingTransformationProfile
+    from shogun.services.enterprise_transformations import CANONICAL_ENTITY_ADAPTER
+    from shogun.services.structured_transformations import SUPPORTED_ADAPTER
+
+    profile = MappingTransformationProfile.model_validate(raw_profile)
+    if profile.adapter not in {SUPPORTED_ADAPTER, CANONICAL_ENTITY_ADAPTER}:
+        raise MappingSchemaError(
+            f"Transformation profile adapter '{profile.adapter}' cannot execute on a Samurai node",
+            field="transformation_profile.adapter",
+        )
+    if profile.is_private_file:
+        execution_mode = "contract" if profile.adapter == SUPPORTED_ADAPTER else "profile"
+        definition, evidence = _resolve_private_transformation_profile(
+            profile,
+            execution_mode=execution_mode,
+        )
+        if profile.adapter == SUPPORTED_ADAPTER:
+            definition, evidence = _validate_private_contract_resolution(
+                profile,
+                definition,
+                evidence,
+            )
+    else:
+        if not profile.is_registry_pinned:
+            raise MappingSchemaError(
+                "A Samurai registry profile requires an immutable registry_version/content_hash pin",
+                field="transformation_profile",
+            )
+        definition, evidence = await _resolve_registered_enterprise_profile(profile)
+        if profile.adapter == SUPPORTED_ADAPTER:
+            definition, evidence = _validate_contract_registry_resolution(
+                profile,
+                definition,
+                evidence,
+            )
+        else:
+            # The registry resolver already enforced the immutable pin. The
+            # canonical adapter repeats manifest/hash/evidence validation with
+            # the actual payload immediately before producing output.
+            if (
+                str(evidence.get("content_hash") or "").lower() != profile.content_hash
+                or evidence.get("version") != profile.registry_version
+            ):
+                raise MappingSchemaError(
+                    "Resolved enterprise transformation profile does not match its Samurai pin",
+                    field="transformation_profile",
+                )
+    return deepcopy(definition), {
+        **deepcopy(evidence),
+        "selection_mode": "profile",
+        "profile_source": "private" if profile.is_private_file else "registry",
+    }
+
+
+def _bounded_source_intelligence_text(value: str, *, limit: int = 2_097_152) -> str:
+    """Keep representative beginning/middle/end source text within the resolver bound."""
+
+    if len(value) <= limit:
+        return value
+    marker = "\n\n[... SOURCE INTELLIGENCE SAMPLE BOUNDARY ...]\n\n"
+    available = max(3, limit - (2 * len(marker)))
+    segment = available // 3
+    midpoint = len(value) // 2
+    middle_start = max(0, midpoint - (segment // 2))
+    return (
+        value[:segment]
+        + marker
+        + value[middle_start : middle_start + segment]
+        + marker
+        + value[-segment:]
+    )[:limit]
+
+
+def _source_intelligence_artifacts(source_inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert raw predecessor results into bounded Source Intelligence inputs."""
+
+    artifacts: list[dict[str, Any]] = []
+    for source in source_inputs:
+        raw_output = source.get("raw_output")
+        artifact: dict[str, Any] = {
+            "source_id": str(source.get("source_id") or ""),
+            "label": str(source.get("label") or "") or None,
+            "context": {
+                key: value
+                for key, value in dict(source.get("context") or {}).items()
+                if value not in (None, "")
+            },
+        }
+        if isinstance(raw_output, (dict, list)):
+            artifact["payload"] = deepcopy(raw_output)
+        else:
+            artifact["text"] = _bounded_source_intelligence_text(
+                str(source.get("text_output") or raw_output or "")
+            )
+        artifacts.append(artifact)
+    return artifacts
+
+
+def _safe_source_intelligence_evidence(result: Any) -> dict[str, Any]:
+    """Retain match decisions without persisting source excerpts or profile mechanics."""
+
+    candidates = []
+    for candidate in list(getattr(result, "candidates", None) or []):
+        candidates.append(
+            {
+                "profile_id": candidate.profile_id,
+                "profile_source": candidate.profile_source,
+                "platform": candidate.platform,
+                "domain": candidate.domain,
+                "adapter_id": candidate.adapter_id,
+                "version": candidate.version,
+                "content_hash": candidate.content_hash,
+                "score": candidate.score,
+                "exact": candidate.exact,
+                "specialist_skill": candidate.specialist_skill,
+                "matched": list(candidate.evidence.matched),
+                "missing": list(candidate.evidence.missing),
+                "negative_matches": list(candidate.evidence.negative_matches),
+            }
+        )
+    classifier_request = getattr(result, "classifier_request", None)
+    return {
+        "outcome": str(getattr(result, "outcome", "unknown")),
+        "execution_allowed": bool(getattr(result, "execution_allowed", False)),
+        "specialist_skill": str(
+            getattr(result, "specialist_skill", "enterprise-transformation-architect")
+        ),
+        "candidates": candidates,
+        "semantic_candidate_profile_ids": list(
+            getattr(classifier_request, "allowed_profile_ids", None) or []
+        ),
+    }
+
+
+def _json_object_from_model_response(value: str) -> dict[str, Any]:
+    """Decode one strict JSON object, tolerating only an outer Markdown fence."""
+
+    text_value = str(value or "").strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text_value, re.DOTALL | re.IGNORECASE)
+    if fenced:
+        text_value = fenced.group(1).strip()
+    try:
+        parsed = json.loads(text_value)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Source classifier returned invalid JSON.") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("Source classifier must return one JSON object.")
+    return parsed
+
+
+async def _run_source_semantic_classifier(
+    classifier_request: Any,
+    *,
+    config: dict[str, Any],
+    governance_context: dict[str, Any],
+) -> Any:
+    """Run one governed, bounded advisory classifier call."""
+
+    from shogun.schemas.source_intelligence import SemanticClassifierResponse
+
+    request_payload = classifier_request.model_dump(mode="json")
+    response_schema = SemanticClassifierResponse.model_json_schema()
+    prompt = (
+        "Classify this bounded enterprise source summary. You are advisory only: nominate only profile "
+        "IDs and specialist skills in the supplied allow-lists. Never invent a profile, parser, mapping, "
+        "or executable rule. If the evidence is insufficient, return classification='unknown'. Return "
+        "exactly one JSON object matching the response schema and no Markdown.\n\n"
+        "SOURCE CLASSIFIER REQUEST:\n"
+        + json.dumps(request_payload, ensure_ascii=False, separators=(",", ":"))
+        + "\n\nRESPONSE JSON SCHEMA:\n"
+        + json.dumps(response_schema, ensure_ascii=False, separators=(",", ":"))
+    )
+    async with async_session_factory() as session:
+        model_chain, routing = await _resolve_task_llm_chain(
+            session,
+            prompt=prompt,
+            task_type="classification",
+            required_capabilities=["chat"],
+            routing_profile_id=(governance_context or {}).get("model_profile")
+            or config.get("routing_profile_id"),
+            run_id=config.get("_run_id"),
+            risk_level=str((governance_context or {}).get("risk_tier") or "low"),
+            context_size_estimate=max(1, len(prompt) // 4),
+        )
+        if not model_chain:
+            raise ValueError("No governed model is available for Source Intelligence classification.")
+        routing = _with_flow_generation_settings(routing, governance_context)
+        response_text = await _call_llm_chain(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "You classify enterprise input structures. Output strict JSON only. "
+                        "Your nomination is advisory and cannot create execution authority."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            model_chain,
+            timeout=max(30, min(int(config.get("source_classifier_timeout") or 90), 180)),
+            retry_count=0,
+            context="AgentFlow Samurai Source Intelligence classifier",
+            max_tokens=2048,
+            routing_context=routing,
+            usage_session=session,
+        )
+        await session.commit()
+    return SemanticClassifierResponse.model_validate(
+        _json_object_from_model_response(response_text)
+    )
+
+
+async def _resolve_auto_samurai_profile(
+    *,
+    source_inputs: list[dict[str, Any]],
+    private_profiles: list[Any],
+    config: dict[str, Any],
+    governance_context: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Resolve an exact known profile or gate one bounded semantic nomination."""
+
+    from shogun.services.source_intelligence import (
+        SourceIntelligenceError,
+        SourceIntelligenceService,
+        SourceProfileAmbiguousError,
+        SourceProfileUnknownError,
+    )
+
+    artifacts = _source_intelligence_artifacts(source_inputs)
+    if not artifacts:
+        raise SourceIntelligenceResolutionError(
+            "Samurai auto-detect requires at least one non-template source input.",
+            {
+                "outcome": "unknown",
+                "execution_allowed": False,
+                "specialist_skill": "enterprise-transformation-architect",
+                "candidates": [],
+            },
+        )
+    try:
+        async with async_session_factory() as session:
+            service = SourceIntelligenceService(session)
+            try:
+                resolved = await service.resolve_executable(
+                    artifacts,
+                    private_profiles=private_profiles,
+                )
+            except (SourceProfileUnknownError, SourceProfileAmbiguousError) as initial_error:
+                result = initial_error.result
+                safe_evidence = _safe_source_intelligence_evidence(result)
+                classifier_request = result.classifier_request
+                if classifier_request is None:
+                    candidate_ids = ", ".join(
+                        candidate["profile_id"] for candidate in safe_evidence["candidates"][:5]
+                    ) or "none"
+                    raise SourceIntelligenceResolutionError(
+                        f"Source Intelligence outcome is {result.outcome}; no profile may execute. "
+                        f"Suggested specialist: {result.specialist_skill}. Candidates: {candidate_ids}.",
+                        safe_evidence,
+                    ) from initial_error
+
+                classification = await _run_source_semantic_classifier(
+                    classifier_request,
+                    config=config,
+                    governance_context=governance_context,
+                )
+                semantic_evidence = {
+                    "classification": classification.classification,
+                    "platform_family": classification.platform_family,
+                    "product": classification.product,
+                    "business_object": classification.business_object,
+                    "candidate_profile_ids": list(classification.candidate_profile_ids),
+                    "specialist_skill": classification.specialist_skill,
+                    "confidence": classification.confidence,
+                    "unknowns": list(classification.unknowns),
+                }
+                if (
+                    classification.classification != "classified"
+                    or len(classification.candidate_profile_ids) != 1
+                ):
+                    raise SourceIntelligenceResolutionError(
+                        "Source Intelligence classified the source family but no single installed "
+                        f"profile is authorized to execute. Suggested specialist: "
+                        f"{classification.specialist_skill}.",
+                        {
+                            **safe_evidence,
+                            "semantic_classification": semantic_evidence,
+                        },
+                    )
+                nomination = await service.resolve_semantic_nomination(
+                    classifier_request,
+                    classification,
+                    private_profiles=private_profiles,
+                )
+                return deepcopy(nomination.definition), {
+                    **deepcopy(nomination.evidence),
+                    "selection_mode": "auto_semantic_nomination",
+                    "profile_source": "registry",
+                    "source_intelligence": {
+                        **safe_evidence,
+                        "semantic_classification": semantic_evidence,
+                        "requires_deterministic_validation": True,
+                    },
+                }
+
+            return deepcopy(resolved.definition), {
+                **deepcopy(resolved.evidence),
+                "selection_mode": "auto_exact",
+                "profile_source": (
+                    resolved.resolution.selected_profile.profile_source
+                    if resolved.resolution.selected_profile
+                    else "registry"
+                ),
+                "source_intelligence": _safe_source_intelligence_evidence(
+                    resolved.resolution
+                ),
+            }
+    except SourceIntelligenceResolutionError:
+        raise
+    except (SourceIntelligenceError, ValueError) as exc:
+        evidence = deepcopy(getattr(exc, "source_intelligence", None) or {})
+        if not evidence:
+            result = getattr(exc, "result", None)
+            evidence = (
+                _safe_source_intelligence_evidence(result)
+                if result is not None
+                else {
+                    "outcome": "unknown",
+                    "execution_allowed": False,
+                    "specialist_skill": "enterprise-transformation-architect",
+                    "candidates": [],
+                }
+            )
+        raise SourceIntelligenceResolutionError(
+            f"Source Intelligence could not authorize a transformation profile: {exc}",
+            evidence,
+        ) from exc
+
+
+async def _exec_samurai_enterprise_profile(
+    config: dict[str, Any],
+    profile: dict[str, Any],
+    evidence: dict[str, Any],
+    source_inputs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Execute a canonical ingress profile selected directly or by auto mode."""
+
+    from shogun.services.enterprise_transformations import execute_enterprise_profile
+
+    if len(source_inputs) != 1:
+        raise ValueError(
+            "A canonical enterprise transformation profile requires exactly one structured source input."
+        )
+    raw_payload = source_inputs[0].get("raw_output")
+    if not isinstance(raw_payload, (dict, list, str, bytes)):
+        raise ValueError(
+            "A canonical enterprise transformation profile requires a JSON-compatible structured payload."
+        )
+    result = execute_enterprise_profile(
+        profile,
+        raw_payload,
+        context={
+            "flow_id": str(config.get("_flow_id") or ""),
+            "node_id": str(config.get("_node_id") or ""),
+            "source_node_id": str(source_inputs[0].get("source_id") or ""),
+        },
+        registry_evidence=evidence,
+    )
+    await _record_samurai_transformation_profile_event(
+        config,
+        str(profile.get("id") or ""),
+        str(profile.get("adapter") or ""),
+        int(result.get("records_written") or 0),
+        evidence,
+    )
+    return result
 
 
 def _resolve_private_transformation_profile(
@@ -6356,6 +7003,9 @@ async def _record_node_failure_event(
             value = getattr(error, attribute, None)
             if value is not None:
                 detail[key] = value
+        source_intelligence = getattr(error, "source_intelligence", None)
+        if isinstance(source_intelligence, dict):
+            detail["source_intelligence"] = deepcopy(source_intelligence)
 
         return await EventLogger.emit_incident_event(
             "agent_flow.node.failed",

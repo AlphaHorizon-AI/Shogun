@@ -66,6 +66,8 @@ protected kernel.
 
 Use the native registry tools as the only mutation boundary:
 
+- `transformation_sources_inspect` performs bounded, read-only source discovery
+  and returns exact, ambiguous, or unknown evidence without profile definitions;
 - `transformation_profiles_list` and `transformation_profiles_get` inspect the
   catalogue without changing it;
 - `transformation_profiles_propose` creates a governed candidate;

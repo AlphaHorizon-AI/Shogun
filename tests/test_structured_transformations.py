@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
+from time import monotonic
 
 import pytest
 
@@ -283,3 +285,52 @@ def test_bundled_profile_loader_rejects_missing_and_traversal_ids():
 
     with pytest.raises(ValueError, match="profile id is invalid"):
         load_bundled_transformation_profile("../synthetic_private_profile_v1")
+
+
+@pytest.mark.parametrize(
+    "pathological_pattern",
+    [
+        r"(a+){20}$",
+        r"(?:a|aa){40}$",
+        r"(?:a{1,3}){40}$",
+    ],
+)
+def test_dynamic_fixed_repeat_patterns_fail_closed_within_operation_budget(
+    pathological_pattern,
+):
+    profile = deepcopy(PROFILE)
+    profile["parameters"]["required_source_patterns"] = [r"a"]
+    profile["parameters"]["section_pattern"] = pathological_pattern
+    adversarial_source = ("a" * 100_000) + "!"
+
+    started = monotonic()
+    with pytest.raises(ValueError, match="regex operation.*bounded execution budget"):
+        try_deterministic_matrix_transform(
+            profile=profile,
+            source_context=adversarial_source,
+            fixed_context=FIXED_CONTEXT,
+        )
+
+    assert monotonic() - started < 2.5
+
+
+def test_large_valid_sap_like_profile_transformation_remains_supported():
+    section_count = 1_500
+    large_source = "\n".join(
+        SOURCE.replace("ITEM-A", f"ITEM-{index:05d}").replace(
+            "Example widget",
+            f"Example widget {index}",
+        )
+        for index in range(section_count)
+    )
+
+    result = try_deterministic_matrix_transform(
+        profile=PROFILE,
+        source_context=large_source,
+        fixed_context=FIXED_CONTEXT,
+    )
+
+    assert len(large_source) > 500_000
+    assert len(result.rows) == section_count * 3
+    assert result.rows[0][1] == "ITEM-00000"
+    assert result.rows[-1][1] == f"ITEM-{section_count - 1:05d}"
