@@ -305,7 +305,7 @@ def test_transformation_profile_registry_pin_is_all_or_nothing_and_normalized():
         {
             "execution_mode": "contract",
             "transformation_profile": {
-                "id": "ks_lbp_disposition_v2",
+                "id": "private_sectioned_report_v2",
                 "adapter": "sectioned_record_matrix_v1",
                 "registry_version": 2,
                 "content_hash": digest,
@@ -321,7 +321,7 @@ def test_transformation_profile_registry_pin_is_all_or_nothing_and_normalized():
             {
                 "execution_mode": "contract",
                 "transformation_profile": {
-                    "id": "ks_lbp_disposition_v2",
+                    "id": "private_sectioned_report_v2",
                     "adapter": "sectioned_record_matrix_v1",
                     "registry_version": 2,
                 },
@@ -332,7 +332,7 @@ def test_transformation_profile_registry_pin_is_all_or_nothing_and_normalized():
 @pytest.mark.anyio
 async def test_contract_mapping_resolves_minimal_pinned_registry_reference(monkeypatch):
     definition = {
-        "id": "ks_lbp_disposition_v2",
+        "id": "private_sectioned_report_v2",
         "adapter": "sectioned_record_matrix_v1",
         "parameters": {"section_pattern": r"(?m)^Record: (?P<section_id>\S+)"},
     }
@@ -388,7 +388,7 @@ async def test_contract_mapping_resolves_minimal_pinned_registry_reference(monke
 @pytest.mark.anyio
 async def test_unpinned_contract_only_accepts_exact_active_registry_snapshot(monkeypatch):
     definition = {
-        "id": "ks_lbp_disposition_v2",
+        "id": "private_sectioned_report_v2",
         "adapter": "sectioned_record_matrix_v1",
         "parameters": {"section_pattern": r"(?m)^Record: (?P<section_id>\S+)"},
     }
@@ -437,7 +437,7 @@ async def test_unpinned_contract_only_accepts_exact_active_registry_snapshot(mon
 
 def test_samurai_contract_carrier_rejects_forged_resolved_definition():
     definition = {
-        "id": "ks_lbp_disposition_v2",
+        "id": "private_sectioned_report_v2",
         "adapter": "sectioned_record_matrix_v1",
         "parameters": {"section_pattern": "trusted"},
     }

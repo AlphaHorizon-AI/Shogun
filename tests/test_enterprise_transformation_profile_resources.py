@@ -6,6 +6,17 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from shogun.mapping.errors import MappingError
+from shogun.services.bundled_transformation_profile_fixtures import (
+    BUNDLED_FIXTURE_POLICY,
+    build_bundled_validation_request,
+)
+from shogun.services.enterprise_transformations import (
+    enterprise_profile_content_hash,
+    execute_enterprise_profile,
+)
 
 PROFILE_DIR = (
     Path(__file__).resolve().parents[1]
@@ -14,7 +25,6 @@ PROFILE_DIR = (
     / "transformation_profiles"
 )
 CATALOG_PATH = PROFILE_DIR / "catalog_v1.json"
-SAP_PROFILE_ID = "ks_lbp_disposition_v2"
 ENTERPRISE_ADAPTER = "canonical_entity_map_v1"
 
 EXPECTED_PLATFORM_COUNTS = {
@@ -29,7 +39,6 @@ EXPECTED_PLATFORM_COUNTS = {
     "QuickBooks Online": 5,
     "Sage Intacct": 5,
     "Salesforce": 7,
-    "SAP": 1,
     "ServiceNow": 5,
     "Workday": 6,
     "Xero": 5,
@@ -59,7 +68,31 @@ RUNTIME_TRANSFORMS = {
     "trim",
     "uppercase",
 }
-RUNTIME_INVARIANTS = {"equals", "nonnegative", "required_nonempty"}
+RUNTIME_INVARIANTS = {
+    "debits_equal_credits",
+    "equals",
+    "greater_than",
+    "header_equals_line_sum_with_tolerance",
+    "mutually_exclusive_nonzero",
+    "nonnegative",
+    "required_fields_present",
+    "required_non_blank",
+    "required_nonempty",
+    "sum_equals",
+    "unique_composite",
+}
+V2_ONLY_CAPABILITIES = {
+    "heterogeneous_object_union",
+    "nested_collection_flattening",
+    "synthetic_line_index",
+    "business_rule:debits_equal_credits",
+    "business_rule:greater_than",
+    "business_rule:header_equals_line_sum_with_tolerance",
+    "business_rule:mutually_exclusive_nonzero",
+    "business_rule:required_fields_present",
+    "business_rule:sum_equals",
+    "business_rule:unique_composite",
+}
 FORBIDDEN_KEYS = {
     "access_token",
     "api_key",
@@ -89,8 +122,6 @@ def _catalog() -> dict[str, Any]:
 def _enterprise_profiles() -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
     for entry in _catalog()["profiles"]:
-        if entry["id"] == SAP_PROFILE_ID:
-            continue
         result[entry["id"]] = _load(PROFILE_DIR / entry["resource"])
     return result
 
@@ -130,17 +161,19 @@ def test_catalog_indexes_every_bundled_profile_resource_once():
         if path.name != CATALOG_PATH.name
     }
 
-    assert len(entries) == 87
+    assert len(entries) == 86
     assert len(ids) == len(set(ids))
     assert len(resources) == len(set(resources))
     assert set(resources) == disk_resources
     assert catalog["totals"] == {
-        "profiles": 87,
-        "active": 1,
-        "candidates": 86,
-        "adapter_available": 59,
-        "adapter_planned": 28,
+        "profiles": 86,
+        "active": 86,
+        "candidates": 0,
+        "adapter_available": 86,
+        "adapter_planned": 0,
     }
+    assert all(entry["lifecycle"] == "active" for entry in entries)
+    assert all(entry["adapter_status"] == "available" for entry in entries)
     assert catalog["platform_counts"] == EXPECTED_PLATFORM_COUNTS
     assert Counter(entry["platform"] for entry in entries) == EXPECTED_PLATFORM_COUNTS
 
@@ -187,10 +220,12 @@ def test_enterprise_profile_manifests_are_complete_and_identity_safe():
 
         requirements = profile["adapter_requirements"]
         assert requirements["adapter"] == ENTERPRISE_ADAPTER
-        assert requirements["minimum_version"] == 1
-        assert requirements["status"] in {"available", "planned"}
+        assert requirements["minimum_version"] in {1, 2}
+        assert requirements["status"] == "available"
         assert requirements["fail_closed"] is True
         assert requirements["capabilities"]
+        if set(requirements["capabilities"]) & V2_ONLY_CAPABILITIES:
+            assert requirements["minimum_version"] >= 2, profile_id
 
         selection = profile["selection"]
         assert selection["positive_fingerprints"]
@@ -223,11 +258,19 @@ def test_available_profiles_use_only_the_executable_adapter_vocabulary():
             invariant["rule"] in RUNTIME_INVARIANTS
             for invariant in profile["invariants"]
         ), profile_id
-        assert profile["invariants"][0] == {
-            "id": "identity_complete",
-            "rule": "required_nonempty",
-            "fields": profile["identity"]["canonical_key"],
-        }
+        identity_invariant = profile["invariants"][0]
+        assert identity_invariant["id"] == "identity_complete"
+        assert identity_invariant["rule"] in {"required_nonempty", "required_non_blank"}
+        assert identity_invariant["fields"] == profile["identity"]["canonical_key"]
+
+        mappings_by_target = {mapping["target"]: mapping for mapping in profile["field_map"]}
+        for invariant in profile["invariants"]:
+            if invariant["rule"] != "header_equals_line_sum_with_tolerance":
+                continue
+            header_total = invariant["fields"][0]
+            assert mappings_by_target[header_total]["required"] is True, profile_id
+            assert isinstance(invariant.get("tolerance"), (int, float)), profile_id
+            assert invariant["tolerance"] >= 0, profile_id
 
 
 def test_profile_resources_contain_no_credentials_or_tenant_urls():
@@ -240,15 +283,64 @@ def test_profile_resources_contain_no_credentials_or_tenant_urls():
         assert all("://" not in value for value in _walk_strings(profile)), profile_id
 
 
-def test_sap_v2_remains_the_active_specialized_pdf_profile():
-    catalog_entry = next(
-        entry for entry in _catalog()["profiles"] if entry["id"] == SAP_PROFILE_ID
-    )
-    profile = _load(PROFILE_DIR / catalog_entry["resource"])
+def test_all_catalog_profiles_pass_package_owned_executable_fixture_gates():
+    profiles = _enterprise_profiles()
+    assert len(profiles) == 86
 
-    assert catalog_entry["lifecycle"] == "active"
-    assert catalog_entry["adapter_status"] == "available"
-    assert profile["id"] == SAP_PROFILE_ID
-    assert profile["adapter"] == "sectioned_record_matrix_v1"
-    assert profile["parameters"]["row_rules"][2]["key_group"] == "start_month"
-    assert profile["parameters"]["template"]["minimum_columns"] == 10
+    for profile_id, profile in profiles.items():
+        evidence = build_bundled_validation_request(profile)
+        assert evidence.report["policy"] == BUNDLED_FIXTURE_POLICY, profile_id
+        assert len(evidence.positive_fixtures) >= 3, profile_id
+        assert len(evidence.negative_fixtures) >= 3, profile_id
+        negative_names = {fixture.name for fixture in evidence.negative_fixtures}
+        assert "wrong positive field fingerprint" in negative_names, profile_id
+        for invariant in profile["invariants"]:
+            fields = {
+                str(value)
+                for value in [
+                    *(invariant.get("fields") or []),
+                    invariant.get("field"),
+                ]
+                if value
+            }
+            is_identity_only = invariant["rule"] in {
+                "required_nonempty",
+                "required_non_blank",
+            } and fields <= set(profile["identity"]["canonical_key"])
+            if not is_identity_only:
+                assert f"rejects invariant {invariant['id']}" in negative_names, profile_id
+        registry_evidence = {
+            "profile_id": profile_id,
+            "version": 1,
+            "content_hash": enterprise_profile_content_hash(profile),
+            "status": "validation",
+            "adapter_id": profile["adapter"],
+            "adapter_status": "available",
+        }
+        for fixture in evidence.positive_fixtures:
+            result = execute_enterprise_profile(
+                profile,
+                fixture.payload,
+                context=fixture.context,
+                registry_evidence=registry_evidence,
+            )
+            assert result["records_written"] == fixture.expected_record_count, (
+                profile_id,
+                fixture.name,
+            )
+            assert result["headers"] == fixture.expected_headers, profile_id
+            assert result["canonical"]["records"] == fixture.expected_records, profile_id
+            assert result["rows"] == fixture.expected_rows, profile_id
+        for fixture in evidence.negative_fixtures:
+            assert fixture.expected_error_code, (profile_id, fixture.name)
+            with pytest.raises(MappingError) as exc_info:
+                execute_enterprise_profile(
+                    profile,
+                    fixture.payload,
+                    context=fixture.context,
+                    registry_evidence=registry_evidence,
+                )
+            assert exc_info.value.code == fixture.expected_error_code, (
+                profile_id,
+                fixture.name,
+            )

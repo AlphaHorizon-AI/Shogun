@@ -1,8 +1,8 @@
 {
-  "version": "1.47.80",
+  "version": "1.47.81",
   "name": "Shogun OS",
-  "build": 231,
+  "build": 232,
   "channel": "stable",
-  "released": "2026-08-19T16:34:05Z",
-  "changelog": "Add explicit fail-closed AgentFlow transformation contracts and a semantic SAP disposition v2 profile."
+  "released": "2026-08-21T06:40:39Z",
+  "changelog": "Activate validated enterprise transformation profiles and add portable private profile import and export."
 }

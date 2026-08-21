@@ -25,7 +25,7 @@ async def test_agent_flow_upload_uses_configured_upload_directory(tmp_path, monk
 
     response = await upload_flow_document(
         flow_id,
-        UploadFile(filename="Mapla 21.07.2026.pdf", file=BytesIO(b"%PDF-1.4 test")),
+        UploadFile(filename="sample-report.pdf", file=BytesIO(b"%PDF-1.4 test")),
         FakeFlowService(),
     )
 
@@ -33,7 +33,7 @@ async def test_agent_flow_upload_uses_configured_upload_directory(tmp_path, monk
     stored = list(upload_dir.glob("*.pdf"))
     assert len(stored) == 1
     assert stored[0].read_bytes() == b"%PDF-1.4 test"
-    assert response.data["filename"] == "Mapla 21.07.2026.pdf"
+    assert response.data["filename"] == "sample-report.pdf"
     assert response.data["stored_filename"] == stored[0].name
     assert response.data["path"] == str(stored[0])
 
@@ -51,7 +51,7 @@ async def test_document_input_reports_incomplete_upload():
             {
                 "input_type": "document",
                 "uploaded_file": {
-                    "filename": "Mapla 21.07.2026.pdf",
+                    "filename": "sample-report.pdf",
                     "size": 1234,
                     "path": "",
                     "error": "Upload failed",
@@ -265,7 +265,7 @@ async def test_one_samurai_receives_one_contract_and_all_other_predecessors(monk
 
     captured: dict[str, object] = {}
     resolved_definition = {
-        "id": "ks_lbp_disposition_v2",
+        "id": "private_sectioned_report_v2",
         "adapter": "sectioned_record_matrix_v1",
         "parameters": {"section_pattern": r"(?m)^Record: (?P<section_id>\S+)"},
     }
@@ -382,7 +382,7 @@ async def test_one_samurai_receives_one_contract_and_all_other_predecessors(monk
 
 
 @pytest.mark.asyncio
-async def test_sap_shaped_input_does_not_implicitly_activate_a_profile(monkeypatch):
+async def test_domain_shaped_input_does_not_implicitly_activate_a_profile(monkeypatch):
     captured: dict[str, object] = {}
 
     async def update_state(*_args, **_kwargs):
@@ -404,17 +404,17 @@ async def test_sap_shaped_input_does_not_implicitly_activate_a_profile(monkeypat
         flow_id=uuid.uuid4(),
         node_type="samurai",
         label="Generic extraction",
-        config={"task_description": "Extract every SAP order into rows"},
+        config={"task_description": "Extract every private report record into rows"},
     )
 
     result = await flow_engine._execute_single_node(
         uuid.uuid4(),
         node,
-        {source_id: "Sachnummer : 140000\nBestand : 12\n06 140000 ORDER-1"},
+        {source_id: "Object: ITEM-A\nQuantity: 12\nLine: ITEM-A ORDER-1"},
         {
             source_id: SimpleNamespace(
                 id=source_id,
-                label="SAP PDF",
+                label="Private report PDF",
                 node_type="office",
                 config={"action": "pdf_read"},
             )
@@ -423,7 +423,7 @@ async def test_sap_shaped_input_does_not_implicitly_activate_a_profile(monkeypat
 
     assert result == "model path"
     assert captured["profiles"] == []
-    assert "Sachnummer : 140000" in captured["context"]
+    assert "Object: ITEM-A" in captured["context"]
 
 
 @pytest.mark.asyncio

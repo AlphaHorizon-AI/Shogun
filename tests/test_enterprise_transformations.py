@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
@@ -22,6 +24,19 @@ from shogun.services.enterprise_transformations import (
     registered_transformation_adapters,
     validate_enterprise_profile_manifest,
 )
+
+PROFILE_DIR = (
+    Path(__file__).resolve().parents[1]
+    / "shogun"
+    / "resources"
+    / "transformation_profiles"
+)
+
+
+def _resource_profile(profile_id: str) -> dict:
+    return json.loads(
+        (PROFILE_DIR / f"{profile_id}.json").read_text(encoding="utf-8")
+    )
 
 
 def _product_profile(**overrides):
@@ -112,7 +127,7 @@ def _registry_evidence(profile, **overrides):
     return evidence
 
 
-def test_adapter_catalog_exposes_structured_and_sap_adapters():
+def test_adapter_catalog_exposes_structured_and_sectioned_matrix_adapters():
     adapters = registered_transformation_adapters()
     assert adapters[CANONICAL_ENTITY_ADAPTER]["status"] == "available"
     assert adapters["sectioned_record_matrix_v1"]["status"] == "available"
@@ -135,8 +150,8 @@ def test_manifest_validation_is_strict_about_nested_types_and_available_adapter_
         validate_enterprise_profile_manifest(aliases_are_not_a_list)
 
     minimum_version_is_unavailable = _product_profile()
-    minimum_version_is_unavailable["adapter_requirements"]["minimum_version"] = 2
-    with pytest.raises(MappingSchemaError, match="runtime version is 1"):
+    minimum_version_is_unavailable["adapter_requirements"]["minimum_version"] = 3
+    with pytest.raises(MappingSchemaError, match="runtime version is 2"):
         validate_enterprise_profile_manifest(minimum_version_is_unavailable)
 
     unsupported_capability = _product_profile()
@@ -265,6 +280,223 @@ def test_entity_payload_with_business_items_is_not_guessed_as_a_collection_wrapp
             profile,
             {"value": [entity]},
             registry_evidence=_registry_evidence(profile),
+        )
+
+
+def test_header_lines_flatten_across_declared_page_wrappers_and_reconcile():
+    profile = _resource_profile("business_central_sales_invoice_v1")
+    first_header = {
+        "id": "INV-1",
+        "number": "1001",
+        "customerId": "CUSTOMER-1",
+        "invoiceDate": "2026-08-01",
+        "currencyCode": "eur",
+        "totalAmountExcludingTax": 30,
+        "salesInvoiceLines": [
+            {"id": "L-1", "itemId": "P-1", "quantity": 1, "netAmount": 10},
+            {"id": "L-2", "itemId": "P-2", "quantity": 2, "netAmount": 20},
+        ],
+    }
+    second_header = deepcopy(first_header)
+    second_header.update({"id": "INV-2", "number": "1002"})
+    second_header["salesInvoiceLines"] = [
+        {"id": "L-1", "itemId": "P-3", "quantity": 3, "netAmount": 30}
+    ]
+
+    result = execute_enterprise_profile(
+        profile,
+        [{"value": [first_header]}, {"value": [second_header]}],
+        registry_evidence=_registry_evidence(profile),
+    )
+
+    assert result["records_received"] == 3
+    assert result["records_written"] == 3
+    assert [record["line_id"] for record in result["canonical"]["records"]] == [
+        "L-1",
+        "L-2",
+        "L-1",
+    ]
+    assert result["lineage"][2]["page_index"] == 1
+    assert result["lineage"][2]["header_index"] == 1
+    assert result["lineage"][2]["line_index"] == 0
+
+    first_header["totalAmountExcludingTax"] = 31
+    with pytest.raises(MappingSchemaError, match="does not reconcile"):
+        execute_enterprise_profile(
+            profile,
+            {"value": [first_header]},
+            registry_evidence=_registry_evidence(profile),
+        )
+
+
+def test_nested_related_path_and_synthetic_line_index_execute_without_guessing():
+    netsuite = _resource_profile("netsuite_purchase_order_v1")
+    result = execute_enterprise_profile(
+        netsuite,
+        {
+            "items": [
+                {
+                    "id": "PO-1",
+                    "tranId": "PO1001",
+                    "entity": {"id": "VENDOR-1"},
+                    "tranDate": "2026-08-01",
+                    "status": {"id": "OPEN"},
+                    "item": {
+                        "items": [
+                            {
+                                "line": "1",
+                                "item": {"id": "P-1"},
+                                "quantity": 4,
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+        registry_evidence=_registry_evidence(netsuite),
+    )
+    assert result["canonical"]["records"][0]["product_id"] == "P-1"
+    assert result["lineage"][0]["related_object_path"] == "item.items"
+
+    xero = _resource_profile("xero_manual_journal_v1")
+    journal = {
+        "ManualJournalID": "J-1",
+        "Date": "2026-08-01",
+        "Status": "POSTED",
+        "UpdatedDateUTC": "2026-08-01T12:00:00",
+        "JournalLines": [
+            {"AccountCode": "1000", "LineAmount": 10},
+            {"AccountCode": "2000", "LineAmount": -10},
+        ],
+    }
+    xero_result = execute_enterprise_profile(
+        xero,
+        {"ManualJournals": [journal]},
+        registry_evidence=_registry_evidence(xero),
+    )
+    assert [record["line_id"] for record in xero_result["canonical"]["records"]] == [0, 1]
+
+    journal["JournalLines"][1]["LineAmount"] = -9
+    with pytest.raises(MappingSchemaError, match="sums to"):
+        execute_enterprise_profile(
+            xero,
+            {"ManualJournals": [journal]},
+            registry_evidence=_registry_evidence(xero),
+        )
+
+
+def test_declared_heterogeneous_union_stamps_and_checks_object_discriminator():
+    profile = _resource_profile("quickbooks_online_bank_transaction_v1")
+
+    def transaction(identifier: str, amount: int) -> dict:
+        return {
+            "Id": identifier,
+            "TxnDate": "2026-08-01",
+            "TotalAmt": amount,
+            "MetaData": {"LastUpdatedTime": "2026-08-01T12:00:00"},
+        }
+
+    result = execute_enterprise_profile(
+        profile,
+        {
+            "QueryResponse": {
+                "Purchase": [transaction("P-1", 10)],
+                "Deposit": [transaction("D-1", 20)],
+            }
+        },
+        registry_evidence=_registry_evidence(profile),
+    )
+
+    assert [
+        record["transaction_type"] for record in result["canonical"]["records"]
+    ] == ["Purchase", "Deposit"]
+    assert [item["union_path"] for item in result["lineage"]] == [
+        "QueryResponse.Purchase",
+        "QueryResponse.Deposit",
+    ]
+
+    conflicting = transaction("P-2", 5)
+    conflicting["TxnType"] = "Deposit"
+    with pytest.raises(MappingInputError, match="discriminator"):
+        execute_enterprise_profile(
+            profile,
+            {"QueryResponse": {"Purchase": [conflicting]}},
+            registry_evidence=_registry_evidence(profile),
+        )
+
+
+def test_cross_line_and_per_line_business_rules_fail_closed():
+    journal_profile = _resource_profile("quickbooks_online_journal_entry_v1")
+    journal = {
+        "Id": "J-1",
+        "TxnDate": "2026-08-01",
+        "Line": [
+            {
+                "Id": "1",
+                "Amount": 100,
+                "JournalEntryLineDetail": {
+                    "AccountRef": {"value": "1000"},
+                    "PostingType": "Debit",
+                },
+            },
+            {
+                "Id": "2",
+                "Amount": 100,
+                "JournalEntryLineDetail": {
+                    "AccountRef": {"value": "2000"},
+                    "PostingType": "Credit",
+                },
+            },
+        ],
+    }
+    execute_enterprise_profile(
+        journal_profile,
+        {"QueryResponse": {"JournalEntry": [journal]}},
+        registry_evidence=_registry_evidence(journal_profile),
+    )
+    journal["Line"][1]["Amount"] = 99
+    with pytest.raises(MappingSchemaError, match="do not reconcile"):
+        execute_enterprise_profile(
+            journal_profile,
+            {"QueryResponse": {"JournalEntry": [journal]}},
+            registry_evidence=_registry_evidence(journal_profile),
+        )
+
+    bom_profile = _resource_profile("d365_fscm_bom_v1")
+    bom = {
+        "dataAreaId": "USMF",
+        "BillOfMaterialsId": "BOM-1",
+        "BillOfMaterialsLines": [
+            {"LineNumber": "1", "ItemNumber": "P-1", "Quantity": 0}
+        ],
+    }
+    with pytest.raises(MappingSchemaError, match="greater than"):
+        execute_enterprise_profile(
+            bom_profile,
+            {"value": [bom]},
+            registry_evidence=_registry_evidence(bom_profile),
+        )
+
+    ledger_profile = _resource_profile("d365_fscm_general_journal_v1")
+    ledger = {
+        "dataAreaId": "USMF",
+        "JournalBatchNumber": "BATCH-1",
+        "GeneralJournalAccountEntries": [
+            {
+                "LineNumber": "1",
+                "TransDate": "2026-08-01",
+                "LedgerAccount": "1000",
+                "CurrencyCode": "USD",
+                "DebitAmount": 10,
+                "CreditAmount": 10,
+            }
+        ],
+    }
+    with pytest.raises(MappingSchemaError, match="cannot both be nonzero"):
+        execute_enterprise_profile(
+            ledger_profile,
+            {"value": [ledger]},
+            registry_evidence=_registry_evidence(ledger_profile),
         )
 
 

@@ -3903,6 +3903,33 @@ async def _resolve_registered_enterprise_profile(profile: Any) -> tuple[dict[str
         raise MappingSchemaError(str(exc), field="transformation_profile") from exc
 
 
+def _resolve_private_transformation_profile(
+    profile: Any,
+    *,
+    execution_mode: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Revalidate one flow-local private file and issue execution evidence."""
+
+    from shogun.mapping.errors import MappingSchemaError
+    from shogun.services.private_transformation_profiles import (
+        PrivateTransformationProfileError,
+        PrivateTransformationProfileService,
+    )
+
+    if execution_mode not in {"contract", "profile"}:
+        raise MappingSchemaError(
+            f"Unsupported private transformation execution mode '{execution_mode}'",
+            field="transformation_profile",
+        )
+    try:
+        return PrivateTransformationProfileService().resolve_reference(
+            profile,
+            execution_mode=execution_mode,
+        )
+    except PrivateTransformationProfileError as exc:
+        raise MappingSchemaError(str(exc), field="transformation_profile") from exc
+
+
 def _normalized_contract_snapshot(value: Any) -> dict[str, Any]:
     """Normalize legacy inline mechanics for comparison with a registry definition."""
 
@@ -3993,6 +4020,81 @@ def _validate_contract_registry_resolution(
     return deepcopy(definition), deepcopy(evidence)
 
 
+def _validate_private_contract_resolution(
+    configured_profile: Any,
+    definition: Any,
+    evidence: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Validate a private contract carrier without consulting the registry."""
+
+    from shogun.mapping.errors import MappingSchemaError
+    from shogun.services.private_transformation_profiles import (
+        PRIVATE_PROFILE_EVIDENCE_STATUS,
+    )
+    from shogun.services.structured_transformations import SUPPORTED_ADAPTER
+    from shogun.services.transformation_profile_registry import profile_content_hash
+
+    private_file = getattr(configured_profile, "private_file", None)
+    if private_file is None or not isinstance(definition, dict) or not isinstance(evidence, dict):
+        raise MappingSchemaError(
+            "Private transformation profile carrier is invalid",
+            field="transformation_profile",
+        )
+    profile_id = str(evidence.get("profile_id") or "")
+    adapter_id = str(evidence.get("adapter_id") or "")
+    status = str(evidence.get("status") or "").lower()
+    adapter_status = str(evidence.get("adapter_status") or "").lower()
+    source = str(evidence.get("source") or "").lower()
+    version = evidence.get("version")
+    content_hash = str(evidence.get("content_hash") or "").lower()
+    if profile_id != configured_profile.id or adapter_id != configured_profile.adapter:
+        raise MappingSchemaError(
+            "Private transformation profile evidence does not match the AgentFlow reference",
+            field="transformation_profile",
+        )
+    if (
+        status != PRIVATE_PROFILE_EVIDENCE_STATUS
+        or adapter_status != "available"
+        or source != "private_file"
+        or evidence.get("server_validated") is not True
+    ):
+        raise MappingSchemaError(
+            "Private transformation profile lacks server-validated execution evidence",
+            field="transformation_profile",
+        )
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise MappingSchemaError(
+            "Private transformation profile version is invalid",
+            field="transformation_profile.private_file.format_version",
+        )
+    if definition.get("id") != profile_id or definition.get("adapter") != adapter_id:
+        raise MappingSchemaError(
+            "Resolved private transformation profile does not match its evidence",
+            field="transformation_profile",
+        )
+    try:
+        actual_hash = profile_content_hash(definition)
+    except (TypeError, ValueError) as exc:
+        raise MappingSchemaError(
+            "Resolved private transformation profile is not canonical JSON",
+            field="transformation_profile",
+        ) from exc
+    if (
+        actual_hash != content_hash
+        or content_hash != private_file.content_hash
+    ):
+        raise MappingSchemaError(
+            "Resolved private transformation profile failed its content-hash pin",
+            field="transformation_profile.private_file.content_hash",
+        )
+    if adapter_id != SUPPORTED_ADAPTER:
+        raise MappingSchemaError(
+            f"Private transformation profile adapter '{adapter_id}' cannot execute as a Samurai contract",
+            field="transformation_profile.adapter",
+        )
+    return deepcopy(definition), deepcopy(evidence)
+
+
 def _trusted_contract_profile_from_carrier(
     configured_profile: Any,
     carrier: Any,
@@ -4011,11 +4113,18 @@ def _trusted_contract_profile_from_carrier(
             f"Mapping/RPA contract carrier '{carrier_label}' did not provide a successful "
             "transformation-profile contract."
         )
-    definition, evidence = _validate_contract_registry_resolution(
-        configured_profile,
-        carrier.get("resolved_definition"),
-        carrier.get("registry_evidence"),
-    )
+    if getattr(configured_profile, "is_private_file", False):
+        definition, evidence = _validate_private_contract_resolution(
+            configured_profile,
+            carrier.get("resolved_definition"),
+            carrier.get("registry_evidence"),
+        )
+    else:
+        definition, evidence = _validate_contract_registry_resolution(
+            configured_profile,
+            carrier.get("resolved_definition"),
+            carrier.get("registry_evidence"),
+        )
     if (
         carrier.get("profile_id") != evidence["profile_id"]
         or carrier.get("adapter") != evidence["adapter_id"]
@@ -4046,12 +4155,23 @@ async def _exec_mapping_rpa(
         profile = mapping_config.transformation_profile
         if profile is None:  # Kept defensive for direct, non-Pydantic callers.
             raise MappingInputError("Mapping / RPA contract mode requires a transformation profile")
-        definition, registry_evidence = await _resolve_registered_enterprise_profile(profile)
-        definition, registry_evidence = _validate_contract_registry_resolution(
-            profile,
-            definition,
-            registry_evidence,
-        )
+        if profile.is_private_file:
+            definition, registry_evidence = _resolve_private_transformation_profile(
+                profile,
+                execution_mode="contract",
+            )
+            definition, registry_evidence = _validate_private_contract_resolution(
+                profile,
+                definition,
+                registry_evidence,
+            )
+        else:
+            definition, registry_evidence = await _resolve_registered_enterprise_profile(profile)
+            definition, registry_evidence = _validate_contract_registry_resolution(
+                profile,
+                definition,
+                registry_evidence,
+            )
         return {
             _MAPPING_PROFILE_CARRIER_MARKER: True,
             "status": "SUCCESS",
@@ -4086,7 +4206,13 @@ async def _exec_mapping_rpa(
             profile = mapping_config.transformation_profile
             if profile is None:  # Kept defensive for direct, non-Pydantic callers.
                 raise MappingInputError("Mapping / RPA profile mode requires a transformation profile")
-            definition, registry_evidence = await _resolve_registered_enterprise_profile(profile)
+            if profile.is_private_file:
+                definition, registry_evidence = _resolve_private_transformation_profile(
+                    profile,
+                    execution_mode="profile",
+                )
+            else:
+                definition, registry_evidence = await _resolve_registered_enterprise_profile(profile)
             result = execute_enterprise_profile(
                 definition,
                 payload,

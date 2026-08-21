@@ -2,9 +2,9 @@
 
 Profiles are data, not executable instructions.  This module implements the
 small, intentionally bounded adapter used by API, OData, REST, JSON, CSV and
-tabular record sets.  Rich document parsing, cross-object joins and financial
-reconciliation require separate adapters and must remain fail-closed until
-those adapters are registered.
+tabular record sets. The adapter also supports explicitly declared response
+wrappers, header/line expansion, bounded heterogeneous unions, and a small set
+of deterministic reconciliation rules. It never guesses collections or joins.
 """
 
 from __future__ import annotations
@@ -59,7 +59,20 @@ _SUPPORTED_TRANSFORMS = {
     "date_normalize",
     "datetime_normalize",
 }
-_SUPPORTED_INVARIANTS = {"none", "required_nonempty", "nonnegative", "equals"}
+_SUPPORTED_INVARIANTS = {
+    "none",
+    "required_nonempty",
+    "required_non_blank",
+    "required_fields_present",
+    "unique_composite",
+    "nonnegative",
+    "equals",
+    "greater_than",
+    "mutually_exclusive_nonzero",
+    "header_equals_line_sum_with_tolerance",
+    "debits_equal_credits",
+    "sum_equals",
+}
 _FORBIDDEN_MANIFEST_KEYS = {
     "access_token",
     "api_key",
@@ -86,7 +99,7 @@ def registered_transformation_adapters() -> dict[str, dict[str, Any]]:
             "capabilities": ["sections", "records", "deduplication", "planning_months"],
         },
         CANONICAL_ENTITY_ADAPTER: {
-            "version": 1,
+            "version": 2,
             "status": "available",
             "input_kinds": ["object", "array", "json", "tabular_records"],
             "capabilities": [
@@ -101,6 +114,19 @@ def registered_transformation_adapters() -> dict[str, dict[str, Any]]:
                 "basic_invariants",
                 "invariant_validation",
                 "formula_neutralization",
+                "declared_record_path",
+                "paginated_wrapper_merge",
+                "nested_collection_flattening",
+                "synthetic_line_index",
+                "heterogeneous_object_union",
+                "business_rule:required_non_blank",
+                "business_rule:unique_composite",
+                "business_rule:required_fields_present",
+                "business_rule:greater_than",
+                "business_rule:mutually_exclusive_nonzero",
+                "business_rule:header_equals_line_sum_with_tolerance",
+                "business_rule:debits_equal_credits",
+                "business_rule:sum_equals",
             ],
         },
     }
@@ -267,6 +293,23 @@ def validate_enterprise_profile_manifest(profile: dict[str, Any]) -> dict[str, A
         source["record_shape"] = _manifest_text(
             source.get("record_shape"), field="source.record_shape", max_length=100
         ).lower()
+    related_objects = _manifest_string_list(
+        source.get("related_objects", []),
+        field="source.related_objects",
+        paths=True,
+    )
+    source["related_objects"] = related_objects
+    union_paths = _manifest_string_list(
+        source.get("union_paths", []),
+        field="source.union_paths",
+        paths=True,
+    )
+    source["union_paths"] = union_paths
+    if source.get("union_discriminator") is not None:
+        source["union_discriminator"] = _manifest_path(
+            source.get("union_discriminator"),
+            field="source.union_discriminator",
+        )
 
     contract = profile.get("canonical_contract")
     if not isinstance(contract, dict):
@@ -547,6 +590,30 @@ def validate_enterprise_profile_manifest(profile: dict[str, Any]) -> dict[str, A
             raise MappingSchemaError(
                 "The equals invariant requires a value", field=f"invariants.{invariant_index}.value"
             )
+        unknown_targets = set(fields) - seen_targets
+        if unknown_targets:
+            raise MappingSchemaError(
+                "Invariant fields must reference mapped canonical targets",
+                field=sorted(unknown_targets)[0],
+            )
+        expected_field_counts = {
+            "greater_than": 1,
+            "mutually_exclusive_nonzero": 2,
+            "header_equals_line_sum_with_tolerance": 2,
+            "debits_equal_credits": 2,
+            "sum_equals": 1,
+        }
+        expected_field_count = expected_field_counts.get(rule)
+        if expected_field_count is not None and len(fields) != expected_field_count:
+            raise MappingSchemaError(
+                f"Invariant '{rule}' requires exactly {expected_field_count} field(s)",
+                field=f"invariants.{invariant_index}.fields",
+            )
+        if rule in {"greater_than", "sum_equals"} and "value" not in invariant:
+            raise MappingSchemaError(
+                f"Invariant '{rule}' requires a comparison value",
+                field=f"invariants.{invariant_index}.value",
+            )
         invariant["fields"] = list(dict.fromkeys(fields))
     profile["invariants"] = invariants
 
@@ -577,6 +644,34 @@ def validate_enterprise_profile_manifest(profile: dict[str, Any]) -> dict[str, A
                 f"{', '.join(unsupported_capabilities)}",
                 field="adapter_requirements.capabilities",
             )
+        record_shape = str(source.get("record_shape") or "").lower()
+        capability_set = set(capabilities)
+        if "nested_collection_flattening" in capability_set:
+            if record_shape != "header_with_lines" or len(related_objects) != 1:
+                raise MappingSchemaError(
+                    "Nested collection flattening requires header_with_lines and exactly one "
+                    "declared related object path",
+                    field="source.related_objects",
+                )
+        if "synthetic_line_index" in capability_set and (
+            "nested_collection_flattening" not in capability_set
+        ):
+            raise MappingSchemaError(
+                "Synthetic line indexes require nested collection flattening",
+                field="adapter_requirements.capabilities",
+            )
+        if "heterogeneous_object_union" in capability_set:
+            if record_shape != "collection" or len(union_paths) < 2:
+                raise MappingSchemaError(
+                    "Heterogeneous unions require a collection shape and at least two "
+                    "declared union paths",
+                    field="source.union_paths",
+                )
+            if not source.get("union_discriminator"):
+                raise MappingSchemaError(
+                    "Heterogeneous unions require a discriminator field",
+                    field="source.union_discriminator",
+                )
         if not fail_closed:
             raise MappingSchemaError(
                 "Executable transformation profiles must fail closed",
@@ -620,7 +715,7 @@ def execute_enterprise_profile(
         )
 
     parsed = _parse_payload(payload)
-    records = _records_from_payload(parsed, manifest.get("source") or {})
+    records, source_locations = _records_from_payload(parsed, manifest)
     if not records:
         raise MappingInputError("Transformation profile input contained no records")
     _validate_selection_fingerprints(manifest, records)
@@ -628,7 +723,9 @@ def execute_enterprise_profile(
     mapped: list[dict[str, Any]] = []
     rows: list[list[Any]] = []
     lineage: list[dict[str, Any]] = []
-    for index, record in enumerate(records):
+    for index, (record, source_location) in enumerate(
+        zip(records, source_locations, strict=True)
+    ):
         source_identity_keys = manifest["identity"].get("source_key") or []
         source_identity = _identity_value(record, source_identity_keys)
         if source_identity_keys and source_identity is None:
@@ -651,6 +748,7 @@ def execute_enterprise_profile(
                 "source_system": f"{manifest['platform']['vendor']}:{manifest['platform']['product']}",
                 "source_object": manifest["source"].get("object"),
                 "source_id": source_identity,
+                **source_location,
                 "flow_id": (context or {}).get("flow_id"),
                 "node_id": (context or {}).get("node_id"),
                 "source_node_id": (context or {}).get("source_node_id"),
@@ -721,8 +819,18 @@ def _validate_registry_evidence(
     content_hash = str(evidence.get("content_hash") or "")
     if profile_id != manifest["id"] or adapter_id != manifest["adapter"]:
         raise MappingSchemaError("Transformation profile registry evidence does not match the manifest")
-    if status not in {"active", "validation"} or adapter_status != "available":
-        raise MappingSchemaError("Transformation profile is not active with an available adapter")
+    private_evidence = (
+        status == "private_validated"
+        and str(evidence.get("source") or "").lower() == "private_file"
+        and evidence.get("server_validated") is True
+    )
+    if (
+        status not in {"active", "validation"}
+        and not private_evidence
+    ) or adapter_status != "available":
+        raise MappingSchemaError(
+            "Transformation profile is not active or privately validated with an available adapter"
+        )
     if not isinstance(version, int) or version < 1:
         raise MappingSchemaError("Transformation profile registry version is invalid")
     if content_hash != source_content_hash:
@@ -756,20 +864,216 @@ def _parse_payload(payload: Any) -> Any:
         raise MappingInputError("Transformation profile input is not valid JSON") from exc
 
 
-def _records_from_payload(payload: Any, source: dict[str, Any]) -> list[dict[str, Any]]:
+def _records_from_payload(
+    payload: Any,
+    manifest: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Resolve only manifest-declared wrappers, unions, and header/line joins."""
+
+    source = manifest.get("source") or {}
+    capabilities = set(
+        (manifest.get("adapter_requirements") or {}).get("capabilities") or []
+    )
+    if "heterogeneous_object_union" in capabilities:
+        records, locations = _heterogeneous_union_records(payload, source)
+    else:
+        records, locations = _declared_wrapper_records(payload, source)
+    if "nested_collection_flattening" in capabilities:
+        records, locations = _flatten_header_lines(
+            records,
+            locations,
+            source,
+            manifest,
+        )
+    return records, locations
+
+
+def _declared_wrapper_records(
+    payload: Any,
+    source: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Resolve a declared record path, including an explicit list of page wrappers."""
+
     record_path = str(source.get("record_path") or "").strip()
-    data = _path_get(payload, record_path) if record_path else payload
-    if data is _MISSING:
-        raise MappingInputError(f"Configured source record path '{record_path}' was not found", field=record_path)
-    # Wrapper traversal is always manifest-declared. Guessing that a top-level
-    # ``items``/``data``/``results`` property is the response collection can
-    # silently turn a single order, invoice, or product entity into its nested
-    # business lines. Direct objects and already-extracted arrays remain valid.
-    if isinstance(data, dict):
-        return [data]
-    if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
-        raise MappingInputError("Transformation profile input must resolve to an object or array of objects")
-    return list(data)
+    if record_path and isinstance(payload, list):
+        pages = payload
+    else:
+        pages = [payload]
+
+    records: list[dict[str, Any]] = []
+    locations: list[dict[str, Any]] = []
+    for page_index, page in enumerate(pages):
+        data = _path_get(page, record_path) if record_path else page
+        if data is _MISSING:
+            raise MappingInputError(
+                f"Configured source record path '{record_path}' was not found",
+                field=record_path,
+            )
+        page_records = _record_collection(data, label=record_path or "payload")
+        for record_index, record in enumerate(page_records):
+            records.append(deepcopy(record))
+            locations.append(
+                {
+                    "page_index": page_index,
+                    "source_record_index": record_index,
+                }
+            )
+    return records, locations
+
+
+def _heterogeneous_union_records(
+    payload: Any,
+    source: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Union explicitly listed collections and stamp a bounded discriminator."""
+
+    union_paths = [str(value) for value in source.get("union_paths") or []]
+    discriminator = str(source.get("union_discriminator") or "").strip()
+    if not union_paths or not discriminator:
+        raise MappingSchemaError(
+            "Heterogeneous union source configuration is incomplete",
+            field="source.union_paths",
+        )
+
+    # Already-normalized arrays remain valid only when every item carries the
+    # declared discriminator. Otherwise a list is treated as page wrappers.
+    if isinstance(payload, list) and payload and all(isinstance(item, dict) for item in payload):
+        if all(_path_get(item, discriminator) is not _MISSING for item in payload):
+            return (
+                [deepcopy(item) for item in payload],
+                [
+                    {"page_index": 0, "source_record_index": index}
+                    for index in range(len(payload))
+                ],
+            )
+        pages = payload
+    else:
+        pages = [payload]
+
+    records: list[dict[str, Any]] = []
+    locations: list[dict[str, Any]] = []
+    for page_index, page in enumerate(pages):
+        if not isinstance(page, dict):
+            raise MappingInputError("Heterogeneous union pages must be objects")
+        for union_path in union_paths:
+            selected = _path_get(page, union_path)
+            if selected is _MISSING:
+                continue
+            discriminator_value = union_path.rsplit(".", 1)[-1]
+            for record_index, raw_record in enumerate(
+                _record_collection(selected, label=union_path)
+            ):
+                record = deepcopy(raw_record)
+                existing = _path_get(record, discriminator)
+                if existing is _MISSING:
+                    _path_set(record, discriminator, discriminator_value)
+                elif str(existing).casefold() != discriminator_value.casefold():
+                    raise MappingInputError(
+                        f"Union discriminator '{discriminator}' conflicts with path "
+                        f"'{union_path}'",
+                        field=discriminator,
+                    )
+                records.append(record)
+                locations.append(
+                    {
+                        "page_index": page_index,
+                        "source_record_index": record_index,
+                        "union_path": union_path,
+                    }
+                )
+    if not records:
+        raise MappingInputError("None of the declared heterogeneous union paths contained records")
+    return records, locations
+
+
+def _record_collection(value: Any, *, label: str) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        return [value]
+    if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+        raise MappingInputError(
+            f"Transformation profile path '{label}' must resolve to an object or array of objects",
+            field=label,
+        )
+    return list(value)
+
+
+def _flatten_header_lines(
+    headers: list[dict[str, Any]],
+    locations: list[dict[str, Any]],
+    source: dict[str, Any],
+    manifest: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    related_objects = [str(value) for value in source.get("related_objects") or []]
+    if len(related_objects) != 1:
+        raise MappingSchemaError(
+            "Header/line execution requires exactly one related object path",
+            field="source.related_objects",
+        )
+    related_path = related_objects[0]
+    declared_paths = {
+        str(value)
+        for value in [
+            *(manifest.get("identity") or {}).get("source_key", []),
+            *[
+                rule.get("source")
+                for rule in manifest.get("field_map") or []
+                if isinstance(rule, dict)
+            ],
+            *[
+                alias
+                for rule in manifest.get("field_map") or []
+                if isinstance(rule, dict)
+                for alias in rule.get("aliases") or []
+            ],
+        ]
+        if value
+    }
+    flattened: list[dict[str, Any]] = []
+    flattened_locations: list[dict[str, Any]] = []
+    wrapper_names = ("items", "value", "records", "collection", "result")
+    for header_index, (header, location) in enumerate(
+        zip(headers, locations, strict=True)
+    ):
+        raw_lines = _path_get(header, related_path)
+        if raw_lines is _MISSING:
+            raise MappingInputError(
+                f"Declared related object path '{related_path}' was not found",
+                field=related_path,
+                record_index=header_index,
+            )
+        target_path = related_path
+        if isinstance(raw_lines, dict):
+            candidates = [
+                name for name in wrapper_names if isinstance(raw_lines.get(name), list)
+            ]
+            if len(candidates) != 1:
+                raise MappingInputError(
+                    f"Related object path '{related_path}' must contain exactly one "
+                    "recognized collection wrapper",
+                    field=related_path,
+                    record_index=header_index,
+                )
+            wrapper = candidates[0]
+            raw_lines = raw_lines[wrapper]
+            wrapped_path = f"{related_path}.{wrapper}"
+            if any(path.startswith(f"{wrapped_path}.") for path in declared_paths):
+                target_path = wrapped_path
+        lines = _record_collection(raw_lines, label=related_path)
+        for line_index, raw_line in enumerate(lines):
+            line = deepcopy(raw_line)
+            line.setdefault("_index", line_index)
+            flattened_record = deepcopy(header)
+            _path_set(flattened_record, target_path, line)
+            flattened.append(flattened_record)
+            flattened_locations.append(
+                {
+                    **location,
+                    "header_index": header_index,
+                    "line_index": line_index,
+                    "related_object_path": related_path,
+                }
+            )
+    return flattened, flattened_locations
 
 
 def _mapped_value(record: dict[str, Any], rule: dict[str, Any], index: int) -> Any:
@@ -1165,16 +1469,34 @@ def _validate_invariants(manifest: dict[str, Any], records: list[dict[str, Any]]
             fields.append(str(invariant["field"]))
         if rule in {"", "none"}:
             continue
-        if rule == "required_nonempty":
+        if rule in {"required_nonempty", "required_non_blank", "required_fields_present"}:
             for index, record in enumerate(records):
                 for field in fields:
                     value = _path_get(record, field)
-                    if value is _MISSING or value in (None, ""):
+                    if value is _MISSING or _identity_component_is_blank(value):
                         raise MappingFieldMissing(
                             f"Invariant requires canonical field '{field}'",
                             field=field,
                             record_index=index,
                         )
+            continue
+        if rule == "unique_composite":
+            seen: set[str] = set()
+            for index, record in enumerate(records):
+                marker = _identity_value(record, fields)
+                if marker is None:
+                    raise MappingFieldMissing(
+                        "Unique-composite invariant fields must be present and non-blank",
+                        field=", ".join(fields),
+                        record_index=index,
+                    )
+                if marker in seen:
+                    raise MappingSchemaError(
+                        "Unique-composite invariant encountered a duplicate value",
+                        field=", ".join(fields),
+                        record_index=index,
+                    )
+                seen.add(marker)
             continue
         if rule == "nonnegative":
             for index, record in enumerate(records):
@@ -1199,6 +1521,112 @@ def _validate_invariants(manifest: dict[str, Any], records: list[dict[str, Any]]
                             record_index=index,
                         )
             continue
+        if rule == "greater_than":
+            threshold = _invariant_number(
+                invariant.get("value"),
+                field=f"invariants.{invariant.get('id') or rule}.value",
+            )
+            field = fields[0]
+            for index, record in enumerate(records):
+                value = _canonical_number(record, field, index)
+                if value <= threshold:
+                    raise MappingSchemaError(
+                        f"Invariant requires canonical field '{field}' to be greater than "
+                        f"{threshold}",
+                        field=field,
+                        record_index=index,
+                    )
+            continue
+        if rule == "mutually_exclusive_nonzero":
+            for index, record in enumerate(records):
+                values = [
+                    _canonical_number(record, field, index)
+                    for field in fields
+                ]
+                if sum(value != 0 for value in values) > 1:
+                    raise MappingSchemaError(
+                        "Mutually-exclusive fields cannot both be nonzero",
+                        field=", ".join(fields),
+                        record_index=index,
+                    )
+            continue
+        if rule == "header_equals_line_sum_with_tolerance":
+            header_field, line_field = fields
+            tolerance = _invariant_tolerance(invariant.get("tolerance", 0))
+            for group_records in _records_by_header_identity(manifest, records).values():
+                header_values = [
+                    _canonical_number(record, header_field, index)
+                    for index, record in group_records
+                ]
+                header_value = header_values[0]
+                if any(abs(value - header_value) > tolerance for value in header_values[1:]):
+                    raise MappingSchemaError(
+                        f"Header field '{header_field}' is inconsistent across flattened lines",
+                        field=header_field,
+                    )
+                line_total = sum(
+                    _canonical_number(record, line_field, index)
+                    for index, record in group_records
+                )
+                if abs(header_value - line_total) > tolerance:
+                    raise MappingSchemaError(
+                        f"Header field '{header_field}' does not reconcile to line field "
+                        f"'{line_field}' within tolerance {tolerance}",
+                        field=header_field,
+                    )
+            continue
+        if rule == "debits_equal_credits":
+            left_field, right_field = fields
+            for group_records in _records_by_header_identity(manifest, records).values():
+                if "posting" in left_field.casefold() and "type" in left_field.casefold():
+                    debit_total: int | float = 0
+                    credit_total: int | float = 0
+                    for index, record in group_records:
+                        posting_type = _path_get(record, left_field)
+                        amount = _canonical_number(record, right_field, index)
+                        normalized = str(posting_type or "").strip().casefold()
+                        if normalized == "debit":
+                            debit_total += amount
+                        elif normalized == "credit":
+                            credit_total += amount
+                        else:
+                            raise MappingSchemaError(
+                                f"Posting type '{posting_type}' is neither debit nor credit",
+                                field=left_field,
+                                record_index=index,
+                            )
+                else:
+                    debit_total = sum(
+                        _canonical_number(record, left_field, index)
+                        for index, record in group_records
+                    )
+                    credit_total = sum(
+                        _canonical_number(record, right_field, index)
+                        for index, record in group_records
+                    )
+                if abs(float(debit_total) - float(credit_total)) > 1e-9:
+                    raise MappingSchemaError(
+                        "Journal debit and credit totals do not reconcile",
+                        field=", ".join(fields),
+                    )
+            continue
+        if rule == "sum_equals":
+            field = fields[0]
+            expected = _invariant_number(
+                invariant.get("value"),
+                field=f"invariants.{invariant.get('id') or rule}.value",
+            )
+            for group_records in _records_by_header_identity(manifest, records).values():
+                total = sum(
+                    _canonical_number(record, field, index)
+                    for index, record in group_records
+                )
+                if abs(float(total) - float(expected)) > 1e-9:
+                    raise MappingSchemaError(
+                        f"Canonical field '{field}' sums to {total}, expected {expected}",
+                        field=field,
+                    )
+            continue
         if rule == "equals":
             expected = invariant.get("value")
             for index, record in enumerate(records):
@@ -1213,3 +1641,81 @@ def _validate_invariants(manifest: dict[str, Any], records: list[dict[str, Any]]
         raise MappingSchemaError(
             f"Transformation profile '{manifest['id']}' declares unsupported invariant '{rule}'"
         )
+
+
+def _invariant_number(value: Any, *, field: str) -> int | float:
+    try:
+        return _number(value)
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise MappingSchemaError(
+            "Invariant comparison values must be numeric",
+            field=field,
+        ) from exc
+
+
+def _canonical_number(record: dict[str, Any], field: str, index: int) -> int | float:
+    value = _path_get(record, field)
+    if value is _MISSING or value is None:
+        raise MappingFieldMissing(
+            f"Invariant requires numeric canonical field '{field}'",
+            field=field,
+            record_index=index,
+        )
+    try:
+        return _number(value)
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise MappingTypeError(
+            f"Invariant field '{field}' is not numeric",
+            field=field,
+            record_index=index,
+            expected="number",
+            received=value,
+        ) from exc
+
+
+def _invariant_tolerance(value: Any) -> float:
+    if str(value).strip().casefold() == "currency_minor_unit":
+        return 0.01
+    numeric = _invariant_number(value, field="invariant.tolerance")
+    if numeric < 0:
+        raise MappingSchemaError(
+            "Invariant tolerance cannot be negative",
+            field="invariant.tolerance",
+        )
+    return float(numeric)
+
+
+def _records_by_header_identity(
+    manifest: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> dict[str, list[tuple[int, dict[str, Any]]]]:
+    """Group flattened lines by canonical identity fields owned by the header."""
+
+    identity = manifest.get("identity") or {}
+    source_keys = [str(value) for value in identity.get("source_key") or []]
+    canonical_keys = [str(value) for value in identity.get("canonical_key") or []]
+    related_paths = [
+        str(value) for value in (manifest.get("source") or {}).get("related_objects") or []
+    ]
+    header_keys = [
+        canonical_key
+        for source_key, canonical_key in zip(source_keys, canonical_keys, strict=True)
+        if not any(
+            source_key == related_path or source_key.startswith(f"{related_path}.")
+            for related_path in related_paths
+        )
+    ]
+    groups: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    for index, record in enumerate(records):
+        if header_keys:
+            marker = _identity_value(record, header_keys)
+            if marker is None:
+                raise MappingFieldMissing(
+                    "Header reconciliation identity fields must be present and non-blank",
+                    field=", ".join(header_keys),
+                    record_index=index,
+                )
+        else:
+            marker = "__all_records__"
+        groups.setdefault(marker, []).append((index, record))
+    return groups

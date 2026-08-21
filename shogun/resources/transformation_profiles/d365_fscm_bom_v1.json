@@ -21,7 +21,7 @@
     "record_shape": "header_with_lines",
     "pagination": "@odata.nextLink",
     "related_objects": [
-      "BillOfMaterialsLinesV2"
+      "BillOfMaterialsLines"
     ],
     "company_scope": "dataAreaId",
     "record_path": "value"
@@ -155,8 +155,8 @@
   },
   "adapter_requirements": {
     "adapter": "canonical_entity_map_v1",
-    "minimum_version": 1,
-    "status": "planned",
+    "minimum_version": 2,
+    "status": "available",
     "capabilities": [
       "field_mapping",
       "type_conversion",

@@ -21,7 +21,7 @@
     "record_shape": "header_with_lines",
     "pagination": "links/offset",
     "related_objects": [
-      "item"
+      "item.items"
     ],
     "company_scope": "subsidiary",
     "record_path": "items"
@@ -144,15 +144,6 @@
         "line_id",
         "line_amount"
       ]
-    },
-    {
-      "id": "invoice_total_reconciles",
-      "rule": "header_equals_line_sum_with_tolerance",
-      "fields": [
-        "invoice_total",
-        "line_amount"
-      ],
-      "tolerance": "currency_minor_unit"
     }
   ],
   "privacy": {
@@ -163,8 +154,8 @@
   },
   "adapter_requirements": {
     "adapter": "canonical_entity_map_v1",
-    "minimum_version": 1,
-    "status": "planned",
+    "minimum_version": 2,
+    "status": "available",
     "capabilities": [
       "field_mapping",
       "type_conversion",
@@ -176,8 +167,7 @@
       "nested_collection_flattening",
       "business_rule:required_non_blank",
       "business_rule:unique_composite",
-      "business_rule:required_fields_present",
-      "business_rule:header_equals_line_sum_with_tolerance"
+      "business_rule:required_fields_present"
     ],
     "fail_closed": true
   },

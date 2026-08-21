@@ -1,3 +1,5 @@
+"""Domain-neutral regression tests for the sectioned matrix adapter."""
+
 from __future__ import annotations
 
 import json
@@ -6,32 +8,33 @@ import pytest
 
 from shogun.engine import flow_engine
 from shogun.services.structured_transformations import (
+    deterministic_profile_source_units,
+    expected_deterministic_matrix_rows,
     load_bundled_transformation_profile,
     try_deterministic_matrix_transform,
 )
 
 NUMBER_PATTERN = r"[+-]?(?:\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d+)(?:,\d+)?"
 PROFILE = {
-    "id": "ks_lbp_disposition_v1",
+    "id": "synthetic_sectioned_report_v1",
     "adapter": "sectioned_record_matrix_v1",
     "parameters": {
         "required_source_patterns": [
-            r"(?m)^\s*Sachnummer\s*:\s*\S+",
-            r"(?m)^\s*Teilebez\.\s*:",
-            r"(?m)^\s*Sa\s+Artikelnummer\b",
+            r"(?m)^Entity: \S+$",
+            r"(?m)^[PD] \S+ ",
         ],
-        "section_pattern": r"(?m)^\s*Sachnummer\s*:\s*(?P<section_id>\S+)",
+        "section_pattern": r"(?m)^Entity: (?P<section_id>\S+)$",
         "section_key_group": "section_id",
         "section_fields": [
             {
-                "target": "description",
-                "pattern": r"(?m)^\s*Teilebez\.\s*:\s*(?P<value>.*?)\s+Werkstoff\s*:",
+                "target": "label",
+                "pattern": r"(?m)^Label: (?P<value>.+)$",
                 "group": "value",
                 "aggregate": "first",
             },
             {
-                "target": "stock",
-                "pattern": rf"(?m)^\s*Bestand\s*:\s*(?P<value>{NUMBER_PATTERN})",
+                "target": "on_hand",
+                "pattern": rf"(?m)^On hand: (?P<value>{NUMBER_PATTERN})$",
                 "group": "value",
                 "value_type": "localized_number",
                 "aggregate": "max",
@@ -39,79 +42,85 @@ PROFILE = {
         ],
         "selector_fields": [
             {
-                "target": "rohling",
-                "scope_pattern": r"(?ims)^\s*St\S*ckliste\s*:.*?\n(?P<body>.*?)^\s*Bemerkungen\s*:",
-                "line_pattern": r"(?m)^\s*\d{4}\s+(?P<value>\S+)\s+(?P<text>.+?)\s+[\d.,-]+\s+\S+\s*$",
-                "include_terms": ["rohling"],
-                "exclude_terms": [
-                    "beutel", "box", "duese", "düse", "faltkiste", "kiste",
-                    "pack", "spannstift", "teleskop", "verpack",
-                ],
+                "target": "primary_component",
+                "scope_pattern": r"(?ims)^Components:\s*\n(?P<body>.*?)^End Components$",
+                "line_pattern": r"(?m)^(?P<value>\S+)\s+(?P<text>.+)$",
+                "include_terms": ["raw material"],
+                "exclude_terms": ["packaging"],
                 "aggregate": "first",
-            },
-            {
-                "target": "rohteil",
-                "scope_pattern": r"(?ims)^\s*St\S*ckliste\s*:.*?\n(?P<body>.*?)^\s*Bemerkungen\s*:",
-                "line_pattern": r"(?m)^\s*\d{4}\s+(?P<value>\S+)\s+(?P<text>.+?)\s+[\d.,-]+\s+\S+\s*$",
-                "include_terms": ["rohteil", "halbzeug", "vorbearb", "kolben"],
-                "exclude_terms": [
-                    "rohling", "beutel", "box", "duese", "düse", "faltkiste",
-                    "kiste", "pack", "spannstift", "teleskop", "verpack",
-                ],
-                "aggregate": "first",
-            },
+            }
         ],
         "record_pattern": (
-            r"(?m)^\s*(?P<kind>01|06)\s+"
-            r"(?P<article>\S+)\s+"
+            r"(?m)^(?P<kind>P|D)\s+"
+            r"(?P<entity>\S+)\s+"
             r"(?P<reference>\S+)\s+"
-            r"(?P<end_week>\d{4}/\d{2})\s+"
-            r"(?P<end_month>\d{4}/\d{2})\s+"
-            r"(?P<start_week>\d{4}/\d{2})\s+"
-            r"(?P<start_month>\d{4}/\d{2})\s+"
-            rf"(?P<planned>{NUMBER_PATTERN})\s+"
-            rf"(?P<remaining>{NUMBER_PATTERN})\s+"
-            r"(?P<date>\d{2}\.\d{2}\.\d{4})\s*$"
+            r"(?P<period_1_month>\d{4}/\d{2})\s+"
+            r"(?P<period_2_month>\d{4}/\d{2})\s+"
+            rf"(?P<quantity>{NUMBER_PATTERN})$"
         ),
-        "record_section_key_group": "article",
-        "template": {
-            "minimum_columns": 10,
-            "expected_headers": {
-                "1": ["Artikel-Nr", "Artikelnummer"],
-                "4": ["Fertigungsauftrag"],
+        "record_section_key_group": "entity",
+        "record_header_layout": {
+            "pattern": (
+                r"(?m)^Columns: (?P<period_1_role>Promise|Need) "
+                r"(?P<period_2_role>Promise|Need)$"
+            ),
+            "required": True,
+            "slots": {
+                "period_1_role": {"month": "period_1_month"},
+                "period_2_role": {"month": "period_2_month"},
             },
-            "planning_start_column": 10,
-            "backlog_headers": ["Rückstand", "RÃ¼ckstand", "Ruckstand", "Rueckstand"],
-            "future_header_patterns": [r"(?:>=|≥|\bab\b|\bfrom\b|future|sp[äa]ter)", r"\+\s*$"],
+            "roles": {
+                "promise": {
+                    "aliases": ["Promise"],
+                    "targets": {"month": "promise_month"},
+                },
+                "need": {
+                    "aliases": ["Need"],
+                    "targets": {"month": "need_month"},
+                },
+            },
+        },
+        "template": {
+            "minimum_columns": 8,
+            "expected_headers": {
+                "1": ["Entity ID"],
+                "3": ["Reference"],
+            },
+            "planning_start_column": 5,
+            "backlog_headers": ["Backlog"],
+            "future_header_patterns": [r"^>=", r"future"],
         },
         "base_columns": {
-            "0": {"field": "description"},
+            "0": {"field": "label"},
             "1": {"section_key": True},
-            "2": {"field": "rohling"},
-            "3": {"field": "rohteil"},
+            "2": {"field": "primary_component"},
         },
         "row_rules": [
             {
                 "kind": "section",
-                "when": {"field": "stock", "operator": "positive"},
+                "when": {"field": "on_hand", "operator": "positive"},
                 "columns": {
-                    "4": {"literal": "Lager 0031"},
-                    "5": {"field": "stock"},
+                    "3": {"literal": "On hand"},
+                    "4": {"field": "on_hand"},
                 },
             },
             {
                 "kind": "record",
-                "match": {"kind": "06"},
+                "match": {"kind": "P"},
+                "deduplicate_by": [
+                    {"group": "entity"},
+                    {"group": "reference", "transforms": ["strip_leading_zero"]},
+                ],
                 "columns": {
-                    "4": {"group": "reference", "transforms": ["strip_leading_zero"]},
-                    "5": {"group": "planned", "value_type": "localized_number"},
+                    "3": {"group": "reference", "transforms": ["strip_leading_zero"]},
+                    "4": {"group": "quantity", "value_type": "localized_number"},
                 },
             },
             {
                 "kind": "aggregate",
-                "match": {"kind": "01"},
-                "key_group": "end_month",
-                "value_group": "remaining",
+                "match": {"kind": "D"},
+                "key_group": "need_month",
+                "value_group": "quantity",
                 "value_type": "localized_number",
                 "destination": "planning_month",
                 "strict_accounting": True,
@@ -120,297 +129,134 @@ PROFILE = {
     },
 }
 
-PROFILE_V2 = load_bundled_transformation_profile("ks_lbp_disposition_v2")
-
-TASK = """Read the complete SAP report.
-For every order where Sa = 06, create one production row using Soll-Menge.
-For every order where Sa = 01, aggregate Rest-Menge by Endtermin Jahr/Mo, never Starttermin Jahr/Mo.
-Create one stock row when Bestand is greater than zero. Preserve every source order occurrence.
-Return every relevant record as a two-dimensional array with exactly 22 values per row.
-"""
+TASK = "Extract every record and section into the supplied spreadsheet contract."
 
 FIXED_CONTEXT = """[FILE TEMPLATE CONTRACT]
 Format: xlsx
 [MACHINE-READABLE TEMPLATE MANIFEST]
-{"kind":"excel","sheets":[{"logical_columns":22,"preview_rows":[
-  [null,"Artikel-Nr","Rohling","Rohteil","Fertigungsauftrag",null,"Kunde","Bemerkung","Avo","MD04/SAP",
-   "2026-07-01T00:00:00","2026-08-01T00:00:00","2026-09-01T00:00:00","2026-10-01T00:00:00",
-   "2026-11-01T00:00:00","2026-12-01T00:00:00","2027-01-01T00:00:00","2027-02-01T00:00:00",
-   "2027-03-01T00:00:00","2027-04-01T00:00:00","2027-05-01T00:00:00","2027-06-01T00:00:00"]
+{"kind":"excel","sheets":[{"logical_columns":8,"preview_rows":[
+  ["Label","Entity ID","Component","Reference","Quantity","Backlog",
+   "2026-08-01T00:00:00",">= 2026-09-01T00:00:00"]
 ]}]}
 """
 
-FULL_HORIZON_CONTEXT = """[FILE TEMPLATE CONTRACT]
-Format: xlsx
-[MACHINE-READABLE TEMPLATE MANIFEST]
-{"kind":"excel","sheets":[{"logical_columns":24,"preview_rows":[
-  [null,"Artikel-Nr","Rohling","Rohteil","Fertigungsauftrag",null,"Kunde","Bemerkung","Avo","MD04/SAP",
-   "Rückstand","2026-07-01T00:00:00","2026-08-01T00:00:00","2026-09-01T00:00:00",
-   "2026-10-01T00:00:00","2026-11-01T00:00:00","2026-12-01T00:00:00","2027-01-01T00:00:00",
-   "2027-02-01T00:00:00","2027-03-01T00:00:00","2027-04-01T00:00:00","2027-05-01T00:00:00",
-   "2027-06-01T00:00:00",">= Jul 2027"]
-]}]}
+SOURCE = """Entity: ITEM-A
+Label: Example widget
+On hand: 2,0
+Components:
+RAW-1 primary raw material
+PACK-1 packaging insert
+End Components
+Columns: Promise Need
+P ITEM-A 000100 2026/07 2026/08 10,0
+P ITEM-A 100 2026/07 2026/08 10,0
+D ITEM-A request-1 2026/05 2026/06 5,0
+D ITEM-A request-2 2026/08 2026/08 7,0
+D ITEM-A request-3 2027/01 2027/01 9,0
 """
 
-SOURCE = """Sachnummer : 140052 Disponent : 40 A. Schmitt_OT&UT Nachfolgematerial :
-Teilebez. : Kolben-UT P MS0.410 Werkstoff : GGG 70 Zeichnung : 65.1000. 00
-Bestand : 1,0 KT-Bestand : 0,0
-Stückliste : Pos Materialnummer Benennung Menge ME Basismenge : 1,000
- 0010 59439-01 Rohling MS0410 vorbearbeitet 1,000 ST
- 0040 70798 Spannstift CONNEX Typ S 1,000 ST
-Bemerkungen :
-Sa Artikelnummer Best-Nr Auftrag Lief Jahr/WW Jahr/MO Jahr/WW Jahr/Mo Soll-Menge Rest-Menge Datum
-Endtermin Starttermin
-06 140052 0020164627 2026/35 2026/08 2026/35 2026/08 51,0 50,0 21.07.2026
-06 140052 0020164627 2026/35 2026/08 2026/35 2026/08 51,0 50,0 21.07.2026
-01 140052 0003946433 2027/16 2027/04 2027/18 2027/05 52,0 50,0 21.07.2026
-01 140052 0003950611 2027/23 2027/06 2027/25 2027/07 176,0 175,0 21.07.2026
-"""
 
-GROUPED_NUMBER_SOURCE = """Sachnummer : 68420100 Disponent : 40 A. Schmitt_OT&UT Nachfolgematerial :
-Teilebez. : Kolben STU190.037/ST190.041 CR10.5 Werkstoff : 42 CRMO 4 V Zeichnung : 13171.189523. 06
-Bestand : 0,0 KT-Bestand : 0,0
-Stückliste : Pos Materialnummer Benennung Menge ME Basismenge : 1,000
- 0010 68420050 Kolben STU190 vorbearbeitet 1,000 ST
-Bemerkungen :
-Sa Artikelnummer Best-Nr Auftrag Lief Jahr/WW Jahr/MO Jahr/WW Jahr/Mo Soll-Menge Rest-Menge Datum
-Endtermin Starttermin
-01 68420100 0003955053 2026/34 2026/08 2026/37 2026/09 624,0 611,0 21.07.2026
-01 68420100 0003955056 2026/47 2026/11 2027/01 2027/01 1 224,0 1 200,0 21.07.2026
-01 68420100 0003955058 2027/03 2027/01 2027/09 2027/03 1 224,0 1 200,0 21.07.2026
-01 68420100 0003955059 2027/07 2027/02 2027/13 2027/04 1 224,0 1 200,0 21.07.2026
-01 68420100 0003955060 2027/12 2027/03 2027/18 2027/05 1.224,0 1.200,0 21.07.2026
-01 68420100 0003955061 2027/16 2027/04 2027/22 2027/06 1 224,0 1 200,0 21.07.2026
-"""
-
-END_MONTH_SOURCE = """--- Page 1 ---
-Sachnummer : 140090 Disponent : 40 A. Schmitt_OT&UT Nachfolgematerial :
-Teilebez. : Kolben-OT ST VS0.211 Werkstoff : Stahl Zeichnung : 1
-Bestand : 0,0 KT-Bestand : 0,0
-Stückliste : Pos Materialnummer Benennung Menge ME Basismenge : 1,000
- 0010 140089 Rohling Kolben 1,000 ST
-Bemerkungen :
-Sa Artikelnummer Best-Nr Auftrag Lief Jahr/WW Jahr/MO Jahr/WW Jahr/Mo Soll-Menge Rest-Menge Datum
-Endtermin Starttermin
-01 140090 0003943422 2026/43 2026/10 2026/45 2026/11 30,0 29,0 21.07.2026
-"""
-
-DUPLICATE_DEMAND_SOURCE = """Sachnummer : 68766100 Disponent : 40 A. Schmitt_OT&UT Nachfolgematerial :
-Teilebez. : Kolben Test Werkstoff : Stahl Zeichnung : 1
-Bestand : 0,0 KT-Bestand : 0,0
-Stückliste : Pos Materialnummer Benennung Menge ME Basismenge : 1,000
- 0010 68766000 Rohling Kolben 1,000 ST
-Bemerkungen :
-Sa Artikelnummer Best-Nr Auftrag Lief Jahr/WW Jahr/MO Jahr/WW Jahr/Mo Soll-Menge Rest-Menge Datum
-Endtermin Starttermin
-01 68766100 0044344787 2026/43 2026/10 2026/45 2026/11 100,0 100,0 21.07.2026
-01 68766100 0044344787 2026/43 2026/10 2026/45 2026/11 100,0 100,0 21.07.2026
-01 68766100 0044344999 2026/43 2026/10 2026/46 2026/11 25,0 25,0 21.07.2026
-"""
-
-FULL_HORIZON_SOURCE = END_MONTH_SOURCE.replace(
-    "01 140090 0003943422 2026/43 2026/10 2026/45 2026/11 30,0 29,0 21.07.2026",
-    "01 140090 0003943421 2026/24 2026/06 2026/24 2026/06 6,0 5,0 21.07.2026\n"
-    "01 140090 0003943422 2026/28 2026/07 2026/28 2026/07 8,0 7,0 21.07.2026\n"
-    "01 140090 0003943423 2027/24 2027/06 2027/24 2027/06 12,0 11,0 21.07.2026\n"
-    "01 140090 0003943424 2027/28 2027/07 2027/28 2027/07 14,0 13,0 21.07.2026\n"
-    "01 140090 0003943425 2029/36 2029/09 2029/36 2029/09 18,0 17,0 21.07.2026",
-)
-
-
-def test_sap_adapter_uses_end_month_and_preserves_business_row_occurrences():
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE,
-        source_context=SOURCE,
-        fixed_context=FIXED_CONTEXT,
-    )
-
-    assert result is not None
-    assert result.adapter_id == "sectioned_record_matrix_v1"
-    assert result.profile_id == "ks_lbp_disposition_v1"
-    assert len(result.rows) == 4
-    assert all(len(row) == 22 for row in result.rows)
-
-    stock, production, repeated_production, demand = result.rows
-    assert stock[:6] == ["Kolben-UT P MS0.410", "140052", "59439-01", "", "Lager 0031", 1]
-    assert production[:6] == ["Kolben-UT P MS0.410", "140052", "59439-01", "", "20164627", 51]
-    assert repeated_production == production
-    assert demand[19] == 50  # Endtermin 2027/04 -> column T.
-    assert demand[20] == ""  # Starttermin 2027/05 must not be used.
-    assert demand[21] == 175  # Endtermin 2027/06, even though Starttermin is outside the horizon.
-
-
-def test_sap_adapter_maps_rest_quantity_to_endtermin_month_for_legacy_saved_flow():
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE,
-        source_context=END_MONTH_SOURCE,
-        fixed_context=FIXED_CONTEXT,
-    )
-
-    assert result is not None
-    demand = result.rows[0]
-    assert demand[13] == 29  # 2026/10 from Endtermin.
-    assert demand[14] == ""  # 2026/11 from Starttermin must remain blank.
-
-
-def test_sap_adapter_sums_every_identical_demand_occurrence_by_endtermin_month():
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE,
-        source_context=DUPLICATE_DEMAND_SOURCE,
-        fixed_context=FIXED_CONTEXT,
-    )
-
-    assert result is not None
-    assert len(result.rows) == 1
-    demand = result.rows[0]
-    assert demand[13] == 225
-    assert demand[14] == ""
-
-
-def test_sap_adapter_creates_materials_only_from_explicit_sachnummer_headers():
-    source = END_MONTH_SOURCE.replace(
-        "0010 140089 Rohling Kolben",
-        "0010 68859100 Rohling Kreuzkopf BG500 Ø 520",
-    )
-
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE,
-        source_context=source,
-        fixed_context=FIXED_CONTEXT,
-    )
-
-    assert result is not None
-    assert {row[1] for row in result.rows} == {"140090"}
-    assert all(row[1] != "68859100" for row in result.rows)
-
-
-def test_sap_adapter_keeps_material_context_across_page_breaks():
-    source = END_MONTH_SOURCE.replace(
-        "Bemerkungen :\nSa Artikelnummer",
-        "Bemerkungen :\n--- Page 2 ---\n1.Periode 2.Periode Bedarf Bestand Bestellt\nSa Artikelnummer",
-    )
-
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE,
-        source_context=source,
-        fixed_context=FIXED_CONTEXT,
-    )
-
-    assert result is not None
-    assert result.rows[0][1] == "140090"
-    assert result.rows[0][13] == 29
-
-
-def test_sap_adapter_accumulates_later_endtermin_months_in_explicit_future_bucket():
-    fixed_context = FIXED_CONTEXT.replace(
-        '"2027-05-01T00:00:00","2027-06-01T00:00:00"]',
-        '"2027-05-01T00:00:00","2027-06-01T00:00:00",">= Jul 2027"]',
-    ).replace('"logical_columns":22', '"logical_columns":23')
-    source = END_MONTH_SOURCE.replace(
-        "01 140090 0003943422 2026/43 2026/10 2026/45 2026/11 30,0 29,0 21.07.2026",
-        "01 140090 0003943422 2027/31 2027/08 2027/33 2027/08 30,0 29,0 21.07.2026\n"
-        "01 140090 0003943423 2027/35 2027/09 2027/36 2027/09 12,0 11,0 21.07.2026",
-    )
-
-    result = try_deterministic_matrix_transform(
+def _transform(source: str = SOURCE, fixed_context: str = FIXED_CONTEXT):
+    return try_deterministic_matrix_transform(
         profile=PROFILE,
         source_context=source,
         fixed_context=fixed_context,
     )
 
-    assert result is not None
-    assert len(result.rows[0]) == 23
-    assert result.rows[0][22] == 40
+
+def test_generic_adapter_builds_fixed_width_rows_and_deduplicates_stable_identity():
+    result = _transform()
+
+    assert result.adapter_id == "sectioned_record_matrix_v1"
+    assert result.profile_id == "synthetic_sectioned_report_v1"
+    assert len(result.rows) == 3
+    assert all(len(row) == 8 for row in result.rows)
+
+    stock, production, demand = result.rows
+    assert stock[:5] == ["Example widget", "ITEM-A", "RAW-1", "On hand", 2]
+    assert production[:5] == ["Example widget", "ITEM-A", "RAW-1", "100", 10]
+    assert demand[5:] == [5, 7, 9]
 
 
-def test_sap_adapter_routes_every_rest_quantity_into_exactly_one_full_horizon_bucket():
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE,
-        source_context=FULL_HORIZON_SOURCE,
-        fixed_context=FULL_HORIZON_CONTEXT,
+def test_generic_adapter_parses_grouped_localized_numbers():
+    source = SOURCE.replace("On hand: 2,0", "On hand: 1\u202f234,5").replace(
+        "D ITEM-A request-2 2026/08 2026/08 7,0",
+        "D ITEM-A request-2 2026/08 2026/08 1 200,5",
     )
 
-    assert result is not None
-    assert len(result.rows) == 1
-    demand = result.rows[0]
-    assert len(demand) == 24
-    assert demand[10] == 5  # Endtermin before July 2026 -> Rückstand.
-    assert demand[11] == 7  # July 2026 remains in its exact month.
-    assert demand[22] == 11  # June 2027 remains in its exact month.
-    assert demand[23] == 30  # July 2027 and September 2029 -> future bucket.
-    assert sum(value for value in demand[10:24] if isinstance(value, (int, float))) == 53
+    stock, _production, demand = _transform(source).rows
+    assert stock[4] == 1234.5
+    assert demand[6] == 1200.5
 
 
-def test_sap_adapter_fails_closed_when_template_cannot_account_for_a_demand_month():
-    source = END_MONTH_SOURCE.replace(
-        "01 140090 0003943422 2026/43 2026/10 2026/45 2026/11 30,0 29,0 21.07.2026",
-        "01 140090 0003943422 2026/24 2026/06 2026/24 2026/06 30,0 29,0 21.07.2026",
+def test_generic_adapter_uses_semantic_header_roles_when_columns_are_reversed():
+    source = SOURCE.replace("Columns: Promise Need", "Columns: Need Promise")
+    for before, after in (
+        ("2026/07 2026/08", "2026/08 2026/07"),
+        ("2026/05 2026/06", "2026/06 2026/05"),
+        ("2026/08 2026/08", "2026/08 2026/08"),
+        ("2027/01 2027/01", "2027/01 2027/01"),
+    ):
+        source = source.replace(before, after)
+
+    demand = _transform(source).rows[-1]
+    assert demand[5:] == [5, 7, 9]
+
+
+def test_generic_adapter_applies_closest_preceding_header_to_each_record_block():
+    source = SOURCE.replace(
+        "D ITEM-A request-2 2026/08 2026/08 7,0",
+        "Columns: Need Promise\nD ITEM-A request-2 2026/08 2026/08 7,0",
+    ).replace(
+        "D ITEM-A request-3 2027/01 2027/01 9,0",
+        "D ITEM-A request-3 2027/01 2027/01 9,0",
     )
 
-    with pytest.raises(ValueError, match="2026/06.*no Excel planning bucket"):
-        try_deterministic_matrix_transform(
-            profile=PROFILE,
-            source_context=source,
-            fixed_context=FIXED_CONTEXT,
-        )
+    demand = _transform(source).rows[-1]
+    assert demand[5:] == [5, 7, 9]
 
 
-def test_sap_adapter_places_semifinished_bom_material_in_rohteil():
-    source = (
-        SOURCE
-        + """
-Sachnummer : 99288100 Disponent : 40 A. Schmitt_OT&UT Nachfolgematerial :
-Teilebez. : Kolben-OT ST 460.012 Lasercladding Werkstoff : 42 CRMO 4 V Zeichnung : 1
-Bestand : 0,0 KT-Bestand : 0,0
-Stückliste : Pos Materialnummer Benennung Menge ME Basismenge : 1,000
- 0010 99288050 Kolben-OT ST 460.012 Lasercladding 1,000 ST
-Bemerkungen :
-Sa Artikelnummer Best-Nr Auftrag Lief Jahr/WW Jahr/MO Jahr/WW Jahr/Mo Soll-Menge Rest-Menge Datum
-Endtermin Starttermin
-01 99288100 0003929674 2027/25 2027/06 2027/26 2027/06 14,0 13,0 21.07.2026
-"""
+def test_generic_adapter_fails_closed_for_missing_or_ambiguous_record_header():
+    with pytest.raises(ValueError, match="no required record header layout"):
+        _transform(SOURCE.replace("Columns: Promise Need\n", ""))
+
+    with pytest.raises(ValueError, match="ambiguous record header.*need.*more than once"):
+        _transform(SOURCE.replace("Columns: Promise Need", "Columns: Need Need"))
+
+
+def test_generic_adapter_fails_closed_when_template_cannot_account_for_month():
+    source = SOURCE.replace(
+        "D ITEM-A request-1 2026/05 2026/06 5,0",
+        "D ITEM-A request-1 2026/05 2035/06 5,0",
     )
+    fixed_context = FIXED_CONTEXT.replace(">= 2026-09-01T00:00:00", "2026-09-01T00:00:00")
 
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE,
-        source_context=source,
-        fixed_context=FIXED_CONTEXT,
-    )
-
-    assert result is not None
-    row = next(row for row in result.rows if row[1] == "99288100")
-    assert row[2] == ""
-    assert row[3] == "99288050"
-    assert row[21] == 13
+    with pytest.raises(ValueError, match="2035/06.*no Excel planning bucket"):
+        _transform(source, fixed_context)
 
 
-def test_sap_adapter_parses_grouped_german_quantities_without_splitting_fields():
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE,
-        source_context=GROUPED_NUMBER_SOURCE,
-        fixed_context=FIXED_CONTEXT,
-    )
+def test_generic_adapter_fails_closed_for_source_or_template_mismatch():
+    with pytest.raises(ValueError, match="Runtime source does not match"):
+        _transform(SOURCE.replace("Entity: ITEM-A", "Object: ITEM-A"))
 
-    assert result is not None
-    assert len(result.rows) == 1
-    demand = result.rows[0]
-    assert demand[11] == 611
-    assert demand[14] == 1200
-    assert demand[16:20] == [1200, 1200, 1200, 1200]
-    assert demand[20:22] == ["", ""]
+    with pytest.raises(ValueError, match="does not match template column 2"):
+        _transform(fixed_context=FIXED_CONTEXT.replace("Entity ID", "Object ID"))
 
 
-def test_profile_coverage_counts_source_record_occurrences():
-    config = {"_transformation_profiles": [PROFILE]}
-    assert flow_engine._minimum_matrix_rows_for_source(SOURCE, TASK, config) == (
-        4,
-        4,
-        "profile-required row(s)",
-    )
+def test_generic_source_units_and_expected_row_count_are_profile_driven():
+    second = SOURCE.replace("ITEM-A", "ITEM-B").replace("Example widget", "Second widget")
+    combined = f"{SOURCE}\n{second}"
+
+    units = deterministic_profile_source_units(PROFILE, combined)
+    assert len(units) == 2
+    assert expected_deterministic_matrix_rows(PROFILE, combined) == 6
+    assert flow_engine._minimum_matrix_rows_for_source(combined, TASK, {
+        "_transformation_profiles": [PROFILE]
+    }) == (6, 6, "profile-required row(s)")
 
 
 @pytest.mark.asyncio
-async def test_samurai_uses_deterministic_adapter_without_model_routing(monkeypatch):
+async def test_samurai_executes_generic_adapter_without_model_routing(monkeypatch):
     async def unexpected_route(*_args, **_kwargs):
         raise AssertionError("deterministic transformation must not route to a model")
 
@@ -427,158 +273,13 @@ async def test_samurai_uses_deterministic_adapter_without_model_routing(monkeypa
         fixed_context_str=FIXED_CONTEXT,
     )
 
-    rows = json.loads(output)
-    assert len(rows) == 4
+    assert json.loads(output) == _transform().rows
     assert progress[-1][0] == progress[-1][1]
 
 
-def test_v2_uses_start_month_from_declared_normal_header_order():
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE_V2,
-        source_context=END_MONTH_SOURCE,
-        fixed_context=FULL_HORIZON_CONTEXT,
-    )
-
-    assert result.profile_id == "ks_lbp_disposition_v2"
-    demand = result.rows[0]
-    assert len(demand) == 24
-    assert demand[15] == 29  # Starttermin 2026/11.
-    assert demand[14] == ""  # Endtermin 2026/10 is not the demand month.
-
-
-def test_bundled_v2_profile_loader_is_explicit_and_traversal_safe():
-    assert PROFILE_V2["id"] == "ks_lbp_disposition_v2"
-    assert PROFILE_V2["parameters"]["row_rules"][2]["key_group"] == "start_month"
+def test_bundled_profile_loader_rejects_missing_and_traversal_ids():
+    with pytest.raises(ValueError, match="does not exist"):
+        load_bundled_transformation_profile("synthetic_private_profile_v1")
 
     with pytest.raises(ValueError, match="profile id is invalid"):
-        load_bundled_transformation_profile("../ks_lbp_disposition_v2")
-
-
-def test_v2_uses_start_month_when_source_header_and_date_columns_are_reversed():
-    source = END_MONTH_SOURCE.replace(
-        "Endtermin Starttermin",
-        "Starttermin Endtermin",
-    ).replace(
-        "2026/43 2026/10 2026/45 2026/11",
-        "2026/45 2026/11 2026/43 2026/10",
-    )
-
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE_V2,
-        source_context=source,
-        fixed_context=FULL_HORIZON_CONTEXT,
-    )
-
-    demand = result.rows[0]
-    assert demand[15] == 29
-    assert demand[14] == ""
-
-
-def test_v2_applies_the_closest_preceding_header_to_each_record_block():
-    source = END_MONTH_SOURCE.replace(
-        "01 140090 0003943422 2026/43 2026/10 2026/45 2026/11 30,0 29,0 21.07.2026",
-        "01 140090 0003943422 2026/43 2026/10 2026/45 2026/11 30,0 29,0 21.07.2026\n"
-        "Starttermin Endtermin\n"
-        "01 140090 0003943423 2026/45 2026/11 2026/43 2026/10 12,0 11,0 21.07.2026",
-    )
-
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE_V2,
-        source_context=source,
-        fixed_context=FULL_HORIZON_CONTEXT,
-    )
-
-    demand = result.rows[0]
-    assert demand[15] == 40
-    assert demand[14] == ""
-
-
-def test_v2_deduplicates_production_orders_by_declared_stable_identity():
-    source = SOURCE.replace(
-        "06 140052 0020164627 2026/35 2026/08 2026/35 2026/08 51,0 50,0 21.07.2026\n"
-        "06 140052 0020164627 2026/35 2026/08 2026/35 2026/08 51,0 50,0 21.07.2026",
-        "06 140052 0020164627 2026/35 2026/08 2026/35 2026/08 51,0 50,0 21.07.2026\n"
-        "06 140052 20164627 2026/35 2026/08 2026/35 2026/08 51,0 50,0 21.07.2026",
-    )
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE_V2,
-        source_context=source,
-        fixed_context=FULL_HORIZON_CONTEXT,
-    )
-
-    assert len(result.rows) == 3
-    stock, production, demand = result.rows
-    assert stock[4:6] == ["Lager 0031", 1]
-    assert production[4:6] == ["20164627", 51]
-    assert demand[21] == 50  # Starttermin 2027/05.
-    assert demand[23] == 175  # Starttermin 2027/07 -> explicit future bucket.
-
-
-def test_v2_routes_start_months_across_dynamic_24_column_backlog_and_future_horizon():
-    source = END_MONTH_SOURCE.replace(
-        "01 140090 0003943422 2026/43 2026/10 2026/45 2026/11 30,0 29,0 21.07.2026",
-        "01 140090 0003943421 2030/01 2030/01 2026/24 2026/06 6,0 5,0 21.07.2026\n"
-        "01 140090 0003943422 2030/01 2030/01 2026/28 2026/07 8,0 7,0 21.07.2026\n"
-        "01 140090 0003943423 2030/01 2030/01 2027/24 2027/06 12,0 11,0 21.07.2026\n"
-        "01 140090 0003943424 2030/01 2030/01 2027/28 2027/07 14,0 13,0 21.07.2026\n"
-        "01 140090 0003943425 2030/01 2030/01 2029/36 2029/09 18,0 17,0 21.07.2026",
-    )
-
-    result = try_deterministic_matrix_transform(
-        profile=PROFILE_V2,
-        source_context=source,
-        fixed_context=FULL_HORIZON_CONTEXT,
-    )
-
-    demand = result.rows[0]
-    assert len(demand) == 24
-    assert demand[10] == 5
-    assert demand[11] == 7
-    assert demand[22] == 11
-    assert demand[23] == 30
-    assert sum(value for value in demand[10:] if isinstance(value, (int, float))) == 53
-
-
-def test_v2_fails_closed_when_required_record_header_is_missing():
-    source = END_MONTH_SOURCE.replace("Endtermin Starttermin\n", "")
-
-    with pytest.raises(ValueError, match="no required record header layout"):
-        try_deterministic_matrix_transform(
-            profile=PROFILE_V2,
-            source_context=source,
-            fixed_context=FULL_HORIZON_CONTEXT,
-        )
-
-
-def test_v2_fails_closed_when_record_header_roles_are_ambiguous():
-    source = END_MONTH_SOURCE.replace("Endtermin Starttermin", "Starttermin Starttermin")
-
-    with pytest.raises(ValueError, match="ambiguous record header.*start.*more than once"):
-        try_deterministic_matrix_transform(
-            profile=PROFILE_V2,
-            source_context=source,
-            fixed_context=FULL_HORIZON_CONTEXT,
-        )
-
-
-def test_v2_fails_closed_when_template_month_headers_are_ambiguous():
-    fixed_context = FULL_HORIZON_CONTEXT.replace(
-        '"2026-08-01T00:00:00"',
-        '"2026-07-01T00:00:00"',
-    )
-
-    with pytest.raises(ValueError, match="ambiguous planning header"):
-        try_deterministic_matrix_transform(
-            profile=PROFILE_V2,
-            source_context=END_MONTH_SOURCE,
-            fixed_context=fixed_context,
-        )
-
-
-def test_v2_coverage_count_deduplicates_production_identity():
-    config = {"_transformation_profiles": [PROFILE_V2]}
-    assert flow_engine._minimum_matrix_rows_for_source(SOURCE, TASK, config) == (
-        3,
-        3,
-        "profile-required row(s)",
-    )
+        load_bundled_transformation_profile("../synthetic_private_profile_v1")

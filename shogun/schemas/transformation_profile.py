@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from typing import Any, Literal
@@ -59,6 +60,7 @@ class TransformationPositiveFixture(BaseModel):
     expected_record_kind: str | None = Field(default=None, max_length=255)
     expected_headers: list[str] | None = Field(default=None, max_length=500)
     expected_records: list[dict[str, Any]] | None = Field(default=None, max_length=1_000)
+    expected_rows: list[list[Any]] | None = Field(default=None, max_length=1_000)
 
 
 class TransformationNegativeFixture(BaseModel):
@@ -119,3 +121,63 @@ class TransformationProfileRetireRequest(BaseModel):
 
     reason: str | None = Field(default=None, max_length=2000)
     actor: str = Field(default="system", min_length=1, max_length=255)
+
+
+class PrivateTransformationProfileDocument(BaseModel):
+    """Portable JSON file containing one private, declarative profile."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    format: Literal["shogun.private-transformation-profile"] = (
+        "shogun.private-transformation-profile"
+    )
+    format_version: Literal[1] = 1
+    content_hash: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern=r"^[a-fA-F0-9]{64}$",
+    )
+    profile: dict[str, Any]
+
+    @model_validator(mode="after")
+    def file_is_bounded(self):
+        profile_hash = hashlib.sha256(
+            json.dumps(
+                self.profile,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        if self.content_hash.lower() != profile_hash:
+            raise ValueError(
+                "Private transformation profile file content_hash does not match profile"
+            )
+        self.content_hash = self.content_hash.lower()
+        encoded = json.dumps(
+            self.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        if len(encoded) > 2_000_000:
+            raise ValueError("Private transformation profile file exceeds the 2 MB safety limit")
+        return self
+
+
+class PrivateTransformationProfileExportRequest(BaseModel):
+    """Build a portable private file from an inline profile definition."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    profile: dict[str, Any]
+    execution_mode: Literal["contract", "profile"] | None = None
+    display_name: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class PrivateTransformationProfileImportRequest(BaseModel):
+    """Validate a portable private file without adding it to the registry."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    document: PrivateTransformationProfileDocument

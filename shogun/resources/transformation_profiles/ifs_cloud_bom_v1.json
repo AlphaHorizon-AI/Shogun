@@ -150,8 +150,8 @@
   },
   "adapter_requirements": {
     "adapter": "canonical_entity_map_v1",
-    "minimum_version": 1,
-    "status": "planned",
+    "minimum_version": 2,
+    "status": "available",
     "capabilities": [
       "field_mapping",
       "type_conversion",

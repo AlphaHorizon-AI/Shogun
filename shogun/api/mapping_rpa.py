@@ -12,9 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shogun.api.deps import get_db
 from shogun.db.models.mapping_template import MappingTemplate
 from shogun.mapping.engine import execute_mapping
-from shogun.mapping.errors import MappingError
+from shogun.mapping.errors import MappingError, MappingSchemaError
 from shogun.mapping.schema import MappingPreviewRequest, MappingTemplateCreate, MappingTemplateUpdate
 from shogun.schemas.common import ApiResponse
+from shogun.services.enterprise_transformations import execute_enterprise_profile
+from shogun.services.private_transformation_profiles import (
+    PrivateTransformationProfileError,
+    PrivateTransformationProfileService,
+)
+from shogun.services.transformation_profile_registry import (
+    TransformationProfileRegistryError,
+    TransformationProfileRegistryService,
+)
 
 router = APIRouter(prefix="/mapping-rpa", tags=["Mapping / RPA"])
 
@@ -35,10 +44,58 @@ def _template_data(template: MappingTemplate) -> dict:
 
 
 @router.post("/preview", response_model=ApiResponse)
-async def preview_mapping(body: MappingPreviewRequest):
+async def preview_mapping(body: MappingPreviewRequest, db: AsyncSession = Depends(get_db)):
     """Run a bounded, side-effect-free preview using the production engine."""
     try:
-        result = execute_mapping(body.input, body.config)
+        if body.config.execution_mode == "profile":
+            profile = body.config.transformation_profile
+            if profile is None:  # Defensive for direct callers bypassing request validation.
+                raise MappingSchemaError(
+                    "Mapping / RPA profile preview requires a transformation profile",
+                    field="transformation_profile",
+                )
+            try:
+                if profile.is_private_file:
+                    definition, evidence = PrivateTransformationProfileService().resolve_reference(
+                        profile,
+                        execution_mode="profile",
+                    )
+                else:
+                    resolved = await TransformationProfileRegistryService(db).resolve_active_definition(
+                        profile.id,
+                        expected_version=profile.registry_version,
+                        expected_hash=(profile.content_hash.lower() if profile.content_hash else None),
+                    )
+                    definition = resolved["definition"]
+                    evidence = resolved["registry_evidence"]
+            except (PrivateTransformationProfileError, TransformationProfileRegistryError) as exc:
+                raise MappingSchemaError(str(exc), field="transformation_profile") from exc
+            if profile.adapter != evidence.get("adapter_id"):
+                raise MappingSchemaError(
+                    "Resolved transformation profile adapter does not match the preview configuration",
+                    field="transformation_profile.adapter",
+                )
+            result = execute_enterprise_profile(
+                definition,
+                body.input,
+                context={"preview": True, "node_id": "mapping-rpa-preview"},
+                registry_evidence=evidence,
+            )
+            result.update(
+                {
+                    "type": body.config.output.type,
+                    "start_cell": body.config.output.start_cell,
+                    "sheet": body.config.output.sheet,
+                    "include_headers": body.config.output.include_headers,
+                }
+            )
+        elif body.config.execution_mode == "contract":
+            raise MappingSchemaError(
+                "PDF contract mode contributes profile metadata and has no source-row preview",
+                field="execution_mode",
+            )
+        else:
+            result = execute_mapping(body.input, body.config)
     except MappingError as exc:
         result = {
             "__shogun_mapping_output__": True,

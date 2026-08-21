@@ -21,7 +21,7 @@
     "record_shape": "header_with_lines",
     "pagination": "links/offset",
     "related_objects": [
-      "item"
+      "item.items"
     ],
     "company_scope": "subsidiary",
     "record_path": "items"
@@ -156,8 +156,8 @@
   },
   "adapter_requirements": {
     "adapter": "canonical_entity_map_v1",
-    "minimum_version": 1,
-    "status": "planned",
+    "minimum_version": 2,
+    "status": "available",
     "capabilities": [
       "field_mapping",
       "type_conversion",

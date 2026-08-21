@@ -81,6 +81,20 @@ import axios from 'axios';
 import { useNavigate } from '../lib/routerCompat';
 import { cn } from '../lib/utils';
 import { logSamuraiDiagnostic } from '../lib/samuraiDiagnostics';
+import { apiErrorMessage } from '../lib/apiError';
+import {
+  MAX_PRIVATE_PROFILE_FILE_BYTES,
+  parsePrivateProfileDocument,
+  savePrivateProfileDocument,
+} from '../lib/privateProfileFile';
+import {
+  configureNodeForTransformationProfile,
+  isSelectableTransformationProfile,
+  transformationProfileOptionStatus,
+  transformationProfileSourceLabel,
+  type TransformationProfileExecutionMode,
+  type TransformationProfileOption,
+} from '../lib/transformationProfileOptions';
 import { useTemplateCatalog } from '../i18n/templateCatalog';
 
 
@@ -658,12 +672,14 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
               <span className="text-[8px] font-bold text-[#2dd4bf]/80 uppercase">
                 {config.execution_mode === 'contract'
                   ? `contract · ${config.transformation_profile?.id || 'profile required'}`
-                  : `${config.mode || 'strict'} · ${config.output?.type || 'table'}`}
+                  : config.execution_mode === 'profile'
+                    ? `enterprise · ${config.transformation_profile?.id || 'profile required'}`
+                    : `${config.mode || 'strict'} · ${config.output?.type || 'table'}`}
               </span>
             </div>
             <p className="text-[9px] text-[#7a8899]">
-              {config.execution_mode === 'contract'
-                ? `${config.transformation_profile?.adapter || 'No deterministic adapter selected'}`
+              {config.execution_mode === 'contract' || config.execution_mode === 'profile'
+                ? `${config.transformation_profile?.adapter || 'No profile adapter selected'}${config.transformation_profile?.private_file ? ' · private file' : config.transformation_profile?.registry_version ? ` · registry v${config.transformation_profile.registry_version}` : ''}`
                 : `${(config.mappings || []).length} deterministic mapping${(config.mappings || []).length === 1 ? '' : 's'}`}
             </p>
           </>
@@ -964,10 +980,44 @@ const edgeTypes: EdgeTypes = {
 const MAPPING_TYPES = ['string', 'integer', 'decimal', 'number', 'boolean', 'date', 'datetime', 'currency', 'array', 'object'] as const;
 const MAPPING_TRANSFORMS = ['none', 'trim', 'uppercase', 'lowercase', 'convert', 'decimal_normalize', 'date_format'] as const;
 
+type MappingExecutionMode = 'transform' | TransformationProfileExecutionMode;
+
+type TransformationProfileSummary = TransformationProfileOption;
+
+type TransformationProfileVersion = {
+  id: string;
+  version: number;
+  status: string;
+  adapter_id: string;
+  adapter_status?: string | null;
+  required_adapter_status?: string | null;
+  content_hash: string;
+};
+
+type TransformationProfileDetail = TransformationProfileSummary & {
+  active_version_id?: string | null;
+  versions?: TransformationProfileVersion[];
+};
+
+const CONTRACT_PROFILE_ADAPTER = 'sectioned_record_matrix_v1';
+const ENTERPRISE_PROFILE_ADAPTER = 'canonical_entity_map_v1';
+
+const expectedAdapterForMode = (mode: MappingExecutionMode) =>
+  mode === 'contract'
+    ? CONTRACT_PROFILE_ADAPTER
+    : mode === 'profile'
+      ? ENTERPRISE_PROFILE_ADAPTER
+      : null;
+
+const transformationProfileStatusLabel = (profile: TransformationProfileSummary) => {
+  const status = transformationProfileOptionStatus(profile);
+  return status === 'ready' ? `${profile.lifecycle || 'active'} · ready` : status;
+};
+
 function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string, any>; updateConfig: (k: string, v: any) => void }) {
   const mappings = Array.isArray(config.mappings) ? config.mappings : [];
   const output = config.output || { type: 'table', start_cell: 'A1' };
-  const executionMode = config.execution_mode || 'transform';
+  const executionMode = (config.execution_mode || 'transform') as MappingExecutionMode;
   const profile = config.transformation_profile || {};
   const serializedProfileParameters = JSON.stringify(profile.parameters || {}, null, 2);
   const [profileParametersDraft, setProfileParametersDraft] = useState(serializedProfileParameters);
@@ -984,6 +1034,15 @@ function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string,
   const [templates, setTemplates] = useState<any[]>([]);
   const [templateName, setTemplateName] = useState(config.name || 'Supplier PDF to Excel');
   const [templateBusy, setTemplateBusy] = useState(false);
+  const [registryProfiles, setRegistryProfiles] = useState<TransformationProfileSummary[]>([]);
+  const [registryProfilesLoading, setRegistryProfilesLoading] = useState(true);
+  const [registryProfilesError, setRegistryProfilesError] = useState<string | null>(null);
+  const [selectingRegistryProfile, setSelectingRegistryProfile] = useState<string | null>(null);
+  const [profileSelectionError, setProfileSelectionError] = useState<string | null>(null);
+  const [privateProfileBusy, setPrivateProfileBusy] = useState<'export' | 'import' | null>(null);
+  const [privateProfileError, setPrivateProfileError] = useState<string | null>(null);
+  const [privateProfileNotice, setPrivateProfileNotice] = useState<string | null>(null);
+  const privateProfileInputRef = useRef<HTMLInputElement>(null);
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -994,38 +1053,276 @@ function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string,
     }
   }, []);
 
+  const loadRegistryProfiles = useCallback(async () => {
+    setRegistryProfilesLoading(true);
+    setRegistryProfilesError(null);
+    try {
+      const response = await axios.get('/api/v1/transformation-profiles');
+      const records = response.data?.data;
+      setRegistryProfiles(Array.isArray(records) ? records : []);
+    } catch (error: any) {
+      setRegistryProfiles([]);
+      setRegistryProfilesError(apiErrorMessage(error, 'Could not load the governed profile catalog.'));
+    } finally {
+      setRegistryProfilesLoading(false);
+    }
+  }, []);
+
   useEffect(() => { void loadTemplates(); }, [loadTemplates]);
+  useEffect(() => { void loadRegistryProfiles(); }, [loadRegistryProfiles]);
 
   useEffect(() => {
     setProfileParametersDraft(serializedProfileParameters);
     setProfileParametersError(null);
   }, [serializedProfileParameters]);
 
+  const expectedProfileAdapter = expectedAdapterForMode(executionMode);
+  const compatibleRegistryProfiles = useMemo(() => {
+    if (executionMode === 'transform') return [];
+    return registryProfiles.filter((item) => item.execution_mode === executionMode);
+  }, [executionMode, registryProfiles]);
+  const groupedRegistryProfiles = useMemo(() => {
+    const lifecycleRank: Record<string, number> = { active: 0, validated: 1, candidate: 2, planned: 3, retired: 4 };
+    const records = [...compatibleRegistryProfiles].sort((left, right) => {
+      const platformOrder = (left.platform || 'Other').localeCompare(right.platform || 'Other');
+      if (platformOrder !== 0) return platformOrder;
+      const lifecycleOrder = (lifecycleRank[left.lifecycle || ''] ?? 99) - (lifecycleRank[right.lifecycle || ''] ?? 99);
+      if (lifecycleOrder !== 0) return lifecycleOrder;
+      return (left.display_name || left.profile_id).localeCompare(right.display_name || right.profile_id);
+    });
+    const groups = new Map<string, { label: string; profiles: TransformationProfileSummary[] }>();
+    records.forEach((item) => {
+      const platform = item.platform || 'Other';
+      const lifecycle = item.lifecycle || 'unknown';
+      const key = `${platform}\u0000${lifecycle}`;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.profiles.push(item);
+      } else {
+        groups.set(key, { label: `${platform} · ${lifecycle}`, profiles: [item] });
+      }
+    });
+    return Array.from(groups.entries()).map(([key, group]) => ({ key, ...group }));
+  }, [compatibleRegistryProfiles]);
+  const registryCandidateCount = registryProfiles.filter((item) => item.lifecycle === 'candidate').length;
+  const compatibleReadyCount = compatibleRegistryProfiles.filter(isSelectableTransformationProfile).length;
+  const compatibleCandidateCount = compatibleRegistryProfiles.filter((item) => item.lifecycle === 'candidate').length;
+  const compatibleBlockedCount = compatibleRegistryProfiles.length - compatibleReadyCount;
+  const privateFile = profile.private_file && typeof profile.private_file === 'object' && !Array.isArray(profile.private_file)
+    ? profile.private_file as Record<string, any>
+    : null;
+  const isPrivateFileProfile = Boolean(privateFile);
+  const selectedRegistryProfile = registryProfiles.find((item) => item.profile_id === profile.id);
+  const isRegistryPinned = Number.isInteger(profile.registry_version) && typeof profile.content_hash === 'string';
+  const isRegistryManaged = !isPrivateFileProfile && (isRegistryPinned || Boolean(selectedRegistryProfile));
+  const isProfileLocked = isRegistryManaged || isPrivateFileProfile;
+  const privateCatalogValue = isPrivateFileProfile && profile.id ? `__private_file__:${profile.id}` : '';
+  const catalogProfileValue = selectingRegistryProfile
+    || privateCatalogValue
+    || ((isRegistryPinned || registryProfilesError) && profile.id ? profile.id : '');
+  const selectedSourceRequirement = selectedRegistryProfile && !isPrivateFileProfile
+    ? transformationProfileSourceLabel(selectedRegistryProfile.source_requirement)
+    : null;
+
   const updateProfile = (patch: Record<string, any>) => {
+    const changesRegistryIdentity = 'id' in patch || 'adapter' in patch || 'parameters' in patch;
+    const registryPin = !changesRegistryIdentity && isRegistryPinned
+      ? { registry_version: profile.registry_version, content_hash: profile.content_hash }
+      : {};
     updateConfig('transformation_profile', {
       id: profile.id || 'custom_matrix_v1',
-      adapter: profile.adapter || 'sectioned_record_matrix_v1',
+      adapter: profile.adapter || expectedProfileAdapter || CONTRACT_PROFILE_ADAPTER,
       parameters: profile.parameters || {},
       model_fallback: profile.model_fallback === true,
+      ...registryPin,
       ...patch,
     });
   };
 
-  const updateExecutionMode = (mode: 'transform' | 'contract') => {
-    if (mode === 'contract' && !config.transformation_profile) {
-      updateConfig('__replace__', {
+  const updateExecutionMode = (mode: MappingExecutionMode) => {
+    setProfileSelectionError(null);
+    const requiredAdapter = expectedAdapterForMode(mode);
+    if (requiredAdapter) {
+      const nextConfig: Record<string, any> = {
         ...config,
         execution_mode: mode,
-        transformation_profile: {
-          id: 'custom_matrix_v1',
-          adapter: 'sectioned_record_matrix_v1',
-          parameters: {},
-          model_fallback: false,
-        },
-      });
+        mappings: [],
+      };
+      if (!profile.adapter || profile.adapter !== requiredAdapter) {
+        delete nextConfig.transformation_profile;
+      }
+      updateConfig('__replace__', nextConfig);
       return;
     }
     updateConfig('execution_mode', mode);
+  };
+
+  const selectRegistryProfile = async (profileId: string) => {
+    if (!profileId) return;
+    const summary = registryProfiles.find((item) => item.profile_id === profileId);
+    const selectedMode = summary?.execution_mode;
+    const requiredAdapter = selectedMode ? expectedAdapterForMode(selectedMode) : null;
+    if (!summary || !selectedMode || selectedMode !== executionMode || !requiredAdapter) {
+      setProfileSelectionError('This profile is not compatible with the selected execution mode.');
+      return;
+    }
+    if (!isSelectableTransformationProfile(summary)) {
+      setProfileSelectionError(`This profile cannot execute: ${transformationProfileOptionStatus(summary)}.`);
+      return;
+    }
+
+    setSelectingRegistryProfile(profileId);
+    setProfileSelectionError(null);
+    try {
+      const response = await axios.get(`/api/v1/transformation-profiles/${encodeURIComponent(profileId)}`);
+      const detail = response.data?.data as TransformationProfileDetail | undefined;
+      if (
+        !detail
+        || detail.profile_id !== profileId
+        || detail.execution_mode !== selectedMode
+        || !isSelectableTransformationProfile(detail)
+      ) {
+        throw new Error('The registry profile is no longer selectable. Refresh the catalog and try again.');
+      }
+      const versions = Array.isArray(detail.versions) ? detail.versions : [];
+      const activeVersion = versions.find((item) =>
+        item.status === 'active'
+        && (detail.active_version_id ? item.id === detail.active_version_id : item.version === detail.active_version)
+      );
+      const adapterId = activeVersion?.adapter_id || detail.adapter_id;
+      const adapterStatus = activeVersion?.adapter_status || detail.adapter_status;
+      const requiredAdapterStatus = activeVersion?.required_adapter_status || detail.required_adapter_status;
+      if (
+        !activeVersion
+        || adapterId !== requiredAdapter
+        || adapterStatus !== 'available'
+        || requiredAdapterStatus !== 'available'
+        || !Number.isInteger(activeVersion.version)
+        || !/^[a-fA-F0-9]{64}$/.test(activeVersion.content_hash || '')
+      ) {
+        throw new Error('The active registry version is not executable with the selected mode.');
+      }
+      const profileReference = {
+          id: profileId,
+          adapter: adapterId,
+          parameters: {},
+          model_fallback: false,
+          registry_version: activeVersion.version,
+          content_hash: activeVersion.content_hash.toLowerCase(),
+      };
+      updateConfig('__replace__', configureNodeForTransformationProfile(
+        config,
+        summary,
+        profileReference,
+      ));
+    } catch (error: any) {
+      setProfileSelectionError(apiErrorMessage(error, 'Could not pin the selected registry profile.'));
+    } finally {
+      setSelectingRegistryProfile(null);
+    }
+  };
+
+  const savePrivateProfileFile = async () => {
+    if (executionMode === 'transform' || !profile.id || !profile.adapter) {
+      setPrivateProfileError('Select or create a deterministic profile before saving a private profile file.');
+      return;
+    }
+    setPrivateProfileBusy('export');
+    setPrivateProfileError(null);
+    setPrivateProfileNotice(null);
+    try {
+      const response = await axios.post('/api/v1/transformation-profiles/private-files/export', {
+        profile,
+        execution_mode: executionMode,
+        display_name: profile.id,
+      });
+      const exported = response.data?.data;
+      if (!exported?.document || typeof exported.document !== 'object') {
+        throw new Error('The server did not return a private profile document.');
+      }
+      const result = await savePrivateProfileDocument(exported.document, exported.filename || profile.id);
+      if (result === 'saved') {
+        setPrivateProfileNotice('Private profile file saved. It was not published to the governed catalog.');
+      }
+    } catch (error: any) {
+      setPrivateProfileError(apiErrorMessage(error, 'Could not save the private profile file.'));
+    } finally {
+      setPrivateProfileBusy(null);
+    }
+  };
+
+  const importPrivateProfileFile = async (file: File) => {
+    setPrivateProfileError(null);
+    setPrivateProfileNotice(null);
+    if (file.size > MAX_PRIVATE_PROFILE_FILE_BYTES) {
+      setPrivateProfileError('Private profile files must be 2 MB or smaller.');
+      return;
+    }
+
+    setPrivateProfileBusy('import');
+    try {
+      const document = parsePrivateProfileDocument(await file.text());
+      const response = await axios.post('/api/v1/transformation-profiles/private-files/import', { document });
+      const imported = response.data?.data;
+      const importedProfile = imported?.profile_reference;
+      if (!importedProfile || typeof importedProfile !== 'object' || Array.isArray(importedProfile)) {
+        throw new Error('The server did not return a usable private profile reference.');
+      }
+      if (!importedProfile.private_file || typeof importedProfile.private_file !== 'object') {
+        throw new Error('The imported profile is missing its private-file integrity reference.');
+      }
+
+      const importedMode: MappingExecutionMode = importedProfile.adapter === CONTRACT_PROFILE_ADAPTER
+        ? 'contract'
+        : importedProfile.adapter === ENTERPRISE_PROFILE_ADAPTER
+          ? 'profile'
+          : 'transform';
+      if (importedMode === 'transform') {
+        throw new Error(`Private profile adapter '${String(importedProfile.adapter || '')}' is not executable in a profile node.`);
+      }
+      const currentOutput = config.output || { type: 'table', start_cell: 'A1' };
+      const nextOutput = importedMode === 'profile' && !['table', 'range'].includes(currentOutput.type || 'table')
+        ? { ...currentOutput, type: 'table', start_cell: currentOutput.start_cell || 'A1' }
+        : currentOutput;
+      updateConfig('__replace__', {
+        ...config,
+        execution_mode: importedMode,
+        mappings: [],
+        output: nextOutput,
+        transformation_profile: importedProfile,
+      });
+      setProfileSelectionError(null);
+      setPrivateProfileNotice(`Imported ${imported.filename || file.name} as a locked private profile.`);
+    } catch (error: any) {
+      setPrivateProfileError(apiErrorMessage(error, `Could not import '${file.name}'.`));
+    } finally {
+      setPrivateProfileBusy(null);
+    }
+  };
+
+  const detachPrivateProfile = () => {
+    if (!privateFile) return;
+    const definition = privateFile.definition && typeof privateFile.definition === 'object' && !Array.isArray(privateFile.definition)
+      ? privateFile.definition as Record<string, any>
+      : {};
+    const editableProfile: Record<string, any> = {
+      ...profile,
+      ...definition,
+      id: definition.id || profile.id,
+      adapter: definition.adapter || profile.adapter,
+      parameters: definition.parameters || profile.parameters || {},
+      model_fallback: definition.model_fallback === true || (definition.model_fallback === undefined && profile.model_fallback === true),
+    };
+    delete editableProfile.private_file;
+    delete editableProfile.registry_version;
+    delete editableProfile.content_hash;
+    updateConfig('__replace__', {
+      ...config,
+      mappings: [],
+      transformation_profile: editableProfile,
+    });
+    setPrivateProfileError(null);
+    setPrivateProfileNotice('Detached an editable copy. The original private profile file remains unchanged.');
   };
 
   const applyProfileParameters = () => {
@@ -1061,7 +1358,7 @@ function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string,
       const response = await axios.post('/api/v1/mapping-rpa/preview', { config, input: previewInput });
       setPreview(response.data?.data || null);
     } catch (error: any) {
-      setPreview({ status: 'MAPPING_SCHEMA_ERROR', errors: [{ message: error?.response?.data?.detail || error.message }] });
+      setPreview({ status: 'MAPPING_SCHEMA_ERROR', errors: [{ message: apiErrorMessage(error, 'Could not preview this mapping profile.') }] });
     } finally {
       setPreviewing(false);
     }
@@ -1088,43 +1385,199 @@ function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string,
     if (template?.config) updateConfig('__replace__', template.config);
   };
 
+  const previewDisplay = preview && executionMode === 'profile' && preview.status === 'SUCCESS'
+    ? {
+        canonical: preview.canonical,
+        headers: preview.headers,
+        rows: preview.rows,
+        profile: preview.profile,
+        records_received: preview.records_received,
+        records_written: preview.records_written,
+        lineage: preview.lineage,
+      }
+    : preview?.rows || preview?.cells || preview?.data || preview?.errors;
+
   return (
     <div className="space-y-4">
       <div className="space-y-1.5">
         <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Execution</label>
-        <select value={executionMode} onChange={(event) => updateExecutionMode(event.target.value as 'transform' | 'contract')} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none focus:border-[#2dd4bf]">
+        <select value={executionMode} onChange={(event) => updateExecutionMode(event.target.value as MappingExecutionMode)} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] outline-none focus:border-[#2dd4bf]">
           <option value="transform">Transform predecessor data</option>
-          <option value="contract">Attach deterministic profile contract</option>
+          <option value="contract">Attach PDF / Samurai profile contract</option>
+          <option value="profile">Apply enterprise ingress profile</option>
         </select>
         <p className="text-[8px] leading-relaxed text-[#7a8899]">
-          A profile contract configures a downstream Samurai&apos;s deterministic matrix adapter and contributes no source data of its own.
+          {executionMode === 'contract'
+            ? 'A PDF contract configures a downstream Samurai and contributes no source data of its own.'
+            : executionMode === 'profile'
+              ? 'An enterprise ingress profile deterministically normalizes one structured API or export input inside this node.'
+              : 'Transform predecessor data with explicit field-to-cell mapping rules.'}
         </p>
+        {!registryProfilesLoading && !registryProfilesError && (
+          <p className="text-[8px] text-[#2dd4bf]/70">
+            Registry: {registryProfiles.length} governed profile{registryProfiles.length === 1 ? '' : 's'} · {registryCandidateCount} candidate{registryCandidateCount === 1 ? '' : 's'}
+          </p>
+        )}
       </div>
 
-      {executionMode === 'contract' && (
+      {executionMode !== 'transform' && (
         <div className="rounded-lg border border-[#2dd4bf]/25 bg-[#2dd4bf]/5 p-3 space-y-3">
+          <div className="rounded border border-[#a78bfa]/25 bg-[#a78bfa]/5 p-2.5 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-[9px] font-bold text-[#a78bfa] uppercase tracking-widest">Private Profile File</label>
+              {isPrivateFileProfile && (
+                <span className="rounded-full border border-[#a78bfa]/30 bg-[#a78bfa]/10 px-2 py-0.5 text-[8px] font-bold uppercase text-[#c4b5fd]">
+                  Private file · locked
+                </span>
+              )}
+            </div>
+            <p className="text-[8px] leading-relaxed text-[#7a8899]">
+              Save this profile to a local JSON file or import one from another Shogun installation. Private files are not registered, synced, or shown in the governed catalog.
+            </p>
+            {isPrivateFileProfile && (
+              <div className="rounded border border-[#a78bfa]/20 bg-[#050508]/70 px-2 py-1.5 text-[8px] text-[#c4b5fd]">
+                {profile.id} · {String(privateFile?.content_hash || '').slice(0, 12)}… · integrity-locked to the imported definition
+              </div>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                disabled={Boolean(privateProfileBusy) || !profile.id || !profile.adapter}
+                onClick={() => void savePrivateProfileFile()}
+                className="flex items-center gap-1 rounded border border-[#a78bfa]/30 bg-[#a78bfa]/10 px-2 py-1 text-[8px] font-bold text-[#c4b5fd] disabled:opacity-40"
+              >
+                {privateProfileBusy === 'export' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Save profile file
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(privateProfileBusy)}
+                onClick={() => privateProfileInputRef.current?.click()}
+                className="flex items-center gap-1 rounded border border-[#a78bfa]/30 bg-[#a78bfa]/10 px-2 py-1 text-[8px] font-bold text-[#c4b5fd] disabled:opacity-40"
+              >
+                {privateProfileBusy === 'import' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                Import profile file
+              </button>
+              {isPrivateFileProfile && (
+                <button
+                  type="button"
+                  disabled={Boolean(privateProfileBusy)}
+                  onClick={detachPrivateProfile}
+                  className="rounded border border-[#f59e0b]/30 bg-[#f59e0b]/10 px-2 py-1 text-[8px] font-bold text-[#f59e0b] disabled:opacity-40"
+                >
+                  Detach to edit
+                </button>
+              )}
+              <input
+                ref={privateProfileInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = '';
+                  if (file) void importPrivateProfileFile(file);
+                }}
+              />
+            </div>
+            {privateProfileError && <p className="text-[8px] text-[#ef4444]">{privateProfileError}</p>}
+            {privateProfileNotice && <p className="text-[8px] text-[#22c55e]">{privateProfileNotice}</p>}
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-[9px] font-bold text-[#2dd4bf] uppercase tracking-widest">
+                {executionMode === 'contract' ? 'Governed PDF Contracts' : 'Governed Enterprise Profiles'}
+              </label>
+              {registryProfilesError && (
+                <button type="button" onClick={() => void loadRegistryProfiles()} className="text-[8px] font-bold text-[#2dd4bf] hover:text-[#5eead4]">Retry</button>
+              )}
+            </div>
+            <select
+              value={catalogProfileValue}
+              disabled={registryProfilesLoading || Boolean(selectingRegistryProfile)}
+              onChange={(event) => void selectRegistryProfile(event.target.value)}
+              className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none focus:border-[#2dd4bf] disabled:opacity-60"
+            >
+              <option value="">Select an active profile…</option>
+              {privateCatalogValue && (
+                <option value={privateCatalogValue} disabled>{profile.id} · imported private file</option>
+              )}
+              {!isPrivateFileProfile && profile.id && !compatibleRegistryProfiles.some((item) => item.profile_id === profile.id) && (
+                <option value={profile.id} disabled>{profile.id} · current saved reference</option>
+              )}
+              {groupedRegistryProfiles.map((group) => (
+                <optgroup key={group.key} label={group.label}>
+                  {group.profiles.map((item) => (
+                    <option key={item.profile_id} value={item.profile_id} disabled={!isSelectableTransformationProfile(item)}>
+                      {item.display_name || item.profile_id} · {transformationProfileStatusLabel(item)}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            {registryProfilesLoading && <p className="text-[8px] text-[#7a8899]">Loading governed profile catalog…</p>}
+            {selectingRegistryProfile && <p className="text-[8px] text-[#2dd4bf]">Resolving and pinning the active registry version…</p>}
+            {registryProfilesError && <p className="text-[8px] text-[#ef4444]">{registryProfilesError} The current saved reference has been preserved.</p>}
+            {!registryProfilesLoading && !registryProfilesError && (
+              <p className="text-[8px] leading-relaxed text-[#7a8899]">
+                {compatibleRegistryProfiles.length} compatible · {compatibleReadyCount} ready · {compatibleCandidateCount} candidate
+                {compatibleBlockedCount > 0 ? ` · ${compatibleBlockedCount} blocked` : ''}. Blocked entries show the exact server-reported reason and cannot be selected.
+              </p>
+            )}
+            {profileSelectionError && <p className="text-[8px] text-[#ef4444]">{profileSelectionError}</p>}
+            {selectedRegistryProfile && !isPrivateFileProfile && !isSelectableTransformationProfile(selectedRegistryProfile) && (
+              <p className="text-[8px] text-[#f59e0b]">This saved profile is {transformationProfileStatusLabel(selectedRegistryProfile)} and cannot execute yet.</p>
+            )}
+            {selectedRegistryProfile && !isPrivateFileProfile && isSelectableTransformationProfile(selectedRegistryProfile) && !isRegistryPinned && (
+              <p className="text-[8px] text-[#f59e0b]">This is an unpinned legacy snapshot. Select {selectedRegistryProfile.display_name || selectedRegistryProfile.profile_id} above to pin its active registry version.</p>
+            )}
+            {selectedSourceRequirement && (
+              <p className="text-[8px] text-[#7a8899]">
+                Required source: {selectedSourceRequirement}
+              </p>
+            )}
+            <p className="text-[8px] leading-relaxed text-[#2dd4bf]/70">
+              {executionMode === 'contract'
+                ? 'Only specialized sectioned-record PDF profiles appear here. Use enterprise ingress mode for D365, Business Central, Salesforce, and other structured platform records.'
+                : 'These profiles consume platform-shaped REST, OData, API, or export records. They are not generic PDF extraction templates.'}
+            </p>
+          </div>
+
+          {isRegistryPinned && (
+            <div className="rounded border border-[#22c55e]/25 bg-[#22c55e]/5 px-2.5 py-2 text-[8px] text-[#22c55e]">
+              Pinned to registry v{profile.registry_version} · {String(profile.content_hash).slice(0, 12)}… · immutable execution reference
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
               <label className="text-[9px] font-bold text-[#2dd4bf] uppercase tracking-widest">Profile ID</label>
-              <input value={profile.id || ''} onChange={(event) => updateProfile({ id: event.target.value })} placeholder="document_profile_v1" className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[10px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
+              <input value={profile.id || ''} readOnly={isProfileLocked} onChange={(event) => updateProfile({ id: event.target.value })} placeholder="document_profile_v1" className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[10px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf] read-only:opacity-60" />
             </div>
             <div className="space-y-1.5">
               <label className="text-[9px] font-bold text-[#2dd4bf] uppercase tracking-widest">Adapter</label>
-              <input value={profile.adapter || ''} onChange={(event) => updateProfile({ adapter: event.target.value })} placeholder="sectioned_record_matrix_v1" className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[10px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf]" />
+              <input value={profile.adapter || ''} readOnly={isProfileLocked} onChange={(event) => updateProfile({ adapter: event.target.value })} placeholder={expectedProfileAdapter || CONTRACT_PROFILE_ADAPTER} className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[10px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf] read-only:opacity-60" />
             </div>
           </div>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <label className="text-[9px] font-bold text-[#2dd4bf] uppercase tracking-widest">Profile Parameters (JSON)</label>
-              <button type="button" onClick={applyProfileParameters} className="rounded border border-[#2dd4bf]/30 bg-[#2dd4bf]/10 px-2 py-1 text-[8px] font-bold uppercase text-[#2dd4bf]">Apply JSON</button>
+              <button type="button" disabled={isProfileLocked} onClick={applyProfileParameters} className="rounded border border-[#2dd4bf]/30 bg-[#2dd4bf]/10 px-2 py-1 text-[8px] font-bold uppercase text-[#2dd4bf] disabled:opacity-40">Apply JSON</button>
             </div>
-            <textarea value={profileParametersDraft} onChange={(event) => setProfileParametersDraft(event.target.value)} rows={12} spellCheck={false} className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[9px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf] resize-y" />
+            <textarea value={profileParametersDraft} readOnly={isProfileLocked} onChange={(event) => setProfileParametersDraft(event.target.value)} rows={executionMode === 'contract' ? 12 : 5} spellCheck={false} className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[9px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf] resize-y read-only:opacity-60" />
             {profileParametersError && <p className="text-[9px] text-[#ef4444]">{profileParametersError}</p>}
           </div>
-          <label className="flex items-start gap-2 text-[9px] text-[#7a8899]">
-            <input type="checkbox" checked={profile.model_fallback === true} onChange={(event) => updateProfile({ model_fallback: event.target.checked })} className="mt-0.5 accent-[#2dd4bf]" />
-            <span><strong className="text-[#c8d0d8]">Allow model fallback</strong><br />Off by default. Validation failures stop the flow instead of silently changing execution paths.</span>
-          </label>
+          {executionMode === 'contract' && isPrivateFileProfile ? (
+            <p className="text-[8px] leading-relaxed text-[#7a8899]">Model fallback is integrity-locked by the imported private profile. Use Detach to edit to create a mutable copy.</p>
+          ) : executionMode === 'contract' && isRegistryManaged ? (
+            <p className="text-[8px] leading-relaxed text-[#7a8899]">Model fallback is governed by the selected registry profile and cannot be overridden by this node.</p>
+          ) : executionMode === 'contract' && (
+            <label className="flex items-start gap-2 text-[9px] text-[#7a8899]">
+              <input type="checkbox" checked={profile.model_fallback === true} onChange={(event) => updateProfile({ model_fallback: event.target.checked })} className="mt-0.5 accent-[#2dd4bf]" />
+              <span><strong className="text-[#c8d0d8]">Allow model fallback</strong><br />Off by default. Validation failures stop the flow instead of silently changing execution paths.</span>
+            </label>
+          )}
         </div>
       )}
 
@@ -1221,10 +1674,15 @@ function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string,
       </>)}
 
       <div className="rounded-lg border border-[#2dd4bf]/20 bg-[#2dd4bf]/5 p-2.5 space-y-2">
-        <label className="text-[9px] font-bold text-[#2dd4bf] uppercase tracking-widest">Mapping Templates</label>
+        <label className="text-[9px] font-bold text-[#2dd4bf] uppercase tracking-widest">Saved Node Configurations</label>
+        <p className="text-[8px] leading-relaxed text-[#7a8899]">Reusable copies of the entire Mapping/RPA node. These are separate from governed transformation profiles.</p>
         <select defaultValue="" onChange={(event) => loadTemplate(event.target.value)} className="w-full bg-[#050508] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none">
-          <option value="">Load a reusable template…</option>
-          {templates.map((template) => <option key={template.id} value={template.id}>{template.name} · v{template.version} · {template.scope}</option>)}
+          <option value="">Load a saved configuration…</option>
+          {templates.map((template) => (
+            <option key={template.id} value={template.id}>
+              {template.name} · v{template.version} · {template.scope === 'global' ? 'shared' : template.scope}
+            </option>
+          ))}
         </select>
         <div className="flex gap-1.5">
           <input value={templateName} onChange={(event) => setTemplateName(event.target.value)} className="min-w-0 flex-1 bg-[#050508] border border-[#1a2040] rounded p-2 text-[10px] text-[#c8d0d8] outline-none" />
@@ -1232,26 +1690,39 @@ function MappingRpaNodeFields({ config, updateConfig }: { config: Record<string,
         </div>
       </div>
 
-      {executionMode === 'transform' && (<div className="space-y-2">
+      {executionMode !== 'contract' && (<div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Preview Input</label>
-          <button type="button" disabled={previewing} onClick={() => void runPreview()} className="flex items-center gap-1 rounded border border-[#2dd4bf]/30 bg-[#2dd4bf]/10 px-2 py-1 text-[9px] font-bold text-[#2dd4bf] disabled:opacity-50">{previewing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Preview Mapping</button>
+          <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">
+            {executionMode === 'profile' ? 'Profile Source JSON' : 'Preview Input'}
+          </label>
+          <button type="button" disabled={previewing || (executionMode === 'profile' && !profile.id)} onClick={() => void runPreview()} className="flex items-center gap-1 rounded border border-[#2dd4bf]/30 bg-[#2dd4bf]/10 px-2 py-1 text-[9px] font-bold text-[#2dd4bf] disabled:opacity-50">{previewing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} {executionMode === 'profile' ? 'Preview Profile' : 'Preview Mapping'}</button>
         </div>
+        {executionMode === 'profile' && (
+          <p className="text-[8px] leading-relaxed text-[#7a8899]">
+            Paste one representative API, OData, or export payload. Preview resolves the same hash-pinned profile and deterministic adapter used by the flow, without writing data.
+          </p>
+        )}
         <textarea value={previewInput} onChange={(event) => setPreviewInput(event.target.value)} rows={7} spellCheck={false} className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-[9px] font-mono text-[#c8d0d8] outline-none focus:border-[#2dd4bf] resize-y" />
         {preview && (
           <div className={cn('rounded-lg border p-2.5', preview.status === 'SUCCESS' ? 'border-[#22c55e]/30 bg-[#22c55e]/5' : 'border-[#ef4444]/30 bg-[#ef4444]/5')}>
             <div className="mb-1 text-[9px] font-bold" style={{ color: preview.status === 'SUCCESS' ? '#22c55e' : '#ef4444' }}>{preview.status}</div>
-            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-[9px] text-[#c8d0d8]">{JSON.stringify(preview.rows || preview.cells || preview.data || preview.errors, null, 2)}</pre>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all text-[9px] text-[#c8d0d8]">{JSON.stringify(previewDisplay, null, 2)}</pre>
           </div>
         )}
       </div>)}
 
       <div className="p-2.5 bg-[#2dd4bf]/5 border border-[#2dd4bf]/20 rounded-lg">
         <p className="text-[8px] leading-relaxed text-[#2dd4bf]/80">
-          <strong>{executionMode === 'contract' ? 'Profiles declare. Adapters validate. Samurai stays deterministic.' : 'AI interprets. Rules map. Tools execute.'}</strong>{' '}
+          <strong>{executionMode === 'contract'
+            ? 'Profiles declare. Adapters validate. Samurai stays deterministic.'
+            : executionMode === 'profile'
+              ? 'Registry pins. Adapters normalize. Canonical records retain lineage.'
+              : 'AI interprets. Rules map. Tools execute.'}</strong>{' '}
           {executionMode === 'contract'
             ? 'The contract is passed as validated metadata and is excluded from document source context.'
-            : 'This node performs no model calls and passes typed rows or cells directly to Files / Excel.'}
+            : executionMode === 'profile'
+              ? 'The selected enterprise profile executes in this node against one structured predecessor and fails closed.'
+              : 'This node performs no model calls and passes typed rows or cells directly to Files / Excel.'}
         </p>
       </div>
     </div>
@@ -4242,6 +4713,25 @@ export function AgentFlowCanvas({
         window.alert('AgentFlow seed must be a whole number from 0 to 2,147,483,647.');
         return false;
       }
+      for (const node of nodes) {
+        if (node.type !== 'mapping_rpa') continue;
+        const mappingConfig = (node.data?.config || {}) as Record<string, any>;
+        const executionMode = mappingConfig.execution_mode || 'transform';
+        if (executionMode !== 'contract' && executionMode !== 'profile') continue;
+        const transformationProfile = mappingConfig.transformation_profile;
+        const nodeLabel = String(node.data?.label || 'Mapping / RPA');
+        const hasPrivateFile = transformationProfile?.private_file
+          && typeof transformationProfile.private_file === 'object'
+          && !Array.isArray(transformationProfile.private_file);
+        if (!transformationProfile?.id || (!hasPrivateFile && transformationProfile.id === 'custom_matrix_v1')) {
+          window.alert(`${nodeLabel}: select a governed ${executionMode === 'contract' ? 'PDF contract' : 'enterprise'} profile, import a private profile file, or give the custom profile a unique ID before saving or running the flow.`);
+          return false;
+        }
+        if (Array.isArray(mappingConfig.mappings) && mappingConfig.mappings.length > 0) {
+          window.alert(`${nodeLabel}: ${executionMode} mode uses its profile definition and cannot also contain visual mapping rules.`);
+          return false;
+        }
+      }
       const normalizedSeedModel = normalizedSeed === null ? null : flowSeedModelId || null;
       const flowPatch: Record<string, unknown> = {};
       if (flowName !== flow.name) flowPatch.name = flowName;
@@ -4285,7 +4775,7 @@ export function AgentFlowCanvas({
       return true;
     } catch (err: any) {
       console.error('Failed to save flow:', err);
-      window.alert(err?.response?.data?.detail || 'Could not save this AgentFlow.');
+      window.alert(apiErrorMessage(err, 'Could not save this AgentFlow.'));
       return false;
     } finally {
       setSaving(false);
@@ -4302,7 +4792,7 @@ export function AgentFlowCanvas({
       setFlowStatus(resp.data?.data?.status || nextStatus);
       onFlowUpdate();
     } catch (err: any) {
-      window.alert(err?.response?.data?.detail || `Could not set this AgentFlow to ${nextStatus}.`);
+      window.alert(apiErrorMessage(err, `Could not set this AgentFlow to ${nextStatus}.`));
     } finally {
       setChangingStatus(false);
     }
@@ -4320,7 +4810,7 @@ export function AgentFlowCanvas({
       });
       window.alert(`Reusable template “${templateName}” saved.`);
     } catch (err: any) {
-      window.alert(err?.response?.data?.detail || 'Could not save this template.');
+      window.alert(apiErrorMessage(err, 'Could not save this template.'));
     }
   }, [dirty, flow.id, flowName, handleSave]);
 
@@ -4351,10 +4841,11 @@ export function AgentFlowCanvas({
       if (runId) {
         setActiveRunId(runId);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to start flow run:', err);
       setExecuting(false);
       setRunStatus(null);
+      window.alert(apiErrorMessage(err, 'Could not start this AgentFlow.'));
     }
   }, [executing, dirty, handleSave, flow.id, setNodes]);
 
@@ -4394,7 +4885,7 @@ export function AgentFlowCanvas({
       ));
       void fetchHistory();
     } catch (err: any) {
-      window.alert(err?.response?.data?.detail || 'Could not cancel this AgentFlow run.');
+      window.alert(apiErrorMessage(err, 'Could not cancel this AgentFlow run.'));
     } finally {
       setCancellingRunId(null);
     }

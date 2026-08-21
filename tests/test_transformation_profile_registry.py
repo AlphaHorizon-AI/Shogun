@@ -94,7 +94,7 @@ def _canonical_manifest(profile_id: str = "test_customer_v1", *, adapter: str = 
             "capabilities": ["field_mapping"],
             "fail_closed": True,
         },
-        "selection": {"positive_fingerprints": [], "negative_fingerprints": []},
+        "selection": {"positive_fingerprints": ["field:id"], "negative_fingerprints": []},
         "governance": {
             "minimum_positive_fixtures": 1,
             "minimum_negative_fixtures": 1,
@@ -131,7 +131,9 @@ def _validation_evidence(*, negative_payload=None):
             "negative_fixtures": [
                 {
                     "name": "missing identity",
-                    "payload": {} if negative_payload is None else negative_payload,
+                    # Preserve the declared field fingerprint while proving
+                    # that blank canonical identity is rejected separately.
+                    "payload": {"id": " "} if negative_payload is None else negative_payload,
                     "expected_error_code": "VALIDATION_FAILED",
                 }
             ],
@@ -157,14 +159,11 @@ def test_resource_discovery_skips_catalog_and_normalizes_bundled_provenance():
     assert "servicenow_incident_v1" in ids
     assert "hubspot_deal_v1" in ids
     assert "workday_worker_v1" in ids
-    sap = next(item for item in descriptors if item.profile_id == "ks_lbp_disposition_v2")
-    assert sap.lifecycle == "active"
-    assert sap.adapter_id == "sectioned_record_matrix_v1"
-    assert all(item.lifecycle == "candidate" for item in descriptors if item is not sap)
+    assert all(item.lifecycle == "candidate" for item in descriptors)
 
 
 @pytest.mark.asyncio
-async def test_bundled_sync_is_idempotent_protected_and_fail_closed(registry_session):
+async def test_bundled_sync_validates_activates_and_reuses_package_evidence(registry_session):
     service = TransformationProfileRegistryService(registry_session)
     first = await service.sync_bundled_profiles()
     await registry_session.commit()
@@ -172,50 +171,175 @@ async def test_bundled_sync_is_idempotent_protected_and_fail_closed(registry_ses
 
     assert first["discovered"] >= 80
     assert first["profiles_created"] == first["discovered"]
-    assert first["activated"] == 1
+    assert first["validated"] == first["discovered"] == 86
+    assert first["activated"] == 86
+    assert first["active_profiles"] == 86
+    assert first["candidate_profiles"] == 0
+    assert first["bundled_active_profiles"] == 86
+    assert first["bundled_candidate_profiles"] == 0
     assert second["profiles_created"] == 0
     assert second["versions_created"] == 0
+    assert second["validation_reused"] == 86
+    assert second["activated"] == 0
     count = await registry_session.scalar(select(func.count(RegisteredTransformationProfile.id)))
     version_count = await registry_session.scalar(select(func.count(TransformationProfileVersion.id)))
     assert count == first["discovered"]
     assert version_count == first["discovered"]
 
-    sap = await service.get_profile("ks_lbp_disposition_v2")
-    sap_data = await service.profile_data(sap)
-    assert sap_data["protected"] is True
-    assert sap_data["lifecycle"] == "active"
-    assert sap_data["adapter_status"] == "available"
+    catalog = await service.list_profiles()
+    assert len(catalog) == 86
+    assert all(item["lifecycle"] == "active" for item in catalog)
+    assert all(item["selectable"] is True for item in catalog)
+    assert all(item["blockers"] == [] for item in catalog)
+    for item in catalog:
+        detail = await service.profile_data(
+            await service.get_profile(item["profile_id"])
+        )
+        report = detail["versions"][0]["validation_report"]
+        assert report["package_validation"]["passed"] is True
+        assert len(report["fixtures"]["positive_fixtures"]) == 3
+        assert len(report["fixtures"]["negative_fixtures"]) >= 2
 
     business_central = await service.get_profile("business_central_customer_master_v1")
+    business_central_version = await registry_session.get(
+        TransformationProfileVersion,
+        business_central.active_version_id,
+    )
+    assert business_central_version is not None
+    business_central_version.validation_report = {
+        **business_central_version.validation_report,
+        "fixtures": {},
+    }
+    await registry_session.flush()
+    repaired_evidence = await service.sync_bundled_profiles()
+    assert repaired_evidence["validated"] == 1
+    assert repaired_evidence["validation_reused"] == 85
+
     bc_data = await service.profile_data(business_central)
     assert bc_data["protected"] is True
-    assert bc_data["lifecycle"] == "candidate"
-    assert bc_data["active_version_id"] is None
+    assert bc_data["lifecycle"] == "active"
+    assert bc_data["active_version_id"] is not None
     assert bc_data["adapter_id"] == "canonical_entity_map_v1"
     assert bc_data["adapter_status"] == "available"
     assert bc_data["required_adapter_status"] == "available"
+    assert bc_data["selectable"] is True
+    assert bc_data["execution_mode"] == "profile"
+    assert bc_data["blockers"] == []
+    assert bc_data["source_requirement"]["transport"] == "rest"
     assert bc_data["versions"][0]["validation_report"]["static"]["enterprise_schema_valid"] is True
+    assert bc_data["versions"][0]["validation_report"]["package_validation"]["passed"] is True
+    assert len(bc_data["versions"][0]["validation_report"]["fixtures"]["positive_fixtures"]) == 3
+    assert len(bc_data["versions"][0]["validation_report"]["fixtures"]["negative_fixtures"]) >= 2
 
 
 @pytest.mark.asyncio
-async def test_bundled_sync_repairs_protected_profile_and_active_pointer(registry_session):
+async def test_bundled_sync_repairs_and_reactivates_protected_profile(registry_session):
     service = TransformationProfileRegistryService(registry_session)
     await service.sync_bundled_profiles()
-    sap = await service.get_profile("ks_lbp_disposition_v2")
-    sap.protected = False
-    sap.is_deleted = True
-    sap.active_version_id = None
-    sap.lifecycle_status = "retired"
+    profile_id = "business_central_customer_master_v1"
+    profile = await service.get_profile(profile_id)
+    profile.protected = False
+    profile.is_deleted = True
+    profile.active_version_id = None
+    profile.lifecycle_status = "retired"
     await registry_session.flush()
 
     stats = await service.sync_bundled_profiles()
-    repaired = await service.get_profile("ks_lbp_disposition_v2")
+    repaired = await service.get_profile(profile_id)
 
     assert stats["profiles_repaired"] >= 1
     assert repaired.protected is True
     assert repaired.is_deleted is False
     assert repaired.lifecycle_status == "active"
     assert repaired.active_version_id is not None
+
+
+@pytest.mark.asyncio
+async def test_generic_sectioned_matrix_bundle_is_candidate_not_package_trusted(
+    registry_session,
+    tmp_path,
+):
+    profile_id = "synthetic_sectioned_report_v1"
+    definition = _canonical_manifest(
+        profile_id,
+        adapter="sectioned_record_matrix_v1",
+    )
+    definition["title"] = "Synthetic sectioned report"
+    definition["parameters"] = {
+        "section_pattern": r"(?m)^Entity: (?P<section_id>\S+)$",
+        "record_pattern": r"(?m)^Line: (?P<entity>\S+) (?P<value>\d+)$",
+        "record_section_key_group": "entity",
+        "row_rules": [{"kind": "record"}],
+    }
+    (tmp_path / f"{profile_id}.json").write_text(
+        json.dumps(definition),
+        encoding="utf-8",
+    )
+
+    service = TransformationProfileRegistryService(registry_session)
+    stats = await service.sync_bundled_profiles(tmp_path)
+    profile = await service.get_profile(profile_id)
+    data = await service.profile_data(profile)
+
+    assert stats["discovered"] == 1
+    assert stats["activated"] == 0
+    assert data["lifecycle"] == "candidate"
+    assert data["active_version_id"] is None
+    assert data["adapter_id"] == "sectioned_record_matrix_v1"
+    assert data["adapter_status"] == "available"
+    assert data["selectable"] is False
+    assert data["execution_mode"] == "contract"
+    assert data["blockers"] == [
+        "Profile has not passed executable fixture validation and promotion."
+    ]
+
+
+@pytest.mark.asyncio
+async def test_removed_bundle_is_localized_without_deleting_active_customer_data(
+    registry_session,
+    tmp_path,
+):
+    old_root = tmp_path / "old_bundle"
+    new_root = tmp_path / "new_bundle"
+    old_root.mkdir()
+    new_root.mkdir()
+    profile_id = "former_customer_bundle_v1"
+    definition = _canonical_manifest(
+        profile_id,
+        adapter="sectioned_record_matrix_v1",
+    )
+    (old_root / f"{profile_id}.json").write_text(
+        json.dumps(definition),
+        encoding="utf-8",
+    )
+
+    service = TransformationProfileRegistryService(registry_session)
+    await service.sync_bundled_profiles(old_root)
+    profile = await service.get_profile(profile_id)
+    version = await registry_session.scalar(
+        select(TransformationProfileVersion).where(
+            TransformationProfileVersion.profile_id == profile.id
+        )
+    )
+    assert version is not None
+    version.status = "active"
+    profile.lifecycle_status = "active"
+    profile.active_version_id = version.id
+    await registry_session.flush()
+
+    stats = await service.sync_bundled_profiles(new_root)
+    preserved = await service.get_profile(profile_id)
+    preserved_version = await service.resolve_active_definition(profile_id)
+
+    assert stats["profiles_localized"] == 1
+    assert preserved.bundled is False
+    assert preserved.protected is False
+    assert preserved.source_resource is None
+    assert preserved.lifecycle_status == "active"
+    assert preserved.active_version_id == version.id
+    assert preserved.metadata_json["distribution"] == "local_private"
+    assert "bundled_manifest_hash" not in preserved.metadata_json
+    assert preserved_version["definition"] == definition
 
 
 @pytest.mark.asyncio
@@ -310,6 +434,41 @@ async def test_promotion_requires_server_generated_validation_report(registry_se
 
 
 @pytest.mark.asyncio
+async def test_promotion_rejects_profile_with_planned_adapter_requirements(registry_session):
+    service = TransformationProfileRegistryService(registry_session)
+    definition = _canonical_manifest("planned_capability_v1")
+    definition["adapter_requirements"]["status"] = "planned"
+    candidate = await service.create_candidate(
+        TransformationProfileCandidateCreate(
+            profile_id="planned_capability_v1",
+            display_name="Planned capability",
+            platform="Test ERP",
+            domain="erp",
+            adapter_id="canonical_entity_map_v1",
+            definition=definition,
+        )
+    )
+    candidate.status = "validated"
+    candidate.validation_score = 1.0
+    candidate.validation_report = {
+        "gates": {
+            "schema_valid": True,
+            "fixtures_passed": True,
+            "negative_fixtures_passed": True,
+            "security_passed": True,
+            "reconciliation_passed": True,
+        }
+    }
+    await registry_session.flush()
+
+    with pytest.raises(
+        TransformationAdapterUnavailableError,
+        match="requires adapter status 'planned'",
+    ):
+        await service.promote(candidate.id, actor="skillopt")
+
+
+@pytest.mark.asyncio
 async def test_promotion_retires_previous_and_rollback_creates_auditable_version(registry_session):
     service = TransformationProfileRegistryService(registry_session)
     first = await service.create_candidate(_candidate_body("rollback_customer_v1"))
@@ -341,6 +500,7 @@ async def test_promotion_retires_previous_and_rollback_creates_auditable_version
 async def test_bundle_repair_never_overwrites_skillopt_active_version(
     registry_session,
     tmp_path,
+    monkeypatch,
 ):
     profile_id = "bundle_upgrade_guard_v1"
     bundled_definition = _canonical_manifest(profile_id)
@@ -348,8 +508,14 @@ async def test_bundle_repair_never_overwrites_skillopt_active_version(
         json.dumps(bundled_definition),
         encoding="utf-8",
     )
+    bundled_descriptor = discover_bundled_profile_manifests(tmp_path)[0]
+    monkeypatch.setattr(
+        "shogun.services.transformation_profile_registry.discover_bundled_profile_manifests",
+        lambda resource_root=None: [bundled_descriptor],
+    )
     service = TransformationProfileRegistryService(registry_session)
-    await service.sync_bundled_profiles(tmp_path)
+    first_sync = await service.sync_bundled_profiles()
+    assert first_sync["activated"] == 1
 
     learned_definition = json.loads(json.dumps(bundled_definition))
     learned_definition["description"] = "SkillOpt learned revision"
@@ -368,13 +534,84 @@ async def test_bundle_repair_never_overwrites_skillopt_active_version(
     await service.validate_candidate(learned.id, _validation_evidence())
     await service.promote(learned.id, actor="skillopt")
 
-    await service.sync_bundled_profiles(tmp_path)
+    # Older installations can contain a retired bundle stamped active by a
+    # former package policy but without server-executed gates. Repairing that
+    # legacy seed must not make the promoted tenant version look unselectable.
+    bundled_version = await registry_session.scalar(
+        select(TransformationProfileVersion).where(
+            TransformationProfileVersion.profile_id == learned.profile_id,
+            TransformationProfileVersion.origin == "bundled",
+        )
+    )
+    assert bundled_version is not None
+    bundled_version.status = "retired"
+    bundled_version.validation_report = {"bundled": True}
+    await registry_session.flush()
+    legacy_stats = await service.sync_bundled_profiles()
+    repaired_profile = await service.get_profile(profile_id)
+    assert legacy_stats["tenant_active_preserved"] == 1
+    assert repaired_profile.lifecycle_status == "active"
+    assert repaired_profile.active_version_id == learned.id
+
+    refreshed_definition = json.loads(json.dumps(bundled_definition))
+    refreshed_definition["description"] = "New package revision"
+    (tmp_path / f"{profile_id}.json").write_text(
+        json.dumps(refreshed_definition),
+        encoding="utf-8",
+    )
+    refreshed_descriptor = discover_bundled_profile_manifests(tmp_path)[0]
+    monkeypatch.setattr(
+        "shogun.services.transformation_profile_registry.discover_bundled_profile_manifests",
+        lambda resource_root=None: [refreshed_descriptor],
+    )
+    refresh_stats = await service.sync_bundled_profiles()
     profile = await service.get_profile(profile_id)
     active = await service.resolve_active_definition(profile_id)
 
+    assert refresh_stats["validated"] == 1
+    assert refresh_stats["tenant_active_preserved"] == 1
+    assert refresh_stats["activated"] == 0
     assert profile.active_version_id == learned.id
     assert active["registry_evidence"]["version"] == 2
     assert active["definition"]["description"] == "SkillOpt learned revision"
+
+
+@pytest.mark.asyncio
+async def test_bundle_refresh_promotes_new_validated_bundle_over_old_bundle(
+    registry_session,
+    tmp_path,
+    monkeypatch,
+):
+    profile_id = "bundle_package_upgrade_v1"
+    original = _canonical_manifest(profile_id)
+    resource = tmp_path / f"{profile_id}.json"
+    resource.write_text(json.dumps(original), encoding="utf-8")
+    first_descriptor = discover_bundled_profile_manifests(tmp_path)[0]
+    monkeypatch.setattr(
+        "shogun.services.transformation_profile_registry.discover_bundled_profile_manifests",
+        lambda resource_root=None: [first_descriptor],
+    )
+    service = TransformationProfileRegistryService(registry_session)
+    await service.sync_bundled_profiles()
+    profile = await service.get_profile(profile_id)
+    first_active_id = profile.active_version_id
+
+    refreshed = json.loads(json.dumps(original))
+    refreshed["description"] = "Validated package upgrade"
+    resource.write_text(json.dumps(refreshed), encoding="utf-8")
+    refreshed_descriptor = discover_bundled_profile_manifests(tmp_path)[0]
+    monkeypatch.setattr(
+        "shogun.services.transformation_profile_registry.discover_bundled_profile_manifests",
+        lambda resource_root=None: [refreshed_descriptor],
+    )
+    stats = await service.sync_bundled_profiles()
+    active = await service.resolve_active_definition(profile_id)
+
+    assert stats["validated"] == 1
+    assert stats["activated"] == 1
+    assert profile.active_version_id != first_active_id
+    assert active["registry_evidence"]["version"] == 2
+    assert active["definition"]["description"] == "Validated package upgrade"
 
 
 @pytest.mark.asyncio
@@ -383,4 +620,4 @@ async def test_protected_bundled_profile_cannot_be_deleted(registry_session):
     await service.sync_bundled_profiles()
 
     with pytest.raises(ProtectedTransformationProfileError, match="cannot be deleted"):
-        await service.delete_profile("ks_lbp_disposition_v2", actor="operator")
+        await service.delete_profile("business_central_customer_master_v1", actor="operator")

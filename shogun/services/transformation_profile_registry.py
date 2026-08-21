@@ -261,7 +261,7 @@ def _descriptor_from_resource(name: str, definition: Any) -> BundledProfileDescr
         version=_declared_version(definition, profile_id),
         lifecycle=_normalized_lifecycle(
             definition.get("lifecycle") or definition.get("status"),
-            default="active" if profile_id == "ks_lbp_disposition_v2" else "candidate",
+            default="candidate",
         ),
         adapter_id=adapter_id,
         required_adapter_status=adapter_status,
@@ -447,21 +447,6 @@ def _fixture_minimums(definition: dict[str, Any]) -> tuple[int, int]:
     return positives, negatives
 
 
-def _package_trusted_active(descriptor: BundledProfileDescriptor) -> bool:
-    """Return true only for bundled profiles with an in-repo regression path.
-
-    Enterprise catalogue presence is provenance, not validation evidence.  New
-    package-trusted profiles must be added here only alongside executable
-    fixture tests; currently the SAP v2 adapter is the sole qualified profile.
-    """
-
-    return (
-        descriptor.profile_id == "ks_lbp_disposition_v2"
-        and descriptor.adapter_id == "sectioned_record_matrix_v1"
-        and descriptor.lifecycle == "active"
-    )
-
-
 def _validation_manifest(definition: dict[str, Any]) -> dict[str, Any]:
     """Return an isolated executable copy; never mutate the candidate payload."""
 
@@ -512,6 +497,12 @@ def _assert_positive_fixture(result: dict[str, Any], fixture: Any) -> int:
         if list(canonical.get("records") or []) != fixture.expected_records:
             raise TransformationProfileLifecycleError(
                 f"Fixture '{fixture.name}' produced unexpected canonical records."
+            )
+        checks += 1
+    if fixture.expected_rows is not None:
+        if list(result.get("rows") or []) != fixture.expected_rows:
+            raise TransformationProfileLifecycleError(
+                f"Fixture '{fixture.name}' produced unexpected table rows."
             )
         checks += 1
     return checks
@@ -734,10 +725,50 @@ class TransformationProfileRegistryService:
             "discovered": len(descriptors),
             "profiles_created": 0,
             "profiles_repaired": 0,
+            "profiles_localized": 0,
             "versions_created": 0,
             "versions_reused": 0,
+            "validated": 0,
+            "validation_reused": 0,
+            "validation_failed": 0,
             "activated": 0,
+            "tenant_active_preserved": 0,
+            "active_profiles": 0,
+            "candidate_profiles": 0,
+            "bundled_active_profiles": 0,
+            "bundled_candidate_profiles": 0,
         }
+        package_trusted = resource_root is None
+        bundled_ids = {descriptor.profile_id for descriptor in descriptors}
+        previously_bundled = list(
+            (
+                await self.session.execute(
+                    select(RegisteredTransformationProfile).where(
+                        RegisteredTransformationProfile.bundled.is_(True)
+                    )
+                )
+            ).scalars().all()
+        )
+        for profile in previously_bundled:
+            if profile.profile_key in bundled_ids:
+                continue
+            # A removed package resource may be a customer-owned profile from
+            # an older build. Preserve every version and active pointer, but
+            # stop presenting or protecting it as a bundled standard.
+            metadata = dict(profile.metadata_json or {})
+            metadata.pop("bundled_manifest_hash", None)
+            metadata.update(
+                {
+                    "distribution": "local_private",
+                    "former_bundled": True,
+                }
+            )
+            profile.metadata_json = metadata
+            profile.bundled = False
+            profile.protected = False
+            profile.source_resource = None
+            stats["profiles_localized"] += 1
+
         for descriptor in descriptors:
             static_validation = _static_profile_validation(
                 descriptor.definition,
@@ -805,8 +836,7 @@ class TransformationProfileRegistryService:
                 )
                 next_version = max(descriptor.version, int(maximum or 0) + 1)
                 parent = await self._active_version(profile)
-                package_trusted_active = _package_trusted_active(descriptor)
-                initial_status = "validated" if package_trusted_active else "candidate"
+                initial_status = "candidate"
                 version = TransformationProfileVersion(
                     profile_id=profile.id,
                     version_number=next_version,
@@ -839,7 +869,6 @@ class TransformationProfileRegistryService:
             )
             if (
                 version.origin == "bundled"
-                and not _package_trusted_active(descriptor)
                 and not has_server_evidence
                 and version.status != "candidate"
             ):
@@ -851,24 +880,222 @@ class TransformationProfileRegistryService:
                 profile.lifecycle_status = "candidate"
 
             active = await self._active_version(profile)
-            if _package_trusted_active(descriptor) and adapter.status == "available":
-                # Never let a package refresh silently replace a promoted
-                # SkillOpt/tenant/operator version.
-                if active is None or active.origin == "bundled":
-                    if active is None or active.id != version.id:
-                        await self._activate(profile, version, actor="bundled_profile_sync")
+            if (
+                package_trusted
+                and version.origin == "bundled"
+                and descriptor.adapter_id == "canonical_entity_map_v1"
+                and descriptor.required_adapter_status == "available"
+                and adapter.status == "available"
+            ):
+                validated_now = await self._validate_bundled_version(
+                    profile=profile,
+                    version=version,
+                    static_validation=static_validation,
+                    adapter=adapter,
+                )
+                if validated_now is None:
+                    stats["validation_failed"] += 1
+                elif validated_now:
+                    stats["validated"] += 1
+                else:
+                    stats["validation_reused"] += 1
+
+                active = await self._active_version(profile)
+                if version.status == "validated" and (
+                    active is None
+                    or active.id == version.id
+                    or active.origin == "bundled"
+                ):
+                    was_active = active is not None
+                    activates_new_version = active is None or active.id != version.id
+                    await self._activate(
+                        profile,
+                        version,
+                        actor="bundled_profile_validation",
+                    )
+                    if not was_active or activates_new_version:
                         stats["activated"] += 1
-                    else:
-                        version.status = "active"
-                        profile.lifecycle_status = "active"
-                        profile.active_version_id = version.id
-                elif version.status == "candidate":
-                    version.status = "validated"
+                    active = version
+                elif version.status == "validated" and active.id != version.id:
+                    # A locally learned/SkillOpt version always wins over a
+                    # package seed. The new package version remains validated
+                    # and can be promoted explicitly later.
+                    stats["tenant_active_preserved"] += 1
+            if active is not None and active.status == "active":
+                profile.lifecycle_status = "active"
             elif active is None:
                 profile.lifecycle_status = version.status
 
+        stats["active_profiles"] = int(
+            await self.session.scalar(
+                select(func.count(RegisteredTransformationProfile.id)).where(
+                    RegisteredTransformationProfile.is_deleted.is_(False),
+                    RegisteredTransformationProfile.lifecycle_status == "active",
+                )
+            )
+            or 0
+        )
+        stats["candidate_profiles"] = int(
+            await self.session.scalar(
+                select(func.count(RegisteredTransformationProfile.id)).where(
+                    RegisteredTransformationProfile.is_deleted.is_(False),
+                    RegisteredTransformationProfile.lifecycle_status == "candidate",
+                )
+            )
+            or 0
+        )
+        stats["bundled_active_profiles"] = int(
+            await self.session.scalar(
+                select(func.count(RegisteredTransformationProfile.id)).where(
+                    RegisteredTransformationProfile.is_deleted.is_(False),
+                    RegisteredTransformationProfile.bundled.is_(True),
+                    RegisteredTransformationProfile.lifecycle_status == "active",
+                )
+            )
+            or 0
+        )
+        stats["bundled_candidate_profiles"] = int(
+            await self.session.scalar(
+                select(func.count(RegisteredTransformationProfile.id)).where(
+                    RegisteredTransformationProfile.is_deleted.is_(False),
+                    RegisteredTransformationProfile.bundled.is_(True),
+                    RegisteredTransformationProfile.lifecycle_status == "candidate",
+                )
+            )
+            or 0
+        )
         await self.session.flush()
         return stats
+
+    async def _validate_bundled_version(
+        self,
+        *,
+        profile: RegisteredTransformationProfile,
+        version: TransformationProfileVersion,
+        static_validation: dict[str, Any],
+        adapter: TransformationAdapter,
+    ) -> bool | None:
+        """Validate one trusted package version, returning new/reused/failed.
+
+        Package provenance alone never grants execution. The immutable version
+        must pass the same server-side fixture gates used by learned profiles.
+        The evidence signature includes profile content and runtime adapter
+        version so an updated adapter is revalidated automatically.
+        """
+
+        from shogun.services.bundled_transformation_profile_fixtures import (
+            BUNDLED_FIXTURE_POLICY,
+            build_bundled_validation_request,
+        )
+
+        adapter_version = (adapter.metadata_json or {}).get("version")
+        validation_report = version.validation_report or {}
+        package_validation = validation_report.get("package_validation") or {}
+        gates = validation_report.get("gates") or {}
+        stored_fixtures = validation_report.get("fixtures") or {}
+        if not isinstance(package_validation, dict):
+            package_validation = {}
+        if not isinstance(gates, dict):
+            gates = {}
+        if not isinstance(stored_fixtures, dict):
+            stored_fixtures = {}
+        stored_positive = stored_fixtures.get("positive_fixtures") or []
+        stored_negative = stored_fixtures.get("negative_fixtures") or []
+        if not isinstance(stored_positive, list):
+            stored_positive = []
+        if not isinstance(stored_negative, list):
+            stored_negative = []
+        minimum_positive, minimum_negative = _fixture_minimums(version.definition)
+        evidence_current = (
+            package_validation.get("policy") == BUNDLED_FIXTURE_POLICY
+            and package_validation.get("profile_content_hash") == version.content_hash
+            and package_validation.get("adapter_version") == adapter_version
+            and bool(gates)
+            and all(bool(value) for value in gates.values())
+            and len(stored_positive) >= minimum_positive
+            and len(stored_negative) >= minimum_negative
+            and all(
+                isinstance(item, dict) and bool(item.get("passed"))
+                for item in stored_positive
+            )
+            and all(
+                isinstance(item, dict) and bool(item.get("passed"))
+                for item in stored_negative
+            )
+            and (version.validation_score or 0.0) >= VALIDATION_THRESHOLD
+        )
+        if evidence_current:
+            active = await self._active_version(profile)
+            if active is None or active.id != version.id:
+                version.status = "validated"
+                version.updated_by = "bundled_profile_validation"
+            return False
+
+        try:
+            evidence = build_bundled_validation_request(version.definition)
+            fixture_report, validation_score = _execute_fixture_evidence(
+                adapter_id=version.adapter_id,
+                definition=version.definition,
+                evidence=evidence,
+            )
+            gates = {
+                "schema_valid": bool(static_validation.get("schema_valid")),
+                "fixtures_passed": all(
+                    item.get("passed") for item in fixture_report["positive_fixtures"]
+                ),
+                "negative_fixtures_passed": all(
+                    item.get("passed") for item in fixture_report["negative_fixtures"]
+                ),
+                "security_passed": True,
+                "reconciliation_passed": fixture_report["passed_checks"]
+                == fixture_report["total_checks"],
+            }
+            if not all(gates.values()) or validation_score < VALIDATION_THRESHOLD:
+                raise TransformationProfileLifecycleError(
+                    "Bundled executable fixture gates did not reconcile."
+                )
+        except (TransformationProfileRegistryError, ValueError) as exc:
+            active = await self._active_version(profile)
+            if active is not None and active.id == version.id:
+                profile.active_version_id = None
+                profile.lifecycle_status = "candidate"
+            version.status = "candidate"
+            version.validation_score = None
+            version.activated_at = None
+            version.validation_report = {
+                "static": static_validation,
+                "bundled": True,
+                "package_validation": {
+                    "policy": BUNDLED_FIXTURE_POLICY,
+                    "profile_content_hash": version.content_hash,
+                    "adapter_version": adapter_version,
+                    "passed": False,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:2000],
+                },
+            }
+            version.updated_by = "bundled_profile_validation"
+            return None
+
+        version.validation_score = validation_score
+        version.validation_report = {
+            "static": static_validation,
+            "gates": gates,
+            "fixtures": fixture_report,
+            "report": evidence.report,
+            "bundled": True,
+            "package_validation": {
+                "policy": BUNDLED_FIXTURE_POLICY,
+                "profile_content_hash": version.content_hash,
+                "adapter_version": adapter_version,
+                "passed": True,
+            },
+            "validated_by": evidence.actor,
+            "validated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        version.status = "validated"
+        version.updated_by = evidence.actor
+        return True
 
     async def list_profiles(
         self,
@@ -1101,6 +1328,14 @@ class TransformationProfileRegistryService:
             raise TransformationProfileLifecycleError(
                 "Profile promotion requires successful server-executed validation evidence."
             )
+        required_adapter_status = _normalized_adapter_status(
+            version.required_adapter_status
+        )
+        if required_adapter_status != "available":
+            raise TransformationAdapterUnavailableError(
+                f"Profile version requires adapter status '{required_adapter_status}'; "
+                "only profiles whose declared adapter requirements are available can be promoted."
+            )
         adapter = await self.session.get(TransformationAdapter, version.adapter_id)
         if adapter is None or adapter.status != "available":
             status = adapter.status if adapter else "unavailable"
@@ -1319,6 +1554,46 @@ class TransformationProfileRegistryService:
             if adapter_version is not None
             else None
         )
+        execution_mode = None
+        if adapter_version is not None:
+            execution_mode = {
+                "canonical_entity_map_v1": "profile",
+                "sectioned_record_matrix_v1": "contract",
+            }.get(adapter_version.adapter_id)
+        blockers: list[str] = []
+        if adapter_version is None:
+            blockers.append("Profile has no registered version.")
+        else:
+            if active is None or active.status != "active" or profile.lifecycle_status != "active":
+                failed_package_validation = (
+                    (adapter_version.validation_report or {}).get("package_validation") or {}
+                )
+                if failed_package_validation.get("passed") is False:
+                    blockers.append(
+                        "Packaged executable fixture validation failed for this build."
+                    )
+                else:
+                    blockers.append(
+                        "Profile has not passed executable fixture validation and promotion."
+                    )
+            if adapter_version.required_adapter_status != "available":
+                blockers.append(
+                    "Profile requires adapter capabilities that are not implemented in this build."
+                )
+            if adapter is None or adapter.status != "available":
+                blockers.append(
+                    f"Runtime adapter '{adapter_version.adapter_id}' is not available."
+                )
+            if execution_mode is None:
+                blockers.append(
+                    f"Runtime adapter '{adapter_version.adapter_id}' has no AgentFlow execution mode."
+                )
+        source = (
+            adapter_version.definition.get("source")
+            if adapter_version is not None
+            and isinstance(adapter_version.definition.get("source"), dict)
+            else {}
+        )
         data = {
             "id": str(profile.id),
             "profile_id": profile.profile_key,
@@ -1337,6 +1612,18 @@ class TransformationProfileRegistryService:
             "required_adapter_status": (
                 adapter_version.required_adapter_status if adapter_version else None
             ),
+            "selectable": not blockers,
+            "execution_mode": execution_mode,
+            "blockers": blockers,
+            "source_requirement": {
+                "input_kinds": list((adapter.metadata_json or {}).get("input_kinds") or [])
+                if adapter is not None
+                else [],
+                "transport": source.get("transport"),
+                "object": source.get("object"),
+                "record_shape": source.get("record_shape"),
+                "record_path": source.get("record_path"),
+            },
             "source_resource": profile.source_resource,
             "metadata": profile.metadata_json or {},
             "created_at": profile.created_at,

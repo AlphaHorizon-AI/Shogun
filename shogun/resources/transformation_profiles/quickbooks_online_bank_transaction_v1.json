@@ -19,7 +19,13 @@
     "api_version": "v3",
     "object": "Purchase|Deposit|Transfer",
     "record_shape": "collection",
-    "pagination": "startPosition/maxResults"
+    "pagination": "startPosition/maxResults",
+    "union_paths": [
+      "QueryResponse.Purchase",
+      "QueryResponse.Deposit",
+      "QueryResponse.Transfer"
+    ],
+    "union_discriminator": "TxnType"
   },
   "canonical_contract": {
     "id": "bank_transaction",
@@ -113,8 +119,8 @@
   },
   "adapter_requirements": {
     "adapter": "canonical_entity_map_v1",
-    "minimum_version": 1,
-    "status": "planned",
+    "minimum_version": 2,
+    "status": "available",
     "capabilities": [
       "field_mapping",
       "type_conversion",

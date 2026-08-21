@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 MappingTypeName = Literal[
     "any",
@@ -21,6 +23,53 @@ MappingTypeName = Literal[
     "object",
 ]
 OutputType = Literal["table", "range", "cells", "object"]
+PRIVATE_TRANSFORMATION_PROFILE_FORMAT = "shogun.private-transformation-profile"
+MAX_PRIVATE_TRANSFORMATION_PROFILE_BYTES = 2_000_000
+
+_FORBIDDEN_PRIVATE_PROFILE_KEYS = {
+    "access_token",
+    "api_key",
+    "authorization",
+    "client_secret",
+    "code",
+    "command",
+    "credential",
+    "credentials",
+    "eval",
+    "exec",
+    "password",
+    "private_key",
+    "python",
+    "refresh_token",
+    "script",
+    "secret",
+    "shell",
+    "tenant_url",
+}
+
+
+def _private_profile_content_hash(definition: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        definition,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _contains_forbidden_private_profile_key(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = re.sub(r"[^a-z0-9]+", "_", str(key).casefold()).strip("_")
+            if (
+                normalized in _FORBIDDEN_PRIVATE_PROFILE_KEYS
+                or _contains_forbidden_private_profile_key(child)
+            ):
+                return True
+    elif isinstance(value, list):
+        return any(_contains_forbidden_private_profile_key(item) for item in value)
+    return False
 
 
 class MappingTransform(BaseModel):
@@ -75,6 +124,49 @@ class MappingOutputConfig(BaseModel):
         return self
 
 
+class MappingPrivateTransformationProfileFile(BaseModel):
+    """Hash-pinned, flow-local evidence for an imported private profile file."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    format: Literal["shogun.private-transformation-profile"] = (
+        PRIVATE_TRANSFORMATION_PROFILE_FORMAT
+    )
+    format_version: Literal[1] = 1
+    content_hash: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern=r"^[a-fA-F0-9]{64}$",
+    )
+    definition: dict[str, Any]
+
+    @model_validator(mode="after")
+    def validate_private_definition(self):
+        try:
+            encoded = json.dumps(
+                self.definition,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("private transformation profile must contain canonical JSON") from exc
+        if len(encoded) > MAX_PRIVATE_TRANSFORMATION_PROFILE_BYTES:
+            raise ValueError(
+                "private transformation profile exceeds the 2 MB safety limit"
+            )
+        if _contains_forbidden_private_profile_key(self.definition):
+            raise ValueError(
+                "private transformation profiles cannot contain credentials, tenant URLs, "
+                "or executable code"
+            )
+        actual_hash = _private_profile_content_hash(self.definition)
+        if actual_hash != self.content_hash.lower():
+            raise ValueError("private transformation profile content_hash does not match definition")
+        self.content_hash = self.content_hash.lower()
+        return self
+
+
 class MappingTransformationProfile(BaseModel):
     """Explicit, flow-scoped deterministic transformation configuration."""
 
@@ -89,6 +181,7 @@ class MappingTransformationProfile(BaseModel):
     model_fallback: bool = False
     registry_version: int | None = Field(default=None, ge=1)
     content_hash: str | None = Field(default=None, min_length=64, max_length=64, pattern=r"^[a-fA-F0-9]{64}$")
+    private_file: MappingPrivateTransformationProfileFile | None = None
 
     @model_validator(mode="after")
     def validate_registry_pin(self):
@@ -100,11 +193,48 @@ class MappingTransformationProfile(BaseModel):
             )
         if self.content_hash is not None:
             self.content_hash = self.content_hash.lower()
+        if self.private_file is not None:
+            if self.registry_version is not None or self.content_hash is not None:
+                raise ValueError(
+                    "transformation_profile private_file and registry pin are mutually exclusive"
+                )
+            definition = self.private_file.definition
+            if definition.get("id") != self.id:
+                raise ValueError(
+                    "transformation_profile private_file definition id must match profile id"
+                )
+            if definition.get("adapter") != self.adapter:
+                raise ValueError(
+                    "transformation_profile private_file definition adapter must match profile adapter"
+                )
+            definition_parameters = definition.get("parameters", {})
+            if self.parameters != definition_parameters:
+                raise ValueError(
+                    "transformation_profile private_file parameters must match its definition"
+                )
+            definition_fallback = bool(definition.get("model_fallback", False))
+            if self.model_fallback != definition_fallback:
+                raise ValueError(
+                    "transformation_profile private_file model_fallback must match its definition"
+                )
         return self
 
     @property
     def is_registry_pinned(self) -> bool:
         return self.registry_version is not None and self.content_hash is not None
+
+    @property
+    def is_private_file(self) -> bool:
+        return self.private_file is not None
+
+    @model_serializer(mode="wrap")
+    def omit_empty_private_file(self, serializer):
+        """Keep legacy registry/inline snapshots byte-for-byte compatible."""
+
+        data = serializer(self)
+        if self.private_file is None:
+            data.pop("private_file", None)
+        return data
 
 
 class MappingConfig(BaseModel):

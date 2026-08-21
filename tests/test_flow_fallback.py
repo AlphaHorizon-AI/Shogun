@@ -781,10 +781,10 @@ Format: xlsx
                 "_transformation_profiles": [_mismatched_record_profile()],
                 "_transformation_source_contexts": [
                     {"label": "PDF 1", "content": "Record: A1\nsource row"},
-                    {"label": "PDF 2", "content": "Sachnummer : 140000\nBestand : 12"},
+                    {"label": "PDF 2", "content": "Object: B1\nQuantity: 12"},
                 ],
             },
-            "Record: A1\nsource row\nSachnummer : 140000\nBestand : 12",
+            "Record: A1\nsource row\nObject: B1\nQuantity: 12",
             fixed_context_str=fixed_context,
         )
 
@@ -825,7 +825,7 @@ Format: xlsx
             "task_description": "Populate the template from the supplied source.",
             "_transformation_profiles": [_mismatched_record_profile(model_fallback=True)],
         },
-        "Sachnummer : 140000\nBestand : 12",
+        "Object: B1\nQuantity: 12",
         fixed_context_str=fixed_context,
     )
 
@@ -846,7 +846,7 @@ def test_samurai_rejects_multiple_explicit_transformation_profiles():
 
 
 @pytest.mark.asyncio
-async def test_sap_text_without_an_explicit_profile_stays_on_the_model_path(monkeypatch):
+async def test_domain_text_without_an_explicit_profile_stays_on_the_model_path(monkeypatch):
     monkeypatch.setattr(flow_engine, "async_session_factory", lambda: _SessionContext())
     provider = SimpleNamespace(
         id=uuid.uuid4(),
@@ -857,7 +857,7 @@ async def test_sap_text_without_an_explicit_profile_stays_on_the_model_path(monk
     )
 
     def unexpected_deterministic_transform(*_args, **_kwargs):
-        raise AssertionError("SAP wording or source markers must never activate an adapter")
+        raise AssertionError("domain wording or source markers must never activate an adapter")
 
     async def resolve_route(*_args, **_kwargs):
         return [(provider, "matrix-model", "https://model.invalid/v1", {})], {
@@ -881,11 +881,11 @@ Format: xlsx
     result = await flow_engine._exec_samurai(
         {
             "task_description": (
-                "Convert this SAP source: create a stock row for Bestand, one row for each "
-                "Sa = 06 order, and one aggregate row for Sa = 01 demand."
+                "Convert this private report: create an inventory row, one row for each "
+                "production line, and one aggregate demand row."
             )
         },
-        "Sachnummer : 140000\nBestand : 12\n06 140000 ORDER-1\n01 140000 DEMAND-1",
+        "Object: B1\nQuantity: 12\nP B1 ORDER-1\nD B1 DEMAND-1",
         fixed_context_str=fixed_context,
     )
 
