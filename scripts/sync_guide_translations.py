@@ -18,11 +18,10 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "frontend" / "src" / "pages" / "Guide.tsx"
 OUTPUT = ROOT / "frontend" / "src" / "i18n" / "guide"
-LANGUAGES = ("da", "de", "es", "fr", "it", "ja", "ko", "no", "pl", "pt", "sv", "uk", "zh")
+LANGUAGES = ("da", "de", "es", "fr", "hi", "it", "ja", "ko", "no", "pl", "pt", "sv", "uk", "zh")
 
 UTILITY_MARKERS = (
     "bg-", "text-", "border-", "hover:", "md:", "lg:", "xl:", "flex", "grid",
@@ -42,7 +41,17 @@ def _looks_visible(value: str) -> bool:
         return False
     if value.startswith(("http://", "https://", "/", "../", "./", "ref-", "data:")):
         return False
-    if any(marker in value for marker in (" const ", "useState", "useRef", "=>", "className=", "return (", "import ", "async function")):
+    code_markers = (
+        " const ",
+        "useState",
+        "useRef",
+        "=>",
+        "className=",
+        "return (",
+        "import ",
+        "async function",
+    )
+    if any(marker in value for marker in code_markers):
         return False
     if value == "Promise":
         return False
@@ -161,6 +170,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--extract-only", action="store_true")
     parser.add_argument(
+        "--offline-fallback",
+        action="store_true",
+        help=(
+            "Synchronize catalog keys without network access, preserving existing "
+            "translations and using the English source for newly added fragments."
+        ),
+    )
+    parser.add_argument(
         "--repair-existing",
         action="store_true",
         help="Retry catalog entries that still equal their English source text.",
@@ -181,6 +198,25 @@ def main() -> None:
     )
     print(f"Extracted {len(fragments)} Guide text fragments.")
     if args.extract_only:
+        return
+
+    if args.offline_fallback:
+        for language in args.languages:
+            if language not in LANGUAGES:
+                raise SystemExit(f"Unsupported language: {language}")
+            catalog_path = OUTPUT / f"{language}.json"
+            existing = (
+                json.loads(catalog_path.read_text(encoding="utf-8"))
+                if catalog_path.exists()
+                else {}
+            )
+            added = sum(fragment not in existing for fragment in fragments)
+            catalog = {fragment: existing.get(fragment, fragment) for fragment in fragments}
+            catalog_path.write_text(
+                json.dumps(catalog, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            print(f"{language}: added {added} English fallback fragments", flush=True)
         return
 
     for language in args.languages:

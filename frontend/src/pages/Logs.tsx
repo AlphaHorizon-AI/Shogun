@@ -30,16 +30,16 @@ interface LogEntry {
   policy_decision: string | null;
   policy_reason: string | null;
   risk_score: string | null;
-  detail: Record<string, any>;
-  payload: Record<string, any>;
+  detail: Record<string, unknown>;
+  payload: Record<string, unknown>;
   memory_ids: string[];
   ip_address: string | null;
   occurred_at: string;
   duration_ms: number | null;
   // EU AI Act governance
   confidence_score: number | null;
-  governance_flags: Record<string, any>;
-  use_case_context: Record<string, any>;
+  governance_flags: Record<string, unknown>;
+  use_case_context: UseCaseContext;
 }
 
 interface AuditVerification {
@@ -48,6 +48,12 @@ interface AuditVerification {
   chain_intact: boolean;
   broken_at?: number;
   message: string;
+}
+
+interface UseCaseContext {
+  frameworks?: string[];
+  risk_level?: string;
+  [key: string]: unknown;
 }
 
 const CATEGORIES = [
@@ -168,7 +174,12 @@ export function Logs() {
     } catch { /* silent */ }
   }, []);
 
-  useEffect(() => { setLoading(true); fetchLogs(); fetchCategories(); fetchAuditStatus(); }, [fetchLogs, fetchCategories, fetchAuditStatus]);
+  useEffect(() => {
+    const loadLogs = async () => {
+      await Promise.all([fetchLogs(), fetchCategories(), fetchAuditStatus()]);
+    };
+    void loadLogs();
+  }, [fetchLogs, fetchCategories, fetchAuditStatus]);
 
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -180,7 +191,7 @@ export function Logs() {
 
   useEffect(() => {
     if (autoRefresh && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [logs]);
+  }, [autoRefresh, logs]);
 
   const filteredLogs = logs.filter(log => {
     const term = searchTerm.toLowerCase();
@@ -213,7 +224,7 @@ export function Logs() {
   };
 
   const handleClear = async () => {
-    if (!confirm('Clear operational logs? The immutable audit chain will NOT be affected.')) return;
+    if (!confirm('Clear operational logs? This action does not delete the separate audit-chain database.')) return;
     setClearing(true);
     try {
       await axios.delete('/api/v1/logs');
@@ -233,9 +244,9 @@ export function Logs() {
         <div>
           <h2 className="text-3xl font-bold shogun-title flex items-center gap-3">
             {t('logs.title', 'Event Log')}
-            <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Compliance Ready</span>
+            <span className="text-[10px] font-normal text-shogun-subdued bg-shogun-card px-2 py-0.5 rounded border border-shogun-border tracking-[0.2em] uppercase">Audit &amp; Trace</span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-1">{t('logs.subtitle', 'Compliance-grade event stream with full trace reconstruction.')}</p>
+          <p className="text-shogun-subdued text-sm mt-1">{t('logs.subtitle', 'Compliance-oriented event stream with trace reconstruction and HMAC-chain checks.')}</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -266,7 +277,7 @@ export function Logs() {
             </button>
           </div>
 
-          <button onClick={handleDownload} disabled={downloading} title="Export immutable audit log"
+          <button onClick={handleDownload} disabled={downloading} title="Export HMAC-chained audit records"
             className="p-2.5 bg-shogun-card border border-shogun-border rounded-lg text-shogun-subdued hover:text-shogun-gold transition-colors disabled:opacity-40">
             {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
           </button>
@@ -457,10 +468,10 @@ export function Logs() {
             )}
 
             {/* EU AI Act: Governance Framework Badges */}
-            {selectedEvent.use_case_context?.frameworks?.length > 0 && (
+            {(selectedEvent.use_case_context?.frameworks?.length ?? 0) > 0 && (
               <div className="mt-2 flex items-center gap-2 flex-wrap">
                 <span className="text-[8px] text-shogun-subdued font-bold uppercase tracking-widest">Frameworks:</span>
-                {selectedEvent.use_case_context.frameworks.map((fw: string) => (
+                {selectedEvent.use_case_context.frameworks!.map((fw: string) => (
                   <span key={fw} className={cn(
                     "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded border",
                     fw === 'EU_AI_ACT' ? "text-violet-400 border-violet-400/30 bg-violet-500/5" :

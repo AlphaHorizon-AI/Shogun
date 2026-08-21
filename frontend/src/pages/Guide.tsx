@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   BookOpen, 
   Terminal, 
@@ -119,7 +119,7 @@ export function Guide() {
   const guideRootRef = useRef<HTMLDivElement>(null);
   const refContentRef = useRef<HTMLDivElement>(null);
 
-  const REFERENCE_SECTIONS = [
+  const REFERENCE_SECTIONS = useMemo(() => [
     { id: 'ref-tenshu', label: 'Tenshu', icon: Layout, color: 'text-shogun-blue' },
     { id: 'ref-server', label: 'Server Mode', icon: Package, color: 'text-emerald-400' },
     { id: 'ref-profile', label: 'Shogun Profile', icon: Cpu, color: 'text-shogun-gold' },
@@ -149,7 +149,10 @@ export function Guide() {
     { id: 'ref-nexus-gateway', label: 'Nexus Gateway', icon: Link2, color: 'text-indigo-400' },
     { id: 'ref-gensui', label: 'Gensui', icon: ShieldAlert, color: 'text-indigo-400' },
     { id: 'ref-maintenance', label: 'Maintenance', icon: HardDrive, color: 'text-shogun-gold' },
-  ];
+    { id: 'ref-roles-responsibilities', label: 'Roles & Responsibilities', icon: Users, color: 'text-cyan-400' },
+    { id: 'ref-modified-installations', label: 'Modified Installations', icon: GitBranch, color: 'text-amber-400' },
+    { id: 'ref-incident-reporting', label: 'Incident Reporting', icon: ShieldAlert, color: 'text-red-400' },
+  ], []);
 
   const scrollToSection = useCallback((sectionId: string) => {
     const el = document.getElementById(sectionId);
@@ -227,7 +230,7 @@ export function Guide() {
       });
     }, 100);
     return () => { clearTimeout(timer); observer.disconnect(); };
-  }, [activeTab]);
+  }, [activeTab, REFERENCE_SECTIONS]);
 
   useEffect(() => {
     let cancelled = false;
@@ -297,7 +300,7 @@ export function Guide() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                    <div className="p-4 bg-shogun-bg border border-shogun-border rounded-xl">
                       <div className="text-shogun-blue font-bold text-lg mb-1">1. Connect Brains</div>
-                      <p className="text-xs text-shogun-subdued">Head to <strong>Katana</strong> to add your API keys or local models. This is where your AI's "intelligence" comes from.</p>
+                      <p className="text-xs text-shogun-subdued">Head to <strong>Katana</strong> to connect an organisation-selected cloud provider or local model. Shogun supplies the orchestration layer; it does not bundle an AI model.</p>
                    </div>
                    <div className="p-4 bg-shogun-bg border border-shogun-border rounded-xl">
                       <div className="text-shogun-gold font-bold text-lg mb-1">2. Train Skills</div>
@@ -480,7 +483,7 @@ export function Guide() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Key className="w-4 h-4 text-shogun-blue" /> At Least One API Key</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">You need an API key from at least one AI provider — OpenAI, Anthropic, Google Gemini, or Perplexity. These are obtained from the provider's developer portal. Without a key, the Shogun cannot think.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">For cloud inference, you need an API key from at least one AI provider — OpenAI, Anthropic, Google Gemini, or Perplexity. These are obtained from the provider&apos;s developer portal. Alternatively, connect a supported local model. Without a configured model, Shogun cannot perform model-backed tasks.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><HardDrive className="w-4 h-4 text-shogun-blue" /> Or a Local Model (Optional)</div>
@@ -598,7 +601,7 @@ export function Guide() {
                      { name: 'Gensui (Fleet Command)', purpose: 'Connect this Shogun to Central Command for fleet governance, telemetry, commands, and emergency Harakiri. While managed, Gensui owns ToolGate; the local control surface is read-only and enforces the cached central policy during outages.', icon: ShieldAlert, color: 'text-indigo-400' },
                      { name: 'Backups & Data', purpose: 'Scheduled and manual backups with configurable retention. Export/import your entire database. Manage backup settings and restore from any point.', icon: HardDrive, color: 'text-shogun-gold' },
                      { name: 'Updates', purpose: 'Auto-checks for new Shogun versions every 6 hours. One-click install to download and apply updates. Preserves your data, configs, and environment.', icon: Download, color: 'text-emerald-400' },
-                     { name: 'Logs (Compliance Dashboard)', purpose: 'NIS2, SOC2, and EU AI Act-compliant event stream. Filter by 11 categories (Decision, Oversight, Risk, Model, Policy, Memory, Tools, Auth, Incident, System). Click trace IDs for full workflow reconstruction. Audit chain verifies tamper-proof integrity.', icon: Terminal, color: 'text-shogun-subdued' },
+                      { name: 'Logs (Audit & Trace)', purpose: 'Compliance-oriented event and trace records. Filter by 11 categories (Decision, Oversight, Risk, Model, Policy, Memory, Tools, Auth, Incident, System). Click trace IDs to reconstruct recorded workflow events. HMAC-chain verification can identify mismatches in protected fields; it does not itself establish compliance or prove record completeness.', icon: Terminal, color: 'text-shogun-subdued' },
                      { name: 'Guide (Documentation)', purpose: 'This page — a comprehensive knowledge base covering onboarding, architecture, reference manual, and safety protocols. Located in the Maintenance section.', icon: HelpCircle, color: 'text-shogun-subdued' },
                    ].map((item) => (
                      <div key={item.name} className="shogun-card flex gap-4 items-start">
@@ -645,8 +648,8 @@ export function Guide() {
                       <p className="text-xs text-shogun-subdued leading-relaxed">The Mandate (Kaizen → Mandate tab) is injected into every conversation. Use it to set the AI's overall purpose, tone, and special instructions. For example: "You are a senior financial analyst. Always cite sources. Respond in English."</p>
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-green-500/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-green-500" /> Monitor the Compliance Dashboard</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Check the Logs page regularly — it records every action with full NIS2/SOC2/EU AI Act provenance. Use the <strong>Decision</strong> tab to track AI reasoning influences. Click trace IDs to reconstruct full workflows. Verify the <strong>"Chain Intact"</strong> badge stays green — a broken chain indicates tampering. Export the audit log periodically for off-site compliance archival.</p>
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-green-500" /> Monitor Audit &amp; Trace Records</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Check the Logs page regularly. Use the <strong>Decision</strong> tab to review recorded AI decision influences and trace IDs to reconstruct captured workflow events. Investigate a <strong>Chain Broken</strong> warning and export records periodically for protected off-site retention. These records support incident investigation and the organisation&apos;s compliance assessment; they do not themselves establish conformity or prove that every event was captured.</p>
                    </div>
                 </div>
              </section>
@@ -852,8 +855,8 @@ export function Guide() {
                 <div className="flex items-center gap-3 border-b-2 border-shogun-gold/40 pb-3">
                    <Cpu className="w-6 h-6 text-shogun-gold" />
                    <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">Shogun Profile — Your AI's Identity</h4>
-                      <p className="text-xs text-shogun-subdued">Configure the identity, personality, behavior, and scheduled operations of your main Shogun agent. Has 3 tabs; security configuration is owned by ToolGate.</p>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">Shogun Profile — Agent Identity &amp; Behaviour</h4>
+                       <p className="text-xs text-shogun-subdued">Configure the orchestration persona, behaviour, and scheduled operations of your main Shogun agent. These settings do not alter the selected model&apos;s training or intrinsic behaviour. Has 3 tabs; security configuration is owned by ToolGate.</p>
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1233,7 +1236,7 @@ export function Guide() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Key className="w-4 h-4 text-shogun-blue" /> AI Model Provider Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Lists every cloud or local AI service you have connected (OpenAI, Anthropic, Google Gemini, Perplexity, Ollama, etc.). Each provider card shows its <strong>name</strong>, <strong>type</strong>, <strong>status</strong>, and available <strong>models</strong>. Add, edit, enable, disable, or delete provider connections here; credentials are stored through the backend rather than displayed after saving.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Lists every cloud or local AI service the deploying organisation has connected (OpenAI, Anthropic, Google Gemini, Perplexity, Ollama, etc.). Each provider card shows its <strong>name</strong>, <strong>type</strong>, <strong>status</strong>, and available <strong>models</strong>. The deploying organisation selects and assesses providers and models for its use cases; third-party providers remain responsible for their services under their terms and applicable law. Add, edit, enable, disable, or delete provider connections here; credentials are stored through the backend rather than displayed after saving.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-shogun-blue" /> File Formats Tab</div>
@@ -1274,7 +1277,7 @@ export function Guide() {
                          <li><strong>Send emails:</strong> Compose and send messages when Mail writes are enabled in ToolGate &gt; Comms.</li>
                          <li><strong>Calendar events:</strong> Create and manage calendar entries (when supported by the provider).</li>
                       </ul>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The tab shows <strong>connection status</strong>, account details, and <strong>Account Scopes</strong> for read, send, and calendar access. These scopes describe what the connected account exposes; ToolGate remains the runtime authority and can further restrict or require confirmation for every action. All mail activity is logged in the immutable audit chain.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The tab shows <strong>connection status</strong>, account details, and <strong>Account Scopes</strong> for read, send, and calendar access. These scopes describe what the connected account exposes; ToolGate remains the runtime authority and can further restrict or require confirmation for every action. Recorded mail activity is submitted to the HMAC-chained audit store.</p>
                    </div>
                    <div id="ref-telegram" className="shogun-card space-y-5 md:col-span-2 scroll-mt-6 border-sky-400/20">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Globe className="w-4 h-4 text-shogun-blue" /> Telegram Integration</div>
@@ -1551,10 +1554,15 @@ npm start`}</pre>
                     </div>
                  </div>
 
-                 <div className="shogun-card space-y-3">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><Compass className="w-4 h-4 text-blue-400" /> How It Works</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed">Instead of hardcoding which model handles each request, the Model Router evaluates the <strong>task type</strong>, <strong>complexity</strong>, and your <strong>active routing profile</strong> to select the optimal model automatically. Navigate to <strong>Katana → Model Routing</strong> to configure profiles and view the model registry.</p>
-                 </div>
+                  <div className="shogun-card space-y-3">
+                     <div className="font-bold text-shogun-text flex items-center gap-2"><Compass className="w-4 h-4 text-blue-400" /> How It Works</div>
+                     <p className="text-xs text-shogun-subdued leading-relaxed">Instead of hardcoding which configured model handles each request, the Model Router evaluates the <strong>task type</strong>, <strong>complexity</strong>, and your <strong>active routing profile</strong> to select a matching model automatically. Navigate to <strong>Katana → Model Routing</strong> to configure profiles and view the model registry. Registry metadata and routing scores are orchestration aids, not Alpha Horizon certification that a model is suitable or legally compliant for a particular use case.</p>
+                  </div>
+
+                  <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 p-4 space-y-2">
+                     <div className="font-bold text-cyan-300 flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> Model responsibility boundary</div>
+                     <p className="text-xs text-shogun-subdued leading-relaxed">Shogun does not bundle, train, or supply a proprietary LLM or foundation model. It orchestrates local or cloud-hosted models selected and configured by the deploying organisation. Alpha Horizon remains responsible for official Shogun orchestration code, defaults, connectors, and documentation to the extent required by applicable law; the deploying organisation remains responsible for its provider selection, configuration, data, use case, oversight, and output validation; and each third-party provider remains responsible for its own model or service under its terms and applicable law.</p>
+                  </div>
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
@@ -2156,7 +2164,7 @@ npm start`}</pre>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="shogun-card space-y-2 border-l-2 border-fuchsia-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-fuchsia-400" /> Version Management</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Every skill change creates an immutable version: version number, content hash, validation score, and status (<code className="text-fuchsia-400">candidate</code> → <code className="text-fuchsia-400">active</code> → <code className="text-fuchsia-400">retired</code>). Browse all versions for any skill from the SkillOpt tab in <strong>Katana</strong>. Compare candidate vs baseline content with the interactive diff viewer.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every skill change creates a versioned snapshot with a version number, content hash, validation score, and status (<code className="text-fuchsia-400">candidate</code> → <code className="text-fuchsia-400">active</code> → <code className="text-fuchsia-400">retired</code>). Browse retained versions for any skill from the SkillOpt tab in <strong>Katana</strong>. Compare candidate versus baseline content with the interactive diff viewer.</p>
                     </div>
                     <div className="shogun-card space-y-2 border-l-2 border-fuchsia-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-fuchsia-400" /> Katana Dashboard</div>
@@ -2427,14 +2435,14 @@ npm start`}</pre>
                 <div className="flex items-center gap-3 border-b-2 border-shogun-subdued/40 pb-3">
                    <Terminal className="w-6 h-6 text-shogun-subdued" />
                    <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">Logs — The Compliance Dashboard</h4>
-                      <p className="text-xs text-shogun-subdued">NIS2, SOC2, and EU AI Act-compliant event logging with full trace reconstruction and tamper-proof audit chain.</p>
+                       <h4 className="text-xl font-bold uppercase tracking-widest">Logs — Audit &amp; Trace</h4>
+                       <p className="text-xs text-shogun-subdued">Compliance-oriented event records, trace reconstruction, and HMAC-chain integrity checks that support—but do not establish—regulatory conformity.</p>
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="shogun-card space-y-2 md:col-span-2 border-l-2 border-shogun-blue/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-shogun-blue" /> Dual-Layer Architecture</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Every event is written to <strong>two independent stores</strong>: (1) an <strong>operational SQLite log</strong> (fast, searchable, 90-day retention) for day-to-day monitoring, and (2) a <strong>tamper-resistant HMAC-chained audit database</strong> (append-only, 7-year retention) for regulatory evidence. If anyone modifies or deletes an entry in the audit chain, the cryptographic hash chain breaks — and the dashboard flags it immediately.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Recorded events are written to <strong>two stores</strong>: (1) an <strong>operational SQLite log</strong> (fast, searchable, 90-day retention) for day-to-day monitoring, and (2) an application-level append-only <strong>HMAC-chained audit database</strong> (7-year retention) intended to support evidence collection. Chain verification can identify mismatches in the protected fields of retained records. It does not prevent deletion, prove record completeness, or by itself establish compliance.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-subdued" /> Event Stream</div>
@@ -2462,7 +2470,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileKey className="w-4 h-4 text-shogun-gold" /> Event Detail Panel</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Click any event to expand a detail panel showing the full NIS2/SOC2 + EU AI Act record:</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Click any event to expand the structured record available for investigation and compliance assessment:</p>
                       <ul className="text-xs text-shogun-subdued space-y-1 ml-4 list-disc">
                          <li><strong>WHO/WHAT/WHEN:</strong> User ID, agent, event type, timestamp.</li>
                          <li><strong>MODEL/PROVIDER:</strong> Which AI model and cloud provider handled the request.</li>
@@ -2476,15 +2484,15 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-green-500" /> Audit Chain Integrity</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The top-right corner shows a real-time <strong>Chain Intact</strong> indicator (green) or <strong>Chain Broken</strong> alert (red, pulsing). This verifies the HMAC-SHA256 hash chain across all immutable audit records. If the chain is intact, no records have been tampered with. The status bar at the bottom also shows "AUDIT: INTACT" or "BROKEN."</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">The top-right corner shows a real-time <strong>Chain Intact</strong> indicator (green) or <strong>Chain Broken</strong> alert (red, pulsing). This verifies HMAC-SHA256 links across the retained audit records&apos; protected fields. “Intact” means no mismatch was detected in that retained chain; it does not prove completeness, prevent deletion, or validate fields outside the chain calculation. The status bar at the bottom also shows “AUDIT: INTACT” or “BROKEN.”</p>
                    </div>
                    <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-shogun-gold" /> Compliance Export</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Click the download icon to export the <strong>immutable audit log</strong> as a JSON file. This export pulls from the tamper-proof chain (not the operational log), making it suitable for regulatory auditors, compliance reviews, and incident investigations. The export includes all event metadata, governance flags, and chain hashes.</p>
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-shogun-gold" /> Audit Export</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Click the download icon to export HMAC-chained audit records as JSON. The export comes from the separate audit-chain database rather than the operational log and can support incident investigations, compliance reviews, and regulatory evidence packages. The receiving organisation must assess completeness, authenticity, relevance, and retention requirements.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Trash2 className="w-4 h-4 text-red-400" /> Clear Operational Logs</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Click the trash icon to clear the <strong>operational log only</strong>. The immutable audit chain is <strong>never affected</strong> by this action — it is append-only and cannot be cleared. A confirmation dialog warns you before deletion. The clearing event itself is recorded in the immutable audit chain as evidence.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Click the trash icon to clear the <strong>operational log only</strong>. This command does not delete the separate audit-chain database. A confirmation dialog warns you before deletion, and the clearing event is submitted to the audit chain. Apply independent access controls, backups, retention, and integrity monitoring to protect that database from administrative or filesystem-level deletion or alteration.</p>
                    </div>
                 </div>
              </section>
@@ -2597,7 +2605,7 @@ npm start`}</pre>
                 </div>
                 <div className="shogun-card space-y-2">
                    <div className="font-bold text-shogun-text flex items-center gap-2"><FileKey className="w-4 h-4 text-indigo-400" /> Audit Trail</div>
-                   <p className="text-xs text-shogun-subdued leading-relaxed">Every gateway operation produces dual-logged audit events: <strong>Layer 1 (Operational)</strong> in the main SQLite database with 90-day retention, and <strong>Layer 2 (Immutable)</strong> in the HMAC-chained append-only database for NIS2/SOC2/EU AI Act compliance with 7-year retention.</p>
+                    <p className="text-xs text-shogun-subdued leading-relaxed">Every recorded gateway operation produces dual-logged audit events: <strong>Layer 1 (Operational)</strong> in the main SQLite database with 90-day retention, and <strong>Layer 2 (HMAC-chained)</strong> in the application-level append-only audit database with 7-year retention. These records support incident investigation and compliance assessment; they do not themselves establish conformity.</p>
                 </div>
 
                 {/* Outbound Dispatch */}
@@ -2702,6 +2710,236 @@ npm start`}</pre>
                 </div>
              </section>
 
+             {/* ROLES & RESPONSIBILITIES */}
+             <section id="ref-roles-responsibilities" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-cyan-400/40 pb-3">
+                   <Users className="w-6 h-6 text-cyan-400" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Roles &amp; Responsibilities</h4>
+                      <p className="text-xs text-shogun-subdued">Responsibility follows each party&apos;s actual role in developing, providing, configuring, modifying, and operating the system.</p>
+                   </div>
+                </div>
+
+                <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 p-4 space-y-2">
+                   <div className="font-bold text-cyan-300 flex items-center gap-2"><Cpu className="w-4 h-4" /> Shogun is an orchestration framework—not an AI model</div>
+                   <p className="text-xs text-shogun-subdued leading-relaxed">
+                       Shogun does not bundle, train, or supply a proprietary LLM or foundation model. It is model-agnostic software that connects agents and workflows to AI models selected by the deploying organisation. Models may be cloud-hosted by third parties or hosted locally by the organisation. Alpha Horizon does not own or operate those selected models as part of the locally deployed Shogun product.
+                   </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-3 border-l-2 border-shogun-gold/50">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-shogun-gold" /> Alpha Horizon responsibilities</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">An official release is a version and build published by Alpha Horizon through its official release channel and identified in <code>version.json</code>. For those releases, Alpha Horizon is responsible for:</p>
+                      <ul className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-disc leading-relaxed">
+                         <li>Maintaining the official source repository and release history.</li>
+                         <li>Providing public and confidential mechanisms for reporting suspected security vulnerabilities.</li>
+                         <li>Reviewing security reports that affect official, unmodified Shogun release code.</li>
+                         <li>Publishing security advisories, mitigations, or fixes when Alpha Horizon determines this is appropriate or legally required.</li>
+                          <li>Maintaining reasonable security controls around the official development and release process.</li>
+                          <li>Maintaining the incident-handling and regulatory-escalation process described in Incident Reporting.</li>
+                          <li>Official Shogun orchestration code, defaults, connectors, and documentation to the extent required by applicable law.</li>
+                      </ul>
+                   </div>
+
+                   <div className="shogun-card space-y-3 border-l-2 border-shogun-blue/50">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><HardDrive className="w-4 h-4 text-shogun-blue" /> Deploying organisation responsibilities</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The organisation deploying Shogun remains responsible for assessing and controlling its particular implementation and use, including:</p>
+                      <ul className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-disc leading-relaxed">
+                         <li>Model and provider selection, including cloud-versus-local hosting and suitability for each use case.</li>
+                         <li>API credentials, authentication, users, agent permissions, tools, and connected systems.</li>
+                         <li>Data processed through Shogun and applicable GDPR or other data-protection duties.</li>
+                         <li>Use-case assessment under applicable AI regulation, human oversight, and validation of AI-generated outputs, actions, and decisions.</li>
+                         <li>Production infrastructure, network configuration, integrations, backups, disaster recovery, and environment monitoring.</li>
+                         <li>The security, functionality, regulatory impact, and operational consequences of its configuration and any source-code modifications.</li>
+                      </ul>
+                       <p className="text-[10px] text-shogun-subdued leading-relaxed">A deploying organisation must complete its own security, legal, regulatory, and operational assessment before using Shogun for production workloads and confirm that its intended use is permitted by the Shogun AFM Free Use License or a separate written agreement. These operational responsibilities do not transfer Alpha Horizon&apos;s non-excludable duties for official releases or Alpha Horizon-controlled processing.</p>
+                   </div>
+
+                   <div className="shogun-card space-y-3 border-l-2 border-violet-400/50">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Network className="w-4 h-4 text-violet-400" /> Third-party model and service providers</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">
+                          Third-party providers remain responsible for their respective models and services under their terms and applicable law. Alpha Horizon does not own or control their training data, provider infrastructure, intrinsic model behaviour, availability, or service-level performance. The deploying organisation remains responsible for provider due diligence and for deciding whether a selected model or service is appropriate for its intended use. This does not exclude responsibility for Shogun&apos;s own orchestration, integration code, defaults, or instructions.
+                      </p>
+                   </div>
+
+                   <div className="shogun-card space-y-3 border-l-2 border-emerald-400/50">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Shield className="w-4 h-4 text-emerald-400" /> Regulatory roles follow the facts</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">
+                          Shogun&apos;s model-agnostic architecture does not by itself determine the parties&apos; roles under the EU AI Act. Depending on the facts, Alpha Horizon may have obligations as a provider or downstream provider of an AI system; the deploying organisation may be a deployer and, in circumstances such as those described in Article 25 for high-risk AI systems, may acquire provider obligations; and a model supplier may have obligations as a model provider. Each party must assess and fulfil the duties attached to its actual role.
+                      </p>
+                      <a href="https://eur-lex.europa.eu/eli/reg/2024/1689/oj" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-emerald-300 hover:underline"><ExternalLink className="w-3 h-3" /> EU AI Act role definitions</a>
+                   </div>
+                </div>
+
+                <div className="rounded-xl border border-shogun-border bg-shogun-bg p-4 space-y-2">
+                   <div className="font-bold text-shogun-text">Product and service boundary</div>
+                   <p className="text-xs text-shogun-subdued leading-relaxed">
+                       Shogun AFM is free to use for permitted purposes, source-available, locally deployable, and model-agnostic. It is provided “as is” under the Shogun AFM Free Use License. The official free-use distribution documented here is not a hosted SaaS service and includes no helpdesk, service-level agreement, managed integration, or other general support commitment unless Alpha Horizon agrees to one separately and in writing. This allocation does not override the licence or a separate written agreement. Nothing in this documentation excludes statutory rights or responsibilities that cannot legally be limited.
+                   </p>
+                </div>
+             </section>
+
+             {/* MODIFIED SHOGUN INSTALLATIONS */}
+             <section id="ref-modified-installations" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-amber-400/40 pb-3">
+                   <GitBranch className="w-6 h-6 text-amber-400" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Modified Shogun Installations</h4>
+                      <p className="text-xs text-shogun-subdued">Internal modification is permitted only within the boundaries of the Shogun AFM Free Use License.</p>
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-3 border-l-2 border-amber-400/50">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-amber-400" /> Licence boundary</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">
+                         Shogun is source-available—not open source—and may be modified internally for permitted purposes under its licence. The existing restrictions on sale, resale, rebranding, hosted or managed-service use, and public redistribution remain unchanged. Modified versions may not be published or represented as official Shogun AFM releases without Alpha Horizon&apos;s written permission.
+                      </p>
+                      <a href="https://github.com/AlphaHorizon-AI/Shogun/blob/main/LICENSE.md" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-amber-300 hover:underline"><ExternalLink className="w-3 h-3" /> Shogun AFM Free Use License</a>
+                   </div>
+
+                   <div className="shogun-card space-y-3 border-l-2 border-red-400/50">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><AlertCircle className="w-4 h-4 text-red-400" /> Responsibility for modifications</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">
+                          A user-modified installation is not an official Shogun release unless Alpha Horizon expressly accepts the changes and publishes them through its official release process. Unless separately agreed in writing, Alpha Horizon does not test, validate, certify, or warrant third-party modifications and, to the extent permitted by law, does not assume responsibility for defects, vulnerabilities, behaviour, or consequences introduced by those modifications.
+                      </p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">
+                          The modifying organisation is responsible for assessing the modification&apos;s security, functionality, data-protection impact, AI-regulatory role, integration behaviour, update path, and operational consequences. It must track its changes and revalidate them when adopting an official update.
+                       </p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">
+                          A party that substantially modifies Shogun and makes that modified product available on the market may acquire manufacturer obligations under the CRA. For a high-risk AI system, rebranding, substantial modification, or a qualifying change of intended purpose can also alter provider responsibilities under the EU AI Act.
+                       </p>
+                   </div>
+                </div>
+
+                <div className="rounded-xl border border-shogun-border bg-shogun-bg p-4">
+                   <p className="text-[10px] text-shogun-subdued leading-relaxed">
+                       Reports from modified installations remain welcome so Alpha Horizon can determine whether an official release is also affected. This allocation does not limit responsibility that Alpha Horizon cannot legally exclude for a defect attributable to an official Alpha Horizon release, and it does not override any statutory rights. Attribution must be assessed from the actual defect, modification, configuration, and supply chain—not merely from the presence of a modified installation.
+                   </p>
+                </div>
+             </section>
+
+             {/* INCIDENT REPORTING — SECURITY & VULNERABILITY DISCLOSURE */}
+             <section id="ref-incident-reporting" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-red-400/40 pb-3">
+                   <ShieldAlert className="w-6 h-6 text-red-400" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Incident Reporting</h4>
+                      <p className="text-xs text-shogun-subdued">Report suspected vulnerabilities, security defects, privacy incidents, and unexpected security behavior promptly.</p>
+                   </div>
+                </div>
+
+                <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-4 space-y-2">
+                   <div className="font-bold text-red-300 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> If there may be an active compromise</div>
+                   <p className="text-xs text-shogun-subdued leading-relaxed">
+                      Stop the affected workflow, activate <strong>Harakiri</strong> when appropriate, and isolate the affected Shogun instance from untrusted networks.
+                      Preserve audit records and timestamps; do not erase evidence. From a trusted device, revoke or rotate credentials that may have been exposed.
+                      These containment steps do not replace reporting the incident.
+                   </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-3 border-l-2 border-shogun-blue/50">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><MessageSquare className="w-4 h-4 text-shogun-blue" /> Public, non-sensitive reports</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">
+                         We encourage every user and security researcher to report suspected security issues. Use the public issue tracker only when the report is safe to disclose publicly and contains no secrets, personal data, customer data, or exploit-enabling details.
+                      </p>
+                      <a
+                        href="https://github.com/AlphaHorizon-AI/Shogun/issues/new"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 rounded-lg bg-shogun-blue px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-shogun-blue/80"
+                      >
+                         <ExternalLink className="w-4 h-4" /> Open a GitHub incident report
+                      </a>
+                   </div>
+
+                   <div className="shogun-card space-y-3 border-l-2 border-red-400/50">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-red-400" /> Confidential vulnerability reports</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">
+                         Do <strong>not</strong> publish exploit code, unpatched reproduction details, credentials or tokens, personal data, prompt content, production telemetry identifiers, installation identifiers, or unredacted logs in a public issue.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                         <a
+                           href="https://github.com/AlphaHorizon-AI/Shogun/security/advisories/new"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           className="inline-flex items-center gap-2 rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 transition-colors hover:bg-red-500/20"
+                         >
+                            <FileKey className="w-4 h-4" /> Report privately
+                         </a>
+                         <a
+                           href="mailto:contact@alphahorizon.io?subject=Shogun%20Security%20Report"
+                           className="inline-flex items-center gap-2 rounded-lg border border-shogun-border bg-shogun-bg px-3 py-2 text-xs font-bold text-shogun-text transition-colors hover:border-red-400/40"
+                         >
+                            <Mail className="w-4 h-4" /> contact@alphahorizon.io
+                         </a>
+                      </div>
+                      <p className="text-[10px] text-shogun-subdued leading-relaxed">
+                         Prefer the private advisory for sensitive material. Email is a human-routed initial-contact channel and may not be end-to-end encrypted; do not email secrets or exploit details until a secure exchange method is agreed. The coordinated vulnerability disclosure process is documented in the{' '}
+                         <a href="https://github.com/AlphaHorizon-AI/Shogun/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer" className="text-red-300 hover:underline">Security Policy</a>.
+                      </p>
+                   </div>
+
+                   <div className="shogun-card space-y-3 border-l-2 border-amber-400/50">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-amber-400" /> What to include</div>
+                      <ul className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-disc leading-relaxed">
+                         <li>Shogun version and build, operating system, and desktop or server deployment type.</li>
+                         <li>Affected component, what you expected, what happened, and the security or privacy impact.</li>
+                         <li>UTC timestamps, relevant trace or run IDs, and safe reproduction steps.</li>
+                         <li>Sanitized logs and mitigations already attempted. Remove credentials, personal data, customer data, prompts, and proprietary content.</li>
+                         <li>A secure way to contact you for follow-up and whether you believe exploitation is active.</li>
+                      </ul>
+                   </div>
+
+                   <div className="shogun-card space-y-3 border-l-2 border-violet-400/50">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-violet-400" /> Coordinated handling</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">
+                         Alpha Horizon triages reports under its coordinated vulnerability disclosure policy, validates affected versions, develops corrective or mitigating measures, and publishes security guidance when appropriate. Please coordinate public disclosure until affected users have had a reasonable opportunity to apply an available fix.
+                      </p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">
+                         Preserve relevant audit exports and follow the report or advisory for remediation guidance. Install verified security updates promptly, then confirm that the reported behavior is resolved.
+                      </p>
+                   </div>
+
+                   <div className="shogun-card space-y-3 border-l-2 border-emerald-400/50">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><RefreshCw className="w-4 h-4 text-emerald-400" /> Product identity, security period, and updates</div>
+                      <ul className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-disc leading-relaxed">
+                         <li><strong>Product:</strong> Shogun AFM, release family 1.x. The unique version and build are shown on the Updates page and in <code>version.json</code>.</li>
+                         <li><strong>Manufacturer and digital contact:</strong> Alpha Horizon — <a href="https://www.alphahorizon.io/" target="_blank" rel="noopener noreferrer" className="text-emerald-300 hover:underline">alphahorizon.io</a> — <a href="mailto:contact@alphahorizon.io" className="text-emerald-300 hover:underline">contact@alphahorizon.io</a>.</li>
+                          <li><strong>Security vulnerability-handling period:</strong> The published end date for the currently identified official, unmodified Shogun AFM 1.x product line is 31 August 2031. This date does not shorten any longer period required by law or the documented expected-use assessment. A later official release requiring a separate product or security-period assessment will receive its own published end date.</li>
+                          <li><strong>Scope:</strong> The period covers vulnerability intake, assessment, corrective or mitigating security measures, and security updates for defects attributable to official Shogun releases. It is not general technical support, a helpdesk, feature development, compatibility or integration maintenance, LLM or provider compatibility work, an SLA, or support for defects introduced exclusively by third-party modifications. Broader support exists only under a separate written agreement.</li>
+                          <li><strong>Security updates:</strong> Corrective or mitigating measures are published through <a href="https://github.com/AlphaHorizon-AI/Shogun/releases" target="_blank" rel="noopener noreferrer" className="text-emerald-300 hover:underline">official releases</a>, <a href="https://github.com/AlphaHorizon-AI/Shogun/security/advisories" target="_blank" rel="noopener noreferrer" className="text-emerald-300 hover:underline">security advisories</a>, and the Shogun Updates channel when Alpha Horizon determines them appropriate or legally required. Security updates covered by an applicable legal obligation are provided without charge. Shogun checks for updates automatically but installation requires an operator action. Where permitted by applicable law, remediation may require the latest stable official 1.x build; any latest-version correction path remains subject to the conditions imposed by applicable law.</li>
+                         <li><strong>Secure decommissioning:</strong> Export records that must be retained, disconnect integrations, revoke credentials and tokens, remove local profiles and workspace data, and securely erase Shogun databases and backups before transferring or disposing of a device.</li>
+                      </ul>
+                   </div>
+
+                   <div className="shogun-card space-y-3 border-l-2 border-orange-400/50">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Clock className="w-4 h-4 text-orange-400" /> CRA regulatory escalation</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">
+                          Opening a GitHub report notifies Alpha Horizon; it does not itself complete any statutory notification. From <strong>11 September 2026</strong>, when Alpha Horizon has applicable manufacturer or other economic-operator duties under the EU Cyber Resilience Act, an actively exploited vulnerability or severe security incident is escalated through the ENISA Single Reporting Platform.
+                      </p>
+                      <ul className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-disc leading-relaxed">
+                         <li>Early warning: without undue delay and no later than 24 hours after awareness.</li>
+                         <li>Substantive notification and initial assessment: no later than 72 hours after awareness.</li>
+                         <li>Final vulnerability report: no later than 14 days after a corrective or mitigating measure is available.</li>
+                         <li>Final severe-incident report: within one month after the 72-hour notification.</li>
+                      </ul>
+                      <div className="flex flex-wrap gap-3 text-[10px]">
+                         <a href="https://www.enisa.europa.eu/topics/product-security/single-reporting-platform-srp" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-orange-300 hover:underline"><ExternalLink className="w-3 h-3" /> ENISA reporting platform</a>
+                         <a href="https://digital-strategy.ec.europa.eu/en/policies/cra-reporting" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-orange-300 hover:underline"><ExternalLink className="w-3 h-3" /> European Commission guidance</a>
+                      </div>
+                   </div>
+                </div>
+
+                <div className="rounded-xl border border-shogun-border bg-shogun-bg p-4">
+                   <p className="text-[10px] text-shogun-subdued leading-relaxed">
+                      This section supports secure use and CRA readiness; it is not legal advice and does not by itself establish conformity. Product classification, technical documentation, cybersecurity risk assessment, conformity assessment, EU declaration of conformity, manufacturer postal details, and any national-law obligations must be completed and validated for the way Shogun is placed on the EU market.
+                   </p>
+                </div>
+             </section>
+
 
 
             </div>
@@ -2738,7 +2976,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Globe className="w-4 h-4 text-shogun-blue" /> External Integrations</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The system connects outward to cloud AI providers (OpenAI, Anthropic, Gemini, Perplexity, OpenRouter) and local model servers (Ollama). It integrates with Telegram for mobile messaging, supports the A2A (Agent-to-Agent) protocol for cross-network collaboration via Nexus, automates web browsing via Mado (Playwright), connects to email servers (IMAP/SMTP), and syncs with calendar servers (CalDAV).</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">The system connects outward to cloud AI providers (OpenAI, Anthropic, Gemini, Perplexity, OpenRouter) and local model servers (Ollama) selected and configured by the deploying organisation. Shogun orchestrates those connections; it does not supply the selected model. It also integrates with Telegram for mobile messaging, supports the A2A (Agent-to-Agent) protocol for cross-network collaboration via Nexus, automates web browsing via Mado (Playwright), connects to email servers (IMAP/SMTP), and syncs with calendar servers (CalDAV).</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Cpu className="w-4 h-4 text-shogun-blue" /> Desktop and Server Deployment</div>
@@ -2833,7 +3071,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Zap className="w-4 h-4 text-shogun-blue" /> Shogun → AI Providers (LLM Calls)</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The routing engine selects a model based on the active routing profile (or uses the default primary model). The request is sent to the chosen provider's API (OpenAI, Anthropic, etc.) with the assembled prompt (user message + system prompt + memory context + constitution). Streaming responses are relayed back to the frontend.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">The routing engine selects a configured model based on the active routing profile (or uses the default primary model). The request is sent to the deploying organisation&apos;s selected third-party provider API or local model service with the assembled prompt (user message + system prompt + memory context + constitution). Shogun relays streaming responses but does not control the selected model&apos;s training data, intrinsic behaviour, availability, or output quality.</p>
                    </div>
                 </div>
              </section>
@@ -2882,7 +3120,7 @@ npm start`}</pre>
                      { step: 2, title: 'Routing Decision', desc: 'The routing engine checks the active routing profile for matching task rules. If a rule matches (e.g., "research" → Perplexity), that model is used. Otherwise, the primary model is selected.', color: 'text-shogun-blue', icon: GitBranch },
                      { step: 3, title: 'Context Assembly', desc: 'The system assembles the full prompt: system instructions + Mandate (from Kaizen) + relevant memories (from Archives, via semantic search) + current conversation history + constitutional rules.', color: 'text-shogun-gold', icon: Layers },
                      { step: 4, title: 'Security Validation', desc: 'The assembled request is checked against the active ToolGate policy and constitutional rules. Capability boundaries, tool verdicts, parameters, and advanced content rules can require confirmation or block execution.', color: 'text-red-400', icon: ShieldCheck },
-                     { step: 5, title: 'LLM Invocation', desc: 'The validated prompt is sent to the selected AI model\'s API. The response streams back token-by-token via SSE.', color: 'text-shogun-blue', icon: Cpu },
+                      { step: 5, title: 'Model Invocation', desc: 'The validated prompt is sent to the organisation-selected third-party provider API or local model service. Shogun relays the response via SSE; the selected provider or local operator supplies the model.', color: 'text-shogun-blue', icon: Cpu },
                      { step: 6, title: 'Memory Inscription', desc: 'After the response completes, key information from the exchange may be automatically stored as new memories in the Archives, increasing the AI\'s knowledge for future queries.', color: 'text-shogun-gold', icon: Database },
                    ].map((item) => (
                      <div key={item.step} className="shogun-card flex gap-5 items-start">
@@ -3033,7 +3271,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><RefreshCw className="w-4 h-4 text-shogun-gold" /> Revision History</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Every time you publish the Constitution, a new revision is saved. You can review all past versions in the Kaizen sidebar. This creates an immutable audit trail — you can always see who changed what and when. Useful for compliance and debugging unexpected behavior.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every time you publish the Constitution, a new revision snapshot is saved. You can review retained versions in the Kaizen sidebar to support change review, compliance assessment, and debugging of unexpected behaviour. Protect the underlying database and backups under your organisation&apos;s access-control and retention policy.</p>
                    </div>
                 <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Zap className="w-4 h-4 text-shogun-gold" /> The Mandate</div>
@@ -3097,7 +3335,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2 md:col-span-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-shogun-blue" /> Audit Trail</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Every ToolGate decision is logged with its provenance: tool name, parameters, computed risk, active policy scope and base tier, decision, source, reason, and any matching advanced content rule. Blocked and confirmed events appear in the <strong>Risk</strong> and <strong>Policy</strong> views of Logs. These entries are dual-written to both Layer 1 (operational, 90-day retention) and Layer 2 (immutable HMAC chain, 7-year retention).</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every recorded ToolGate decision includes provenance such as tool name, parameters, computed risk, active policy scope and base tier, decision, source, reason, and any matching advanced content rule. Blocked and confirmed events appear in the <strong>Risk</strong> and <strong>Policy</strong> views of Logs. These entries are dual-written to Layer 1 (operational, 90-day retention) and Layer 2 (application-level HMAC-chained records, 7-year retention).</p>
                    </div>
                 </div>
              </section>
@@ -3155,8 +3393,8 @@ npm start`}</pre>
                       <p className="text-xs text-shogun-subdued leading-relaxed">API keys for AI providers should be rotated periodically. If you suspect a key has been exposed, revoke it immediately from the provider's dashboard and update it in Katana → Cloud Providers.</p>
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-shogun-blue/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Terminal className="w-4 h-4 text-shogun-blue" /> Use the Compliance Dashboard</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The Logs page is your compliance nerve center. Make it a habit to check the <strong>Decision</strong> tab to review AI reasoning provenance, the <strong>Risk</strong> tab for security tier warnings and denied tools, the <strong>Oversight</strong> tab for human review actions, the <strong>Incident</strong> tab for critical alerts (model API failures, kill switch activations, chain integrity violations), and the <strong>System</strong> tab for server lifecycle and governance config changes. Verify the audit chain stays intact. Export the immutable audit log regularly for off-site archival — this is your evidence for NIS2, SOC2, and EU AI Act compliance.</p>
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><Terminal className="w-4 h-4 text-shogun-blue" /> Review Audit &amp; Trace Records</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Use the Logs page to review recorded decision influences, security warnings, denied tools, human-oversight events, incidents, and governance changes. Investigate chain-integrity warnings and export records regularly for protected off-site retention. These records can support an organisation&apos;s NIS2, SOC 2, or EU AI Act assessment, but do not prove record completeness or establish compliance on their own.</p>
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-shogun-blue/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-shogun-blue" /> Test Posture Changes in SHRINE</div>
@@ -3292,7 +3530,7 @@ npm start`}</pre>
                 {t('guide.disclaimer_title', 'Legal Disclaimer')}
               </h4>
               <p className="text-xs text-shogun-subdued leading-relaxed">
-                {t('guide.disclaimer_body', 'Shogun is provided for general informational, experimental, and operational use only. It is provided “as is” and “as available,” without warranties of any kind, express or implied, including but not limited to accuracy, fitness for a particular purpose, merchantability, availability, or non-infringement. Users are solely responsible for evaluating, validating, monitoring, and approving any outputs, actions, configurations, or decisions made with or through Shogun. Alpha Horizon disclaims liability for any direct, indirect, incidental, consequential, or special damages arising from the use of, or inability to use, Shogun, except where such limitation is not permitted by applicable law.')}
+                {t('guide.disclaimer_body', 'Shogun is a source-available AI-agent orchestration framework that is free to use for permitted purposes under the Shogun AFM Free Use License and provided “as is.” The deploying organisation is responsible for the configuration, selected models and providers, data, permissions, infrastructure, use cases, oversight, and output validation it controls. Alpha Horizon remains responsible for duties that applicable law assigns to official Alpha Horizon releases, and third-party providers remain responsible for their respective models and services under their terms and applicable law. No disclaimer limits rights or responsibilities that cannot legally be excluded.')}
               </p>
               <div className="p-3 bg-shogun-bg border border-shogun-border rounded-lg border-l-4 border-l-orange-400">
                 <p className="text-xs font-bold text-shogun-text">

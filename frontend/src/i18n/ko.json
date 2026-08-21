@@ -329,7 +329,7 @@
     "tab_safety": "안전 프로토콜",
     "tab_backup": "데이터 관리",
     "disclaimer_title": "면책 조항",
-    "disclaimer_body": "Shogun은 무료 AI 에이전트 오케스트레이션 프레임워크입니다. 사용자가 자율 AI 워크플로를 구축, 관리 및 운영하도록 돕기 위해 설계되었지만, 정확성, 완전성, 신뢰성 또는 특정 목적에 대한 적합성을 보장하지 않습니다. Shogun은 있는 그대로 제공되며, 프레임워크 사용은 전적으로 사용자의 책임입니다.",
+    "disclaimer_body": "Shogun is a source-available AI-agent orchestration framework that is free to use for permitted purposes under the Shogun AFM Free Use License and provided as is. The deploying organisation is responsible for the configuration, selected models and providers, data, permissions, infrastructure, use cases, oversight, and output validation it controls. Alpha Horizon remains responsible for duties that applicable law assigns to official Alpha Horizon releases, and third-party providers remain responsible for their respective models and services under their terms and applicable law. No disclaimer limits rights or responsibilities that cannot legally be excluded.",
     "disclaimer_oversight": "사용자는 적절한 인간 감독을 보장하고 Shogun으로 생성된 모든 출력, 작업 및 결정을 검증할 책임이 있습니다. 특히 법률, 금융, 규제, 보안 또는 기타 영향이 큰 사용 사례에서 인간 검토가 항상 유지되어야 합니다."
   },
   "katana": {

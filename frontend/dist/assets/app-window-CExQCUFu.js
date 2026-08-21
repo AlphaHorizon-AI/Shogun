@@ -1,0 +1,1 @@
+import{A as e}from"./index-C8l3nLvI.js";var t=e(`app-window`,[[`rect`,{x:`2`,y:`4`,width:`20`,height:`16`,rx:`2`,key:`izxlao`}],[`path`,{d:`M10 4v4`,key:`pp8u80`}],[`path`,{d:`M2 8h20`,key:`d11cs7`}],[`path`,{d:`M6 4v4`,key:`1svtjw`}]]);export{t};

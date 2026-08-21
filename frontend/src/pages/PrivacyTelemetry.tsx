@@ -226,7 +226,8 @@ export function PrivacyTelemetry() {
                 <p className="mt-2 text-sm text-shogun-subdued">
                   Optionally share installation, version, platform family, installation type,
                   operating mode, and a weekly active-installation signal with Alpha Horizon.
-                  Declining does not change any Shogun feature, update, or support access.
+                  Declining does not change any Shogun feature, vulnerability-reporting route,
+                  security-update availability, or separately agreed support.
                 </p>
                 <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-shogun-border p-3">
                   <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-1" />

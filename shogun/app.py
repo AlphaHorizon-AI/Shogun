@@ -782,7 +782,7 @@ def create_app() -> FastAPI:
             "service": "shogun",
             "status": "ok",
             "version": version_info.get("version", "unknown"),
-            "name": version_info.get("name", "Shogun OS"),
+            "name": version_info.get("name", "Shogun AFM"),
             "build": version_info.get("build"),
             "deployment_mode": settings.deployment_mode,
             "instance_name": settings.instance_name if hasattr(settings, "instance_name") else None,

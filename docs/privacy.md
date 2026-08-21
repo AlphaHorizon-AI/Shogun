@@ -7,7 +7,8 @@ documented adoption schema in [telemetry.md](telemetry.md).
 Consent is the version-one legal basis proposed by the product architecture.
 Consent must be freely given, specific, informed, affirmative, versioned, and as
 easy to withdraw as to provide. Declining or withdrawing does not affect Shogun
-features, security, updates, model access, or support eligibility.
+features, vulnerability reporting, security-update availability, model access,
+or support provided under a separate written agreement.
 
 Before production launch Alpha Horizon must complete a focused Danish/EU privacy
 review, decide whether a DPIA is required, maintain processing and processor

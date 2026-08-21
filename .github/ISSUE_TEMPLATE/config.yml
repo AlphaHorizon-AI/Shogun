@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private vulnerability report
+    url: https://github.com/AlphaHorizon-AI/Shogun/security/advisories/new
+    about: Report exploitable or sensitive security issues privately. Do not disclose secrets or exploit details in a public issue.
+  - name: Security and coordinated disclosure policy
+    url: https://github.com/AlphaHorizon-AI/Shogun/blob/main/SECURITY.md
+    about: Review supported versions, reporting routes, evidence guidance, and the coordinated disclosure process.

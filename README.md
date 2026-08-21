@@ -17,6 +17,8 @@
 
 Shogun is the AI orchestrator. **The Tenshu** is the browser-based command center where you configure, supervise, and communicate with it. Everything runs locally by default; no Docker or Shogun cloud account is required.
 
+Shogun does not bundle, train, or supply a proprietary LLM or foundation model. It is model-agnostic orchestration software that connects to supported local or cloud-hosted models selected and configured by the deploying organisation. The organisation remains responsible for its model and provider selection, credentials, data, permissions, use cases, human oversight, infrastructure, and output validation. Third-party providers remain responsible for their respective models and services under their terms and applicable law; Alpha Horizon remains responsible for official Shogun code, defaults, connectors, and documentation to the extent required by applicable law.
+
 If you later need to manage several Shogun installations, add **Gensui**, the optional fleet-management platform. Install Shogun first, then Gensui.
 
 ## Start here
@@ -164,7 +166,7 @@ Updates can be installed from The Tenshu while preserving configuration, databas
 
 | Feature | Description |
 |---|---|
-| **Multi-model intelligence** | Connect OpenAI, Anthropic, Google, Perplexity, OpenRouter, and local Ollama models. |
+| **Multi-model orchestration** | Connect configured models from supported providers such as OpenAI, Anthropic, Google, Perplexity, OpenRouter, and local Ollama. |
 | **Model Router** | Route each task by complexity and type using five built-in profiles, model fallbacks, and usage telemetry. |
 | **Samurai agents** | Create specialized sub-agents for research, coding, analysis, and other domains. |
 | **Persistent memory** | Semantic memory with salience scoring, consolidation, search, and embedded Qdrant storage. |
@@ -212,7 +214,7 @@ Flow Stacking is available from **Flow Stack** in The Tenshu. A single Agent Flo
 | **HARAKIRI** | Fail-closed emergency stop for active Telegram, Teams, Agent Flow, Flow Stack, and approval work. |
 | **Quarantine** | Soft-delete files to `.shogun_trash/` for recoverability instead of immediately destroying them. |
 | **Prompt-injection containment** | Mark external content as untrusted before it enters model context. |
-| **Audit and compliance** | Maintain HMAC-chained audit records and NIS2, SOC 2, and EU AI Act-oriented exports. |
+| **Audit and compliance support** | Maintain HMAC-chained audit records and compliance-oriented exports that support evidence collection and review; these controls do not by themselves establish conformity. |
 | **Backup and updates** | Schedule backups, configure retention, and update without replacing user data. |
 
 ## Shogun architecture
@@ -370,6 +372,8 @@ python -m shogun
 - [OpenClaw College](https://www.openclawcollege.com)
 - [VS Code bridge documentation](bridge/vscode/README.md)
 - [Microsoft Teams bridge documentation](bridge/teams/README.md)
+- [Security policy and private vulnerability reporting](SECURITY.md)
+- [Roles, responsibilities, modified installations, and incident reporting](frontend/src/pages/Guide.tsx)
 
 ## Optional installation telemetry
 
@@ -379,6 +383,8 @@ operational content or personal identity, and can be previewed, withdrawn, or
 deleted from **Privacy & Telemetry** in The Tenshu. See the
 [exact schema, frequency, firewall, Docker, and deletion documentation](docs/telemetry.md).
 
-## License
+## License and distribution
 
-[Proprietary](LICENSE.md) — [AlphaHorizon AI](https://github.com/AlphaHorizon-AI)
+Shogun is [source-available, not open source, under the Shogun AFM Free Use License](LICENSE.md). It is free to use only for the permitted purposes stated in that licence, and its redistribution, rebranding, hosted-service, production, at-scale, customer-facing, and commercial-use restrictions remain in force unless Alpha Horizon agrees otherwise in writing. The official free-use distribution is locally deployable, provided “as is,” is not a hosted SaaS service, and carries no service-level agreement unless separately agreed in writing.
+
+[AlphaHorizon AI](https://github.com/AlphaHorizon-AI)

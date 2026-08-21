@@ -1,0 +1,83 @@
+name: Security concern (public and non-sensitive)
+description: Report unexpected security behaviour that is safe to discuss publicly.
+title: "[Security concern]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve Shogun's security.
+
+        **This issue will be public.** If the report contains exploit-enabling details, an unpatched vulnerability, credentials or tokens, personal or customer data, prompt content, production telemetry identifiers, installation identifiers, or unredacted logs, stop and use [Private Vulnerability Reporting](https://github.com/AlphaHorizon-AI/Shogun/security/advisories/new) instead.
+
+  - type: checkboxes
+    id: public_safety
+    attributes:
+      label: Public-report confirmation
+      options:
+        - label: I have removed secrets, personal/customer data, prompts, proprietary content, and exploit-enabling details.
+          required: true
+        - label: I understand that this report and its attachments will be publicly visible.
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Shogun version and build
+      description: Find this on the Updates page or in version.json.
+      placeholder: "For example: 1.47.82, build 233"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment type
+      options:
+        - Desktop — Windows
+        - Desktop — macOS
+        - Desktop — Linux
+        - Server — Docker
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: component
+    attributes:
+      label: Affected component
+      placeholder: "For example: ToolGate, Mado, AgentFlow, Updates, authentication"
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Security concern
+      description: Describe expected versus observed behaviour and why it matters. Keep the report safe for public disclosure.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Include UTC timestamps, safe reproduction steps, and sanitized trace/run IDs or logs. Do not include secrets or personal/customer data.
+    validations:
+      required: false
+
+  - type: textarea
+    id: mitigation
+    attributes:
+      label: Mitigations attempted
+      description: Describe any containment, configuration change, update, or recovery step already tried.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: active_exploitation
+    attributes:
+      label: Active exploitation
+      options:
+        - label: I do not have evidence of active malicious exploitation. If that changes, I will report privately and immediately.
+          required: true
