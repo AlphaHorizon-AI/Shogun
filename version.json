@@ -1,8 +1,8 @@
 {
-  "version": "1.47.84",
+  "version": "1.47.85",
   "name": "Shogun AFM",
-  "build": 235,
+  "build": 236,
   "channel": "stable",
-  "released": "2026-08-21T18:32:19Z",
-  "changelog": "Harden installer provenance, setup authentication, telemetry consent, runtime controls, incident governance, and release evidence."
+  "released": "2026-08-22T07:38:34Z",
+  "changelog": "Fix cross-platform security regression coverage and update Trivy actions for Node.js 24 runners."
 }

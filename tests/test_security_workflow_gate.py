@@ -73,7 +73,7 @@ PINNED_ACTIONS = {
     "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803": "v6.1.0",
     "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e": "v6.4.0",
     "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1": "v6.3.0",
-    "aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1": "v0.35.0",
+    "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25": "v0.36.0",
     "github/codeql-action/analyze@c54b30b7df092240050e69945842bc67aee0f0f4": "v4.37.3",
     "github/codeql-action/init@c54b30b7df092240050e69945842bc67aee0f0f4": "v4.37.3",
     "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093": "v4.3.0",

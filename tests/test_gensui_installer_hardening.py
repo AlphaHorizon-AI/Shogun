@@ -12,6 +12,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTHORIZED_SOURCE_SHA = "0774ce5998400963541a19b78e81e97dfea0ad4e"
+WINDOWS_ONLY = pytest.mark.skipif(
+    os.name != "nt",
+    reason="requires the native Windows command processor",
+)
 
 
 def _read(relative: str) -> str:
@@ -151,6 +155,7 @@ def test_inner_installers_fail_closed_and_protect_generated_secrets() -> None:
     assert "if ! npm run build --silent" in unix
 
 
+@WINDOWS_ONLY
 def test_windows_installer_rejects_unsupported_python(tmp_path: Path) -> None:
     installer_dir, stubs = _prepare_windows_installer(tmp_path)
     result = _run_windows_installer(
@@ -163,6 +168,7 @@ def test_windows_installer_rejects_unsupported_python(tmp_path: Path) -> None:
     assert "requires Python 3.10 or newer" in result.stdout
 
 
+@WINDOWS_ONLY
 def test_windows_installer_rejects_unsupported_node(tmp_path: Path) -> None:
     installer_dir, stubs = _prepare_windows_installer(tmp_path)
     result = _run_windows_installer(
@@ -183,6 +189,7 @@ def test_windows_installer_rejects_unsupported_node(tmp_path: Path) -> None:
         ("0", "9", "Failed to build the Gensui Admin UI"),
     ],
 )
+@WINDOWS_ONLY
 def test_windows_installer_propagates_npm_failures(
     tmp_path: Path,
     install_exit: str,
