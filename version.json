@@ -1,8 +1,8 @@
 {
-  "version": "1.47.85",
+  "version": "1.47.86",
   "name": "Shogun AFM",
-  "build": 236,
+  "build": 237,
   "channel": "stable",
-  "released": "2026-08-22T07:38:34Z",
-  "changelog": "Fix cross-platform security regression coverage and update Trivy actions for Node.js 24 runners."
+  "released": "2026-08-22T08:49:58Z",
+  "changelog": "Publish the Shogun AFM Free Use License 1.1 and display its complete text on the About page."
 }

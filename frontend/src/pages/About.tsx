@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import licenseText from '../../../LICENSE.md?raw';
 import {
   Building2,
   CalendarDays,
@@ -6,6 +7,7 @@ import {
   GitCommitHorizontal,
   Info,
   Package,
+  ScrollText,
   ShieldCheck,
 } from 'lucide-react';
 
@@ -26,6 +28,7 @@ interface ReleaseIdentity {
 }
 
 const OFFICIAL_REPOSITORY_URL = 'https://github.com/AlphaHorizon-AI/Shogun';
+const LICENSE_SOURCE_URL = `${OFFICIAL_REPOSITORY_URL}/blob/main/LICENSE.md`;
 
 const displayDate = (value: string | null) => {
   if (!value) return 'Not recorded for this build';
@@ -130,6 +133,35 @@ export const About = () => {
             </dd>
           </div>
         </dl>
+      </section>
+
+      <section className="rounded-xl border border-shogun-border bg-shogun-card overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-shogun-border px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 font-semibold text-shogun-text">
+              <ScrollText className="h-4 w-4 text-shogun-gold" />
+              Shogun AFM Free Use License
+            </h2>
+            <p className="mt-1 text-xs text-shogun-subdued">
+              Complete license text bundled with this release.
+            </p>
+          </div>
+          <a
+            href={LICENSE_SOURCE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-shogun-blue hover:underline"
+          >
+            View repository source
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+        <pre
+          data-testid="full-license-text"
+          className="max-h-[70vh] overflow-y-auto whitespace-pre-wrap break-words px-6 py-5 font-sans text-xs leading-relaxed text-shogun-subdued"
+        >
+          {licenseText}
+        </pre>
       </section>
 
       <p className="text-xs leading-relaxed text-shogun-subdued">
