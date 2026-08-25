@@ -1,8 +1,8 @@
 {
-  "version": "1.47.88",
+  "version": "1.47.89",
   "name": "Shogun AFM",
-  "build": 239,
+  "build": 240,
   "channel": "stable",
-  "released": "2026-08-25T17:32:54Z",
-  "changelog": "Add KS-LBP v4 variant resolution and golden-reference exception handling."
+  "released": "2026-08-25T17:49:28Z",
+  "changelog": "Remove private KS-LBP profiles and fixtures from the public repository."
 }
