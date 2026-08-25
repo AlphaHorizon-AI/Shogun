@@ -1,8 +1,8 @@
 {
-  "version": "1.47.86",
+  "version": "1.47.87",
   "name": "Shogun AFM",
-  "build": 237,
+  "build": 238,
   "channel": "stable",
-  "released": "2026-08-22T08:49:58Z",
-  "changelog": "Publish the Shogun AFM Free Use License 1.1 and display its complete text on the About page."
+  "released": "2026-08-25T16:05:49Z",
+  "changelog": "Add fail-closed multi-component transformations and a portable KS-LBP disposition profile."
 }

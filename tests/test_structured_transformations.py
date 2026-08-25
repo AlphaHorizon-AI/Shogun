@@ -205,6 +205,169 @@ def test_generic_adapter_uses_semantic_header_roles_when_columns_are_reversed():
     assert demand[5:] == [5, 7, 9]
 
 
+def _component_relationship_profile() -> dict:
+    profile = deepcopy(PROFILE)
+    profile["id"] = "synthetic_component_relationship_v1"
+    profile["parameters"]["required_source_patterns"] = [
+        r"(?m)^Entity: \S+$",
+        r"(?m)^Components:$",
+    ]
+    profile["parameters"]["selector_fields"] = [
+        {
+            "target": "legacy_component",
+            "scope_pattern": r"(?ims)^Components:\s*\n(?P<body>.*?)^End Components$",
+            "line_pattern": r"(?m)^(?P<value>\S+)\s+(?P<text>.+)$",
+            "include_terms": ["raw material"],
+            "aggregate": "first",
+        },
+        {
+            "target": "lower_component",
+            "when": {"field": "label", "operator": "contains", "value": "assembled"},
+            "scope_pattern": r"(?ims)^Components:\s*\n(?P<body>.*?)^End Components$",
+            "line_pattern": r"(?m)^(?P<value>\S+)\s+(?P<text>.+)$",
+            "include_terms": ["lower module"],
+            "minimum_matches": 1,
+            "maximum_matches": 1,
+            "distinct": True,
+            "aggregate": "first",
+        },
+        {
+            "target": "upper_component",
+            "when": {"field": "label", "operator": "contains", "value": "assembled"},
+            "scope_pattern": r"(?ims)^Components:\s*\n(?P<body>.*?)^End Components$",
+            "line_pattern": r"(?m)^(?P<value>\S+)\s+(?P<text>.+)$",
+            "include_terms": ["upper module"],
+            "minimum_matches": 1,
+            "maximum_matches": 1,
+            "distinct": True,
+            "aggregate": "first",
+        },
+    ]
+    profile["parameters"]["base_columns"]["2"] = {
+        "coalesce": [
+            {
+                "join": {
+                    "values": [
+                        {"field": "lower_component"},
+                        {"field": "upper_component"},
+                    ],
+                    "separator": " // ",
+                    "require_all": True,
+                }
+            },
+            {"field": "legacy_component"},
+        ]
+    }
+    profile["parameters"]["section_order"] = {
+        "groups": [
+            {
+                "name": "assemblies",
+                "when": {"field": "label", "operator": "contains", "value": "assembled"},
+            },
+            {
+                "name": "components",
+                "when": {"field": "label", "operator": "contains", "value": "module"},
+            },
+        ],
+        "unmatched": "error",
+        "dependencies_before": {
+            "fields": ["lower_component", "upper_component"],
+            "missing": "error",
+        },
+    }
+    profile["parameters"]["row_rules"] = [{"kind": "section"}]
+    return profile
+
+
+def _component_relationship_source(component_lines: str) -> str:
+    return f"""Entity: ASSEMBLY-A
+Label: Assembled widget
+On hand: 0
+Components:
+{component_lines}
+End Components
+Columns: Promise Need
+Entity: LOWER-A
+Label: Lower module
+On hand: 0
+Components:
+RAW-L primary raw material
+End Components
+Columns: Promise Need
+Entity: UPPER-A
+Label: Upper module
+On hand: 0
+Components:
+RAW-U primary raw material
+End Components
+Columns: Promise Need
+"""
+
+
+def test_generic_adapter_composes_exact_semantic_matches_in_profile_order():
+    source = _component_relationship_source("UPPER-A upper module\nLOWER-A lower module\nPACK-A packaging insert")
+
+    result = try_deterministic_matrix_transform(
+        profile=_component_relationship_profile(),
+        source_context=source,
+        fixed_context=FIXED_CONTEXT,
+    )
+
+    assert [row[1] for row in result.rows] == ["LOWER-A", "UPPER-A", "ASSEMBLY-A"]
+    assert result.rows[-1][2] == "LOWER-A // UPPER-A"
+
+
+@pytest.mark.parametrize(
+    ("component_lines", "expected_count"),
+    [
+        ("LOWER-A lower module", 0),
+        (
+            "LOWER-A lower module\nUPPER-A upper module\nUPPER-B upper module",
+            2,
+        ),
+    ],
+)
+def test_generic_adapter_fails_closed_for_incomplete_or_ambiguous_semantic_role(
+    component_lines,
+    expected_count,
+):
+    with pytest.raises(
+        ValueError,
+        match=rf"selector 'upper_component'.*ASSEMBLY-A.*found {expected_count}",
+    ):
+        try_deterministic_matrix_transform(
+            profile=_component_relationship_profile(),
+            source_context=_component_relationship_source(component_lines),
+            fixed_context=FIXED_CONTEXT,
+        )
+
+
+def test_generic_record_planning_preserves_distinct_records_without_aggregation():
+    profile = deepcopy(PROFILE)
+    profile["parameters"]["row_rules"] = [
+        {
+            "kind": "record",
+            "match": {"kind": "D"},
+            "planning": {
+                "key_group": "need_month",
+                "value_group": "quantity",
+                "value_type": "localized_number",
+                "destination": "planning_month",
+                "strict_accounting": True,
+            },
+        }
+    ]
+
+    rows = try_deterministic_matrix_transform(
+        profile=profile,
+        source_context=SOURCE,
+        fixed_context=FIXED_CONTEXT,
+    ).rows
+
+    assert len(rows) == 3
+    assert [row[5:] for row in rows] == [[5, "", ""], ["", 7, ""], ["", "", 9]]
+
+
 def test_generic_adapter_applies_closest_preceding_header_to_each_record_block():
     source = SOURCE.replace(
         "D ITEM-A request-2 2026/08 2026/08 7,0",
@@ -252,9 +415,11 @@ def test_generic_source_units_and_expected_row_count_are_profile_driven():
     units = deterministic_profile_source_units(PROFILE, combined)
     assert len(units) == 2
     assert expected_deterministic_matrix_rows(PROFILE, combined) == 6
-    assert flow_engine._minimum_matrix_rows_for_source(combined, TASK, {
-        "_transformation_profiles": [PROFILE]
-    }) == (6, 6, "profile-required row(s)")
+    assert flow_engine._minimum_matrix_rows_for_source(combined, TASK, {"_transformation_profiles": [PROFILE]}) == (
+        6,
+        6,
+        "profile-required row(s)",
+    )
 
 
 @pytest.mark.asyncio

@@ -182,18 +182,12 @@ def load_bundled_transformation_profile(profile_id: str) -> dict[str, Any]:
     try:
         profile = json.loads(resource.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise ValueError(
-            f"Bundled transformation profile '{normalized_id}' does not exist."
-        ) from exc
+        raise ValueError(f"Bundled transformation profile '{normalized_id}' does not exist.") from exc
     except (json.JSONDecodeError, TypeError) as exc:
-        raise ValueError(
-            f"Bundled transformation profile '{normalized_id}' is invalid."
-        ) from exc
+        raise ValueError(f"Bundled transformation profile '{normalized_id}' is invalid.") from exc
     loaded_id, _parameters = _profile_parameters(profile)
     if loaded_id != normalized_id:
-        raise ValueError(
-            f"Bundled transformation profile '{normalized_id}' declares id '{loaded_id}'."
-        )
+        raise ValueError(f"Bundled transformation profile '{normalized_id}' declares id '{loaded_id}'.")
     return profile
 
 
@@ -215,6 +209,7 @@ def try_deterministic_matrix_transform(
         headers, logical_width = _excel_template_contract(fixed_context, parameters, profile_id)
         budget.check_total("template validation")
         sections = _parse_sections(source_context, parameters, profile_id)
+        sections = _order_sections(sections, parameters, profile_id)
         planning_columns = _planning_month_columns(headers, parameters, profile_id)
         rows = _build_rows(
             sections,
@@ -268,20 +263,21 @@ def expected_deterministic_matrix_rows(
     profile_id, parameters = _profile_parameters(profile)
     with _profile_regex_budget(profile_id) as budget:
         sections = _parse_sections(source_context, parameters, profile_id)
+        sections = _order_sections(sections, parameters, profile_id)
         total = 0
         for section in sections:
             for rule in _row_rules(parameters):
                 kind = str(rule.get("kind") or "").strip().lower()
+                if not _section_condition_matches(section, rule.get("when")):
+                    continue
                 if kind == "section":
-                    total += int(_section_condition_matches(section, rule.get("when")))
+                    total += 1
                 elif kind == "record":
                     total += len(_matching_records(section, rule, profile_id))
                 elif kind == "aggregate":
                     total += int(any(_record_matches(record, rule.get("match")) for record in section.records))
                 else:
-                    raise ValueError(
-                        f"Transformation profile '{profile_id}' has unsupported row rule kind '{kind}'."
-                    )
+                    raise ValueError(f"Transformation profile '{profile_id}' has unsupported row rule kind '{kind}'.")
         budget.check_total("expected row counting")
         return total
 
@@ -294,9 +290,7 @@ def _profile_parameters(profile: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         raise ValueError("Transformation profile requires an id.")
     adapter = str(profile.get("adapter") or "").strip()
     if adapter != SUPPORTED_ADAPTER:
-        raise ValueError(
-            f"Transformation profile '{profile_id}' uses unsupported adapter '{adapter}'."
-        )
+        raise ValueError(f"Transformation profile '{profile_id}' uses unsupported adapter '{adapter}'.")
     parameters = profile.get("parameters")
     if not isinstance(parameters, dict):
         raise ValueError(f"Transformation profile '{profile_id}' requires parameters.")
@@ -311,9 +305,7 @@ def _validate_required_source_patterns(
     for index, raw_pattern in enumerate(parameters.get("required_source_patterns") or []):
         pattern = _compile_pattern(raw_pattern, f"required source pattern {index + 1}")
         if not pattern.search(source_context or ""):
-            raise ValueError(
-                f"Runtime source does not match transformation profile '{profile_id}'."
-            )
+            raise ValueError(f"Runtime source does not match transformation profile '{profile_id}'.")
 
 
 def _parse_sections(
@@ -339,7 +331,7 @@ def _parse_sections(
                 f"Transformation profile '{profile_id}' section pattern lacks group '{key_group}'."
             ) from exc
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        section_text = text[match.start():end]
+        section_text = text[match.start() : end]
         section = sections.setdefault(key, _RecordSection(key=key))
         _extract_section_fields(section, section_text, parameters, profile_id)
         _extract_selector_fields(section, section_text, parameters, profile_id)
@@ -350,10 +342,7 @@ def _parse_sections(
             profile_id,
         )
         for record_match in record_pattern.finditer(section_text):
-            record = {
-                name: str(value or "").strip()
-                for name, value in record_match.groupdict().items()
-            }
+            record = {name: str(value or "").strip() for name, value in record_match.groupdict().items()}
             _apply_record_header_binding(
                 record,
                 record_match.start(),
@@ -385,9 +374,7 @@ def _record_header_bindings(
     if raw_layout in (None, {}):
         return []
     if not isinstance(raw_layout, dict):
-        raise ValueError(
-            f"Transformation profile '{profile_id}' has an invalid record header layout."
-        )
+        raise ValueError(f"Transformation profile '{profile_id}' has an invalid record header layout.")
 
     header_pattern = _compile_pattern(
         raw_layout.get("pattern"),
@@ -396,17 +383,12 @@ def _record_header_bindings(
     slots = raw_layout.get("slots")
     roles = raw_layout.get("roles")
     if not isinstance(slots, dict) or not slots:
-        raise ValueError(
-            f"Transformation profile '{profile_id}' record header layout requires slots."
-        )
+        raise ValueError(f"Transformation profile '{profile_id}' record header layout requires slots.")
     if not isinstance(roles, dict) or not roles:
-        raise ValueError(
-            f"Transformation profile '{profile_id}' record header layout requires roles."
-        )
+        raise ValueError(f"Transformation profile '{profile_id}' record header layout requires roles.")
     if len(slots) != len(roles):
         raise ValueError(
-            f"Transformation profile '{profile_id}' record header layout must map "
-            "every slot to exactly one role."
+            f"Transformation profile '{profile_id}' record header layout must map every slot to exactly one role."
         )
 
     aliases: dict[str, str] = {}
@@ -414,38 +396,27 @@ def _record_header_bindings(
     for raw_role, raw_spec in roles.items():
         role = str(raw_role).strip()
         if not role or not isinstance(raw_spec, dict):
-            raise ValueError(
-                f"Transformation profile '{profile_id}' has an invalid record header role."
-            )
+            raise ValueError(f"Transformation profile '{profile_id}' has an invalid record header role.")
         raw_aliases = raw_spec.get("aliases") or []
         targets = raw_spec.get("targets")
         if not isinstance(raw_aliases, list) or not raw_aliases or not isinstance(targets, dict):
             raise ValueError(
-                f"Transformation profile '{profile_id}' record header role '{role}' "
-                "requires aliases and targets."
+                f"Transformation profile '{profile_id}' record header role '{role}' requires aliases and targets."
             )
-        normalized_targets = {
-            str(field).strip(): str(target).strip()
-            for field, target in targets.items()
-        }
+        normalized_targets = {str(field).strip(): str(target).strip() for field, target in targets.items()}
         if not normalized_targets or any(not field or not target for field, target in normalized_targets.items()):
-            raise ValueError(
-                f"Transformation profile '{profile_id}' record header role '{role}' "
-                "has invalid targets."
-            )
+            raise ValueError(f"Transformation profile '{profile_id}' record header role '{role}' has invalid targets.")
         role_targets[role] = normalized_targets
         for raw_alias in raw_aliases:
             alias = _canonical_header(raw_alias)
             if not alias:
                 raise ValueError(
-                    f"Transformation profile '{profile_id}' record header role '{role}' "
-                    "has an empty alias."
+                    f"Transformation profile '{profile_id}' record header role '{role}' has an empty alias."
                 )
             existing = aliases.get(alias)
             if existing is not None and existing != role:
                 raise ValueError(
-                    f"Transformation profile '{profile_id}' has ambiguous record header "
-                    f"alias '{raw_alias}'."
+                    f"Transformation profile '{profile_id}' has ambiguous record header alias '{raw_alias}'."
                 )
             aliases[alias] = role
 
@@ -454,20 +425,14 @@ def _record_header_bindings(
         slot = str(raw_slot).strip()
         if slot not in header_pattern.groupindex or not isinstance(raw_sources, dict):
             raise ValueError(
-                f"Transformation profile '{profile_id}' record header slot '{slot}' "
-                "is not a named header group."
+                f"Transformation profile '{profile_id}' record header slot '{slot}' is not a named header group."
             )
-        sources = {
-            str(field).strip(): str(source).strip()
-            for field, source in raw_sources.items()
-        }
+        sources = {str(field).strip(): str(source).strip() for field, source in raw_sources.items()}
         if not sources or any(
-            not field or not source or source not in record_pattern.groupindex
-            for field, source in sources.items()
+            not field or not source or source not in record_pattern.groupindex for field, source in sources.items()
         ):
             raise ValueError(
-                f"Transformation profile '{profile_id}' record header slot '{slot}' "
-                "references an invalid record group."
+                f"Transformation profile '{profile_id}' record header slot '{slot}' references an invalid record group."
             )
         normalized_slots[slot] = sources
 
@@ -479,10 +444,7 @@ def _record_header_bindings(
             label = str(header_match.group(slot) or "").strip()
             role = aliases.get(_canonical_header(label))
             if role is None:
-                raise ValueError(
-                    f"Transformation profile '{profile_id}' found unknown record header "
-                    f"label '{label}'."
-                )
+                raise ValueError(f"Transformation profile '{profile_id}' found unknown record header label '{label}'.")
             if role in used_roles:
                 raise ValueError(
                     f"Transformation profile '{profile_id}' found an ambiguous record "
@@ -500,15 +462,12 @@ def _record_header_bindings(
                 existing_source = source_by_target.get(target)
                 if existing_source is not None and existing_source != source:
                     raise ValueError(
-                        f"Transformation profile '{profile_id}' maps record header target "
-                        f"'{target}' more than once."
+                        f"Transformation profile '{profile_id}' maps record header target '{target}' more than once."
                     )
                 source_by_target[target] = source
         if used_roles != set(role_targets):
             missing = ", ".join(sorted(set(role_targets) - used_roles))
-            raise ValueError(
-                f"Transformation profile '{profile_id}' record header is missing role(s): {missing}."
-            )
+            raise ValueError(f"Transformation profile '{profile_id}' record header is missing role(s): {missing}.")
         bindings.append(
             _RecordHeaderBinding(
                 position=header_match.end(),
@@ -517,9 +476,7 @@ def _record_header_bindings(
         )
 
     if not bindings and raw_layout.get("required", True):
-        raise ValueError(
-            f"Transformation profile '{profile_id}' found no required record header layout."
-        )
+        raise ValueError(f"Transformation profile '{profile_id}' found no required record header layout.")
     return bindings
 
 
@@ -537,9 +494,7 @@ def _apply_record_header_binding(
         None,
     )
     if binding is None:
-        raise ValueError(
-            f"Transformation profile '{profile_id}' found a record before its required header layout."
-        )
+        raise ValueError(f"Transformation profile '{profile_id}' found a record before its required header layout.")
     for target, source in binding.source_by_target.items():
         if target in record and target != source:
             raise ValueError(
@@ -567,8 +522,7 @@ def _extract_section_fields(
                 values.append(_convert_value(match.group(group), rule.get("value_type")))
             except (IndexError, KeyError) as exc:
                 raise ValueError(
-                    f"Transformation profile '{profile_id}' section field '{target}' "
-                    f"lacks group '{group}'."
+                    f"Transformation profile '{profile_id}' section field '{target}' lacks group '{group}'."
                 ) from exc
         if values:
             _store_aggregated_field(section.fields, target, values, str(rule.get("aggregate") or "first"))
@@ -584,6 +538,10 @@ def _extract_selector_fields(
         if not isinstance(rule, dict):
             raise ValueError(f"Transformation profile '{profile_id}' has an invalid selector rule.")
         target = str(rule.get("target") or "").strip()
+        if not target:
+            raise ValueError(f"Transformation profile '{profile_id}' selector requires a target.")
+        if not _section_condition_matches(section, rule.get("when")):
+            continue
         scope_pattern = _compile_pattern(rule.get("scope_pattern"), f"selector scope '{target}'")
         line_pattern = _compile_pattern(rule.get("line_pattern"), f"selector line '{target}'")
         scope_group = str(rule.get("scope_group") or "body")
@@ -597,8 +555,7 @@ def _extract_selector_fields(
                 body = scope_match.group(scope_group)
             except (IndexError, KeyError) as exc:
                 raise ValueError(
-                    f"Transformation profile '{profile_id}' selector '{target}' lacks "
-                    f"scope group '{scope_group}'."
+                    f"Transformation profile '{profile_id}' selector '{target}' lacks scope group '{scope_group}'."
                 ) from exc
             for line_match in line_pattern.finditer(body):
                 try:
@@ -613,6 +570,22 @@ def _extract_selector_fields(
                 if any(term in classifier for term in exclude_terms):
                     continue
                 values.append(_convert_value(value, rule.get("value_type")))
+        if rule.get("distinct"):
+            values = list(dict.fromkeys(values))
+        minimum_matches = int(rule.get("minimum_matches") or 0)
+        raw_maximum = rule.get("maximum_matches")
+        maximum_matches = None if raw_maximum in (None, "") else int(raw_maximum)
+        if minimum_matches < 0 or (maximum_matches is not None and maximum_matches < minimum_matches):
+            raise ValueError(
+                f"Transformation profile '{profile_id}' selector '{target}' has invalid match cardinality."
+            )
+        if len(values) < minimum_matches or (maximum_matches is not None and len(values) > maximum_matches):
+            maximum_label = "unbounded" if maximum_matches is None else str(maximum_matches)
+            raise ValueError(
+                f"Transformation profile '{profile_id}' selector '{target}' in section "
+                f"{section.key} expected {minimum_matches}..{maximum_label} match(es), "
+                f"found {len(values)}."
+            )
         if values:
             _store_aggregated_field(section.fields, target, values, str(rule.get("aggregate") or "first"))
 
@@ -668,18 +641,14 @@ def _excel_template_contract(
     template = parameters.get("template") or {}
     minimum_columns = int(template.get("minimum_columns") or 1)
     if logical_width < minimum_columns or len(headers) < logical_width:
-        raise ValueError(
-            f"Transformation profile '{profile_id}' requires at least {minimum_columns} template columns."
-        )
+        raise ValueError(f"Transformation profile '{profile_id}' requires at least {minimum_columns} template columns.")
     for raw_index, accepted in (template.get("expected_headers") or {}).items():
         index = int(raw_index)
         aliases = accepted if isinstance(accepted, list) else [accepted]
         if index >= logical_width or _canonical_header(headers[index]) not in {
             _canonical_header(alias) for alias in aliases
         }:
-            raise ValueError(
-                f"Transformation profile '{profile_id}' does not match template column {index + 1}."
-            )
+            raise ValueError(f"Transformation profile '{profile_id}' does not match template column {index + 1}.")
     return headers[:logical_width], logical_width
 
 
@@ -697,18 +666,33 @@ def _build_rows(
             base[int(raw_column)] = _resolve_value_spec(value_spec, section, None)
         for rule in _row_rules(parameters):
             kind = str(rule.get("kind") or "").strip().lower()
+            if not _section_condition_matches(section, rule.get("when")):
+                continue
             if kind == "section":
-                if _section_condition_matches(section, rule.get("when")):
-                    rows.append(_row_from_rule(base, section, None, rule))
+                rows.append(
+                    _row_from_rule(
+                        base,
+                        section,
+                        None,
+                        rule,
+                        planning_columns,
+                        profile_id,
+                    )
+                )
             elif kind == "record":
                 for record in _matching_records(section, rule, profile_id):
-                    rows.append(_row_from_rule(base, section, record, rule))
+                    rows.append(
+                        _row_from_rule(
+                            base,
+                            section,
+                            record,
+                            rule,
+                            planning_columns,
+                            profile_id,
+                        )
+                    )
             elif kind == "aggregate":
-                records = [
-                    record
-                    for record in section.records
-                    if _record_matches(record, rule.get("match"))
-                ]
+                records = [record for record in section.records if _record_matches(record, rule.get("match"))]
                 if records:
                     rows.append(
                         _aggregate_row(
@@ -721,9 +705,7 @@ def _build_rows(
                         )
                     )
             else:
-                raise ValueError(
-                    f"Transformation profile '{profile_id}' has unsupported row rule kind '{kind}'."
-                )
+                raise ValueError(f"Transformation profile '{profile_id}' has unsupported row rule kind '{kind}'.")
     return rows
 
 
@@ -739,33 +721,24 @@ def _matching_records(
     rule: dict[str, Any],
     profile_id: str,
 ) -> list[dict[str, str]]:
-    records = [
-        record
-        for record in section.records
-        if _record_matches(record, rule.get("match"))
-    ]
+    records = [record for record in section.records if _record_matches(record, rule.get("match"))]
     raw_identity = rule.get("deduplicate_by")
     if raw_identity in (None, []):
         return records
     if not isinstance(raw_identity, list) or not raw_identity:
-        raise ValueError(
-            f"Transformation profile '{profile_id}' record deduplicate_by must be "
-            "a non-empty list."
-        )
+        raise ValueError(f"Transformation profile '{profile_id}' record deduplicate_by must be a non-empty list.")
     identity_specs: list[dict[str, Any]] = []
     for raw_spec in raw_identity:
         spec = {"group": raw_spec} if isinstance(raw_spec, str) else raw_spec
         if not isinstance(spec, dict) or not str(spec.get("group") or "").strip():
             raise ValueError(
-                f"Transformation profile '{profile_id}' record deduplicate_by contains "
-                "an invalid identity group."
+                f"Transformation profile '{profile_id}' record deduplicate_by contains an invalid identity group."
             )
         identity_specs.append(spec)
     identity_groups = [str(spec["group"]).strip() for spec in identity_specs]
     if len(set(identity_groups)) != len(identity_groups):
         raise ValueError(
-            f"Transformation profile '{profile_id}' record deduplicate_by contains "
-            "a repeated identity group."
+            f"Transformation profile '{profile_id}' record deduplicate_by contains a repeated identity group."
         )
 
     unique: list[dict[str, str]] = []
@@ -778,10 +751,7 @@ def _matching_records(
                 f"section {section.key}: stable identity group(s) "
                 f"{', '.join(missing)} are empty."
             )
-        identity = tuple(
-            str(_resolve_value_spec(spec, section, record)).strip()
-            for spec in identity_specs
-        )
+        identity = tuple(str(_resolve_value_spec(spec, section, record)).strip() for spec in identity_specs)
         if identity in seen:
             continue
         seen.add(identity)
@@ -794,11 +764,56 @@ def _row_from_rule(
     section: _RecordSection,
     record: dict[str, str] | None,
     rule: dict[str, Any],
+    planning_columns: dict[str, int],
+    profile_id: str,
 ) -> list[Any]:
     row = list(base)
     for raw_column, value_spec in (rule.get("columns") or {}).items():
         row[int(raw_column)] = _resolve_value_spec(value_spec, section, record)
+    planning = rule.get("planning")
+    if planning not in (None, {}):
+        if record is None or not isinstance(planning, dict):
+            raise ValueError(f"Transformation profile '{profile_id}' record planning rule is invalid.")
+        _map_record_to_planning_column(
+            row,
+            section,
+            record,
+            planning,
+            planning_columns,
+            profile_id,
+        )
     return row
+
+
+def _map_record_to_planning_column(
+    row: list[Any],
+    section: _RecordSection,
+    record: dict[str, str],
+    planning: dict[str, Any],
+    planning_columns: dict[str, int],
+    profile_id: str,
+) -> None:
+    if str(planning.get("destination") or "planning_month") != "planning_month":
+        raise ValueError(f"Transformation profile '{profile_id}' has an unsupported record planning destination.")
+    key_group = str(planning.get("key_group") or "").strip()
+    value_group = str(planning.get("value_group") or "").strip()
+    if not key_group or not value_group:
+        raise ValueError(f"Transformation profile '{profile_id}' record planning requires key/value groups.")
+    key = record.get(key_group, "")
+    quantity = _convert_value(record.get(value_group, ""), planning.get("value_type"))
+    if not isinstance(quantity, (int, float)):
+        raise ValueError(f"Transformation profile '{profile_id}' record planning quantity must be numeric.")
+    column = _planning_column_for_month(planning_columns, key)
+    if column is None:
+        if planning.get("strict_accounting", True):
+            raise ValueError(
+                f"Transformation profile '{profile_id}' could not account for section {section.key}: "
+                f"planning key {key or 'unknown'} has no Excel planning bucket "
+                f"(source quantity {quantity}, mapped 0)."
+            )
+        return
+    current = row[column] if isinstance(row[column], (int, float)) else 0
+    row[column] = _add_numbers(current, quantity)
 
 
 def _aggregate_row(
@@ -836,9 +851,7 @@ def _aggregate_row(
         current = row[column] if isinstance(row[column], (int, float)) else 0
         row[column] = _add_numbers(current, quantity)
         mapped_total = _add_numbers(mapped_total, quantity)
-    if rule.get("strict_accounting", True) and (
-        unmapped_keys or not _numbers_equal(source_total, mapped_total)
-    ):
+    if rule.get("strict_accounting", True) and (unmapped_keys or not _numbers_equal(source_total, mapped_total)):
         missing = ", ".join(sorted(unmapped_keys)) or "unknown"
         raise ValueError(
             f"Transformation profile '{profile_id}' could not account for section {section.key}: "
@@ -855,7 +868,31 @@ def _resolve_value_spec(
 ) -> Any:
     if not isinstance(value_spec, dict):
         return value_spec
-    if "literal" in value_spec:
+    if "coalesce" in value_spec:
+        candidates = value_spec.get("coalesce")
+        if not isinstance(candidates, list) or not candidates:
+            raise ValueError("Transformation profile coalesce requires a non-empty value list.")
+        value = ""
+        for candidate in candidates:
+            resolved = _resolve_value_spec(candidate, section, record)
+            if resolved not in (None, "", []):
+                value = resolved
+                break
+    elif "join" in value_spec:
+        join_spec = value_spec.get("join")
+        if not isinstance(join_spec, dict):
+            raise ValueError("Transformation profile join requires an object.")
+        value_specs = join_spec.get("values")
+        if not isinstance(value_specs, list) or not value_specs:
+            raise ValueError("Transformation profile join requires a non-empty value list.")
+        resolved_values = [_resolve_value_spec(item, section, record) for item in value_specs]
+        missing = [item for item in resolved_values if item in (None, "", [])]
+        if missing and join_spec.get("require_all", False):
+            value = ""
+        else:
+            separator = str(join_spec.get("separator") if "separator" in join_spec else " ")
+            value = separator.join(str(item) for item in resolved_values if item not in (None, "", []))
+    elif "literal" in value_spec:
         value: Any = value_spec.get("literal")
     elif value_spec.get("section_key"):
         value = section.key
@@ -882,15 +919,128 @@ def _section_condition_matches(section: _RecordSection, condition: Any) -> bool:
         return True
     if not isinstance(condition, dict):
         raise ValueError("Transformation profile section condition must be an object.")
+    if "all" in condition:
+        conditions = condition.get("all")
+        if not isinstance(conditions, list) or not conditions:
+            raise ValueError("Transformation profile 'all' condition requires a non-empty list.")
+        return all(_section_condition_matches(section, item) for item in conditions)
+    if "any" in condition:
+        conditions = condition.get("any")
+        if not isinstance(conditions, list) or not conditions:
+            raise ValueError("Transformation profile 'any' condition requires a non-empty list.")
+        return any(_section_condition_matches(section, item) for item in conditions)
+    if "not" in condition:
+        return not _section_condition_matches(section, condition.get("not"))
     value = section.fields.get(str(condition.get("field") or ""))
-    operator = str(condition.get("operator") or "truthy")
+    operator = str(condition.get("operator") or "truthy").strip().lower()
     if operator == "positive":
         return isinstance(value, (int, float)) and value > 0
     if operator == "equals":
         return value == condition.get("value")
+    if operator == "in":
+        accepted = condition.get("values")
+        if not isinstance(accepted, list):
+            raise ValueError("Transformation profile 'in' condition requires a values list.")
+        return value in accepted
+    if operator in {"contains", "not_contains"}:
+        expected = str(condition.get("value") or "").casefold()
+        matched = bool(expected) and expected in str(value or "").casefold()
+        return matched if operator == "contains" else not matched
+    if operator in {"matches", "not_matches"}:
+        pattern = _compile_pattern(
+            condition.get("pattern"),
+            "section condition",
+            flags=regex.IGNORECASE,
+        )
+        matched = pattern.search(str(value or "")) is not None
+        return matched if operator == "matches" else not matched
     if operator == "truthy":
         return bool(value)
     raise ValueError(f"Unsupported transformation profile condition operator '{operator}'.")
+
+
+def _order_sections(
+    sections: list[_RecordSection],
+    parameters: dict[str, Any],
+    profile_id: str,
+) -> list[_RecordSection]:
+    order_spec = parameters.get("section_order")
+    if not order_spec:
+        return sections
+    if not isinstance(order_spec, dict):
+        raise ValueError(f"Transformation profile '{profile_id}' section_order must be an object.")
+
+    raw_groups = order_spec.get("groups") or []
+    if not isinstance(raw_groups, list) or not all(isinstance(group, dict) for group in raw_groups):
+        raise ValueError(f"Transformation profile '{profile_id}' section_order groups are invalid.")
+    grouped: list[list[_RecordSection]] = [[] for _ in raw_groups]
+    unmatched: list[_RecordSection] = []
+    target_field = str(order_spec.get("target_field") or "").strip()
+    for section in sections:
+        matched_group = None
+        for index, group in enumerate(raw_groups):
+            if _section_condition_matches(section, group.get("when")):
+                matched_group = index
+                if target_field:
+                    section.fields[target_field] = str(group.get("name") or index)
+                break
+        if matched_group is None:
+            unmatched.append(section)
+        else:
+            grouped[matched_group].append(section)
+
+    unmatched_mode = str(order_spec.get("unmatched") or "preserve").strip().lower()
+    if unmatched and unmatched_mode == "error":
+        preview = ", ".join(section.key for section in unmatched[:10])
+        raise ValueError(f"Transformation profile '{profile_id}' could not classify section(s): {preview}.")
+    if unmatched_mode not in {"preserve", "error"}:
+        raise ValueError(
+            f"Transformation profile '{profile_id}' has unsupported section_order unmatched mode '{unmatched_mode}'."
+        )
+
+    ordered = [section for group in grouped for section in group]
+    ordered.extend(unmatched)
+    dependency_spec = order_spec.get("dependencies_before")
+    if not dependency_spec:
+        return ordered
+    if not isinstance(dependency_spec, dict):
+        raise ValueError(f"Transformation profile '{profile_id}' dependencies_before must be an object.")
+    fields = dependency_spec.get("fields")
+    if not isinstance(fields, list) or not fields or not all(str(field).strip() for field in fields):
+        raise ValueError(f"Transformation profile '{profile_id}' dependencies_before requires fields.")
+    by_key = {section.key: section for section in sections}
+    result: list[_RecordSection] = []
+    emitted: set[str] = set()
+    visiting: set[str] = set()
+
+    def emit(section: _RecordSection) -> None:
+        if section.key in emitted:
+            return
+        if section.key in visiting:
+            raise ValueError(
+                f"Transformation profile '{profile_id}' found a section dependency cycle at {section.key}."
+            )
+        visiting.add(section.key)
+        for field_name in fields:
+            dependency_key = str(section.fields.get(str(field_name)) or "").strip()
+            if not dependency_key:
+                continue
+            dependency = by_key.get(dependency_key)
+            if dependency is None:
+                if str(dependency_spec.get("missing") or "ignore").strip().lower() == "error":
+                    raise ValueError(
+                        f"Transformation profile '{profile_id}' section {section.key} references "
+                        f"missing dependency {dependency_key}."
+                    )
+                continue
+            emit(dependency)
+        visiting.remove(section.key)
+        emitted.add(section.key)
+        result.append(section)
+
+    for section in ordered:
+        emit(section)
+    return result
 
 
 def _record_matches(record: dict[str, str], match_spec: Any) -> bool:
@@ -913,8 +1063,7 @@ def _planning_month_columns(
     template = parameters.get("template") or {}
     start_column = int(template.get("planning_start_column") or 0)
     backlog_headers = {
-        re.sub(r"\s+", " ", str(value)).strip().casefold()
-        for value in template.get("backlog_headers") or []
+        re.sub(r"\s+", " ", str(value)).strip().casefold() for value in template.get("backlog_headers") or []
     }
     future_patterns = [
         _compile_pattern(
@@ -932,9 +1081,7 @@ def _planning_month_columns(
         normalized_header = re.sub(r"\s+", " ", header_text).strip().casefold()
         if normalized_header in backlog_headers:
             if "backlog" in columns:
-                raise ValueError(
-                    f"Transformation profile '{profile_id}' found more than one backlog column."
-                )
+                raise ValueError(f"Transformation profile '{profile_id}' found more than one backlog column.")
             columns["backlog"] = index
             continue
         month = _planning_header_month(header_text)
@@ -943,10 +1090,7 @@ def _planning_month_columns(
         is_future = any(pattern.search(header_text) for pattern in future_patterns)
         bucket = f">={month}" if is_future else month
         if bucket in columns:
-            raise ValueError(
-                f"Transformation profile '{profile_id}' found ambiguous planning header "
-                f"'{header_text}'."
-            )
+            raise ValueError(f"Transformation profile '{profile_id}' found ambiguous planning header '{header_text}'.")
         columns[bucket] = index
     return columns
 
@@ -966,11 +1110,7 @@ def _planning_column_for_month(columns: dict[str, int], month: str) -> int | Non
     eligible = [item for item in future_buckets if item[0] is not None and month_key >= item[0]]
     if eligible:
         return eligible[-1][1]
-    exact_months = sorted(
-        key
-        for key in (_month_key(candidate) for candidate in columns)
-        if key is not None
-    )
+    exact_months = sorted(key for key in (_month_key(candidate) for candidate in columns) if key is not None)
     if exact_months and month_key < exact_months[0]:
         return columns.get("backlog")
     return None
@@ -1024,9 +1164,7 @@ def _compile_pattern(
     # without executing the pattern.  Runtime entry points always install one
     # shared profile budget; the standalone budget preserves that compile-only
     # validation API without creating an unbounded execution path.
-    budget = _ACTIVE_REGEX_BUDGET.get() or _RegexExecutionBudget(
-        profile_id="schema_validation"
-    )
+    budget = _ACTIVE_REGEX_BUDGET.get() or _RegexExecutionBudget(profile_id="schema_validation")
     try:
         compiled = regex.compile(value, flags)
     except regex.error as exc:
