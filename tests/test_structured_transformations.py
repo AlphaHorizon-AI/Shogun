@@ -317,6 +317,52 @@ def test_generic_adapter_composes_exact_semantic_matches_in_profile_order():
     assert result.rows[-1][2] == "LOWER-A // UPPER-A"
 
 
+def test_generic_adapter_uses_declared_selector_preference_before_cardinality():
+    profile = _component_relationship_profile()
+    upper_selector = next(
+        rule
+        for rule in profile["parameters"]["selector_fields"]
+        if rule["target"] == "upper_component"
+    )
+    upper_selector["preferred_value_patterns"] = [r"00$"]
+    source = _component_relationship_source(
+        "LOWER-A lower module\nUPPER-50 upper module\nUPPER-00 upper module"
+    ).replace("Entity: UPPER-A", "Entity: UPPER-00")
+
+    result = try_deterministic_matrix_transform(
+        profile=profile,
+        source_context=source,
+        fixed_context=FIXED_CONTEXT,
+    )
+
+    assert result.rows[-1][2] == "LOWER-A // UPPER-00"
+
+
+def test_generic_section_override_is_profile_local_and_can_skip_output():
+    profile = _component_relationship_profile()
+    profile["parameters"]["section_overrides"] = {
+        "ASSEMBLY-A": {
+            "fields": {
+                "lower_component": "LOWER-A",
+                "upper_component": "UPPER-A",
+            },
+            "skip_selectors": ["lower_component", "upper_component"],
+        },
+        "UPPER-A": {"skip_output": True},
+    }
+    profile["parameters"]["section_order"]["dependencies_before"]["missing"] = "ignore"
+    source = _component_relationship_source("PACK-A packaging insert")
+
+    result = try_deterministic_matrix_transform(
+        profile=profile,
+        source_context=source,
+        fixed_context=FIXED_CONTEXT,
+    )
+
+    assert [row[1] for row in result.rows] == ["LOWER-A", "ASSEMBLY-A"]
+    assert result.rows[-1][2] == "LOWER-A // UPPER-A"
+
+
 @pytest.mark.parametrize(
     ("component_lines", "expected_count"),
     [

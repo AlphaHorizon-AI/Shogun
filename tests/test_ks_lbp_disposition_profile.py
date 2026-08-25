@@ -17,6 +17,8 @@ from shogun.services.structured_transformations import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFINITION_PATH = ROOT / "profiles" / "ks-lbp" / "ks_lbp_disposition_v3.definition.json"
 PORTABLE_PATH = ROOT / "profiles" / "ks-lbp" / "ks_lbp_disposition_v3.shogun-profile.json"
+V4_DEFINITION_PATH = ROOT / "profiles" / "ks-lbp" / "ks_lbp_disposition_v4.definition.json"
+V4_PORTABLE_PATH = ROOT / "profiles" / "ks-lbp" / "ks_lbp_disposition_v4.shogun-profile.json"
 
 FIXED_CONTEXT = """[FILE TEMPLATE CONTRACT]
 Format: xlsx
@@ -31,6 +33,10 @@ Format: xlsx
 
 def _profile() -> dict:
     return json.loads(DEFINITION_PATH.read_text(encoding="utf-8"))
+
+
+def _v4_profile() -> dict:
+    return json.loads(V4_DEFINITION_PATH.read_text(encoding="utf-8"))
 
 
 def _built_section(
@@ -148,6 +154,81 @@ def test_unclassified_ks_lbp_section_fails_closed():
             source_context=_stock_section("UNKNOWN-X", "Unknown material"),
             fixed_context=FIXED_CONTEXT,
         )
+
+
+def test_v4_portable_profile_is_integrity_locked_and_importable():
+    portable = json.loads(V4_PORTABLE_PATH.read_text(encoding="utf-8"))
+
+    imported = PrivateTransformationProfileService().import_document(portable)
+
+    assert portable["profile"] == _v4_profile()
+    assert imported["profile_reference"]["id"] == "ks_lbp_disposition_v4"
+
+
+def test_v4_resolves_declared_variants_and_golden_reference_exceptions():
+    source = "\n".join(
+        [
+            _built_section(
+                "45132100",
+                "99250100",
+                "45131100",
+                bom_lines=[
+                    ("99250100", "Kolben-UT G 270.011+"),
+                    ("45131100", "Kolben-OT ST 270.010"),
+                    ("45131150", "Kolben-OT ST 270.010"),
+                    ("45131180", "Kolben-OT ST 270.010"),
+                ],
+            ),
+            _built_section(
+                "45994100-52",
+                "MISSING-UT",
+                "45993100",
+                bom_lines=[("45993100", "Kolben-OT ST 350.026")],
+            ),
+            _built_section(
+                "45994100-53",
+                "MISSING-UT",
+                "MISSING-OT",
+                bom_lines=[("PACK-X", "Verpackung")],
+            ),
+            _built_section(
+                "68715180",
+                "MISSING-UT",
+                "MISSING-OT",
+                bom_lines=[("68715170", "Kolben geb. G200.065/ST200.070")],
+            ),
+            _built_section(
+                "68989200",
+                "68957200",
+                "68988200",
+                bom_lines=[
+                    ("68957200", "Kolben-UT G 250.097++"),
+                    ("68957280", "Kolben-UT G 250.097++"),
+                    ("68988200", "Kolben-OT ST 250.098"),
+                ],
+            ),
+            _built_section(
+                "99176300-50",
+                "MISSING-UT",
+                "MISSING-OT",
+                bom_lines=[("PACK-Y", "Verpackung")],
+            ),
+        ]
+    )
+
+    rows = try_deterministic_matrix_transform(
+        profile=_v4_profile(),
+        source_context=source,
+        fixed_context=FIXED_CONTEXT,
+    ).rows
+    relationships = {str(row[1]): row[2] for row in rows}
+
+    assert relationships["45132100"] == "99250100 // 45131100"
+    assert relationships["45994100-52"] == "45143300 // 45179100 (alt)"
+    assert "45994100-53" not in relationships
+    assert relationships["68715180"] == "68715170"
+    assert relationships["68989200"] == "68957200 // 68988200"
+    assert relationships["99176300-50"] == ""
 
 
 @pytest.mark.parametrize(

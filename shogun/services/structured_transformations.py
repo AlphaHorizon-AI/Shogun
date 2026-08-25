@@ -36,6 +36,8 @@ class _RecordSection:
     key: str
     fields: dict[str, Any] = field(default_factory=dict)
     records: list[dict[str, str]] = field(default_factory=list)
+    selector_exemptions: set[str] = field(default_factory=set)
+    skip_output: bool = False
 
 
 @dataclass(slots=True)
@@ -334,6 +336,7 @@ def _parse_sections(
         section_text = text[match.start() : end]
         section = sections.setdefault(key, _RecordSection(key=key))
         _extract_section_fields(section, section_text, parameters, profile_id)
+        _apply_section_override(section, parameters, profile_id)
         _extract_selector_fields(section, section_text, parameters, profile_id)
         header_bindings = _record_header_bindings(
             section_text,
@@ -354,6 +357,49 @@ def _parse_sections(
                 continue
             section.records.append(record)
     return list(sections.values())
+
+
+def _apply_section_override(
+    section: _RecordSection,
+    parameters: dict[str, Any],
+    profile_id: str,
+) -> None:
+    overrides = parameters.get("section_overrides") or {}
+    if not isinstance(overrides, dict):
+        raise ValueError(
+            f"Transformation profile '{profile_id}' section_overrides must be an object."
+        )
+    override = overrides.get(section.key)
+    if override is None:
+        return
+    if not isinstance(override, dict):
+        raise ValueError(
+            f"Transformation profile '{profile_id}' override for section {section.key} "
+            "must be an object."
+        )
+    fields = override.get("fields") or {}
+    if not isinstance(fields, dict) or any(not str(target).strip() for target in fields):
+        raise ValueError(
+            f"Transformation profile '{profile_id}' override for section {section.key} "
+            "has invalid fields."
+        )
+    section.fields.update({str(target).strip(): value for target, value in fields.items()})
+    raw_exemptions = override.get("skip_selectors") or []
+    if not isinstance(raw_exemptions, list) or any(
+        not str(target).strip() for target in raw_exemptions
+    ):
+        raise ValueError(
+            f"Transformation profile '{profile_id}' override for section {section.key} "
+            "has invalid skip_selectors."
+        )
+    section.selector_exemptions.update(str(target).strip() for target in raw_exemptions)
+    raw_skip_output = override.get("skip_output", False)
+    if not isinstance(raw_skip_output, bool):
+        raise ValueError(
+            f"Transformation profile '{profile_id}' override for section {section.key} "
+            "has invalid skip_output."
+        )
+    section.skip_output = raw_skip_output
 
 
 def _record_header_bindings(
@@ -540,6 +586,8 @@ def _extract_selector_fields(
         target = str(rule.get("target") or "").strip()
         if not target:
             raise ValueError(f"Transformation profile '{profile_id}' selector requires a target.")
+        if target in section.selector_exemptions:
+            continue
         if not _section_condition_matches(section, rule.get("when")):
             continue
         scope_pattern = _compile_pattern(rule.get("scope_pattern"), f"selector scope '{target}'")
@@ -572,6 +620,15 @@ def _extract_selector_fields(
                 values.append(_convert_value(value, rule.get("value_type")))
         if rule.get("distinct"):
             values = list(dict.fromkeys(values))
+        for index, raw_pattern in enumerate(rule.get("preferred_value_patterns") or []):
+            pattern = _compile_pattern(
+                raw_pattern,
+                f"selector '{target}' preferred value pattern {index + 1}",
+                flags=regex.IGNORECASE,
+            )
+            preferred = [value for value in values if pattern.search(str(value))]
+            if preferred and len(preferred) < len(values):
+                values = preferred
         minimum_matches = int(rule.get("minimum_matches") or 0)
         raw_maximum = rule.get("maximum_matches")
         maximum_matches = None if raw_maximum in (None, "") else int(raw_maximum)
@@ -964,6 +1021,7 @@ def _order_sections(
     parameters: dict[str, Any],
     profile_id: str,
 ) -> list[_RecordSection]:
+    sections = [section for section in sections if not section.skip_output]
     order_spec = parameters.get("section_order")
     if not order_spec:
         return sections

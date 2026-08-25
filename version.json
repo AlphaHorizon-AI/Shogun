@@ -1,8 +1,8 @@
 {
-  "version": "1.47.87",
+  "version": "1.47.88",
   "name": "Shogun AFM",
-  "build": 238,
+  "build": 239,
   "channel": "stable",
-  "released": "2026-08-25T16:05:49Z",
-  "changelog": "Add fail-closed multi-component transformations and a portable KS-LBP disposition profile."
+  "released": "2026-08-25T17:32:54Z",
+  "changelog": "Add KS-LBP v4 variant resolution and golden-reference exception handling."
 }
