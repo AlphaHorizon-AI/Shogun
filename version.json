@@ -1,8 +1,8 @@
 {
-  "version": "1.47.89",
+  "version": "1.47.90",
   "name": "Shogun AFM",
-  "build": 240,
+  "build": 241,
   "channel": "stable",
-  "released": "2026-08-25T17:49:28Z",
-  "changelog": "Remove private KS-LBP profiles and fixtures from the public repository."
+  "released": "2026-08-25T18:28:25Z",
+  "changelog": "Preserve and flag incomplete semantic relationships without inventing values."
 }

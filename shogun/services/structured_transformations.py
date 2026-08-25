@@ -29,6 +29,7 @@ class DeterministicMatrixResult:
     adapter_id: str
     profile_id: str
     rows: list[list[Any]]
+    resolution_states: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -37,6 +38,8 @@ class _RecordSection:
     fields: dict[str, Any] = field(default_factory=dict)
     records: list[dict[str, str]] = field(default_factory=list)
     selector_exemptions: set[str] = field(default_factory=set)
+    selector_outcomes: dict[str, str] = field(default_factory=dict)
+    resolution_states: list[dict[str, Any]] = field(default_factory=list)
     skip_output: bool = False
 
 
@@ -232,6 +235,11 @@ def try_deterministic_matrix_transform(
             adapter_id=SUPPORTED_ADAPTER,
             profile_id=profile_id,
             rows=rows,
+            resolution_states=[
+                state
+                for section in sections
+                for state in section.resolution_states
+            ],
         )
 
 
@@ -356,7 +364,10 @@ def _parse_sections(
             if record_section_key_group and record.get(record_section_key_group) != key:
                 continue
             section.records.append(record)
-    return list(sections.values())
+    parsed_sections = list(sections.values())
+    for section in parsed_sections:
+        _apply_resolution_groups(section, parameters, profile_id)
+    return parsed_sections
 
 
 def _apply_section_override(
@@ -636,15 +647,107 @@ def _extract_selector_fields(
             raise ValueError(
                 f"Transformation profile '{profile_id}' selector '{target}' has invalid match cardinality."
             )
-        if len(values) < minimum_matches or (maximum_matches is not None and len(values) > maximum_matches):
+        cardinality_mismatch = len(values) < minimum_matches or (
+            maximum_matches is not None and len(values) > maximum_matches
+        )
+        mismatch_policy = str(rule.get("on_cardinality_mismatch") or "error").strip().lower()
+        if mismatch_policy not in {"error", "preserve"}:
+            raise ValueError(
+                f"Transformation profile '{profile_id}' selector '{target}' has unsupported "
+                f"on_cardinality_mismatch policy '{mismatch_policy}'."
+            )
+        if cardinality_mismatch and mismatch_policy == "error":
             maximum_label = "unbounded" if maximum_matches is None else str(maximum_matches)
             raise ValueError(
                 f"Transformation profile '{profile_id}' selector '{target}' in section "
                 f"{section.key} expected {minimum_matches}..{maximum_label} match(es), "
                 f"found {len(values)}."
             )
+        if cardinality_mismatch:
+            section.selector_outcomes[target] = "missing" if not values else "ambiguous"
+            # A single value remains source-grounded even when a profile asks for
+            # more than one. Multiple values cannot safely feed a scalar field.
+            if len(values) == 1:
+                _store_aggregated_field(
+                    section.fields,
+                    target,
+                    values,
+                    str(rule.get("aggregate") or "first"),
+                )
+            continue
+        section.selector_outcomes[target] = "resolved" if values else "empty"
         if values:
             _store_aggregated_field(section.fields, target, values, str(rule.get("aggregate") or "first"))
+
+
+def _apply_resolution_groups(
+    section: _RecordSection,
+    parameters: dict[str, Any],
+    profile_id: str,
+) -> None:
+    """Classify a profile-declared set of semantic fields without inventing values."""
+
+    groups = parameters.get("resolution_groups") or []
+    if not isinstance(groups, list) or any(not isinstance(group, dict) for group in groups):
+        raise ValueError(
+            f"Transformation profile '{profile_id}' resolution_groups must be a list of objects."
+        )
+    for index, group in enumerate(groups):
+        name = str(group.get("name") or f"resolution_{index + 1}").strip()
+        raw_targets = group.get("targets")
+        if (
+            not name
+            or not isinstance(raw_targets, list)
+            or not raw_targets
+            or any(not str(target).strip() for target in raw_targets)
+        ):
+            raise ValueError(
+                f"Transformation profile '{profile_id}' resolution group {index + 1} is invalid."
+            )
+        targets = [str(target).strip() for target in raw_targets]
+        if len(set(targets)) != len(targets):
+            raise ValueError(
+                f"Transformation profile '{profile_id}' resolution group '{name}' repeats a target."
+            )
+        status_target = str(group.get("status_target") or "").strip()
+        if not status_target:
+            raise ValueError(
+                f"Transformation profile '{profile_id}' resolution group '{name}' requires status_target."
+            )
+        review_target = str(group.get("requires_review_target") or "").strip()
+        applies = _section_condition_matches(section, group.get("when"))
+        present = [target for target in targets if section.fields.get(target) not in (None, "", [])]
+        if not applies:
+            status = "NOT_APPLICABLE"
+        elif len(present) == len(targets):
+            status = "RESOLVED"
+        elif present:
+            status = "PARTIAL"
+        else:
+            status = "UNRESOLVED"
+        requires_review = status in {"PARTIAL", "UNRESOLVED"}
+        target_states = {
+            target: (
+                "not_applicable"
+                if not applies
+                else "resolved"
+                if target in present
+                else section.selector_outcomes.get(target, "missing")
+            )
+            for target in targets
+        }
+        section.fields[status_target] = status
+        if review_target:
+            section.fields[review_target] = requires_review
+        section.resolution_states.append(
+            {
+                "section_key": section.key,
+                "name": name,
+                "status": status,
+                "requires_manual_validation": requires_review,
+                "targets": target_states,
+            }
+        )
 
 
 def _store_aggregated_field(
@@ -925,7 +1028,19 @@ def _resolve_value_spec(
 ) -> Any:
     if not isinstance(value_spec, dict):
         return value_spec
-    if "coalesce" in value_spec:
+    if "case" in value_spec:
+        cases = value_spec.get("case")
+        if not isinstance(cases, list) or not cases or any(
+            not isinstance(candidate, dict) or "value" not in candidate
+            for candidate in cases
+        ):
+            raise ValueError("Transformation profile case requires a non-empty list of value cases.")
+        value = _resolve_value_spec(value_spec.get("default", {}), section, record)
+        for candidate in cases:
+            if _section_condition_matches(section, candidate.get("when")):
+                value = _resolve_value_spec(candidate["value"], section, record)
+                break
+    elif "coalesce" in value_spec:
         candidates = value_spec.get("coalesce")
         if not isinstance(candidates, list) or not candidates:
             raise ValueError("Transformation profile coalesce requires a non-empty value list.")

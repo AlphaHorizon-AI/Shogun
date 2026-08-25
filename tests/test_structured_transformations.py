@@ -304,6 +304,92 @@ Columns: Promise Need
 """
 
 
+def _incomplete_component_resolution_profile() -> dict:
+    profile = _component_relationship_profile()
+    for selector in profile["parameters"]["selector_fields"]:
+        if selector["target"] in {"lower_component", "upper_component"}:
+            selector["on_cardinality_mismatch"] = "preserve"
+    profile["parameters"]["resolution_groups"] = [
+        {
+            "name": "assembly_components",
+            "when": {"field": "label", "operator": "contains", "value": "assembled"},
+            "targets": ["lower_component", "upper_component"],
+            "status_target": "component_resolution_status",
+            "requires_review_target": "requires_manual_validation",
+        }
+    ]
+    profile["parameters"]["base_columns"]["2"] = {
+        "case": [
+            {
+                "when": {
+                    "field": "component_resolution_status",
+                    "operator": "equals",
+                    "value": "RESOLVED",
+                },
+                "value": {
+                    "join": {
+                        "values": [
+                            {"field": "lower_component"},
+                            {"field": "upper_component"},
+                        ],
+                        "separator": " // ",
+                        "require_all": True,
+                    }
+                },
+            },
+            {
+                "when": {
+                    "all": [
+                        {
+                            "field": "component_resolution_status",
+                            "operator": "equals",
+                            "value": "PARTIAL",
+                        },
+                        {"field": "lower_component", "operator": "truthy"},
+                    ]
+                },
+                "value": {
+                    "join": {
+                        "values": [
+                            {"field": "lower_component"},
+                            {"literal": " [PARTIAL]"},
+                        ],
+                        "separator": "",
+                        "require_all": True,
+                    }
+                },
+            },
+            {
+                "when": {
+                    "field": "component_resolution_status",
+                    "operator": "equals",
+                    "value": "PARTIAL",
+                },
+                "value": {
+                    "join": {
+                        "values": [
+                            {"field": "upper_component"},
+                            {"literal": " [PARTIAL]"},
+                        ],
+                        "separator": "",
+                        "require_all": True,
+                    }
+                },
+            },
+            {
+                "when": {
+                    "field": "component_resolution_status",
+                    "operator": "equals",
+                    "value": "UNRESOLVED",
+                },
+                "value": {"literal": "[UNRESOLVED]"},
+            },
+        ],
+        "default": {"field": "legacy_component"},
+    }
+    return profile
+
+
 def test_generic_adapter_composes_exact_semantic_matches_in_profile_order():
     source = _component_relationship_source("UPPER-A upper module\nLOWER-A lower module\nPACK-A packaging insert")
 
@@ -386,6 +472,61 @@ def test_generic_adapter_fails_closed_for_incomplete_or_ambiguous_semantic_role(
             source_context=_component_relationship_source(component_lines),
             fixed_context=FIXED_CONTEXT,
         )
+
+
+def test_opt_in_resolution_group_preserves_complete_relationship_without_annotation():
+    result = try_deterministic_matrix_transform(
+        profile=_incomplete_component_resolution_profile(),
+        source_context=_component_relationship_source(
+            "LOWER-A lower module\nUPPER-A upper module"
+        ),
+        fixed_context=FIXED_CONTEXT,
+    )
+
+    assembly_row = next(row for row in result.rows if row[1] == "ASSEMBLY-A")
+    assembly_state = next(
+        state for state in result.resolution_states if state["section_key"] == "ASSEMBLY-A"
+    )
+
+    assert assembly_row[2] == "LOWER-A // UPPER-A"
+    assert assembly_state["status"] == "RESOLVED"
+    assert assembly_state["requires_manual_validation"] is False
+
+
+@pytest.mark.parametrize(
+    ("component_lines", "expected_relationship", "expected_status", "upper_state"),
+    [
+        ("LOWER-A lower module", "LOWER-A [PARTIAL]", "PARTIAL", "missing"),
+        ("PACK-A packaging insert", "[UNRESOLVED]", "UNRESOLVED", "missing"),
+        (
+            "LOWER-A lower module\nUPPER-A upper module\nUPPER-B upper module",
+            "LOWER-A [PARTIAL]",
+            "PARTIAL",
+            "ambiguous",
+        ),
+    ],
+)
+def test_opt_in_resolution_group_preserves_parent_and_never_selects_ambiguous_value(
+    component_lines,
+    expected_relationship,
+    expected_status,
+    upper_state,
+):
+    result = try_deterministic_matrix_transform(
+        profile=_incomplete_component_resolution_profile(),
+        source_context=_component_relationship_source(component_lines),
+        fixed_context=FIXED_CONTEXT,
+    )
+
+    assembly_row = next(row for row in result.rows if row[1] == "ASSEMBLY-A")
+    assembly_state = next(
+        state for state in result.resolution_states if state["section_key"] == "ASSEMBLY-A"
+    )
+
+    assert assembly_row[2] == expected_relationship
+    assert assembly_state["status"] == expected_status
+    assert assembly_state["requires_manual_validation"] is True
+    assert assembly_state["targets"]["upper_component"] == upper_state
 
 
 def test_generic_record_planning_preserves_distinct_records_without_aggregation():
