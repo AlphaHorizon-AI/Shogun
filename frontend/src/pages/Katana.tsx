@@ -103,7 +103,14 @@ const PROVIDER_MODEL_PRESETS: Record<string, string[]> = {
 const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'local'];
 const isLocalProvider = (type: string) => LOCAL_PROVIDERS.includes(type);
 
-const PROVIDER_SECRET_KEYS = new Set(['api_key', 'api-key', 'access_token', 'refresh_token', 'token', 'password', 'secret']);
+const PROVIDER_SECRET_KEYS = new Set(['api_key', 'api-key', 'access_token', 'refresh_token', 'token', 'password', 'secret', 'client_secret', 'oauth_client_secret']);
+
+type ReasoningControl = {
+  type: 'effort_enum';
+  supported_efforts: string[];
+  provider_default?: string | null;
+  catalog_version: number;
+};
 const hasProviderSecret = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false;
   if (Array.isArray(value)) return value.some(hasProviderSecret);
@@ -461,6 +468,9 @@ export function Katana() {
     is_active: true
   });
   const [configuredModels, setConfiguredModels] = useState<string[]>([]);
+  const [configuredReasoning, setConfiguredReasoning] = useState<Record<string, string>>({});
+  const [reasoningCapabilities, setReasoningCapabilities] = useState<Record<string, ReasoningControl | null>>({});
+  const [oauthClientSecret, setOauthClientSecret] = useState('');
   const [customModelInput, setCustomModelInput] = useState('');
   const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
   const [discoveringModels, setDiscoveringModels] = useState(false);
@@ -469,6 +479,40 @@ export function Katana() {
   const [baseUrlOverride, setBaseUrlOverride] = useState(false);
   const [localModelPath, setLocalModelPath]   = useState('');
   const [scanningModels, setScanningModels]   = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!configuredModels.length) {
+      setReasoningCapabilities({});
+      return () => { cancelled = true; };
+    }
+    axios.post('/api/v1/model-providers/reasoning-capabilities', {
+      provider_type: newProvider.provider_type,
+      model_ids: configuredModels,
+    }).then(response => {
+      if (!cancelled) setReasoningCapabilities(response.data?.data || {});
+    }).catch(() => {
+      if (!cancelled) setReasoningCapabilities({});
+    });
+    return () => { cancelled = true; };
+  }, [newProvider.provider_type, configuredModels]);
+
+  useEffect(() => {
+    setConfiguredReasoning(current => Object.fromEntries(
+      Object.entries(current).filter(([modelId]) => configuredModels.includes(modelId)),
+    ));
+  }, [configuredModels]);
+
+  useEffect(() => {
+    const receiveOAuthResult = (event: MessageEvent) => {
+      if (event.data?.type !== 'shogun.provider-oauth') return;
+      const success = event.data.status === 'success';
+      setStatusMessage({ type: success ? 'success' : 'error', text: event.data.message || (success ? 'OAuth connection completed.' : 'OAuth connection failed.') });
+      if (success) fetchData();
+    };
+    window.addEventListener('message', receiveOAuthResult);
+    return () => window.removeEventListener('message', receiveOAuthResult);
+  }, []);
 
   // ── Pull-model state ─────────────────────────────────────────
   const [showPullPanel, setShowPullPanel]         = useState(false);
@@ -1069,8 +1113,12 @@ export function Katana() {
   const handleCreateProvider = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    const oauthPopup = newProvider.auth_type === 'oauth'
+      ? window.open('', 'shogun-provider-oauth', 'popup=yes,width=640,height=760')
+      : null;
     try {
       const slug = toSlug(newProvider.name);
+      const credential = newProvider.api_key.trim();
       const payload: Record<string, any> = {
         name:          newProvider.name,
         provider_type: newProvider.provider_type,
@@ -1080,21 +1128,37 @@ export function Katana() {
         auth_type:     isLocalProvider(newProvider.provider_type) ? 'none' : newProvider.auth_type,
         config:        {
           ...providerConfigBase,
-          ...(newProvider.api_key.trim() ? { api_key: newProvider.api_key.trim() } : {}),
+          ...(newProvider.auth_type === 'api_key' && credential ? { api_key: credential } : {}),
+          ...(newProvider.auth_type === 'token' && credential ? { token: credential } : {}),
+          ...(newProvider.auth_type === 'oauth' && oauthClientSecret.trim() ? { oauth_client_secret: oauthClientSecret.trim() } : {}),
           models: configuredModels,
+          model_reasoning: configuredReasoning,
         },
       };
 
+      let response;
       if (editingProviderId) {
-        await axios.patch(`/api/v1/model-providers/${editingProviderId}`, payload);
+        response = await axios.patch(`/api/v1/model-providers/${editingProviderId}`, payload);
         setStatusMessage({ type: 'success', text: 'Model provider updated successfully.' });
       } else {
-        await axios.post('/api/v1/model-providers', payload);
+        response = await axios.post('/api/v1/model-providers', payload);
         setStatusMessage({ type: 'success', text: 'Model provider added successfully.' });
+      }
+
+      if (newProvider.auth_type === 'oauth') {
+        const providerId = response.data?.data?.id;
+        const oauth = await axios.post(`/api/v1/model-providers/${providerId}/oauth/start`, {
+          return_origin: window.location.origin,
+        });
+        if (!oauthPopup) throw new Error('The browser blocked the OAuth window. Allow pop-ups for Shogun and try again.');
+        oauthPopup.location.href = oauth.data.data.authorization_url;
+        setStatusMessage({ type: 'success', text: 'Provider saved. Complete authorization in the OAuth window.' });
       }
 
       setNewProvider({ name: '', provider_type: 'openai', auth_type: 'api_key', api_key: '', base_url: PROVIDER_BASE_URLS['openai'], is_active: true });
       setConfiguredModels([]);
+      setConfiguredReasoning({});
+      setOauthClientSecret('');
       setCustomModelInput('');
       setDiscoveredModels([]);
       setHasStoredProviderCredential(false);
@@ -1103,10 +1167,11 @@ export function Katana() {
       setBaseUrlOverride(false);
       fetchData();
     } catch (err: any) {
+      oauthPopup?.close();
       const detail = err?.response?.data?.detail;
       const msg = typeof detail === 'string' ? detail
         : Array.isArray(detail) ? detail.map((d: any) => `${d.loc?.slice(-1)[0]}: ${d.msg}`).join(', ')
-        : 'Failed to save provider.';
+        : err?.message || 'Failed to save provider.';
       setStatusMessage({ type: 'error', text: msg });
     } finally {
       setSaving(false);
@@ -1133,6 +1198,8 @@ export function Katana() {
       : '';
     const models = configured.length > 0 ? configured : legacyModel ? [legacyModel] : [];
     setConfiguredModels([...new Set(models.map((value: string) => value.trim()))]);
+    setConfiguredReasoning({ ...(p.config?.model_reasoning || {}) });
+    setOauthClientSecret('');
     setCustomModelInput('');
     setDiscoveredModels([]);
     setHasStoredProviderCredential(hasProviderSecret(p.config));
@@ -1152,6 +1219,8 @@ export function Katana() {
       is_active: true
     });
     setConfiguredModels([]);
+    setConfiguredReasoning({});
+    setOauthClientSecret('');
     setCustomModelInput('');
     setDiscoveredModels([]);
     setHasStoredProviderCredential(false);
@@ -1166,6 +1235,30 @@ export function Katana() {
       fetchData();
     } catch (error) {
       console.error('Error toggling provider:', error);
+    }
+  };
+
+  const handleConnectOAuth = async (providerId: string) => {
+    const popup = window.open('', 'shogun-provider-oauth', 'popup=yes,width=640,height=760');
+    try {
+      const response = await axios.post(`/api/v1/model-providers/${providerId}/oauth/start`, {
+        return_origin: window.location.origin,
+      });
+      if (!popup) throw new Error('The browser blocked the OAuth window. Allow pop-ups for Shogun and try again.');
+      popup.location.href = response.data.data.authorization_url;
+    } catch (error: any) {
+      popup?.close();
+      setStatusMessage({ type: 'error', text: error?.response?.data?.detail || error?.message || 'Could not start OAuth.' });
+    }
+  };
+
+  const handleDisconnectOAuth = async (providerId: string) => {
+    try {
+      await axios.post(`/api/v1/model-providers/${providerId}/oauth/disconnect`);
+      setStatusMessage({ type: 'success', text: 'OAuth tokens removed from Shogun.' });
+      fetchData();
+    } catch (error: any) {
+      setStatusMessage({ type: 'error', text: error?.response?.data?.detail || 'Could not disconnect OAuth.' });
     }
   };
 
@@ -1594,10 +1687,14 @@ export function Katana() {
                         setNewProvider({
                           ...newProvider,
                           provider_type: type,
+                          auth_type: 'api_key',
+                          api_key: '',
                           name: '',
                           base_url: PROVIDER_BASE_URLS[type] || '',
                         });
                         setConfiguredModels([]);
+                        setConfiguredReasoning({});
+                        setOauthClientSecret('');
                         setCustomModelInput('');
                         setDiscoveredModels([]);
                         setHasStoredProviderCredential(false);
@@ -1611,6 +1708,7 @@ export function Katana() {
                         <option value="google">Google (Gemini)</option>
                         <option value="anthropic">Anthropic</option>
                         <option value="openrouter">OpenRouter</option>
+                        <option value="custom">Custom OpenAI-compatible</option>
                       </optgroup>
                       <optgroup label={t('katana.local_providers')}>
                         <option value="ollama">Ollama (Local)</option>
@@ -1683,10 +1781,30 @@ export function Katana() {
                       <span>Active Models ({configuredModels.length})</span>
                       <span className="text-[8px] text-purple-400 font-semibold normal-case">Router candidates</span>
                     </label>
-                    <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-[#050508] border border-shogun-border rounded-lg">
-                      {configuredModels.map((modelId) => (
-                        <span key={modelId} className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 font-semibold">
-                          {modelId}
+                    <div className="space-y-1.5 min-h-[36px] p-2 bg-[#050508] border border-shogun-border rounded-lg">
+                      {configuredModels.map((modelId) => {
+                        const reasoning = reasoningCapabilities[modelId];
+                        return (
+                        <div key={modelId} className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded bg-purple-500/10 border border-purple-500/25 text-purple-300 font-semibold">
+                          <span className="min-w-0 flex-1 truncate font-mono">{modelId}</span>
+                          {reasoning && (
+                            <label className="flex items-center gap-1 text-[8px] font-sans uppercase text-shogun-subdued">
+                              Reasoning
+                              <select
+                                value={configuredReasoning[modelId] || ''}
+                                onChange={event => setConfiguredReasoning(current => {
+                                  const next = { ...current };
+                                  if (event.target.value) next[modelId] = event.target.value;
+                                  else delete next[modelId];
+                                  return next;
+                                })}
+                                className="rounded border border-purple-400/30 bg-[#050508] px-1.5 py-1 text-[9px] normal-case text-purple-200 outline-none"
+                              >
+                                <option value="">Provider default{reasoning.provider_default ? ` (${reasoning.provider_default})` : ''}</option>
+                                {reasoning.supported_efforts.map(effort => <option key={effort} value={effort}>{effort}</option>)}
+                              </select>
+                            </label>
+                          )}
                           <button
                             type="button"
                             onClick={() => setConfiguredModels(current => current.filter(item => item !== modelId))}
@@ -1695,8 +1813,8 @@ export function Katana() {
                           >
                             ×
                           </button>
-                        </span>
-                      ))}
+                        </div>
+                      );})}
                       {configuredModels.length === 0 && (
                         <span className="text-[10px] text-shogun-subdued italic py-0.5">No models selected. This provider will not be used for routing.</span>
                       )}
@@ -1771,18 +1889,22 @@ export function Katana() {
                           className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
                         >
                           <option value="api_key">{t('katana.api_key_option')}</option>
-                          <option value="oauth">{t('katana.oauth_option')}</option>
+                          {newProvider.provider_type === 'openai' && <option value="token">Workload identity bearer token</option>}
+                          {(newProvider.provider_type === 'google' || newProvider.provider_type === 'custom') && <option value="oauth">OAuth 2.0 (Authorization Code + PKCE)</option>}
                         </select>
+                        {newProvider.provider_type === 'openai' && (
+                          <p className="text-[9px] leading-relaxed text-shogun-subdued">OpenAI model API access uses an API key or an administrator-issued workload identity token. OpenAI does not provide a browser “Sign in with OpenAI” flow for model API access.</p>
+                        )}
                       </div>
-                      <div className="space-y-1.5 mt-3">
+                      {newProvider.auth_type !== 'oauth' ? <div className="space-y-1.5 mt-3">
                         <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">
-                          {newProvider.auth_type === 'oauth' ? t('katana.oauth_token') : t('katana.api_key_label')}
+                          {newProvider.auth_type === 'token' ? 'Bearer token' : t('katana.api_key_label')}
                         </label>
                         <input
                           type="password"
                           placeholder={hasStoredProviderCredential
                             ? 'Stored credential unchanged — enter a replacement'
-                            : newProvider.auth_type === 'oauth' ? 'Bearer ...' : 'sk-...'}
+                            : newProvider.auth_type === 'token' ? 'eyJ...' : 'sk-...'}
                           value={newProvider.api_key}
                           onChange={(e) => setNewProvider({...newProvider, api_key: e.target.value})}
                           className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
@@ -1793,7 +1915,38 @@ export function Katana() {
                         {hasStoredProviderCredential && newProvider.api_key && (
                           <p className="text-[9px] text-shogun-gold">The stored credential will be replaced when you save.</p>
                         )}
-                      </div>
+                      </div> : (
+                        <div className="space-y-3 rounded-lg border border-cyan-400/25 bg-cyan-400/5 p-3">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-cyan-300">Real OAuth connection</p>
+                            <p className="mt-1 text-[9px] leading-relaxed text-shogun-subdued">Shogun opens the provider consent page, validates state, uses PKCE, stores tokens encrypted, and refreshes expiring access tokens.</p>
+                          </div>
+                          <label className="block text-[9px] uppercase text-shogun-subdued">OAuth client ID
+                            <input required value={providerConfigBase.oauth_client_id || ''} onChange={event => setProviderConfigBase(current => ({ ...current, oauth_client_id: event.target.value }))} className="mt-1 block w-full rounded-lg border border-shogun-border bg-[#050508] p-2 text-xs normal-case outline-none focus:border-cyan-400" />
+                          </label>
+                          <label className="block text-[9px] uppercase text-shogun-subdued">OAuth client secret
+                            <input type="password" value={oauthClientSecret} placeholder={hasStoredProviderCredential ? 'Stored secret unchanged' : 'Optional for public PKCE clients'} onChange={event => setOauthClientSecret(event.target.value)} className="mt-1 block w-full rounded-lg border border-shogun-border bg-[#050508] p-2 text-xs normal-case outline-none focus:border-cyan-400" />
+                          </label>
+                          {newProvider.provider_type === 'google' ? (
+                            <label className="block text-[9px] uppercase text-shogun-subdued">Google Cloud project ID
+                              <input value={providerConfigBase.oauth_project_id || ''} onChange={event => setProviderConfigBase(current => ({ ...current, oauth_project_id: event.target.value }))} placeholder="my-google-cloud-project" className="mt-1 block w-full rounded-lg border border-shogun-border bg-[#050508] p-2 text-xs normal-case outline-none focus:border-cyan-400" />
+                            </label>
+                          ) : <>
+                            <label className="block text-[9px] uppercase text-shogun-subdued">Authorization URL
+                              <input required type="url" value={providerConfigBase.oauth_authorization_url || ''} onChange={event => setProviderConfigBase(current => ({ ...current, oauth_authorization_url: event.target.value }))} placeholder="https://provider.example/oauth/authorize" className="mt-1 block w-full rounded-lg border border-shogun-border bg-[#050508] p-2 text-xs normal-case outline-none focus:border-cyan-400" />
+                            </label>
+                            <label className="block text-[9px] uppercase text-shogun-subdued">Token URL
+                              <input required type="url" value={providerConfigBase.oauth_token_url || ''} onChange={event => setProviderConfigBase(current => ({ ...current, oauth_token_url: event.target.value }))} placeholder="https://provider.example/oauth/token" className="mt-1 block w-full rounded-lg border border-shogun-border bg-[#050508] p-2 text-xs normal-case outline-none focus:border-cyan-400" />
+                            </label>
+                          </>}
+                          <label className="block text-[9px] uppercase text-shogun-subdued">Scopes
+                            <input value={providerConfigBase.oauth_scopes || ''} onChange={event => setProviderConfigBase(current => ({ ...current, oauth_scopes: event.target.value }))} placeholder={newProvider.provider_type === 'google' ? 'Leave blank for Shogun defaults' : 'models.read chat.write'} className="mt-1 block w-full rounded-lg border border-shogun-border bg-[#050508] p-2 text-xs normal-case outline-none focus:border-cyan-400" />
+                          </label>
+                          <label className="block text-[9px] uppercase text-shogun-subdued">Redirect URI override
+                            <input type="url" value={providerConfigBase.oauth_redirect_uri || ''} onChange={event => setProviderConfigBase(current => ({ ...current, oauth_redirect_uri: event.target.value }))} placeholder="Leave blank for this Shogun API address" className="mt-1 block w-full rounded-lg border border-shogun-border bg-[#050508] p-2 text-xs normal-case outline-none focus:border-cyan-400" />
+                          </label>
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -2274,6 +2427,15 @@ export function Katana() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
+                            {p.auth_type === 'oauth' && (
+                              <button
+                                onClick={() => isActive ? handleDisconnectOAuth(p.id) : handleConnectOAuth(p.id)}
+                                className="px-2 py-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/5 text-[9px] font-bold uppercase text-cyan-300 hover:bg-cyan-400/10"
+                                title={isActive ? 'Remove stored OAuth grants' : 'Open provider authorization'}
+                              >
+                                {isActive ? 'Disconnect OAuth' : 'Connect OAuth'}
+                              </button>
+                            )}
                             {docLink && (
                               <a
                                 href={docLink.url}
@@ -2292,13 +2454,13 @@ export function Katana() {
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
-                            <button
-                              onClick={() => handleToggleProvider(p.id, p.status)}
-                              className="p-2 hover:bg-shogun-card rounded-lg transition-colors text-shogun-subdued hover:text-shogun-text"
-                              title={isActive ? t('katana.disable') : t('katana.enable')}
-                            >
-                              {isActive ? <Zap className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
-                            </button>
+                            {p.auth_type !== 'oauth' && <button
+                                onClick={() => handleToggleProvider(p.id, p.status)}
+                                className="p-2 hover:bg-shogun-card rounded-lg transition-colors text-shogun-subdued hover:text-shogun-text"
+                                title={isActive ? t('katana.disable') : t('katana.enable')}
+                              >
+                                {isActive ? <Zap className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                              </button>}
                             <button
                               onClick={() => handleDeleteProvider(p.id, p.name)}
                               className="p-2 hover:bg-red-500/10 text-red-500/50 hover:text-red-500 rounded-lg transition-colors"

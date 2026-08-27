@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "providers": {
+    "openai": [
+      {
+        "patterns": ["gpt-5.6", "gpt-5.6-*"],
+        "supported_efforts": ["none", "low", "medium", "high", "xhigh", "max"],
+        "provider_default": "medium"
+      },
+      {
+        "patterns": ["gpt-5.5-pro", "gpt-5.5-pro-*"],
+        "supported_efforts": ["medium", "high", "xhigh"],
+        "provider_default": "high"
+      },
+      {
+        "patterns": ["gpt-5.5", "gpt-5.5-*"],
+        "supported_efforts": ["none", "low", "medium", "high", "xhigh"],
+        "provider_default": "medium"
+      },
+      {
+        "patterns": ["gpt-5.4-pro", "gpt-5.4-pro-*"],
+        "supported_efforts": ["medium", "high", "xhigh"],
+        "provider_default": "medium"
+      },
+      {
+        "patterns": ["gpt-5.4", "gpt-5.4-*"],
+        "supported_efforts": ["none", "low", "medium", "high", "xhigh"],
+        "provider_default": "none"
+      },
+      {
+        "patterns": ["gpt-5.2", "gpt-5.2-*"],
+        "supported_efforts": ["none", "low", "medium", "high", "xhigh"],
+        "provider_default": "none"
+      },
+      {
+        "patterns": ["gpt-5.1", "gpt-5.1-*"],
+        "supported_efforts": ["none", "low", "medium", "high"],
+        "provider_default": "none"
+      },
+      {
+        "patterns": ["gpt-5-pro", "gpt-5-pro-*"],
+        "supported_efforts": ["high"],
+        "provider_default": "high"
+      },
+      {
+        "patterns": ["gpt-5", "gpt-5-*", "gpt-5-mini", "gpt-5-mini-*", "gpt-5-nano", "gpt-5-nano-*"],
+        "supported_efforts": ["minimal", "low", "medium", "high"],
+        "provider_default": "medium"
+      },
+      {
+        "patterns": ["o1", "o1-*", "o3", "o3-*", "o4-mini", "o4-mini-*"],
+        "supported_efforts": ["low", "medium", "high"],
+        "provider_default": "medium"
+      }
+    ]
+  }
+}

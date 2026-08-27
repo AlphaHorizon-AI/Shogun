@@ -42,6 +42,8 @@ from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_router import ModelRegistryEntry
 from shogun.db.models.model_routing import ModelRoutingProfile
 from shogun.services.provider_credentials import provider_api_key
+from shogun.services.model_reasoning import apply_chat_reasoning
+from shogun.services.provider_oauth import ensure_provider_access_token
 from shogun.services.structured_transformations import (
     deterministic_profile_source_units,
     expected_deterministic_matrix_rows,
@@ -5444,6 +5446,8 @@ def _provider_connection(
     if provider.provider_type == "openrouter":
         headers["HTTP-Referer"] = "https://shogun.ai"
         headers["X-Title"] = "Shogun AgentFlow"
+    if provider.provider_type == "google" and provider.config.get("oauth_project_id"):
+        headers["x-goog-user-project"] = str(provider.config["oauth_project_id"])
 
     return provider, resolved_model, base_url, headers
 
@@ -5543,7 +5547,13 @@ async def _resolve_llm_chain(
         )
         if provider:
             chain.append(_provider_connection(provider))
-    return chain
+    refreshed: list[tuple[ModelProvider, str, str, dict]] = []
+    for provider, model_name, _base_url, _headers in chain:
+        if provider.auth_type == "oauth":
+            await ensure_provider_access_token(session, provider)
+        refreshed.append(_provider_connection(provider, model_name))
+    await session.flush()
+    return refreshed
 
 
 _VISION_MODEL_MARKERS = (
@@ -5694,8 +5704,11 @@ async def _resolve_task_llm_chain(
         for entry in [result.selected, *result.fallbacks]:
             provider = await session.get(ModelProvider, entry.provider_id) if entry.provider_id else None
             if provider and provider.status == "connected":
+                if provider.auth_type == "oauth":
+                    await ensure_provider_access_token(session, provider)
                 chain.append(_provider_connection(provider, entry.model_id))
         if chain:
+            await session.flush()
             return chain, result.payload
     except NoEligibleModelError as exc:
         # Compatibility path for upgraded desktop installations: Comms and
@@ -5737,6 +5750,9 @@ async def _call_llm(
     max_tokens: int | None = None,
     temperature: float = 0.3,
     seed: int | None = None,
+    provider_type: str = "",
+    provider_config: dict[str, Any] | None = None,
+    reasoning_effort: str | None = None,
 ) -> str:
     """Make a non-streaming chat completion call and return the response text."""
     url = f"{base_url.rstrip('/')}/chat/completions"
@@ -5750,6 +5766,14 @@ async def _call_llm(
         payload["max_tokens"] = max_tokens
     if seed is not None:
         payload["seed"] = seed
+    if provider_type:
+        apply_chat_reasoning(
+            payload,
+            provider_type=provider_type,
+            model_id=model_name,
+            provider_config=provider_config,
+            explicit_effort=reasoning_effort,
+        )
 
     async with httpx.AsyncClient(timeout=float(timeout)) as client:
         resp = await client.post(url, headers=headers, json=payload)
@@ -6129,6 +6153,7 @@ async def _call_llm_chain(
                 route_key = f"{getattr(_provider, 'id', '')}:{model_name}"
                 model_parameters = ((routing_context or {}).get("request_parameters") or {}).get(route_key) or {}
                 temperature = max(0.0, min(2.0, float(model_parameters.get("temperature", 0.3))))
+                reasoning_effort = model_parameters.get("reasoning_effort")
                 configured_seed = (routing_context or {}).get("flow_seed")
                 seed_match = str((routing_context or {}).get("flow_seed_model_id") or "").strip()
                 physical_model = f"{getattr(_provider, 'id', '')}:{model_name}"
@@ -6141,9 +6166,9 @@ async def _call_llm_chain(
                 )
                 default_controls = temperature == 0.3 and seed is None
                 if max_tokens is None and default_controls:
-                    result = await _call_llm(messages, model_name, base_url, headers, timeout)
+                    result = await _call_llm(messages, model_name, base_url, headers, timeout, provider_type=_provider.provider_type, provider_config=_provider.config, reasoning_effort=reasoning_effort)
                 elif default_controls:
-                    result = await _call_llm(messages, model_name, base_url, headers, timeout, max_tokens=max_tokens)
+                    result = await _call_llm(messages, model_name, base_url, headers, timeout, max_tokens=max_tokens, provider_type=_provider.provider_type, provider_config=_provider.config, reasoning_effort=reasoning_effort)
                 else:
                     result = await _call_llm(
                         messages,
@@ -6154,6 +6179,9 @@ async def _call_llm_chain(
                         max_tokens=max_tokens,
                         temperature=temperature,
                         seed=seed,
+                        provider_type=_provider.provider_type,
+                        provider_config=_provider.config,
+                        reasoning_effort=reasoning_effort,
                     )
                 await _record_model_usage(
                     _provider,

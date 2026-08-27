@@ -20,6 +20,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from shogun.services.provider_credentials import provider_api_key
+from shogun.services.model_reasoning import apply_chat_reasoning
+from shogun.services.provider_oauth import ensure_provider_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +124,9 @@ async def _shogun_governed_chat(
                 .limit(1)
             )
             provider = res.scalar_one_or_none()
+        if provider and provider.auth_type == "oauth":
+            await ensure_provider_access_token(db, provider)
+            await db.commit()
         break
 
     if not provider:
@@ -167,6 +172,8 @@ async def _shogun_governed_chat(
     if provider.provider_type == "openrouter":
         req_headers["HTTP-Referer"] = "https://shogun.ai"
         req_headers["X-Title"] = "Shogun"
+    if provider.provider_type == "google" and provider.config.get("oauth_project_id"):
+        req_headers["x-goog-user-project"] = str(provider.config["oauth_project_id"])
 
     # ── 3. Load cached operator name ──
     operator_name = "Daimyo"
@@ -328,6 +335,12 @@ Explicit operator corrections are durable learning signals. Acknowledge them and
             "stream": True,
             "temperature": _temperature,
         }
+        apply_chat_reasoning(
+            req_json,
+            provider_type=provider.provider_type,
+            model_id=model_name,
+            provider_config=provider.config,
+        )
 
         assistant_tokens: list[str] = []
 

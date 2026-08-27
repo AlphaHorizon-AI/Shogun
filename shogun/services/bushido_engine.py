@@ -22,6 +22,8 @@ from shogun.db.models.bushido import BushidoJob, BushidoSchedule
 from shogun.db.models.tool_connector import ToolConnector
 from shogun.db.models.memory_record import MemoryRecord
 from shogun.services.provider_credentials import provider_api_key
+from shogun.services.model_reasoning import apply_chat_reasoning
+from shogun.services.provider_oauth import ensure_provider_access_token
 
 log = logging.getLogger(__name__)
 
@@ -771,6 +773,10 @@ async def _run_persona_drift_check(
             "dry_run": dry_run,
         }
 
+    if provider.auth_type == "oauth":
+        await ensure_provider_access_token(session, provider)
+        await session.commit()
+
     # Resolve endpoint and model
     PROVIDER_URLS = {
         "ollama": "http://127.0.0.1:11434",
@@ -798,6 +804,8 @@ async def _run_persona_drift_check(
     if provider.provider_type == "openrouter":
         headers["HTTP-Referer"] = "https://shogun.ai"
         headers["X-Title"] = "Shogun"
+    if provider.provider_type == "google" and provider.config.get("oauth_project_id"):
+        headers["x-goog-user-project"] = str(provider.config["oauth_project_id"])
 
     if dry_run:
         return {
@@ -849,19 +857,26 @@ Analyze the Shogun's responses for governance compliance. Return JSON only."""
 
     # ── 5. Call the LLM judge ───────────────────────────────────────
     try:
+        judge_payload = {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": judge_system},
+                {"role": "user", "content": judge_user},
+            ],
+            "temperature": 0.1,
+            "max_tokens": 1500,
+        }
+        apply_chat_reasoning(
+            judge_payload,
+            provider_type=provider.provider_type,
+            model_id=model_name,
+            provider_config=provider.config,
+        )
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 f"{base_url.rstrip('/')}/chat/completions",
                 headers=headers,
-                json={
-                    "model": model_name,
-                    "messages": [
-                        {"role": "system", "content": judge_system},
-                        {"role": "user", "content": judge_user},
-                    ],
-                    "temperature": 0.1,
-                    "max_tokens": 1500,
-                },
+                json=judge_payload,
             )
             if resp.status_code >= 400:
                 return {

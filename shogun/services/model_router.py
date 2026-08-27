@@ -375,6 +375,21 @@ def _profile_temperature(profile: ModelRoutingProfile, item: ModelRegistryEntry)
         return 0.3
 
 
+def _profile_reasoning_effort(profile: ModelRoutingProfile, item: ModelRegistryEntry) -> str | None:
+    """Return a validated profile override before the provider/model default."""
+
+    from shogun.services.model_reasoning import validate_reasoning_effort
+
+    raw = (profile.model_settings or {}).get(str(item.id)) or {}
+    configured = raw.get("reasoning_effort") or (item.config_json or {}).get("default_reasoning_effort")
+    if not configured:
+        return None
+    try:
+        return validate_reasoning_effort(item.provider, item.model_id, str(configured))
+    except ValueError:
+        return None
+
+
 @dataclass(slots=True)
 class RoutingResult:
     decision: ModelRoutingDecision | None
@@ -557,6 +572,28 @@ class ModelRegistryService:
             state["context_limit_source"] = "manual_override"
         item.config_json = state
 
+    @staticmethod
+    def _apply_reasoning_control(item: ModelRegistryEntry, provider: ModelProvider) -> None:
+        from shogun.services.model_reasoning import reasoning_capability, validate_reasoning_effort
+
+        state = dict(item.config_json or {})
+        capability = reasoning_capability(provider.provider_type, item.model_id)
+        configured = ((provider.config or {}).get("model_reasoning") or {}).get(item.model_id)
+        if capability:
+            state["reasoning_control"] = capability
+            try:
+                effective = validate_reasoning_effort(provider.provider_type, item.model_id, configured)
+            except ValueError:
+                effective = None
+            if effective:
+                state["default_reasoning_effort"] = effective
+            else:
+                state.pop("default_reasoning_effort", None)
+        else:
+            state.pop("reasoning_control", None)
+            state.pop("default_reasoning_effort", None)
+        item.config_json = state
+
     async def sync_connected(self) -> None:
         existing = list((await self.session.execute(select(ModelRegistryEntry))).scalars().all())
         existing_map = {(str(item.provider_id), item.model_id): item for item in existing}
@@ -631,6 +668,7 @@ class ModelRegistryService:
                 if key in existing_map:
                     item = existing_map[key]
                     self._apply_auto_context(item, discovered_contexts.get(model_id))
+                    self._apply_reasoning_control(item, provider)
                     is_auto = (item.config_json or {}).get("auto_discovered")
                     # Repair registry rows created by older Katana versions.
                     # Those rows may contain ``{}`` or stale False defaults,
@@ -652,6 +690,10 @@ class ModelRegistryService:
                     continue
                 caps = registry_capabilities(model_id, provider.provider_type, definition)
                 quality, cost, latency = infer_tiers(model_id, provider.is_local)
+                from shogun.services.model_reasoning import reasoning_capability
+
+                reasoning_control = reasoning_capability(provider.provider_type, model_id)
+                default_reasoning = ((provider.config or {}).get("model_reasoning") or {}).get(model_id)
                 item = ModelRegistryEntry(
                     model_id=model_id,
                     display_name=definition.display_name if definition else model_id,
@@ -672,6 +714,8 @@ class ModelRegistryService:
                         "context_limit_source": (discovered_contexts.get(model_id) or (8192, "fallback"))[1],
                         "detected_context_window": (discovered_contexts.get(model_id) or (8192, "fallback"))[0],
                         "provider_available": provider_connected,
+                        **({"reasoning_control": reasoning_control} if reasoning_control else {}),
+                        **({"default_reasoning_effort": default_reasoning} if default_reasoning else {}),
                         **({"enabled_before_provider_unavailable": True} if not provider_connected else {}),
                         PROFILE_KEY: discovered_tool_profiles[model_id],
                     },
@@ -1040,6 +1084,7 @@ class ModelRoutingService:
             "selected_max_input_tokens": configured_max_input_tokens(selected),
             "selected_max_output_tokens": effective_max_output_tokens(selected),
             "selected_temperature": _profile_temperature(profile, selected),
+            "selected_reasoning_effort": _profile_reasoning_effort(profile, selected),
             "fallback_model": fallbacks[0].model_id if fallbacks else None,
             "fallback_provider": fallbacks[0].provider if fallbacks else None,
             "fallback_models": [
@@ -1048,6 +1093,11 @@ class ModelRoutingService:
                     "display_name": item.display_name,
                     "provider": item.provider,
                     "temperature": _profile_temperature(profile, item),
+                    **(
+                        {"reasoning_effort": effort}
+                        if (effort := _profile_reasoning_effort(profile, item))
+                        else {}
+                    ),
                     "context_window": effective_context_window(item),
                     "max_input_tokens": configured_max_input_tokens(item),
                     "max_output_tokens": effective_max_output_tokens(item),
@@ -1057,6 +1107,11 @@ class ModelRoutingService:
             "request_parameters": {
                 f"{item.provider_id}:{item.model_id}": {
                     "temperature": _profile_temperature(profile, item),
+                    **(
+                        {"reasoning_effort": effort}
+                        if (effort := _profile_reasoning_effort(profile, item))
+                        else {}
+                    ),
                 }
                 for item in [selected, *fallbacks]
             },

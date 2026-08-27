@@ -254,6 +254,24 @@ def main() -> None:
     # Step 1: Ensure .env exists
     _ensure_env_file()
 
+    # A Total Restore is applied before importing Settings, opening SQLite, or
+    # initializing embedded Qdrant.  This is what makes a clean directory swap
+    # possible on Windows and prevents mixed old/new state.
+    from shogun.services.complete_backup_service import apply_pending_total_restore
+
+    restore_result = apply_pending_total_restore()
+    if restore_result.get("applied"):
+        print(
+            f"[RESTORE] Restored {restore_result.get('files_restored', 0)} files. "
+            f"Safety backup: {restore_result.get('safety_backup')}"
+        )
+        # The restored .env may contain the original encryption keys and other
+        # settings. Re-exec once so Settings is built from that restored file.
+        if os.environ.get("SHOGUN_TOTAL_RESTORE_REEXEC") != "1":
+            environment = os.environ.copy()
+            environment["SHOGUN_TOTAL_RESTORE_REEXEC"] = "1"
+            os.execve(sys.executable, [sys.executable, "-m", "shogun", *sys.argv[1:]], environment)
+
     # Step 2: Load config (now that .env is guaranteed)
     from shogun.config import settings
 

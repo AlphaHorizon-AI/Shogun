@@ -161,6 +161,7 @@ def test_compose_and_container_build_preserve_source_revision():
     assert "ARG VCS_REF=unknown" in dockerfile
     assert 'org.opencontainers.image.revision="${VCS_REF}"' in dockerfile
     assert "SHOGUN_GIT_SHA=${VCS_REF}" in dockerfile
+    assert "COPY LICENSE.md /build/LICENSE.md" in dockerfile
     assert 'docker build --build-arg VCS_REF="${GITHUB_SHA}"' in workflow
 
 

@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   Package,
   Activity,
+  Archive,
   HardDrive,
   Globe,
   Star,
@@ -2720,6 +2721,10 @@ npm start`}</pre>
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-shogun-blue" /> Data Management Tab</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">On the <strong>Backups</strong> page, switch to the <strong>Data Management</strong> tab. Here you'll find a live System Snapshot (row counts per table, DB size), one-click export as a <strong>Safe JSON Bundle</strong> or <strong>Raw Database Swap</strong>, and an Import area to restore from a previous export.</p>
                    </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-shogun-gold/60">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Archive className="w-4 h-4 text-shogun-gold" /> Complete Backup &amp; Total Restore</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">For PC migration, <strong>Complete Backup</strong> discovers all configured storage roots and archives every contained file, including SQLite, embedded Qdrant, chats, settings, archives, workspaces, vault data, and logs. <strong>Total Restore</strong> validates every file checksum, creates a safety backup, and applies the package before startup so the old and new states are never mixed. The package contains credentials and other secrets and must be protected accordingly.</p>
+                   </div>
                    <div className="shogun-card space-y-2 border-l-2 border-emerald-500/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-emerald-400" /> System Updates</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Navigate to <strong>Updates</strong> in the sidebar. The automatic checker reads the repository's <code>version.json</code> manifest, compares its numeric build with the installed build, and caches the result for 6 hours. <strong>Check for Updates</strong> forces a fresh check; an available release displays an <strong>UPDATE</strong> badge in the sidebar.</p>
@@ -2731,7 +2736,7 @@ npm start`}</pre>
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-amber-500/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-amber-400" /> Restore & Recovery</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Every backup in the list has a <strong>Restore</strong> button. Clicking it overwrites your current database and config files with the backup's contents. A restart is required afterwards. Use this to roll back after a bad config change, recover from corruption, or migrate to a new machine.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Every scheduled backup in the list has a <strong>Restore</strong> button for database and configuration rollback. Use <strong>Total Restore</strong> with a Complete Backup when recreating the whole Shogun state on another machine. Both workflows require a restart.</p>
                    </div>
                 </div>
              </section>

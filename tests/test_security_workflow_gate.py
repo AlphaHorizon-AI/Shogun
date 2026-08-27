@@ -133,3 +133,18 @@ def test_actions_are_immutably_pinned() -> None:
         matches = [comment for candidate, comment in action_lines if candidate == reference]
         assert matches, f"Pinned action is absent: {reference}"
         assert all(comment == expected_version for comment in matches)
+
+
+def test_shogun_server_failure_diagnostics_tolerate_an_early_build_failure() -> None:
+    workflow = _workflow()
+    logs_block = _command_block(
+        workflow,
+        "- name: Shogun Server logs",
+        "- name: Clean up Shogun Server",
+    )
+    cleanup_block = workflow.split("- name: Clean up Shogun Server", maxsplit=1)[1]
+
+    assert "if [ -f .env.server ]; then" in logs_block
+    assert "docker compose --env-file .env.server -f docker-compose.server.yml logs || true" in logs_block
+    assert "if [ -f .env.server ]; then" in cleanup_block
+    assert "docker compose --env-file .env.server -f docker-compose.server.yml down --volumes || true" in cleanup_block

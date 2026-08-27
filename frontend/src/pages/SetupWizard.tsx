@@ -952,20 +952,23 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                         onChange={(val: string) => updateProvider(activeProv.id, { auth_type: val })}
                       >
                         <option value="api_key">{t('setup.step5_api_key')}</option>
-                        <option value="oauth">OAuth</option>
+                        {activeProv.provider_type === 'openai' && <option value="token">Workload identity bearer token</option>}
                       </Select>
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-[#888] uppercase tracking-widest">
-                        {activeProv.auth_type === 'oauth' ? t('setup.oauth_token') : t('setup.step5_api_key')}
+                        {activeProv.auth_type === 'token' ? 'Bearer token' : t('setup.step5_api_key')}
                       </label>
                       <input
                         type="password"
                         value={activeProv.api_key}
                         onChange={e => updateProvider(activeProv.id, { api_key: e.target.value })}
-                        placeholder={activeProv.auth_type === 'oauth' ? 'Bearer ...' : 'sk-...'}
+                        placeholder={activeProv.auth_type === 'token' ? 'eyJ...' : 'sk-...'}
                         className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none transition-colors"
                       />
+                      {activeProv.provider_type === 'google' && (
+                        <p className="mt-1.5 text-[9px] leading-relaxed text-[#888]">Google OAuth is completed after setup in The Katana, where Shogun can save the provider first and securely validate the browser callback.</p>
+                      )}
                     </div>
                   </>
                 )}

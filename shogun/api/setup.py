@@ -376,6 +376,10 @@ async def complete_setup(payload: SetupCompletePayload):
         # ── 1. Create model providers ────────────────────────────────
         for idx, prov in enumerate(payload.providers):
             slug = f"{prov.provider_type}-{prov.name}".lower().replace(" ", "-")
+            provider_credential = {
+                "token" if prov.auth_type == "token" else "api_key": prov.api_key,
+                "models": prov.models,
+            }
             # Check if provider with this slug already exists
             existing = await session.execute(select(ModelProvider).where(ModelProvider.slug == slug))
             existing_record = existing.scalar_one_or_none()
@@ -383,10 +387,7 @@ async def complete_setup(payload: SetupCompletePayload):
             if existing_record:
                 # Update existing
                 existing_record.base_url = prov.base_url
-                existing_record.config = protect_provider_config({
-                    "api_key": prov.api_key,
-                    "models": prov.models,
-                }, existing_record.config)
+                existing_record.config = protect_provider_config(provider_credential, existing_record.config)
                 existing_record.status = "connected"
                 created_provider_ids.append(str(existing_record.id))
                 # We don't know the frontend UUID here but we'll try to match below
@@ -400,10 +401,7 @@ async def complete_setup(payload: SetupCompletePayload):
                     is_local=prov.provider_type in ("ollama", "lmstudio", "local"),
                     status="connected",
                     health_status="unknown",
-                    config=protect_provider_config({
-                        "api_key": prov.api_key,
-                        "models": prov.models,
-                    }),
+                    config=protect_provider_config(provider_credential),
                 )
                 session.add(provider_record)
                 await session.flush()

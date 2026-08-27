@@ -16,6 +16,8 @@ Usage:
 from __future__ import annotations
 
 import logging
+import threading
+from contextlib import contextmanager
 from typing import Any
 
 from qdrant_client import QdrantClient
@@ -41,6 +43,8 @@ EMBEDDING_DIM = 384
 # ── Singleton ────────────────────────────────────────────────────
 
 _store_instance: VectorStore | None = None
+_storage_suspended = False
+_storage_snapshot_lock = threading.RLock()
 
 
 def get_vector_store() -> VectorStore:
@@ -49,6 +53,20 @@ def get_vector_store() -> VectorStore:
     if _store_instance is None:
         _store_instance = VectorStore()
     return _store_instance
+
+
+@contextmanager
+def suspend_embedded_vector_store():
+    """Close and block embedded Qdrant while its files are snapshotted."""
+    global _storage_suspended
+    with _storage_snapshot_lock:
+        _storage_suspended = True
+        try:
+            if _store_instance is not None:
+                _store_instance.close()
+            yield
+        finally:
+            _storage_suspended = False
 
 
 # ── VectorStore ──────────────────────────────────────────────────
@@ -65,6 +83,8 @@ class VectorStore:
 
     @property
     def client(self) -> QdrantClient:
+        if _storage_suspended:
+            raise RuntimeError("Embedded Qdrant is briefly paused for a complete backup")
         if self._client is None:
             if settings.qdrant_url:
                 self._client = QdrantClient(url=settings.qdrant_url)
@@ -72,6 +92,12 @@ class VectorStore:
                 self._client = QdrantClient(path=str(settings.qdrant_path))
             logger.info("Qdrant client initialized (path=%s)", settings.qdrant_path)
         return self._client
+
+    def close(self) -> None:
+        """Release the embedded storage lock; the next operation reopens it lazily."""
+        if self._client is not None:
+            self._client.close()
+            self._client = None
 
     # ── Embedder ─────────────────────────────────────────────────
 

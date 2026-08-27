@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, field_serializer
 
@@ -17,7 +17,6 @@ from shogun.schemas.common import (
     ProviderType,
     ShogunBase,
 )
-
 
 # ── Model Provider ───────────────────────────────────────────
 
@@ -74,7 +73,16 @@ class ModelProviderResponse(ShogunBase):
     def serialize_config(self, config: dict[str, Any]) -> dict[str, Any]:
         """Never return stored provider credentials through the control API."""
 
-        sensitive = {"api_key", "token", "access_token", "refresh_token", "password", "secret"}
+        sensitive = {
+            "api_key",
+            "token",
+            "access_token",
+            "refresh_token",
+            "password",
+            "secret",
+            "client_secret",
+            "oauth_client_secret",
+        }
 
         def redact(value: Any) -> Any:
             if isinstance(value, dict):
@@ -130,6 +138,20 @@ class RoutingModelSettings(ShogunBase):
     """Generation controls scoped to one physical model in one profile."""
 
     temperature: float = Field(0.3, ge=0.0, le=2.0)
+    reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None
+
+
+class ModelReasoningCapabilitiesRequest(ShogunBase):
+    """Request reasoning controls for model IDs before a provider is saved."""
+
+    provider_type: ProviderType
+    model_ids: list[str] = Field(default_factory=list, max_length=500)
+
+
+class ProviderOAuthStartRequest(ShogunBase):
+    """Start a browser OAuth flow and return results to the requesting UI origin."""
+
+    return_origin: str = Field(..., min_length=1, max_length=500)
 
 
 class ModelRoutingProfileCreate(ShogunBase):

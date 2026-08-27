@@ -15,7 +15,7 @@ class ModelDiscoveryError(RuntimeError):
     """A provider catalog could not be retrieved or parsed safely."""
 
 
-def _catalog_headers(provider_type: str, api_key: str | None) -> dict[str, str]:
+def _catalog_headers(provider_type: str, api_key: str | None, project_id: str | None = None) -> dict[str, str]:
     headers = {"Accept": "application/json"}
     if not api_key:
         return headers
@@ -23,6 +23,8 @@ def _catalog_headers(provider_type: str, api_key: str | None) -> dict[str, str]:
         headers.update({"x-api-key": api_key, "anthropic-version": "2023-06-01"})
     else:
         headers["Authorization"] = f"Bearer {api_key}"
+    if provider_type == "google" and project_id:
+        headers["x-goog-user-project"] = project_id
     return headers
 
 
@@ -58,6 +60,7 @@ async def discover_provider_models(
     provider_type: str,
     base_url: str,
     api_key: str | None,
+    project_id: str | None = None,
 ) -> list[str]:
     """Fetch a provider's model list without allowing redirects or private-network pivots."""
 
@@ -73,7 +76,7 @@ async def discover_provider_models(
     except SSRFValidationError as exc:
         raise ModelDiscoveryError("The provider model-catalog destination is not permitted.") from exc
 
-    headers = _catalog_headers(provider_type, api_key)
+    headers = _catalog_headers(provider_type, api_key, project_id)
     headers["Host"] = destination.host_header
     try:
         async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:

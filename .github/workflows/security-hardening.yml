@@ -360,7 +360,13 @@ jobs:
           docker exec shogun-server python -c "import asyncio; from playwright.async_api import async_playwright; exec('async def smoke():\n async with async_playwright() as p:\n  browser = await p.chromium.launch(headless=True)\n  page = await browser.new_page()\n  await page.set_content(\"<title>mado-smoke</title>\")\n  assert await page.title() == \"mado-smoke\"\n  await browser.close()\nasyncio.run(smoke())')"
       - name: Shogun Server logs
         if: failure()
-        run: docker compose --env-file .env.server -f docker-compose.server.yml logs
+        run: |
+          if [ -f .env.server ]; then
+            docker compose --env-file .env.server -f docker-compose.server.yml logs || true
+          fi
       - name: Clean up Shogun Server
         if: always()
-        run: docker compose --env-file .env.server -f docker-compose.server.yml down --volumes
+        run: |
+          if [ -f .env.server ]; then
+            docker compose --env-file .env.server -f docker-compose.server.yml down --volumes || true
+          fi

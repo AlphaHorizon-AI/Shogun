@@ -17,6 +17,8 @@ _SENSITIVE_KEYS = {
     "token",
     "password",
     "secret",
+    "client_secret",
+    "oauth_client_secret",
 }
 _MASKED_VALUES = {"********", "••••••••"}
 

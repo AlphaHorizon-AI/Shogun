@@ -6,7 +6,7 @@ import { customProfileUpdate } from '../../lib/routingProfiles';
 type Profile = {
   id: string; name: string; description?: string; is_default: boolean;
   rules?: Array<{ task_type: string; primary_model_id: string; fallback_model_ids: string[] }>;
-  model_settings?: Record<string, { temperature?: number }>;
+  model_settings?: Record<string, { temperature?: number; reasoning_effort?: string | null }>;
 };
 type RegistryModel = {
   id: string; model_id: string; display_name: string; provider_id?: string; provider: string; connection_type: string; enabled: boolean;
@@ -17,7 +17,8 @@ type RegistryModel = {
 type Decision = {
   selected_model: string; selected_provider: string; fallback_model?: string; reason: string;
   selected_temperature?: number;
-  fallback_models?: Array<{ model_id: string; display_name: string; provider: string; temperature?: number }>;
+  selected_reasoning_effort?: string | null;
+  fallback_models?: Array<{ model_id: string; display_name: string; provider: string; temperature?: number; reasoning_effort?: string | null }>;
   complexity_score: number; estimated_cost_tier: number; estimated_latency_tier: number; active_profile: string;
 };
 type ToolCallingProfile = {
@@ -80,6 +81,17 @@ const orderedModels = (profile?: Profile): string[] => {
 const temperaturesFor = (profile?: Profile): Record<string, number> => Object.fromEntries(
   Object.entries(profile?.model_settings || {}).map(([id, settings]) => [id, settings.temperature ?? 0.3]),
 );
+const reasoningFor = (profile?: Profile): Record<string, string> => Object.fromEntries(
+  Object.entries(profile?.model_settings || {})
+    .filter(([, settings]) => Boolean(settings.reasoning_effort))
+    .map(([id, settings]) => [id, String(settings.reasoning_effort)]),
+);
+type ReasoningControl = { type: 'effort_enum'; supported_efforts: string[]; provider_default?: string | null };
+const modelReasoningControl = (model?: RegistryModel): ReasoningControl | null => {
+  const value = model?.config_json?.reasoning_control;
+  if (!value || typeof value !== 'object') return null;
+  return value as ReasoningControl;
+};
 
 type ModelRoutingPanelProps = {
   isEditingProfiles?: boolean;
@@ -100,6 +112,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
   const [decision, setDecision] = useState<Decision | null>(null);
   const [customModels, setCustomModels] = useState<string[]>([]);
   const [customTemperatures, setCustomTemperatures] = useState<Record<string, number>>({});
+  const [customReasoning, setCustomReasoning] = useState<Record<string, string>>({});
   const [draggedModelId, setDraggedModelId] = useState('');
   const [customProfileId, setCustomProfileId] = useState('');
   const [newProfileName, setNewProfileName] = useState('');
@@ -130,6 +143,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
         .filter((item): item is RegistryModel => Boolean(item?.enabled))
         .map(item => item.id));
       setCustomTemperatures(temperaturesFor(selected));
+      setCustomReasoning(reasoningFor(selected));
     } catch (error: any) {
       setMessage(error?.response?.data?.detail || 'Model routing data could not be loaded.');
     } finally { setLoading(false); }
@@ -155,6 +169,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       .filter((item): item is RegistryModel => Boolean(item?.enabled))
       .map(item => item.id));
     setCustomTemperatures(temperaturesFor(selected));
+    setCustomReasoning(reasoningFor(selected));
   };
   const setActive = async (item: Profile) => {
     setBusy(item.id);
@@ -191,6 +206,11 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       if (patch.enabled === false) {
         setCustomModels(current => current.filter(id => id !== item.id));
         setCustomTemperatures(current => {
+          const next = { ...current };
+          delete next[item.id];
+          return next;
+        });
+        setCustomReasoning(current => {
           const next = { ...current };
           delete next[item.id];
           return next;
@@ -253,6 +273,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       const modelSettings = Object.fromEntries(customModels.map(id => [id, {
         ...(customProfile.model_settings?.[id] || {}),
         temperature: customTemperatures[id] ?? customProfile.model_settings?.[id]?.temperature ?? 0.3,
+        ...(customReasoning[id] ? { reasoning_effort: customReasoning[id] } : {}),
       }]));
       const response = pendingRename
         ? await axios.post('/api/v1/model-routing-profiles', {
@@ -274,6 +295,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       setCustomProfileId(saved.id);
       setCustomModels(orderedModels(saved));
       setCustomTemperatures(temperaturesFor(saved));
+      setCustomReasoning(reasoningFor(saved));
     } catch (error: any) {
       setMessage(error?.response?.data?.detail || 'Routing profile could not be saved.');
     } finally { setBusy(''); }
@@ -302,6 +324,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       setCustomProfileId(created.id);
       setCustomModels([]);
       setCustomTemperatures({});
+      setCustomReasoning({});
     } catch (error: any) {
       setMessage(error?.response?.data?.detail || 'Routing profile could not be created.');
     } finally { setBusy(''); }
@@ -426,6 +449,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
               const item = models.find(model => model.id === id);
               if (!item) return null;
               const temperature = customTemperatures[id] ?? customProfile.model_settings?.[id]?.temperature ?? 0.3;
+              const reasoning = modelReasoningControl(item);
               return <div key={id} draggable onDragStart={() => setDraggedModelId(id)} onDragEnd={() => setDraggedModelId('')}
                 onDragOver={event => event.preventDefault()} onDrop={() => { moveCustomModel(draggedModelId, id); setDraggedModelId(''); }}
                 className={`flex items-center gap-2 rounded bg-[#080b14] border p-2 transition-colors ${draggedModelId === id ? 'border-amber-300/70 opacity-60' : 'border-shogun-border hover:border-amber-400/40'}`}>
@@ -440,6 +464,17 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
                     }}
                     className="w-16 rounded border border-purple-400/30 bg-[#050508] p-1.5 text-right font-mono text-[10px] text-purple-200 outline-none" />
                 </label>
+                {reasoning && <label className="flex shrink-0 items-center gap-1 text-[8px] uppercase text-shogun-subdued">Reasoning
+                  <select value={customReasoning[id] || ''} onChange={event => setCustomReasoning(current => {
+                    const next = { ...current };
+                    if (event.target.value) next[id] = event.target.value;
+                    else delete next[id];
+                    return next;
+                  })} className="max-w-28 rounded border border-cyan-400/30 bg-[#050508] p-1.5 text-[9px] normal-case text-cyan-200 outline-none">
+                    <option value="">Provider default{reasoning.provider_default ? ` (${reasoning.provider_default})` : ''}</option>
+                    {reasoning.supported_efforts.map(effort => <option key={effort} value={effort}>{effort}</option>)}
+                  </select>
+                </label>}
                 <div className="flex shrink-0 items-center">
                   <button title="Move up" disabled={index === 0} onClick={() => setCustomModels(current => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })} className="disabled:opacity-25"><ChevronUp className="w-3.5 h-3.5" /></button>
                   <button title="Move down" disabled={index === customModels.length - 1} onClick={() => setCustomModels(current => { const next = [...current]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })} className="disabled:opacity-25"><ChevronDown className="w-3.5 h-3.5" /></button>
@@ -524,7 +559,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
           {decision && <div className="mt-4 p-3 rounded-lg border border-green-400/30 bg-green-400/5">
             <p className="text-[8px] font-bold uppercase tracking-wider text-green-300/70">Primary model</p>
             <div className="font-bold text-sm text-green-300">{decision.selected_model}</div>
-            <div className="text-[9px] text-shogun-subdued">{decision.selected_provider} · temperature {(decision.selected_temperature ?? 0.3).toFixed(2)}</div>
+            <div className="text-[9px] text-shogun-subdued">{decision.selected_provider} · temperature {(decision.selected_temperature ?? 0.3).toFixed(2)}{decision.selected_reasoning_effort ? ` · reasoning ${decision.selected_reasoning_effort}` : ''}</div>
             <div className="mt-3 grid gap-1.5">
               {(decision.fallback_models?.length
                 ? decision.fallback_models
@@ -533,7 +568,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
                   : []
               ).map((fallback, index) => <div key={`${fallback.provider}:${fallback.model_id}`} className="flex items-center justify-between gap-2 rounded border border-shogun-border bg-[#080b14] px-2 py-1.5">
                 <span className="text-[8px] font-bold uppercase text-shogun-subdued">Fallback {index + 1}</span>
-                <span className="truncate text-[9px]">{fallback.display_name || fallback.model_id}{fallback.provider ? ` · ${fallback.provider}` : ''} · temp {(fallback.temperature ?? 0.3).toFixed(2)}</span>
+                <span className="truncate text-[9px]">{fallback.display_name || fallback.model_id}{fallback.provider ? ` · ${fallback.provider}` : ''} · temp {(fallback.temperature ?? 0.3).toFixed(2)}{fallback.reasoning_effort ? ` · reasoning ${fallback.reasoning_effort}` : ''}</span>
               </div>)}
               {!decision.fallback_models?.length && !decision.fallback_model && <p className="text-[9px] text-shogun-subdued">No other eligible model is currently available.</p>}
             </div>

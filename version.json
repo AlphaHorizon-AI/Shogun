@@ -1,8 +1,8 @@
 {
-  "version": "1.47.90",
+  "version": "1.47.91",
   "name": "Shogun AFM",
-  "build": 241,
+  "build": 242,
   "channel": "stable",
-  "released": "2026-08-25T18:28:25Z",
-  "changelog": "Preserve and flag incomplete semantic relationships without inventing values."
+  "released": "2026-08-27T11:28:36Z",
+  "changelog": "Add complete PC migration backup and total restore, real provider OAuth, and per-model reasoning controls."
 }

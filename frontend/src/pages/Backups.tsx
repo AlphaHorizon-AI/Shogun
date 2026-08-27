@@ -36,6 +36,12 @@ export const Backups = () => {
   const [importDragging, setImportDragging] = useState(false);
   const [importMsg, setImportMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [completeBackupPath, setCompleteBackupPath] = useState('complete_backups');
+  const [completeBackupRunning, setCompleteBackupRunning] = useState(false);
+  const [completeMsg, setCompleteMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [totalRestoreRunning, setTotalRestoreRunning] = useState(false);
+  const [totalRestoreDragging, setTotalRestoreDragging] = useState(false);
+  const totalRestoreInputRef = useRef<HTMLInputElement>(null);
 
   const loadBackups = async () => {
     try {
@@ -189,6 +195,67 @@ export const Backups = () => {
       setImporting(false);
       setImportDragging(false);
       if (importInputRef.current) importInputRef.current.value = '';
+    }
+  };
+
+  const handleCompleteBackup = async () => {
+    setCompleteBackupRunning(true);
+    setCompleteMsg(null);
+    try {
+      const res = await axios.post('/api/v1/backups/complete', {
+        label: 'migration',
+        save_path: completeBackupPath,
+      });
+      const result = res.data || {};
+      setCompleteMsg({
+        type: 'success',
+        text: `Complete backup saved to ${result.path} (${result.files_count || 0} files, ${((result.compressed_size || 0) / 1024 / 1024).toFixed(2)} MB).`,
+      });
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Complete backup failed';
+      setCompleteMsg({ type: 'error', text: msg });
+    } finally {
+      setCompleteBackupRunning(false);
+    }
+  };
+
+  const handleTotalRestore = async (file?: File) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      setCompleteMsg({ type: 'error', text: 'Please select a Shogun complete-backup ZIP.' });
+      return;
+    }
+    if (!confirm(
+      `TOTAL RESTORE ${file.name}?\n\nThis will replace all Shogun data, SQLite databases, Qdrant memory, settings, archives, workspace files, and logs. Shogun will restart automatically. A safety backup of the current state will be created first. Continue?`
+    )) {
+      if (totalRestoreInputRef.current) totalRestoreInputRef.current.value = '';
+      return;
+    }
+
+    setTotalRestoreRunning(true);
+    setCompleteMsg(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('restart_now', 'true');
+      const res = await axios.post('/api/v1/backups/total-restore', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const result = res.data || {};
+      const restartAccepted = result.restart?.accepted !== false;
+      setCompleteMsg({
+        type: 'success',
+        text: restartAccepted
+          ? `Validated ${result.files_count || 0} files. Shogun is restarting to apply Total Restore.`
+          : `Restore is validated and staged. Restart Shogun manually to apply it. ${result.restart?.message || ''}`,
+      });
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Total Restore failed';
+      setCompleteMsg({ type: 'error', text: msg });
+    } finally {
+      setTotalRestoreRunning(false);
+      setTotalRestoreDragging(false);
+      if (totalRestoreInputRef.current) totalRestoreInputRef.current.value = '';
     }
   };
 
@@ -459,6 +526,98 @@ export const Backups = () => {
 
           {/* Export/Import Actions */}
           <div className="lg:col-span-8 space-y-6">
+            <section className="bg-shogun-card border border-shogun-gold/40 rounded-xl p-6 space-y-6 shadow-[0_0_30px_rgba(212,169,38,0.04)]">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Archive className="w-5 h-5 text-shogun-gold" />
+                  <h3 className="text-lg font-bold text-shogun-text">PC Migration — Complete Backup</h3>
+                </div>
+                <p className="text-xs text-shogun-subdued leading-relaxed">
+                  Discovers every configured Shogun storage root and captures every file inside it: all SQLite data,
+                  embedded Qdrant memory, chats, settings, ToolGate, Kaizen, Bushido, archives, artifacts, workspace data,
+                  vault data, and logs. The ZIP contains credentials and other secrets; protect it accordingly.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Complete Backup Directory</label>
+                <input
+                  type="text"
+                  value={completeBackupPath}
+                  onChange={event => setCompleteBackupPath(event.target.value)}
+                  className="w-full bg-shogun-bg border border-shogun-border rounded-lg px-4 py-2.5 text-xs font-mono outline-none focus:border-shogun-gold text-white"
+                />
+                <p className="text-[10px] text-shogun-subdued">Keep this outside the data directory to prevent older complete backups being nested inside newer ones.</p>
+              </div>
+
+              <button
+                onClick={() => void handleCompleteBackup()}
+                disabled={completeBackupRunning || totalRestoreRunning}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-shogun-gold text-black text-xs font-bold uppercase tracking-wider hover:bg-shogun-gold/80 disabled:opacity-50"
+              >
+                {completeBackupRunning
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Archive className="w-4 h-4" />}
+                {completeBackupRunning ? 'Creating Complete Backup...' : 'Create Complete Backup'}
+              </button>
+
+              <div className="border-t border-shogun-border/60 pt-6">
+                <div
+                  onClick={() => !totalRestoreRunning && totalRestoreInputRef.current?.click()}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    if (!totalRestoreRunning) setTotalRestoreDragging(true);
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDragLeave={(event) => {
+                    event.preventDefault();
+                    if (event.currentTarget === event.target) setTotalRestoreDragging(false);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setTotalRestoreDragging(false);
+                    void handleTotalRestore(event.dataTransfer.files?.[0]);
+                  }}
+                  className={`border border-dashed rounded-xl p-8 text-center transition-all ${
+                    totalRestoreRunning
+                      ? 'border-shogun-gold/50 cursor-wait'
+                      : totalRestoreDragging
+                        ? 'border-red-400 bg-red-500/5 scale-[1.01] cursor-copy'
+                        : 'border-red-500/30 hover:border-red-400/60 hover:bg-red-500/[0.02] cursor-pointer'
+                  }`}
+                >
+                  {totalRestoreRunning
+                    ? <Loader2 className="w-8 h-8 mx-auto mb-3 text-shogun-gold animate-spin" />
+                    : <RotateCcw className="w-8 h-8 mx-auto mb-3 text-red-400" />}
+                  <h4 className="text-base font-bold text-shogun-text">{totalRestoreRunning ? 'Validating Total Restore...' : 'Total Restore'}</h4>
+                  <p className="text-xs text-shogun-subdued mt-1 max-w-lg mx-auto">
+                    Import a Complete Backup to recreate its state 1:1. The archive is fully checksummed, staged, and applied offline during restart. Existing state is safety-backed up first.
+                  </p>
+                  <input
+                    ref={totalRestoreInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".zip,application/zip"
+                    disabled={totalRestoreRunning}
+                    onChange={(event) => void handleTotalRestore(event.target.files?.[0])}
+                  />
+                </div>
+              </div>
+
+              {completeMsg && (
+                <div className={`p-3 rounded-lg flex items-center gap-3 text-xs font-bold ${
+                  completeMsg.type === 'success'
+                    ? 'bg-green-500/10 text-green-500 border border-green-500/20'
+                    : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                }`}>
+                  {completeMsg.type === 'success'
+                    ? <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    : <AlertCircle className="w-4 h-4 shrink-0" />}
+                  {completeMsg.text}
+                </div>
+              )}
+            </section>
+
             <section className="bg-shogun-card border border-shogun-border rounded-xl p-6 space-y-6">
               <div>
                 <h3 className="text-lg font-bold text-shogun-text mb-1">Export Library</h3>
