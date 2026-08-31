@@ -85,12 +85,74 @@ async def test_samurai_tool_calling_loop_executes_tool_and_returns_final_respons
             headers={},
             tools=tools,
             tool_executor=mock_tool_executor,
+            max_tool_rounds=1,
             governance_context={"posture_level": "campaign"}
         )
 
     assert result == "The tool returned: Echoed: Hello Shogun"
     assert len(executed_calls) == 1
     assert executed_calls[0] == ("echo_tool", {"text": "Hello Shogun"})
+
+
+@pytest.mark.asyncio
+async def test_samurai_tool_budget_forces_final_answer_without_replaying_research():
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "browse_web",
+            "description": "Read one source",
+            "parameters": {"type": "object", "properties": {"url": {"type": "string"}}},
+        },
+    }]
+    requested_calls = [
+        {
+            "id": f"call-{index}",
+            "type": "function",
+            "function": {
+                "name": "browse_web",
+                "arguments": json.dumps({"url": f"https://example.test/{index}"}),
+            },
+        }
+        for index in range(3)
+    ]
+    tool_response = MagicMock(status_code=200)
+    tool_response.json.return_value = {
+        "choices": [{"message": {"content": None, "tool_calls": requested_calls}}]
+    }
+    final_response = MagicMock(status_code=200)
+    final_response.json.return_value = {
+        "choices": [{"message": {"content": "Final answer from the bounded evidence.", "tool_calls": []}}]
+    }
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.post = AsyncMock(side_effect=[tool_response, final_response])
+    executor = AsyncMock(return_value='{"status":"success"}')
+
+    with patch("httpx.AsyncClient", return_value=mock_client), patch(
+        "shogun.services.tool_gate.check_tool_access", new_callable=AsyncMock
+    ) as mock_gate:
+        mock_gate.return_value = GateDecision(
+            action=GateAction.ALLOW,
+            reason="Allowed",
+            risk_level=RiskLevel.LOW,
+            tool_name="browse_web",
+        )
+        result = await flow_engine._call_llm_with_tools(
+            messages=[{"role": "user", "content": "Research efficiently"}],
+            model_name="test-model",
+            base_url="http://localhost:8000",
+            headers={},
+            tools=tools,
+            tool_executor=executor,
+            max_tool_rounds=4,
+            max_tool_calls=1,
+            governance_context={"posture_level": "campaign"},
+        )
+
+    assert result == "Final answer from the bounded evidence."
+    executor.assert_awaited_once()
+    assert "tools" not in mock_client.post.await_args_list[1].kwargs["json"]
 
 
 @pytest.mark.asyncio

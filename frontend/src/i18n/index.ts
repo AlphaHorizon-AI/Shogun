@@ -2,10 +2,11 @@
  * Shogun i18n — Internationalization system.
  *
  * Provides a React context + hook for multi-language support.
- * Language packs are bundled eagerly so language changes update synchronously.
+ * Language packs are loaded on demand and cached so the initial bundle contains
+ * only the language loader rather than every translation catalog.
  */
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
 // ── Types ────────────────────────────────────────────────────────
@@ -50,37 +51,51 @@ export const AVAILABLE_LANGUAGES: LanguageMeta[] = [
 // ── Language pack cache ──────────────────────────────────────────
 
 const packCache: Record<string, TranslationMap> = {};
+const packPromises: Partial<Record<string, Promise<TranslationMap>>> = {};
 
 // Dynamic import map — Vite requires static patterns for glob imports
 const packModules = import.meta.glob('./*.json', {
-  eager: true,
   import: 'default',
-}) as Record<string, TranslationMap>;
+}) as Record<string, () => Promise<TranslationMap>>;
 
-function loadPack(code: string): TranslationMap {
+async function loadPack(code: string): Promise<TranslationMap> {
   if (packCache[code]) return packCache[code];
+  if (packPromises[code]) return packPromises[code];
 
   const key = `./${code}.json`;
-  const pack = packModules[key];
-  if (!pack) {
+  const loader = packModules[key];
+  if (!loader) {
     console.warn(`[i18n] Language pack not found: ${code}, falling back to English`);
     if (code !== 'en') return loadPack('en');
     return {};
   }
 
-  packCache[code] = pack;
-  return pack;
+  const promise = loader()
+    .then(pack => {
+      packCache[code] = pack;
+      return pack;
+    })
+    .catch(error => {
+      console.error(`[i18n] Failed to load language pack: ${code}`, error);
+      if (code !== 'en') return loadPack('en');
+      return {};
+    })
+    .finally(() => {
+      delete packPromises[code];
+    });
+  packPromises[code] = promise;
+  return promise;
 }
 
 // ── Deep key resolution (supports "nav.overview" dot-notation) ───
 
 function resolveKey(translations: TranslationMap, key: string): string | undefined {
   const parts = key.split('.');
-  let current: any = translations;
+  let current: unknown = translations;
 
   for (const part of parts) {
     if (current == null || typeof current !== 'object') return undefined;
-    current = current[part];
+    current = (current as Record<string, unknown>)[part];
   }
 
   return typeof current === 'string' ? current : undefined;
@@ -103,15 +118,37 @@ interface I18nProviderProps {
 }
 
 export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
-  const initialLanguage = localStorage.getItem('shogun_language') || 'en';
+  const [initialLanguage] = useState(() => localStorage.getItem('shogun_language') || 'en');
   const [language, setLanguageState] = useState<string>(initialLanguage);
-  const [translations, setTranslations] = useState<TranslationMap>(() => loadPack(initialLanguage));
-  const [englishFallback] = useState<TranslationMap>(() => loadPack('en'));
+  const [translations, setTranslations] = useState<TranslationMap>({});
+  const [englishFallback, setEnglishFallback] = useState<TranslationMap>({});
+  const [loading, setLoading] = useState(true);
+  const packRequest = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+    const request = ++packRequest.current;
+    Promise.all([loadPack(initialLanguage), loadPack('en')]).then(([pack, english]) => {
+      if (!active || request !== packRequest.current) return;
+      setTranslations(pack);
+      setEnglishFallback(english);
+      setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [initialLanguage]);
 
   const setLanguage = useCallback(async (code: string) => {
+    const request = ++packRequest.current;
+    setLoading(true);
+    const [pack, english] = await Promise.all([loadPack(code), loadPack('en')]);
+    if (request !== packRequest.current) return;
     localStorage.setItem('shogun_language', code);
-    setTranslations(loadPack(code));
+    setTranslations(pack);
+    setEnglishFallback(english);
     setLanguageState(code);
+    setLoading(false);
 
     // Persist to backend (non-blocking)
     try {
@@ -146,7 +183,7 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
         setLanguage,
         t,
         languages: AVAILABLE_LANGUAGES,
-        loading: false,
+        loading,
       },
     },
     children

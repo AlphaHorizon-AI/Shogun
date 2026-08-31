@@ -18,6 +18,7 @@ import {
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
   Trash2,
   WifiOff,
   X,
@@ -651,6 +652,13 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function mutationMessage(response: any, saved: string) {
+  const created = response?.data?.data?.custom_posture_created;
+  return created?.name
+    ? `${saved} ${created.name} was created and activated automatically.`
+    : saved;
+}
+
 export function ToolGate() {
   const navigate = useNavigate();
   const [data, setData] = useState<ToolGateData | null>(null);
@@ -830,8 +838,8 @@ export function ToolGate() {
     if (value === 'default') delete next[toolName];
     else next[toolName] = value as GateAction;
     try {
-      await axios.put('/api/v1/security/toolgate/overrides', { overrides: next });
-      setMessage({ type: 'success', text: `ToolGate rule updated for ${toolName}.` });
+      const response = await axios.put('/api/v1/security/toolgate/overrides', { overrides: next });
+      setMessage({ type: 'success', text: mutationMessage(response, `ToolGate rule updated for ${toolName}.`) });
       await fetchData();
     } catch (error: unknown) {
       setMessage({ type: 'error', text: errorMessage(error, 'ToolGate rule could not be saved.') });
@@ -850,11 +858,11 @@ export function ToolGate() {
       else next[tool.name] = value as GateAction;
     });
     try {
-      await axios.put('/api/v1/security/toolgate/overrides', { overrides: next });
+      const response = await axios.put('/api/v1/security/toolgate/overrides', { overrides: next });
       const theme = TOOL_THEMES.find(item => item.id === themeId);
       setMessage({
         type: 'success',
-        text: `${theme?.label || 'Theme'} now uses ${value === 'default' ? 'policy defaults' : value === 'confirm' ? 'ask first' : value}.`,
+        text: mutationMessage(response, `${theme?.label || 'Theme'} now uses ${value === 'default' ? 'policy defaults' : value === 'confirm' ? 'ask first' : value}.`),
       });
       await fetchData();
     } catch (error: unknown) {
@@ -901,10 +909,10 @@ export function ToolGate() {
     setSavingCapabilities(true);
     setMessage(null);
     try {
-      await axios.put('/api/v1/security/toolgate/capabilities', {
+      const response = await axios.put('/api/v1/security/toolgate/capabilities', {
         permissions: capabilityDraft,
       });
-      setMessage({ type: 'success', text: `Capability boundaries saved for ${data.scope.label}.` });
+      setMessage({ type: 'success', text: mutationMessage(response, 'Capability boundaries saved.') });
       await fetchData();
     } catch (error: unknown) {
       setMessage({
@@ -970,8 +978,8 @@ export function ToolGate() {
     setSavingFilesystem(true);
     setMessage(null);
     try {
-      await axios.put('/api/v1/security/toolgate/filesystem', filesystemDraft);
-      setMessage({ type: 'success', text: 'Shared filesystem controls saved.' });
+      const response = await axios.put('/api/v1/security/toolgate/filesystem', filesystemDraft);
+      setMessage({ type: 'success', text: mutationMessage(response, 'Filesystem controls saved.') });
       await fetchData();
     } catch (error: unknown) {
       setMessage({ type: 'error', text: errorMessage(error, 'Filesystem controls could not be saved.') });
@@ -1004,8 +1012,8 @@ export function ToolGate() {
         ...networkDraft,
         allowed_domains: networkDraft.allowed_domains.map(domain => domain.trim()).filter(Boolean),
       };
-      await axios.put('/api/v1/security/toolgate/network', payload);
-      setMessage({ type: 'success', text: 'Shared Internet access controls saved.' });
+      const response = await axios.put('/api/v1/security/toolgate/network', payload);
+      setMessage({ type: 'success', text: mutationMessage(response, 'Internet access controls saved.') });
       await fetchData();
     } catch (error: unknown) {
       setMessage({ type: 'error', text: errorMessage(error, 'Internet access controls could not be saved.') });
@@ -1026,8 +1034,8 @@ export function ToolGate() {
     setSavingAdvanced(true);
     setMessage(null);
     try {
-      await axios.put('/api/v1/security/toolgate/advanced', advancedDraft);
-      setMessage({ type: 'success', text: `Advanced controls saved for ${data.scope.label}.` });
+      const response = await axios.put('/api/v1/security/toolgate/advanced', advancedDraft);
+      setMessage({ type: 'success', text: mutationMessage(response, 'Advanced controls saved.') });
       await fetchData();
     } catch (error: unknown) {
       setMessage({
@@ -1233,7 +1241,9 @@ export function ToolGate() {
               <p className="mt-1 text-xs leading-relaxed text-shogun-subdued">
                 {managed
                   ? `This view is read-only. The last known central policy remains enforced. ${formatSync(data.authority.last_sync_at)}.`
-                  : `Overrides are saved only for ${data.scope.label}. Switching tier or custom policy loads that scope's own ToolGate rules.`}
+                  : data.scope.kind === 'custom_policy'
+                    ? `Every setting is editable. Changes are saved only for ${data.scope.label}; other postures keep their own ToolGate rules.`
+                    : `Every setting is editable. Your first saved change will create and activate a custom ${data.scope.base_tier.toUpperCase()} posture automatically.`}
               </p>
             </div>
           </div>
@@ -1402,16 +1412,18 @@ export function ToolGate() {
             <div className="flex gap-2">
               <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
               <p className="text-xs leading-relaxed text-amber-100/75">
-                {managed
-                  ? 'Capability boundaries are centrally owned by Gensui.'
-                  : 'Built-in tiers are protected presets. Create or edit custom postures in the library above; activate one in Torii to inspect it here.'}
+                Capability boundaries are centrally owned by Gensui.
               </p>
             </div>
-            {!managed && (
-              <button onClick={() => navigate('/torii')} className="shrink-0 text-xs font-bold text-shogun-gold hover:text-white">
-                Select in Torii
-              </button>
-            )}
+          </div>
+        )}
+
+        {!managed && data.scope.kind !== 'custom_policy' && (
+          <div className="flex gap-2 rounded-lg border border-violet-400/20 bg-violet-500/[0.05] p-3">
+            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" />
+            <p className="text-xs leading-relaxed text-violet-100/75">
+              You are viewing the built-in {data.scope.base_tier.toUpperCase()} posture. Saving any change will preserve that preset and automatically create an active custom copy for your settings.
+            </p>
           </div>
         )}
 
@@ -1595,11 +1607,11 @@ export function ToolGate() {
                 <FolderOpen className="h-4 w-4 text-cyan-300" />
                 <p className="text-xs font-bold uppercase tracking-widest text-shogun-text">File access</p>
                 <span className="rounded border border-cyan-400/20 bg-cyan-500/10 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-cyan-200">
-                  One shared setup
+                  Posture-specific
                 </span>
               </div>
               <p className="mt-1 text-xs leading-relaxed text-shogun-subdued">
-                Add each local or network folder once, then choose exactly which operations all file tools may perform there.
+                Add each local or network folder once for this posture, then choose exactly which operations all file tools may perform there.
               </p>
             </div>
             <button
@@ -1718,7 +1730,7 @@ export function ToolGate() {
                 <Globe2 className="h-4 w-4 text-sky-300" />
                 <p className="text-xs font-bold uppercase tracking-widest text-shogun-text">Internet access</p>
                 <span className="rounded border border-sky-400/20 bg-sky-500/10 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-sky-200">
-                  One shared setup
+                  Posture-specific
                 </span>
               </div>
               <p className="mt-1 text-xs leading-relaxed text-shogun-subdued">

@@ -34,13 +34,14 @@ describe('routing profiles', () => {
     });
   });
 
-  it('does not rename an existing named profile from the new-profile draft', () => {
+  it('updates an existing profile description without renaming it from the new-profile draft', () => {
     expect(customProfileUpdate(
       { id: 'finance-id', name: 'Finance Research' },
       ['primary'],
       'Another profile',
       'Another description',
     )).toEqual({
+      description: 'Another description',
       rules: [{
         task_type: '*',
         primary_model_id: 'primary',

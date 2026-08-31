@@ -1,4 +1,4 @@
-"""Normalized durable records used by the Supermode mission runtime."""
+"""Normalized durable records used by Supermode."""
 
 from __future__ import annotations
 

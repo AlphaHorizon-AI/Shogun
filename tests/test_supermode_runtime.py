@@ -68,6 +68,12 @@ def mission_record(*, status: str = "planning") -> Mission:
     )
 
 
+def test_supermode_accepts_ordinary_language_confidence_scores():
+    assert mission_worker._normalized_score("High", 0.6) == 0.8
+    assert mission_worker._normalized_score("75%", 0.6) == 0.75
+    assert mission_worker._normalized_score("not scored", 0.6) == 0.6
+
+
 @pytest.mark.asyncio
 async def test_state_machine_persists_transitions_and_rejects_illegal_restart(
     supermode_session_factory,
@@ -125,6 +131,35 @@ async def test_planner_creates_normalized_parallel_graph(supermode_session_facto
         assert sum(task.status == "ready" for task in tasks) == 2
         assert all(task.assigned_agent_id for task in tasks)
         assert any(len(task.depends_on_task_ids) == 2 for task in tasks)
+
+
+@pytest.mark.asyncio
+async def test_ordinary_commercial_mission_uses_compact_three_stage_graph(supermode_session_factory):
+    async with supermode_session_factory() as session:
+        mission = mission_record()
+        mission.objective = (
+            "Prepare a detailed competitor analysis, a customer communications plan for Fyn, and a solid GTM."
+        )
+        mission.objective_original = mission.objective
+        session.add(mission)
+        await session.flush()
+
+        await create_initial_plan(session, mission)
+        await session.commit()
+
+        agents = list(
+            (await session.scalars(select(MissionAgent).where(MissionAgent.mission_id == mission.id))).all()
+        )
+        tasks = list(
+            (await session.scalars(select(MissionTask).where(MissionTask.mission_id == mission.id))).all()
+        )
+        synthesis = next(task for task in tasks if task.task_type == "mission_synthesis")
+
+        assert len(agents) == 3
+        assert len(tasks) == 3
+        assert len(synthesis.depends_on_task_ids) == 2
+        assert "Review, synthesize" in synthesis.title
+        assert all(task.max_retries == 1 for task in tasks)
 
 
 @pytest.mark.asyncio

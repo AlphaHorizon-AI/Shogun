@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -391,6 +392,32 @@ def _persist_local_policy() -> None:
         encoding="utf-8",
     )
     temp_path.replace(_LOCAL_OVERRIDES_PATH)
+
+
+def clone_local_toolgate_scope(source_scope: str, target_scope: str) -> None:
+    """Copy every standalone ToolGate layer when a built-in posture is forked."""
+    if not source_scope or not target_scope or source_scope == target_scope:
+        return
+
+    global _local_override_scopes
+    global _local_advanced_scopes
+    global _local_detail_scopes
+    global _local_filesystem_scopes
+    global _local_network_scopes
+
+    mappings = (
+        _local_override_scopes,
+        _local_advanced_scopes,
+        _local_detail_scopes,
+        _local_filesystem_scopes,
+        _local_network_scopes,
+    )
+    for mapping in mappings:
+        if source_scope in mapping:
+            mapping[target_scope] = deepcopy(mapping[source_scope])
+        else:
+            mapping.pop(target_scope, None)
+    _persist_local_policy()
 
 
 def set_local_overrides(overrides: dict[str, str], scope: str = _DEFAULT_LOCAL_SCOPE) -> None:

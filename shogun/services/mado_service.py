@@ -35,7 +35,21 @@ _playwright_instance: Any = None
 # Single-thread executor: Playwright's sync API binds to the thread where
 # sync_playwright().start() was called.  Every subsequent Playwright call
 # must happen on that SAME thread, so we pin all work to one worker.
-_pw_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="mado-pw")
+_pw_executor: concurrent.futures.ThreadPoolExecutor | None = concurrent.futures.ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="mado-pw",
+)
+
+MADO_NAVIGATION_TIMEOUT_MS = 12_000
+MADO_NETWORK_IDLE_TIMEOUT_MS = 1_500
+MADO_CONTENT_TIMEOUT_MS = 2_000
+
+
+def _get_pw_executor() -> concurrent.futures.ThreadPoolExecutor:
+    global _pw_executor
+    if _pw_executor is None:
+        _pw_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="mado-pw")
+    return _pw_executor
 
 
 async def _run_in_pw_thread(fn, *args, **kwargs):
@@ -46,7 +60,7 @@ async def _run_in_pw_thread(fn, *args, **kwargs):
 
         fn = functools.partial(fn, *args, **kwargs)
         args = ()
-    return await loop.run_in_executor(_pw_executor, fn, *args)
+    return await loop.run_in_executor(_get_pw_executor(), fn, *args)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -337,6 +351,28 @@ async def close_all_browsers() -> int:
     return len(session_ids)
 
 
+async def shutdown_browser_runtime() -> int:
+    """Close every Mado session and terminate the process-bound Playwright thread."""
+    global _playwright_instance, _pw_executor
+
+    closed = await close_all_browsers()
+    executor = _pw_executor
+    playwright = _playwright_instance
+    if executor is None:
+        _playwright_instance = None
+        return closed
+
+    try:
+        if playwright is not None:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(executor, playwright.stop)
+    finally:
+        _playwright_instance = None
+        _pw_executor = None
+        executor.shutdown(wait=True, cancel_futures=True)
+    return closed
+
+
 def _get_page(session_id: str):
     """Get the active page for a session, raising ValueError if not found."""
     page = _active_pages.get(session_id)
@@ -603,12 +639,12 @@ async def navigate(
     page = _get_page(session_id)
 
     def _do_nav():
-        response = page.goto(url, wait_until=wait_until, timeout=30000)
+        response = page.goto(url, wait_until=wait_until, timeout=MADO_NAVIGATION_TIMEOUT_MS)
         status_code = response.status if response else None
 
         load_state = wait_until
         try:
-            page.wait_for_load_state("networkidle", timeout=5000)
+            page.wait_for_load_state("networkidle", timeout=MADO_NETWORK_IDLE_TIMEOUT_MS)
             load_state = "networkidle"
         except Exception:
             pass
@@ -619,7 +655,7 @@ async def navigate(
         _auto_dismiss_consent(page)
 
         title = page.title()
-        body_text = page.locator("body").inner_text(timeout=3000).strip()[:1000]
+        body_text = page.locator("body").inner_text(timeout=MADO_CONTENT_TIMEOUT_MS).strip()[:1000]
         errors = []
         if status_code and status_code >= 400:
             errors.append(f"HTTP {status_code}")
@@ -674,7 +710,7 @@ async def extract_content(
             elements = page.query_selector_all(selector)
             if not elements:
                 log.warning("Mado: selector '%s' matched 0 elements on %s, falling back to body", selector, page.url)
-                body_text = page.inner_text("body")
+                body_text = page.inner_text("body", timeout=MADO_CONTENT_TIMEOUT_MS)
                 body_text = body_text[:50000] if body_text else ""
                 return {
                     "status": "fallback",
@@ -704,7 +740,7 @@ async def extract_content(
             if extract_type == "html":
                 content = page.content()
             else:
-                content = page.inner_text("body")
+                content = page.inner_text("body", timeout=MADO_CONTENT_TIMEOUT_MS)
 
         content = content[:50000] if content else ""
         return {

@@ -17,7 +17,6 @@ import {
   ShieldCheck,
   LockKeyhole,
   Radio,
-  ShieldAlert,
   Info,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
@@ -153,13 +152,6 @@ export const Sidebar = () => {
             onClick={() => navigate('/torii')}
           />
           <NavItem
-            icon={ShieldAlert}
-            label={t('nav.incident_reporting', 'Incident Reporting')}
-            subLabel={t('nav.incident_reporting_sub', 'Security Reports')}
-            active={location.pathname === '/guide' && location.hash === '#ref-incident-reporting'}
-            onClick={() => navigate('/guide?tab=reference#ref-incident-reporting')}
-          />
-          <NavItem
             icon={LockKeyhole}
             label={t('nav.toolgate', 'ToolGate')}
             subLabel={t('nav.toolgate_sub', 'Runtime Permissions')}
@@ -267,7 +259,7 @@ export const Sidebar = () => {
             icon={HelpCircle} 
             label={t('nav.guide', 'Guide')} 
             subLabel={t('nav.guide_sub', 'Documentation')} 
-            active={location.pathname === '/guide' && location.hash !== '#ref-incident-reporting'}
+            active={location.pathname === '/guide'}
             onClick={() => navigate('/guide')}
           />
         </nav>

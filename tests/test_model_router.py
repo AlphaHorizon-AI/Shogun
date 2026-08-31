@@ -490,6 +490,23 @@ async def test_registry_sync_preserves_manual_toggle_across_provider_availabilit
 
 
 @pytest.mark.asyncio
+async def test_registry_update_can_disable_and_reenable_connected_model(routing_session):
+    entry = await _model(routing_session, "vendor/operator-toggle", quality=3, cost=2)
+    service = ModelRegistryService(routing_session)
+
+    disabled = await service.update(entry.id, {"enabled": False})
+    assert disabled is entry
+    assert entry.enabled is False
+
+    await service.sync_connected()
+    assert entry.enabled is False
+
+    enabled = await service.update(entry.id, {"enabled": True})
+    assert enabled is entry
+    assert entry.enabled is True
+
+
+@pytest.mark.asyncio
 async def test_routing_excludes_disabled_models_and_disconnected_providers(routing_session):
     disconnected = await _model(routing_session, "vendor/disconnected", quality=5, cost=1)
     disconnected_provider = await routing_session.get(ModelProvider, disconnected.provider_id)
@@ -740,6 +757,47 @@ async def test_named_custom_profiles_keep_independent_strict_model_orders(routin
     assert result.selected.id == finance_primary.id
     assert [item.id for item in result.fallbacks] == [finance_fallback.id]
     assert engineering.id not in {result.selected.id, *(item.id for item in result.fallbacks)}
+
+
+@pytest.mark.asyncio
+async def test_custom_profile_reports_context_exhaustion_before_generic_capability_error(routing_session):
+    small_context = await _model(
+        routing_session,
+        "profile-small-context",
+        quality=3,
+        cost=2,
+        capabilities={"chat": True},
+    )
+    small_context.context_window = 8192
+    small_context.max_output_tokens = 4096
+    large_context = await _model(
+        routing_session,
+        "unselected-large-context",
+        quality=4,
+        cost=2,
+        capabilities={"chat": True},
+    )
+    large_context.context_window = 128000
+    large_context.max_output_tokens = 4096
+    profile = ModelRoutingProfile(
+        name="Small Context Route",
+        rules=[{
+            "task_type": "*",
+            "primary_model_id": str(small_context.id),
+            "fallback_model_ids": [],
+        }],
+    )
+    routing_session.add(profile)
+    await routing_session.flush()
+
+    with pytest.raises(NoEligibleModelError, match="enough context capacity"):
+        await ModelRoutingService(routing_session).route(ModelRouteRequest(
+            prompt="Analyze the mission",
+            task_type="mission_research",
+            required_capabilities=["chat"],
+            profile_override=str(profile.id),
+            context_size_estimate=6000,
+        ))
 
 
 @pytest.mark.asyncio

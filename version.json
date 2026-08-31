@@ -1,8 +1,8 @@
 {
-  "version": "1.47.92",
+  "version": "1.47.93",
   "name": "Shogun AFM",
-  "build": 243,
+  "build": 244,
   "channel": "stable",
-  "released": "2026-08-31T13:29:30Z",
-  "changelog": "Add Supermode Canvas mission orchestration, fleet-selected Samurai skill routing, mission controls, and migration and CI fixes."
+  "released": "2026-08-31T19:41:26Z",
+  "changelog": "Improve Supermode Canvas routing and controls, restore user-managed security settings, expand the Grand Manual, and optimize frontend bundle chunking."
 }

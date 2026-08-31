@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
   Controls,
-  MiniMap,
   ReactFlow,
   ReactFlowProvider,
 } from '@xyflow/react'
@@ -69,7 +68,7 @@ function label(value?: string) {
 function statusClass(status?: string) {
   const value = String(status || '').toLowerCase()
   if (value === 'completed') return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-  if (value === 'failed' || value === 'cancelled') return 'border-red-500/40 bg-red-500/10 text-red-300'
+  if (value === 'failed' || value === 'cancelled' || value === 'offline') return 'border-red-500/40 bg-red-500/10 text-red-300'
   if (value.includes('paused') || value.includes('blocked') || value === 'waiting') return 'border-amber-500/40 bg-amber-500/10 text-amber-300'
   if (activeStates.has(value) || value === 'ready' || value === 'active') return 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300'
   return 'border-shogun-border bg-shogun-card text-shogun-subdued'
@@ -84,13 +83,23 @@ function StatusBadge({ status }: { status?: string }) {
 }
 
 async function api(path: string, init?: RequestInit) {
-  const response = await fetch(path, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
-  })
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(payload.detail?.message || payload.detail || `HTTP ${response.status}`)
-  return payload.data
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 10_000)
+  try {
+    const response = await fetch(path, {
+      ...init,
+      signal: init?.signal || controller.signal,
+      headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.detail?.message || payload.detail || `HTTP ${response.status}`)
+    return payload.data
+  } catch (error: any) {
+    if (controller.signal.aborted) throw new Error('Shogun did not respond within 10 seconds.')
+    throw error
+  } finally {
+    window.clearTimeout(timeout)
+  }
 }
 
 interface MissionControlProps {
@@ -103,6 +112,8 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
   const [mission, setMission] = useState<MissionDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [connectionLost, setConnectionLost] = useState(false)
+  const lastUpdatedAtRef = useRef<Date | null>(null)
   const [selectedNode, setSelectedNode] = useState<RecordData | null>(null)
   const [bottomTab, setBottomTab] = useState<'timeline' | 'plans' | 'approvals' | 'learning' | 'artifacts'>('timeline')
   const [showAgents, setShowAgents] = useState(true)
@@ -148,8 +159,16 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
     try {
       await Promise.all([refreshList(), refreshDetail()])
       setError('')
+      setConnectionLost(false)
+      lastUpdatedAtRef.current = new Date()
     } catch (err: any) {
-      setError(err.message || 'Supermode Canvas could not load.')
+      const lastUpdatedAt = lastUpdatedAtRef.current
+      setConnectionLost(true)
+      setError(
+        `${err.message || 'Supermode Canvas could not load.'} Showing the last successful snapshot${
+          lastUpdatedAt ? ` from ${lastUpdatedAt.toLocaleTimeString()}` : ''
+        }.`,
+      )
     } finally {
       if (!quiet) setLoading(false)
     }
@@ -160,6 +179,22 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
     const timer = window.setInterval(() => void refresh(true), 4000)
     return () => window.clearInterval(timer)
   }, [refresh])
+
+  useEffect(() => {
+    setSelectedNode(current => {
+      if (!current || !mission) return current
+      if (current.kind === 'commander') return { ...current, record: mission }
+      const collection = current.kind === 'agent'
+        ? mission.agents
+        : current.kind === 'task'
+          ? mission.tasks
+          : current.kind === 'event'
+            ? mission.events
+            : []
+      const updatedRecord = collection.find(item => item.id === current.record?.id)
+      return updatedRecord ? { ...current, record: updatedRecord } : current
+    })
+  }, [mission])
 
   const mutate = async (action: string, body?: RecordData): Promise<boolean> => {
     if (!mission) return false
@@ -228,7 +263,7 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
       position: { x: 360, y: 20 },
       data: {
         kind: 'commander',
-        label: `⚔ Mission Commander\n${label(mission.status)} · Plan v${mission.current_plan_version}`,
+        label: `⚔ Shogun\n${label(mission.status)} · Plan v${mission.current_plan_version}`,
         record: mission,
       },
       style: {
@@ -278,10 +313,11 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
         const agentPosition = agentPositions.get(task.assigned_agent_id)
         const x = agentPosition ? agentPosition.x + 12 : 30 + (index % 4) * 250
         const y = agentPosition ? agentPosition.y + 112 + (index % 2) * 90 : 390 + Math.floor(index / 4) * 120
+        const routingProfile = task.input_payload?.supermode_routing?.profile_name
         nodes.push({
           id: `task:${task.id}`,
           position: { x, y },
-          data: { kind: 'task', label: `${task.title}\n${label(task.status)}${task.model_name ? ` · ${task.model_name}` : ''}`, record: task },
+          data: { kind: 'task', label: `${task.title}\n${label(task.status)}${routingProfile ? ` · ${routingProfile}` : task.model_name ? ` · ${task.model_name}` : ''}`, record: task },
           style: {
             width: 190,
             minHeight: 62,
@@ -323,7 +359,7 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
           <div className="flex items-center gap-3">
             <Target className="h-5 w-5 text-shogun-gold" />
             <h1 className="truncate text-lg font-black uppercase tracking-[0.18em] text-shogun-gold">Supermode Canvas</h1>
-            {mission && <StatusBadge status={mission.status} />}
+            {mission && <StatusBadge status={connectionLost ? 'offline' : mission.status} />}
           </div>
           <p className="mt-1 truncate text-xs text-shogun-subdued">{mission?.title || 'Durable autonomous missions'}</p>
         </div>
@@ -334,11 +370,11 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
                 <Shield className="mr-1.5 h-3.5 w-3.5" /> {mission.posture_at_creation}
               </span>
               {pausableStates.has(mission.status) ? (
-                <button type="button" onClick={() => void mutate('pause')} disabled={missionAction !== null} className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-amber-300 disabled:cursor-wait disabled:opacity-50" title="Pause mission" aria-label="Pause mission">{missionAction === 'pause' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}</button>
+                <button type="button" onClick={() => void mutate('pause')} disabled={missionAction !== null || connectionLost} className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-amber-300 disabled:cursor-wait disabled:opacity-50" title="Pause mission" aria-label="Pause mission">{missionAction === 'pause' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}</button>
               ) : mission.status.startsWith('paused') ? (
-                <button type="button" onClick={() => void mutate('resume')} disabled={missionAction !== null} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-300 disabled:cursor-wait disabled:opacity-50" title="Resume mission" aria-label="Resume mission">{missionAction === 'resume' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}</button>
+                <button type="button" onClick={() => void mutate('resume')} disabled={missionAction !== null || connectionLost} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-300 disabled:cursor-wait disabled:opacity-50" title="Resume mission" aria-label="Resume mission">{missionAction === 'resume' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}</button>
               ) : null}
-              {!terminalStates.has(mission.status) && <button type="button" onClick={() => setConfirmingStop(true)} disabled={missionAction !== null} className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-red-300 disabled:cursor-wait disabled:opacity-50" title="Stop mission" aria-label="Stop mission">{missionAction === 'cancel' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}</button>}
+              {!terminalStates.has(mission.status) && <button type="button" onClick={() => setConfirmingStop(true)} disabled={missionAction !== null || connectionLost} className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-red-300 disabled:cursor-wait disabled:opacity-50" title="Stop mission" aria-label="Stop mission">{missionAction === 'cancel' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}</button>}
             </>
           )}
           <button onClick={() => void refresh()} className="rounded-lg border border-shogun-border bg-shogun-card p-2 text-shogun-subdued hover:text-shogun-text" title="Refresh"><RefreshCw className="h-4 w-4" /></button>
@@ -405,7 +441,6 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
                 <ReactFlow nodes={graph.nodes} edges={graph.edges} fitView fitViewOptions={{ padding: 0.18 }} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_, node) => setSelectedNode(node.data as RecordData)} onPaneClick={() => setSelectedNode(null)} colorMode="dark">
                   <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#1f2945" />
                   <Controls showInteractive={false} />
-                  <MiniMap pannable zoomable nodeColor={node => node.id === 'commander' ? '#d4a017' : node.id.startsWith('agent:') ? '#22d3ee' : '#6366f1'} maskColor="rgba(2,4,8,.72)" />
                 </ReactFlow>
               </div>
 
@@ -483,6 +518,7 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
                     {detailRecord.spawn_reason && <div><p className="text-[9px] font-black uppercase tracking-wider text-shogun-subdued">{detailRecord.source_type === 'fleet' ? 'Why was this Samurai routed?' : 'Why was this agent spawned?'}</p><p className="mt-1 leading-relaxed text-shogun-text">{detailRecord.spawn_reason}</p></div>}
                     {detailRecord.agent_routing_reason && <div><p className="text-[9px] font-black uppercase tracking-wider text-shogun-subdued">Agent route</p><p className="mt-1 leading-relaxed text-emerald-200">{detailRecord.agent_routing_reason}</p></div>}
                     {detailRecord.task_summary && <div><p className="text-[9px] font-black uppercase tracking-wider text-shogun-subdued">Latest handoff</p><p className="mt-1 whitespace-pre-wrap leading-relaxed text-shogun-text">{detailRecord.task_summary}</p></div>}
+                    {detailRecord.input_payload?.supermode_routing && <div><p className="text-[9px] font-black uppercase tracking-wider text-shogun-subdued">Routing logic chosen by Shogun</p><div className="mt-2 rounded-lg border border-violet-500/25 bg-violet-500/[0.06] p-3"><div className="flex items-center justify-between gap-2"><p className="font-bold text-violet-200">{detailRecord.input_payload.supermode_routing.profile_name}</p><span className="rounded border border-violet-400/20 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-violet-300">{label(detailRecord.input_payload.supermode_routing.source)}</span></div><p className="mt-2 leading-relaxed text-shogun-subdued">{detailRecord.input_payload.supermode_routing.reason}</p>{detailRecord.input_payload.supermode_routing.used_fallback && <p className="mt-2 text-[10px] text-amber-300">Preferred logic: {detailRecord.input_payload.supermode_routing.preferred_profile_name}. Shogun used this fallback because the preferred profile could not satisfy the runtime requirements.</p>}</div></div>}
                     {detailRecord.model_name && <div><p className="text-[9px] font-black uppercase tracking-wider text-shogun-subdued">Katana route</p><p className="mt-1 text-shogun-text">{detailRecord.model_name} · {detailRecord.model_provider}</p><p className="mt-1 text-[10px] text-shogun-subdued">{detailRecord.routing_reason}</p></div>}
                     {detailRecord.inherited_skill_names?.length > 0 && <div><p className="text-[9px] font-black uppercase tracking-wider text-shogun-subdued">Inherited Shogun skills</p><div className="mt-2 flex flex-wrap gap-1">{detailRecord.inherited_skill_names.map((skill: string) => <span key={skill} className="rounded border border-emerald-500/20 bg-emerald-500/5 px-2 py-1 text-[9px] text-emerald-300">{skill}</span>)}</div></div>}
                     {detailRecord.tool_allowlist?.length > 0 && <div><p className="text-[9px] font-black uppercase tracking-wider text-shogun-subdued">Available tools</p><div className="mt-2 flex flex-wrap gap-1">{detailRecord.tool_allowlist.map((tool: string) => <span key={tool} className="rounded border border-cyan-500/20 bg-cyan-500/5 px-2 py-1 text-[9px] text-cyan-300">{tool}</span>)}</div></div>}
@@ -496,7 +532,7 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
 
               {!terminalStates.has(mission.status) && (
                 <div className="mt-5 border-t border-shogun-border pt-4">
-                  <p className="text-[9px] font-black uppercase tracking-wider text-shogun-subdued">Message Commander</p>
+                  <p className="text-[9px] font-black uppercase tracking-wider text-shogun-subdued">Message Shogun</p>
                   <textarea value={steering} onChange={event => setSteering(event.target.value)} rows={3} placeholder="Add a constraint, redirect priorities, or request emphasis…" className="mt-2 w-full rounded-lg border border-shogun-border bg-black/30 p-2 text-xs text-shogun-text outline-none focus:border-shogun-blue" />
                   <button disabled={!steering.trim()} onClick={() => { void mutate('steer', { instruction: steering }); setSteering('') }} className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-shogun-blue px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white disabled:opacity-40"><Send className="h-3.5 w-3.5" />Steer mission</button>
                   <div className="mt-2 grid grid-cols-2 gap-2"><button onClick={() => void mutate('replan', { reason: 'Operator requested a fresh plan from Supermode Canvas' })} className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2 py-2 text-[9px] font-bold uppercase text-indigo-300"><GitBranch className="mr-1 inline h-3.5 w-3.5" />Re-plan</button><button onClick={() => setShowSpecialist(value => !value)} className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2 py-2 text-[9px] font-bold uppercase text-cyan-300"><Plus className="mr-1 inline h-3.5 w-3.5" />Specialist</button></div>

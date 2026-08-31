@@ -98,7 +98,7 @@ def test_local_acknowledgement_is_never_serialized_as_telemetry(
             telemetry_payload.enforce_payload({**event, key: "must-stay-local"})
 
 
-def test_installer_and_persistent_navigation_include_security_routes() -> None:
+def test_installer_and_guide_include_security_routes() -> None:
     root = Path(__file__).resolve().parents[1]
     english = json.loads((root / "frontend/src/i18n/en.json").read_text(encoding="utf-8"))
     wizard = (root / "frontend/src/pages/SetupWizard.tsx").read_text(encoding="utf-8")
@@ -115,7 +115,8 @@ def test_installer_and_persistent_navigation_include_security_routes() -> None:
     assert "https://github.com/AlphaHorizon-AI/Shogun/security/advisories/new" in wizard
     assert "mailto:contact@alphahorizon.io?subject=Shogun%20Security%20Report" in wizard
     assert 'rel="noopener noreferrer"' in wizard
-    assert "/guide?tab=reference#ref-incident-reporting" in sidebar
+    assert "Incident Reporting" not in sidebar
+    assert "Guide → Reference → Incident Reporting" in english["setup"]["security_post_install"]
     assert "requestedGuideTab(location.search)" in guide
     assert "requestedGuideSection(" in guide
     assert "decodeURIComponent(hash.slice(1))" in navigation

@@ -32,6 +32,27 @@ def _domain_role(objective: str) -> tuple[str, str]:
     return "Domain Analysis Specialist", "Validate domain assumptions, dependencies, evidence, and feasibility."
 
 
+def _use_compact_plan(objective: str) -> bool:
+    """Use three stages for ordinary work and retain a separate red team for high-stakes work."""
+    text = objective.lower()
+    separate_review_markers = (
+        "audit",
+        "critical infrastructure",
+        "cybersecurity",
+        "financial advice",
+        "investment",
+        "legal",
+        "medical",
+        "patient",
+        "regulation",
+        "safety critical",
+        "security",
+        "software",
+        "source code",
+    )
+    return len(objective) <= 2_000 and not any(marker in text for marker in separate_review_markers)
+
+
 def _default_success_criteria(objective: str) -> list[str]:
     return [
         "The objective is decomposed into an actionable plan with explicit dependencies.",
@@ -52,6 +73,7 @@ async def create_initial_plan(session: AsyncSession, mission: Mission) -> Missio
     criteria = list(mission.success_criteria or []) or _default_success_criteria(mission.objective or mission.title)
     mission.success_criteria = criteria
     role_name, role_description = _domain_role(mission.objective or "")
+    compact_plan = _use_compact_plan(mission.objective or "")
 
     agent_specs = [
         (
@@ -83,6 +105,11 @@ async def create_initial_plan(session: AsyncSession, mission: Mission) -> Missio
             ["file_read", "file_inspect"],
         ),
     ]
+    if compact_plan:
+        # The synthesizer is independent from both primary workstreams and can
+        # perform the bounded critical review while producing the final answer.
+        # This removes an unnecessary sequential model wave for ordinary work.
+        agent_specs.pop(2)
     selected_specs = agent_specs[: max(1, mission.max_agents)]
     fleet_router = await FleetSamuraiRouter.load(session)
     fleet_matches = []
@@ -192,6 +219,7 @@ async def create_initial_plan(session: AsyncSession, mission: Mission) -> Missio
         task_type="mission_research",
         status="ready",
         priority=90,
+        max_retries=1,
         assigned_agent_id=resolved_role_agents[0].id,
         required_capabilities=["chat", "tool_use"],
         required_tools=resolved_role_agents[0].tool_allowlist,
@@ -209,6 +237,7 @@ async def create_initial_plan(session: AsyncSession, mission: Mission) -> Missio
         task_type="mission_research",
         status="ready",
         priority=90,
+        max_retries=1,
         assigned_agent_id=resolved_role_agents[min(1, len(resolved_role_agents) - 1)].id,
         required_capabilities=["chat", "tool_use"],
         required_tools=resolved_role_agents[min(1, len(resolved_role_agents) - 1)].tool_allowlist,
@@ -216,45 +245,60 @@ async def create_initial_plan(session: AsyncSession, mission: Mission) -> Missio
     )
     session.add_all([research, domain])
     await session.flush()
-    review = MissionTask(
-        mission_id=mission.id,
-        plan_version=1,
-        title="Critically review mission findings",
-        objective="Identify unsupported claims, contradictions, material omissions, and failure modes.",
-        instructions="Act as an independent red team. Recommend specific corrections before final synthesis.",
-        task_type="mission_critique",
-        status="pending",
-        priority=80,
-        assigned_agent_id=resolved_role_agents[min(2, len(resolved_role_agents) - 1)].id,
-        depends_on_task_ids=[str(research.id), str(domain.id)],
-        required_capabilities=["chat"],
-        required_tools=resolved_role_agents[min(2, len(resolved_role_agents) - 1)].tool_allowlist,
-        input_payload=common_input,
+    review = None
+    if not compact_plan:
+        review = MissionTask(
+            mission_id=mission.id,
+            plan_version=1,
+            title="Critically review mission findings",
+            objective="Identify unsupported claims, contradictions, material omissions, and failure modes.",
+            instructions="Act as an independent red team. Recommend specific corrections before final synthesis.",
+            task_type="mission_critique",
+            status="pending",
+            priority=80,
+            max_retries=1,
+            assigned_agent_id=resolved_role_agents[min(2, len(resolved_role_agents) - 1)].id,
+            depends_on_task_ids=[str(research.id), str(domain.id)],
+            required_capabilities=["chat"],
+            required_tools=resolved_role_agents[min(2, len(resolved_role_agents) - 1)].tool_allowlist,
+            input_payload=common_input,
+        )
+        session.add(review)
+        await session.flush()
+    synthesis_agent_index = 2 if compact_plan else 3
+    synthesis_dependencies = (
+        [str(research.id), str(domain.id)]
+        if compact_plan
+        else [str(review.id)]
     )
-    session.add(review)
-    await session.flush()
     synthesis = MissionTask(
         mission_id=mission.id,
         plan_version=1,
-        title="Synthesize and verify the mission result",
+        title=(
+            "Review, synthesize, and verify the mission result"
+            if compact_plan
+            else "Synthesize and verify the mission result"
+        ),
         objective=f"Produce the complete validated result for: {mission.objective}",
         instructions=(
-            "Integrate the workstreams and critical review. Explicitly address every success criterion, "
+            "Independently challenge unsupported claims and omissions, then integrate the workstreams. "
+            "Explicitly address every success criterion, "
             "state remaining uncertainty, and provide a practical next-step plan."
         ),
         task_type="mission_synthesis",
         status="pending",
         priority=100,
-        assigned_agent_id=resolved_role_agents[min(3, len(resolved_role_agents) - 1)].id,
-        depends_on_task_ids=[str(review.id)],
+        max_retries=1,
+        assigned_agent_id=resolved_role_agents[min(synthesis_agent_index, len(resolved_role_agents) - 1)].id,
+        depends_on_task_ids=synthesis_dependencies,
         required_capabilities=["chat"],
-        required_tools=resolved_role_agents[min(3, len(resolved_role_agents) - 1)].tool_allowlist,
+        required_tools=resolved_role_agents[min(synthesis_agent_index, len(resolved_role_agents) - 1)].tool_allowlist,
         input_payload=common_input,
     )
     session.add(synthesis)
     await session.flush()
 
-    tasks = [research, domain, review, synthesis]
+    tasks = [research, domain, *([review] if review else []), synthesis]
     plan_json = {
         "summary": f"Durable multi-agent plan for {mission.title}",
         "success_criteria": criteria,
@@ -288,7 +332,12 @@ async def create_initial_plan(session: AsyncSession, mission: Mission) -> Missio
         mission.id,
         "PLAN_CREATED",
         "Initial plan created with parallel research and domain workstreams",
-        event_data={"version": 1, "task_count": len(tasks), "agent_count": len(agents)},
+        event_data={
+            "version": 1,
+            "task_count": len(tasks),
+            "agent_count": len(agents),
+            "execution_shape": "compact" if compact_plan else "review_gated",
+        },
     )
     for agent in agents:
         routed_from_fleet = agent.source_type == "fleet"

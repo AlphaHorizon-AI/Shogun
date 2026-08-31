@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 from pathlib import Path
 
 import pytest
@@ -239,3 +240,25 @@ async def test_canonical_demo_end_to_end(monkeypatch, tmp_path):
         assert downloaded and downloaded[0].stat().st_size > 0
     finally:
         await mado_service.close_browser(session_id)
+
+
+@pytest.mark.asyncio
+async def test_shutdown_browser_runtime_stops_playwright_executor(monkeypatch):
+    from shogun.services import mado_service
+
+    stopped = False
+
+    class FakePlaywright:
+        def stop(self):
+            nonlocal stopped
+            stopped = True
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    monkeypatch.setattr(mado_service, "_active_contexts", {})
+    monkeypatch.setattr(mado_service, "_pw_executor", executor)
+    monkeypatch.setattr(mado_service, "_playwright_instance", FakePlaywright())
+
+    assert await mado_service.shutdown_browser_runtime() == 0
+    assert stopped is True
+    assert mado_service._pw_executor is None
+    assert mado_service._playwright_instance is None

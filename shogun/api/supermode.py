@@ -1,4 +1,4 @@
-"""Supermode mission and Mission Control API."""
+"""Supermode mission and canvas API."""
 
 from __future__ import annotations
 

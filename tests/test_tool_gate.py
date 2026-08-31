@@ -8,6 +8,7 @@ from shogun.services.tool_gate import (
     apply_gensui_overrides,
     calculate_capability_risk,
     check_tool_access,
+    clone_local_toolgate_scope,
     get_gensui_overrides,
     get_local_advanced_controls,
     get_local_filesystem_controls,
@@ -485,6 +486,72 @@ def test_shared_network_controls_are_persisted_and_isolated_by_scope():
     payload = json.loads(tool_gate._LOCAL_OVERRIDES_PATH.read_text(encoding="utf-8"))
     assert payload["version"] == 6
     assert payload["network_scopes"]["tier:guarded"]["allowed_domains"] == ["*.openai.com", "*.*"]
+
+
+def test_forking_builtin_posture_clones_every_local_toolgate_layer():
+    from shogun.services import tool_gate
+
+    set_local_overrides({"browse_web": "confirm"}, "tier:tactical")
+    set_local_advanced_controls(
+        {
+            "enabled": True,
+            "rules": [
+                {
+                    "id": "sensitive",
+                    "label": "Sensitive",
+                    "pattern": "confidential",
+                    "match_type": "contains",
+                    "action": "confirm",
+                    "tools": [],
+                    "case_sensitive": False,
+                    "enabled": True,
+                }
+            ],
+        },
+        "tier:tactical",
+    )
+    set_local_filesystem_controls(
+        {
+            "enabled": True,
+            "folders": [
+                {
+                    "id": "workspace",
+                    "path": "data/workspace",
+                    "kind": "internal",
+                    "read": True,
+                    "write": False,
+                    "create": False,
+                    "delete": False,
+                }
+            ],
+        },
+        "tier:tactical",
+    )
+    set_local_network_controls(
+        {"enabled": True, "mode": "allowlist", "allowed_domains": ["example.com"]},
+        "tier:tactical",
+    )
+    tool_gate.set_local_tool_detail(
+        "file_read",
+        {"allowed_internal_paths": ["data/workspace"], "allowed_network_paths": []},
+        "tier:tactical",
+    )
+
+    clone_local_toolgate_scope("tier:tactical", "policy:custom-id")
+
+    assert get_local_overrides("policy:custom-id") == {"browse_web": "confirm"}
+    assert get_local_advanced_controls("policy:custom-id")["enabled"] is True
+    assert get_local_filesystem_controls("policy:custom-id")["folders"][0]["id"] == "workspace"
+    assert get_local_network_controls("policy:custom-id")["allowed_domains"] == ["example.com"]
+    assert tool_gate.get_local_tool_detail("file_read", "policy:custom-id")["allowed_internal_paths"] == [
+        "data/workspace"
+    ]
+
+    set_local_network_controls(
+        {"enabled": True, "mode": "full", "allowed_domains": []},
+        "policy:custom-id",
+    )
+    assert get_local_network_controls("tier:tactical")["mode"] == "allowlist"
 
 
 @pytest.mark.asyncio

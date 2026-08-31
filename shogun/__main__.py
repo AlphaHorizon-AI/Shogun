@@ -307,9 +307,19 @@ def main() -> None:
     print("=" * 60)
 
     if settings.app_env == "development":
+        development_reload = os.getenv("SHOGUN_DEV_RELOAD", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
         print("  [DEVELOPMENT MODE]")
         print(f"  - Backend: http://{settings.api_host}:{settings.api_port}")
         print("  - Frontend: http://localhost:3000 (run: npm run dev in /frontend)")
+        print(
+            "  - Backend auto-reload: "
+            + ("enabled" if development_reload else "disabled (set SHOGUN_DEV_RELOAD=1 to enable)")
+        )
         print("-" * 60)
 
         uvicorn.run(
@@ -317,7 +327,7 @@ def main() -> None:
             host=settings.api_host,
             port=settings.api_port,
             factory=True,
-            reload=True,
+            reload=development_reload,
             log_level="info",
         )
     else:

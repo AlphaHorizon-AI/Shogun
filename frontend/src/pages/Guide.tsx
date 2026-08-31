@@ -45,6 +45,7 @@ import {
   ShieldAlert,
   Sword,
   HelpCircle,
+  Info,
   Crosshair,
   Monitor as MonitorIcon,
   FileSpreadsheet,
@@ -53,6 +54,7 @@ import {
   List,
   Clock,
   Route as RouteIcon,
+  Target,
 
   BrainCircuit,
   Eye,
@@ -136,6 +138,7 @@ export function Guide() {
     { id: 'ref-samurai', label: 'Samurai Network', icon: Users, color: 'text-shogun-gold' },
     { id: 'ref-flowstack', label: 'Flow Stacking', icon: Layers, color: 'text-violet-400' },
     { id: 'ref-comms', label: 'Comms', icon: MessageSquare, color: 'text-shogun-blue' },
+    { id: 'ref-supermode', label: 'Supermode Canvas', icon: Target, color: 'text-violet-400' },
     { id: 'ref-workspace', label: 'Workspace', icon: FolderOpenIcon, color: 'text-amber-400' },
     { id: 'ref-katana', label: 'Katana', icon: Sword, color: 'text-shogun-blue' },
     { id: 'ref-telegram', label: 'Telegram Setup', icon: MessageSquare, color: 'text-sky-400' },
@@ -148,8 +151,8 @@ export function Guide() {
     { id: 'ref-mado', label: 'Mado', icon: AppWindow, color: 'text-cyan-400' },
     { id: 'ref-ronin', label: 'Ronin', icon: Crosshair, color: 'text-orange-400' },
     { id: 'ref-skillopt', label: 'SkillOpt', icon: BrainCircuit, color: 'text-fuchsia-400' },
-    { id: 'ref-toolgate', label: 'ToolGate', icon: Shield, color: 'text-orange-400' },
     { id: 'ref-torii', label: 'Torii', icon: Lock, color: 'text-red-400' },
+    { id: 'ref-toolgate', label: 'ToolGate', icon: Shield, color: 'text-orange-400' },
     { id: 'ref-kaizen', label: 'Kaizen', icon: ShieldCheck, color: 'text-shogun-gold' },
     { id: 'ref-bushido', label: 'Bushido', icon: RefreshCw, color: 'text-shogun-blue' },
     { id: 'ref-archives', label: 'Archives', icon: Database, color: 'text-shogun-gold' },
@@ -610,27 +613,30 @@ export function Guide() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    {[
                      { name: 'Tenshu (Dashboard)', purpose: 'Your home screen. See stat cards, active agents, recent events, quick actions, and the Harakiri button. The first thing you see when you open Shogun.', icon: Layout, color: 'text-shogun-blue' },
-                     { name: 'Comms (Chat)', purpose: 'Talk directly to your Shogun. Send questions or commands. Responses stream in real time. View chat history and restore old sessions. Also includes an integrated email client and calendar.', icon: MessageSquare, color: 'text-shogun-blue' },
                      { name: 'Shogun Profile', purpose: 'Configure your AI\'s identity, personality, behavioral directives, and scheduled jobs. Model selection lives in Katana; security configuration lives in Torii and ToolGate.', icon: Cpu, color: 'text-shogun-gold' },
-                     { name: 'Samurai Network', purpose: 'Deploy and manage specialized sub-agents. Each Samurai has a role, routing profile, and spawn policy. Monitor their tasks and status.', icon: Users, color: 'text-shogun-gold' },
-                     { name: 'Katana (System Forge)', purpose: 'Install and connect AI providers, models, tools, file formats, channels, and account-specific scopes. Katana exposes capabilities; ToolGate governs whether they may run.', icon: Sword, color: 'text-shogun-blue' },
-                     { name: 'Archives (Memory)', purpose: 'Search, browse, create, and manage the AI\'s memories. Supports semantic search, salience pinning, and memory type filtering.', icon: Database, color: 'text-shogun-gold' },
-                     { name: 'Dojo (Training Hall)', purpose: 'Browse 4,000+ skills from the OpenClaw College. Study training material, take certification exams, and track achievements.', icon: Flame, color: 'text-shogun-gold' },
-                     { name: 'Kaizen (Governance)', purpose: 'Write the Constitution (YAML rules) and the Mandate (Markdown mission statement). Manage revision history and audit trails.', icon: ShieldCheck, color: 'text-shogun-gold' },
-                     { name: 'Bushido (Reflection)', purpose: 'Calibrate self-improvement behavior. Tune reflection intensity, consolidation rate, and exploration variance. View AI-generated insights.', icon: RefreshCw, color: 'text-shogun-blue' },
-                     { name: 'Torii (Security)', purpose: 'Select the active built-in tier or custom posture and access the Harakiri kill switch. Custom posture lifecycle is owned by ToolGate.', icon: Lock, color: 'text-red-400' },
-                     { name: 'ToolGate (Runtime Permissions)', purpose: 'Create, edit, and delete custom postures; configure capability boundaries; and inspect effective tool verdicts, risk indications, confirmations, and per-tool overrides.', icon: Shield, color: 'text-orange-400' },
-                     { name: 'Mado (Browser)', purpose: 'Browser automation layer powered by Playwright. Your AI can navigate to URLs, extract page content, take screenshots, and interact with web pages—within the capability boundaries and runtime verdicts shown in ToolGate.', icon: AppWindow, color: 'text-cyan-400' },
-                     { name: 'Ronin (Desktop Control)', purpose: 'Optional desktop automation for governed mouse, keyboard, screenshot, and native-app actions. It is available only when the active security tier is RONIN and an operator separately enables desktop control with the required confirmation.', icon: Crosshair, color: 'text-orange-400' },
-                     { name: 'Agent Flow (Workflows)', purpose: 'Visual drag-and-drop workflow builder. Design multi-step AI pipelines by chaining Input, Samurai, Shogun Approval, Logic Gate, Browser, and Output nodes. Execute complex orchestration flows.', icon: Workflow, color: 'text-violet-400' },
-                     { name: 'Mail (Email Client)', purpose: 'Full IMAP/SMTP email integration. Browse your inbox, read and compose emails, reply with CC/BCC, navigate folders. Your Shogun can also read, send, and manage emails via native skills.', icon: Mail, color: 'text-sky-400' },
-                     { name: 'Calendar', purpose: 'CalDAV calendar integration. View upcoming events, create new ones (with time, location, and description), and manage your schedule. Your Shogun can query and create events via native skills.', icon: CalendarDays, color: 'text-emerald-400' },
-                     { name: 'Nexus (Collaboration)', purpose: 'Create Joint Workspaces. Invite other Shogun instances over the network. Exchange typed messages and co-edit a shared whiteboard.', icon: Globe, color: 'text-indigo-400' },
-                     { name: 'Gensui (Fleet Command)', purpose: 'Connect this Shogun to Central Command for fleet governance, telemetry, commands, and emergency Harakiri. While managed, Gensui owns ToolGate; the local control surface is read-only and enforces the cached central policy during outages.', icon: ShieldAlert, color: 'text-indigo-400' },
-                     { name: 'Backups & Data', purpose: 'Scheduled and manual backups with configurable retention. Export/import your entire database. Manage backup settings and restore from any point.', icon: HardDrive, color: 'text-shogun-gold' },
-                     { name: 'Updates', purpose: 'Auto-checks for new Shogun versions every 6 hours. One-click install to download and apply updates. Preserves your data, configs, and environment.', icon: Download, color: 'text-emerald-400' },
-                      { name: 'Logs (Audit & Trace)', purpose: 'Compliance-oriented event and trace records. Filter by 11 categories (Decision, Oversight, Risk, Model, Policy, Memory, Tools, Auth, Incident, System). Click trace IDs to reconstruct recorded workflow events. HMAC-chain verification can identify mismatches in protected fields; it does not itself establish compliance or prove record completeness.', icon: Terminal, color: 'text-shogun-subdued' },
-                     { name: 'Guide (Documentation)', purpose: 'This page — a comprehensive knowledge base covering onboarding, architecture, reference manual, and safety protocols. Located in the Maintenance section.', icon: HelpCircle, color: 'text-shogun-subdued' },
+                     { name: 'Samurai Network', purpose: 'Deploy and manage permanent specialized sub-agents. Give each Samurai a role, routing profile, spawn policy, and selected skills from the Shogun\'s validated active skillset.', icon: Users, color: 'text-shogun-gold' },
+                     { name: 'Agent Flow & Flow Stack', purpose: 'Build reusable multi-step workflows and long-running stacks from the Samurai page. Connect governed nodes, execute them, inspect failures, checkpoint progress, and collect artifacts.', icon: Workflow, color: 'text-violet-400' },
+                     { name: 'Comms', purpose: 'The communication hub with five tabs in this order: Chat, Mail, Calendar, Files, and Supermode Canvas.', icon: MessageSquare, color: 'text-shogun-blue' },
+                     { name: 'Mail (Email Client)', purpose: 'Browse IMAP mail, read and compose messages, and manage folders. Shogun can use the same account through governed native tools.', icon: Mail, color: 'text-sky-400' },
+                     { name: 'Calendar', purpose: 'View and create CalDAV events with times, locations, and descriptions. Shogun can query and create events through governed native tools.', icon: CalendarDays, color: 'text-emerald-400' },
+                     { name: 'Supermode Canvas', purpose: 'Run durable multi-agent missions. The Shogun plans workstreams, routes Fleet Samurai or spawned specialists, chooses task-level routing logic, checkpoints work, requests approvals, and records learning and artifacts.', icon: Target, color: 'text-violet-400' },
+                     { name: 'Katana (System Forge)', purpose: 'Install and connect AI providers, models, tools, file formats, channels, and account-specific scopes. Configure model routing and eligibility here; ToolGate governs whether capabilities may execute.', icon: Sword, color: 'text-shogun-blue' },
+                     { name: 'Mado (Browser)', purpose: 'Browser automation powered by Playwright, governed by the active posture and ToolGate browser and network boundaries.', icon: AppWindow, color: 'text-cyan-400' },
+                     { name: 'Ronin (Desktop Control)', purpose: 'Optional governed mouse, keyboard, screenshot, and native-app control. It requires the Ronin posture and separate operator enablement.', icon: Crosshair, color: 'text-orange-400' },
+                     { name: 'Torii (Security)', purpose: 'Select the active built-in tier or custom posture and access Harakiri. Custom posture creation and detailed editing belong to ToolGate.', icon: Lock, color: 'text-red-400' },
+                     { name: 'ToolGate (Runtime Permissions)', purpose: 'Edit runtime security, create custom postures, configure capability boundaries, and inspect effective ALLOW, CONFIRM, or BLOCK decisions. It is locally editable unless Gensui manages the instance.', icon: Shield, color: 'text-orange-400' },
+                     { name: 'Kaizen (Governance)', purpose: 'Write the Constitution and Mandate, validate changes, and maintain revision history for the laws and objectives governing every agent.', icon: ShieldCheck, color: 'text-shogun-gold' },
+                     { name: 'Bushido (Reflection)', purpose: 'Calibrate self-improvement behavior, tune reflection and consolidation, and review generated insights.', icon: RefreshCw, color: 'text-shogun-blue' },
+                     { name: 'Archives (Memory)', purpose: 'Search, browse, create, connect, and manage durable memory with semantic retrieval, provenance, salience, and memory-type filtering.', icon: Database, color: 'text-shogun-gold' },
+                     { name: 'Dojo (Training Hall)', purpose: 'Browse skills, study training material, take certification exams, and track validated achievements that may participate in governed runtime skill activation.', icon: Flame, color: 'text-shogun-gold' },
+                     { name: 'Logs (Audit & Trace)', purpose: 'Filter operational and governance events, inspect trace records, and verify the protected HMAC chain. Verification detects protected-field mismatches but does not prove record completeness.', icon: Terminal, color: 'text-shogun-subdued' },
+                     { name: 'Nexus (Collaboration)', purpose: 'Create Joint Workspaces, invite other Shogun instances, exchange typed messages, and collaborate across the network.', icon: Globe, color: 'text-indigo-400' },
+                     { name: 'Gensui (Fleet Command)', purpose: 'Connect to Central Command for fleet governance, telemetry, commands, and remote Harakiri. While managed, Gensui owns ToolGate and the local controls are read-only.', icon: ShieldAlert, color: 'text-indigo-400' },
+                     { name: 'Backups', purpose: 'Schedule backups, manage retention, export or import data, create Complete Backups, and perform safe restore or PC migration workflows.', icon: HardDrive, color: 'text-shogun-gold' },
+                     { name: 'Privacy & Telemetry', purpose: 'Review optional statistics, preview exactly what may be sent, give or withdraw consent, and delete the pseudonymous installation record.', icon: ShieldCheck, color: 'text-violet-400' },
+                     { name: 'Updates', purpose: 'Check the current build against the release manifest and install an available update while preserving application data and configuration.', icon: Download, color: 'text-emerald-400' },
+                     { name: 'About', purpose: 'See the installed version, build, system information, project references, and licence information.', icon: Info, color: 'text-cyan-400' },
+                     { name: 'Guide (Documentation)', purpose: 'Open onboarding, concepts, the Grand Manual, architecture, and safety material; print or save the complete manual for offline use.', icon: HelpCircle, color: 'text-shogun-subdued' },
                    ].map((item) => (
                      <div key={item.name} className="shogun-card flex gap-4 items-start">
                         <div className={`p-2 rounded-lg bg-shogun-bg border border-shogun-border shrink-0`}>
@@ -944,6 +950,15 @@ export function Guide() {
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Package className="w-4 h-4 text-shogun-blue" /> "Deploy Samurai" Button</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">The blue button in the top right. Opens a form where you choose a <strong>Role</strong> from the pre-defined Samurai roles list, give it a <strong>custom name</strong>, choose a <strong>Spawn Policy</strong> (Manual, Auto, or Scheduled), optionally assign a <strong>Routing Profile</strong>, and write a description. Click "Deploy Samurai" to create it.</p>
                    </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-cyan-400" /> Assign Shogun Skills</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Open a Samurai&apos;s <strong>Configure</strong> panel and use the <strong>Shogun skills</strong> selector to search the Shogun&apos;s validated active skillset. Select only the skills that should form this Samurai&apos;s specialist signature. The selected skills are shown on the fleet row and are considered when Supermode decides who should receive a workstream.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Important:</strong> a skill supplies governed instructions and expertise. It does not grant a tool, widen filesystem or network access, or bypass Torii, ToolGate, exam, or approval requirements.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><RouteIcon className="w-4 h-4 text-emerald-400" /> How Supermode Uses the Fleet</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">For each planned mission role, the Shogun first looks for a suitable active permanent Fleet Samurai. It compares the workstream with the Samurai&apos;s role, description, assigned skills, routing profile, and current availability. A strong match is reserved for the mission and keeps its Fleet identity and operator-selected skills. If no suitable Samurai is available, the Shogun creates a temporary mission-scoped specialist instead. The Inspector records which path was used and why.</p>
+                   </div>
                 </div>
 
                 {/* Agent Flow sub-section */}
@@ -1050,7 +1065,7 @@ export function Guide() {
                    <MessageSquare className="w-6 h-6 text-shogun-blue" />
                    <div>
                       <h4 className="text-xl font-bold uppercase tracking-widest">Comms — The Conversation</h4>
-                      <p className="text-xs text-shogun-subdued">Your direct line to the Shogun AI. Four tabs: Chat, Mail, Calendar, and Files.</p>
+                      <p className="text-xs text-shogun-subdued">Your direct line to the Shogun AI. Five tabs in interface order: Chat, Mail, Calendar, Files, and Supermode Canvas.</p>
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1134,6 +1149,138 @@ export function Guide() {
                        </div>
                     </div>
                  </div>
+             </section>
+
+             {/* SUPERMODE CANVAS */}
+             <section id="ref-supermode" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-violet-400/40 pb-3">
+                   <Target className="w-6 h-6 text-violet-400" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Supermode Canvas — Durable Multi-Agent Missions</h4>
+                      <p className="text-xs text-shogun-subdued">The fifth Comms tab. Use it when one outcome needs planning, several specialists, governed tools, checkpoints, recovery, and a traceable result.</p>
+                   </div>
+                </div>
+
+                <div className="rounded-xl border border-violet-400/30 bg-violet-500/10 p-4 space-y-2">
+                   <div className="font-bold text-violet-300 flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> Before you start</div>
+                   <p className="text-xs text-shogun-subdued leading-relaxed">Supermode requires an active <strong>Campaign</strong> or <strong>Ronin</strong> posture. It remains governed: ToolGate capability boundaries, model eligibility, approvals, budgets, the kill switch, and live posture changes still apply. If the posture is lowered while a mission is running, the mission pauses rather than silently continuing with permissions it no longer has.</p>
+                   <p className="text-xs text-shogun-subdued leading-relaxed">Use ordinary Chat for a quick answer. Choose Supermode when the work benefits from decomposition, parallel workstreams, evidence, review, synthesis, or a durable record that can survive a restart.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Play className="w-4 h-4 text-violet-400" /> Start a Mission from Chat</div>
+                      <ol className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-decimal leading-relaxed">
+                         <li>Open <strong>Comms → Chat</strong>.</li>
+                         <li>Select <strong>Supermode</strong> below the conversation.</li>
+                         <li>Describe the outcome you want, not merely a topic.</li>
+                         <li>Attach any source files needed for the work.</li>
+                         <li>Send the prompt. Shogun creates a durable mission and returns a mission card.</li>
+                         <li>Choose <strong>Open Supermode Canvas</strong>, or open the fifth Comms tab later.</li>
+                      </ol>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-violet-400" /> Write a Useful Mission Objective</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">A strong objective states the <strong>deliverable</strong>, <strong>scope</strong>, <strong>quality bar</strong>, <strong>constraints</strong>, and <strong>evidence expectations</strong>. For example: “Compare these three vendors, verify current pricing from primary sources, explain uncertainty, and create a decision memo in the workspace.”</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Avoid vague requests such as “research this.” The Shogun can plan from them, but it cannot infer every business constraint. Include deadlines, forbidden actions, required formats, preferred sources, and what a successful result must contain.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-shogun-gold/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><GitBranch className="w-4 h-4 text-shogun-gold" /> What the Shogun Does</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The Shogun turns the objective into a versioned plan containing bounded workstreams and dependencies. Independent tasks may run in parallel; dependent tasks wait for their predecessors. Specialists checkpoint concise results back into the mission so later tasks can continue without relying on an open chat window.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">A failed attempt may be retried within its task budget. If a required predecessor ultimately fails, dependent work is blocked and the mission reports the unrecovered failure instead of pretending the result is complete.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-amber-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Clock className="w-4 h-4 text-amber-400" /> Fast Path and Runtime Limits</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">For an ordinary bounded objective, the Shogun uses two parallel analysis workstreams followed by one combined independent review and synthesis. Security, medical, legal, regulated, financial-advice, safety-critical, software, and other high-stakes work keeps a separate review gate. This shortens routine commercial and research missions without removing the final challenge of unsupported claims.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">A research model may use at most eight governed tool calls across four tool rounds before it must answer from the evidence already gathered. One model attempt has a three-minute ceiling, and one task execution attempt has a seven-minute ceiling. If a model cannot complete in time, the Shogun moves to the configured fallback instead of replaying the same full research loop on that model. A task may still retry once when its durable retry budget permits.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Users className="w-4 h-4 text-emerald-400" /> Fleet Samurai or Spawned Specialist?</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The Shogun checks the permanent Samurai Fleet before spawning anyone. It scores active Samurai against the requested role, task description, assigned Shogun skills, routing profile, and availability. A good match is routed into the mission as a <strong>Fleet Samurai</strong>. If no appropriate match exists, the Shogun creates a temporary <strong>Spawned specialist</strong> limited to that mission.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Click the agent box to see its source, mission role, routing explanation, inherited skills, available tools, latest handoff, and model-call usage. Operator-selected Fleet skills are used exactly as assigned; spawned specialists may retrieve governed skills from the Shogun&apos;s active skillset.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><RouteIcon className="w-4 h-4 text-blue-400" /> Task-Level Routing Logic</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Every workstream can use a different Katana routing profile. The Shogun compares the task objective, instructions, task type, and Samurai role with each profile&apos;s description. A Fleet Samurai&apos;s assigned profile is preferred, but a clearly better task match may be selected.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The chosen routing profile, reason, actual model, provider, and any fallback are stored on the task and timeline. A fallback is used only when an earlier profile cannot provide an enabled model with the required capabilities and runtime limits.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Workflow className="w-4 h-4 text-cyan-400" /> Read the Canvas</div>
+                      <ul className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-disc leading-relaxed">
+                         <li><strong>Shogun:</strong> The gold top box shows mission state and current plan version.</li>
+                         <li><strong>Agent boxes:</strong> Show the specialist role, Fleet/spawned source, state, and model-call count.</li>
+                         <li><strong>Task boxes:</strong> Show the work item, state, and selected routing profile or model.</li>
+                         <li><strong>Solid lines:</strong> Connect the Shogun to agents and agents to assigned tasks.</li>
+                         <li><strong>Dashed “depends” lines:</strong> Show which task must finish before another can proceed.</li>
+                         <li><strong>Agents, Tasks, Dependencies:</strong> Toggle each layer when the canvas becomes crowded. Use zoom, fit-view, and pan controls to navigate.</li>
+                      </ul>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Search className="w-4 h-4 text-cyan-400" /> Drill Down with the Inspector</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Click <strong>Shogun</strong>, any agent box, or any task box to open its record in the right-hand Inspector. Click a Timeline entry to inspect the event type, timestamp, related task or agent, and structured event data. Click empty canvas space or the Inspector close button to return to the mission summary.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Use this drilldown when a task is waiting or failed. The visible reason distinguishes routing problems, missing model capabilities, governance blocks, exhausted retry budgets, dependency failures, and operator pauses.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-indigo-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><List className="w-4 h-4 text-indigo-400" /> Timeline, Plans, Approvals, Learning &amp; Artifacts</div>
+                      <ul className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-disc leading-relaxed">
+                         <li><strong>Timeline:</strong> A chronological, clickable explanation of planning, routing, execution, retries, pauses, and completion.</li>
+                         <li><strong>Plans:</strong> Every plan version, its reason, status, and number of workstreams.</li>
+                         <li><strong>Approvals:</strong> Durable requests that need a human decision. Read the reason, then approve or deny.</li>
+                         <li><strong>Learning:</strong> Candidate lessons and procedures captured from meaningful checkpoints, with confidence.</li>
+                         <li><strong>Artifacts:</strong> Generated files together with their description or workspace provenance.</li>
+                      </ul>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-amber-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><SlidersHorizontal className="w-4 h-4 text-amber-400" /> Pause, Resume, Stop, Steer and Re-plan</div>
+                      <ul className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-disc leading-relaxed">
+                         <li><strong>Pause:</strong> Prevents new work from starting. In-flight work stops at its current durable checkpoint, so the button is not an instant process kill.</li>
+                         <li><strong>Resume:</strong> Continues from persisted mission state after the posture and budgets are eligible again.</li>
+                         <li><strong>Stop:</strong> Cancels the mission after confirmation. No new work starts, and a late worker result cannot revive cancelled records.</li>
+                         <li><strong>Message Shogun:</strong> Adds a constraint, redirects priorities, or changes emphasis without starting a new run.</li>
+                         <li><strong>Re-plan:</strong> Creates a new plan version for a running mission while preserving history.</li>
+                         <li><strong>Specialist:</strong> Requests an additional role and objective. The Shogun may route a matching Fleet Samurai or create a mission-scoped specialist.</li>
+                      </ul>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-red-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Trash2 className="w-4 h-4 text-red-400" /> Mission List and Deletion</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The left column lists every run with its state and progress. Click a run to reopen it. The trash button deletes only a <strong>completed, failed, or stopped</strong> run; active work must be stopped first. Deleting removes the mission&apos;s run history from Supermode but deliberately keeps generated workspace files.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Use <strong>Stop</strong> when you need execution to end but still want to inspect the run. Use <strong>Delete</strong> only when the retained mission record is no longer useful.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-red-400/40 md:col-span-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><AlertCircle className="w-4 h-4 text-red-400" /> Understand Common Pauses and Failures</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-shogun-subdued leading-relaxed">
+                         <ul className="space-y-1.5 ml-4 list-disc">
+                            <li><strong>Requires Campaign or Ronin:</strong> Raise the posture in Torii, then resume. ToolGate may still narrow individual capabilities.</li>
+                            <li><strong>Paused by Harakiri:</strong> Confirm the environment is safe, reset Harakiri, restore an eligible posture, and resume.</li>
+                            <li><strong>Budget reached:</strong> The model-call, token, cost, agent, plan-revision, or deadline boundary stopped additional work. Review the mission before increasing limits.</li>
+                         </ul>
+                         <ul className="space-y-1.5 ml-4 list-disc">
+                            <li><strong>No eligible model:</strong> In Katana, verify that the chosen custom profile contains an enabled model and that the model&apos;s registry capabilities include what the task requires. Also verify context and output limits.</li>
+                            <li><strong>Exhausted retry budget:</strong> Open the failed task and its Timeline events. Fix the underlying model, tool, data, or governance problem before re-planning.</li>
+                            <li><strong>Blocked by dependency:</strong> A required predecessor failed or was cancelled. Repair or replace that earlier workstream; the dependent task cannot safely run on missing input.</li>
+                         </ul>
+                      </div>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-emerald-400/40 md:col-span-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-emerald-400" /> Completion, Learning and Reuse</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">After successful workstreams are synthesized, the Shogun consolidates distinct learning candidates into durable memory with mission provenance. When the completed plan represents a reusable process, the Inspector shows <strong>Reusable process detected</strong>. Choose <strong>Create draft AgentFlow</strong> to open an editable draft that preserves the mission&apos;s task order and parallel dependencies. Review the draft before activating or running it.</p>
+                   </div>
+                </div>
+
+                <div className="shogun-card space-y-3">
+                   <div className="font-bold text-shogun-text flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-violet-400" /> Recommended Operating Sequence</div>
+                   <ol className="text-xs text-shogun-subdued space-y-1.5 ml-4 list-decimal leading-relaxed">
+                      <li>Confirm Campaign or Ronin in Torii and review the active custom policy in ToolGate.</li>
+                      <li>Confirm Katana has eligible enabled models and sensible custom-profile descriptions and fallbacks.</li>
+                      <li>Assign validated skills and routing profiles to permanent Fleet Samurai where you want fine-grained control.</li>
+                      <li>Write a concrete outcome, attach the inputs, and start Supermode from Chat.</li>
+                      <li>Inspect the first plan, agent sources, task-level routing choices, and dependency lines.</li>
+                      <li>Resolve approvals and use Message Shogun or Re-plan when requirements change.</li>
+                      <li>Investigate failures through the clickable task and Timeline records before retrying.</li>
+                      <li>Review artifacts and learning, then convert a stable successful mission into a draft AgentFlow if it should be repeated.</li>
+                      <li>Stop unwanted active runs before deleting their retained run history.</li>
+                   </ol>
+                </div>
              </section>
 
              {/* ═══════════════════════════════════════════════════════════════ */}
@@ -1272,7 +1419,7 @@ export function Guide() {
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Binary className="w-4 h-4 text-shogun-blue" /> Routing Profiles Tab</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Create "routing profiles" — sets of rules that decide which AI model handles which type of task. For example, you can create a "Balanced" profile where: code tasks go to GPT-4, research tasks go to Perplexity Sonar, and simple chat goes to a cheap model. Each profile has a <strong>name</strong>, optional <strong>default model</strong>, and a list of <strong>rules</strong> (task type → model pair). Profiles can be set as the system default.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Open <strong>Model Routing</strong> to choose a built-in automatic profile or create a custom profile. A custom profile has a name and a plain-language description, an exact ordered list of enabled models, and a temperature for each model. The first model is Primary; the rest are attempted as fallbacks in the displayed order. The description matters because Supermode compares it with each workstream and can choose a different routing logic for different tasks.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Network className="w-4 h-4 text-shogun-blue" /> Toolbox Tab</div>
@@ -1614,9 +1761,14 @@ npm start`}</pre>
                           <p><strong className="text-cyan-400">Vision:</strong> visual_understanding, screenshot_analysis, photo_understanding</p>
                        </div>
                     </div>
+                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
+                       <div className="font-bold text-shogun-text flex items-center gap-2"><RouteIcon className="w-4 h-4 text-violet-400" /> Supermode Task-Level Routing</div>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Supermode can choose a different routing profile for each workstream. It compares the task objective, instructions, task type, and Samurai role with every configured profile description. A Samurai&apos;s assigned profile remains the preference unless another description is a clearly stronger fit. The chosen profile and explanation are recorded on the task and timeline; if it cannot satisfy the required capabilities, Shogun falls back to the assigned profile, active profile, and then Balanced.</p>
+                    </div>
                     <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><Database className="w-4 h-4 text-blue-400" /> Model Registry</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Every model available to Shogun is registered with its provider, capabilities, quality/cost/latency tiers, context window, and role tags. Test connections directly from the registry. Add cloud providers or local Ollama models.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed">Every discovered model is registered with its provider, enabled state, supported task capabilities, quality/cost/latency tiers, context limits, native tool-calling support, and role tags. This metadata determines whether the router considers the model eligible; incorrectly disabling a model or removing a required capability can produce a “No eligible model” task failure.</p>
+                       <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Editing rule:</strong> select a <strong>custom profile</strong> to enable registry editing. You can then enable or disable models, click capability chips, change quality/cost/latency, choose automatic or manually overridden context limits, test a model, and verify tool support. Built-in automatic profiles intentionally show the registry as read-only because their eligibility rules are fixed. Save the profile after changing its model order.</p>
                     </div>
                     <div className="shogun-card space-y-2 border-l-2 border-blue-400/40">
                        <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-blue-400" /> Decision & Usage Logs</div>
@@ -2200,49 +2352,6 @@ npm start`}</pre>
                  </div>
               </section>
 
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             {/* TOOLGATE (RUNTIME PERMISSIONS) */}
-             {/* ═══════════════════════════════════════════════════════════════ */}
-             <section id="ref-toolgate" className="space-y-6 scroll-mt-6">
-                <div className="flex items-center gap-3 border-b-2 border-orange-400/40 pb-3">
-                   <Shield className="w-6 h-6 text-orange-400" />
-                   <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">ToolGate — Runtime Permissions</h4>
-                      <p className="text-xs text-shogun-subdued">The single place to create custom postures and configure or understand what security policies permit at runtime.</p>
-                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div className="shogun-card space-y-2 md:col-span-2 border-l-2 border-orange-400/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-orange-400" /> Ownership Model</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Torii</strong> selects the active built-in tier or custom posture. <strong>ToolGate</strong> owns custom posture creation, editing, deletion, capability ceilings, and per-call runtime authorization. <strong>Katana</strong> manages installed or connected capabilities, model providers and routing, and account-specific scopes. <strong>Shogun Profile</strong> owns identity, behavior, and operations—not security configuration. When centrally managed, <strong>Gensui owns ToolGate</strong> and the local view becomes read-only.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-orange-400" /> Custom Posture Library</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Create, edit, and delete reusable custom postures in ToolGate. Each posture has a name, description, inherited base tier, kill-switch and dry-run flags, and detailed capability boundaries. New postures appear immediately in Torii, where activation is always an explicit separate choice. Deleting an active custom posture safely returns Torii to its base tier.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-orange-400" /> Policy-Scoped Rules</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">ToolGate always follows the currently active policy. A built-in tier uses its own scope. A custom policy uses a stable policy-specific scope and inherits its base tier's default risk mode. Switching tiers or custom policies loads that scope's own capability boundaries, tool overrides, and advanced content rules.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-orange-400" /> Capability Boundaries &amp; Risk</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">The capability panel explains the policy ceiling for filesystem, network, shell, skills, subagents, memory, communications, workflows, browser, visual intake, IDE, and related features. The <strong>Capability Risk Index</strong> summarizes exposure from 0–100. Built-in presets are read-only; assigned custom policies can be edited here.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-orange-400" /> Effective Tool Policy</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Every registered tool shows its effective <strong>ALLOW</strong>, <strong>CONFIRM</strong>, or <strong>BLOCK</strong> verdict, risk class, source, and reason. Local overrides may narrow a standalone policy. They cannot widen an enclosing capability boundary or a centrally enforced Gensui rule.</p>
-                   </div>
-                   <div className="shogun-card space-y-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Zap className="w-4 h-4 text-orange-400" /> Simulator, Approvals &amp; Audit</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Use the simulator to preview a tool call with its actual parameters before running it. Calls that require confirmation enter the approval queue and fail closed on denial or timeout. Instrumented decisions preserve their policy source in governance event records.</p>
-                   </div>
-                   <div className="shogun-card space-y-2 md:col-span-2">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><SlidersHorizontal className="w-4 h-4 text-orange-400" /> Advanced Content Controls</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Turn on <strong>Advanced mode</strong> to flag specific words or phrases inside nested tool arguments. Each rule can match a phrase anywhere or as a whole word, be case-sensitive or case-insensitive, apply to every tool or one selected tool, and return <strong>CONFIRM</strong> or <strong>BLOCK</strong>. Advanced rules are scoped to the active tier or custom policy and can only tighten the final verdict. When Gensui manages the instance, the same rules are edited centrally and remain enforced from the cached policy during temporary outages.</p>
-                   </div>
-                </div>
-             </section>
-
              {/* 10. TORII (SECURITY) */}
              {/* ═══════════════════════════════════════════════════════════════ */}
              <section id="ref-torii" className="space-y-6 scroll-mt-6">
@@ -2264,7 +2373,7 @@ npm start`}</pre>
                          <li><strong>CAMPAIGN:</strong> High autonomy. Broad internet access. Agents can auto-spawn without asking.</li>
                          <li><strong>RONIN (HIGH RISK):</strong> Highest governed autonomy. Critical blocks, approvals, verification, and separate Ronin Desktop enablement remain; prefer an isolated test environment.</li>
                       </ul>
-                      <p className="text-xs text-shogun-subdued leading-relaxed mt-2">Click a built-in tier or custom posture to activate it. Built-in tiers are protected presets. Use <strong>Manage custom postures in ToolGate</strong> to create or maintain reusable postures, then return here to choose which one is active.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed mt-2">Click a built-in tier or custom posture to activate it. Built-in tiers are protected presets. Use <strong>Manage custom postures in ToolGate</strong> to create or maintain reusable postures. If you edit an active built-in tier directly in ToolGate, Shogun automatically creates and activates a custom copy.</p>
                    </div>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-red-400" /> Unified Posture Selector</div>
@@ -2277,6 +2386,49 @@ npm start`}</pre>
                    <div className="shogun-card space-y-2">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-red-500" /> Harakiri Button</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">The red button in the top right of the Torii page. Same as the one on the Dashboard — activates the global kill switch. It requires two-step confirmation, blocks new governed operations, requests best-effort cancellation of supported active work, and locks the posture to SHRINE. Verify external processes separately. Press "Reset Harakiri" to restore normal operation.</p>
+                   </div>
+                </div>
+             </section>
+
+             {/* ═══════════════════════════════════════════════════════════════ */}
+             {/* TOOLGATE (RUNTIME PERMISSIONS) */}
+             {/* ══════════════════════════════════════════════════════════════ */}
+             <section id="ref-toolgate" className="space-y-6 scroll-mt-6">
+                <div className="flex items-center gap-3 border-b-2 border-orange-400/40 pb-3">
+                   <Shield className="w-6 h-6 text-orange-400" />
+                   <div>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">ToolGate — Runtime Permissions</h4>
+                      <p className="text-xs text-shogun-subdued">The single place to edit runtime security. In standalone Tenshu every setting is editable; Gensui management is the only state that makes the local controls read-only.</p>
+                   </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="shogun-card space-y-2 md:col-span-2 border-l-2 border-orange-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-orange-400" /> Ownership Model</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Torii</strong> selects the active built-in tier or custom posture. <strong>ToolGate</strong> owns custom posture creation, editing, deletion, capability ceilings, and per-call runtime authorization. In standalone Tenshu you can edit every ToolGate setting. Saving a change while a protected built-in tier is active automatically creates and activates a custom copy, so the built-in preset stays intact. <strong>Katana</strong> manages installed or connected capabilities, model providers and routing, and account-specific scopes. <strong>Shogun Profile</strong> owns identity, behavior, and operations—not security configuration. Only when centrally managed does <strong>Gensui own ToolGate</strong> and make the local view read-only.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Lock className="w-4 h-4 text-orange-400" /> Custom Posture Library</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Create, edit, and delete reusable custom postures in ToolGate. Each posture has a name, description, inherited base tier, kill-switch and dry-run flags, and detailed capability boundaries. Newly created postures appear immediately in Torii. Directly editing an active built-in tier is the exception: ToolGate automatically creates and activates its custom copy before saving the change. Deleting an active custom posture safely returns Torii to its base tier.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-orange-400" /> Policy-Scoped Rules</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">ToolGate always follows the currently active policy. A built-in tier uses its own scope. A custom policy uses a stable policy-specific scope and inherits its base tier's default risk mode. Switching tiers or custom policies loads that scope's own capability boundaries, tool overrides, and advanced content rules.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-orange-400" /> Capability Boundaries &amp; Risk</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The capability panel explains the policy ceiling for filesystem, network, shell, skills, subagents, memory, communications, workflows, browser, visual intake, IDE, and related features. The <strong>Capability Risk Index</strong> summarizes exposure from 0–100. Built-in presets remain protected, but their displayed settings are editable in standalone Tenshu because the first save automatically creates and activates a custom copy.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-orange-400" /> Effective Tool Policy</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Every registered tool shows its effective <strong>ALLOW</strong>, <strong>CONFIRM</strong>, or <strong>BLOCK</strong> verdict, risk class, source, and reason. Local overrides may narrow a standalone policy. They cannot widen an enclosing capability boundary or a centrally enforced Gensui rule.</p>
+                   </div>
+                   <div className="shogun-card space-y-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Zap className="w-4 h-4 text-orange-400" /> Simulator, Approvals &amp; Audit</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Use the simulator to preview a tool call with its actual parameters before running it. Calls that require confirmation enter the approval queue and fail closed on denial or timeout. Instrumented decisions preserve their policy source in governance event records.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 md:col-span-2">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><SlidersHorizontal className="w-4 h-4 text-orange-400" /> Advanced Content Controls</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Turn on <strong>Advanced mode</strong> to flag specific words or phrases inside nested tool arguments. Each rule can match a phrase anywhere or as a whole word, be case-sensitive or case-insensitive, apply to every tool or one selected tool, and return <strong>CONFIRM</strong> or <strong>BLOCK</strong>. Advanced rules are scoped to the active tier or custom policy and can only tighten the final verdict. When Gensui manages the instance, the same rules are edited centrally and remain enforced from the cached policy during temporary outages.</p>
                    </div>
                 </div>
              </section>
@@ -2708,8 +2860,8 @@ npm start`}</pre>
                 <div className="flex items-center gap-3 border-b-2 border-shogun-subdued/40 pb-3">
                    <HardDrive className="w-6 h-6 text-shogun-subdued" />
                    <div>
-                      <h4 className="text-xl font-bold uppercase tracking-widest">Maintenance — Backups, Privacy, Data & Updates</h4>
-                      <p className="text-xs text-shogun-subdued">Found under the <strong>Maintenance</strong> section at the bottom of the sidebar.</p>
+                      <h4 className="text-xl font-bold uppercase tracking-widest">Maintenance — Backups, Privacy, Updates, About &amp; Guide</h4>
+                      <p className="text-xs text-shogun-subdued">Presented in the same order as the <strong>Maintenance</strong> section at the bottom of the sidebar.</p>
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2725,18 +2877,26 @@ npm start`}</pre>
                       <div className="font-bold text-shogun-text flex items-center gap-2"><Archive className="w-4 h-4 text-shogun-gold" /> Complete Backup &amp; Total Restore</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">For PC migration, <strong>Complete Backup</strong> discovers all configured storage roots and archives every contained file, including SQLite, embedded Qdrant, chats, settings, archives, workspaces, vault data, and logs. <strong>Total Restore</strong> validates every file checksum, creates a safety backup, and applies the package before startup so the old and new states are never mixed. The package contains credentials and other secrets and must be protected accordingly.</p>
                    </div>
-                   <div className="shogun-card space-y-2 border-l-2 border-emerald-500/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-emerald-400" /> System Updates</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Navigate to <strong>Updates</strong> in the sidebar. The automatic checker reads the repository's <code>version.json</code> manifest, compares its numeric build with the installed build, and caches the result for 6 hours. <strong>Check for Updates</strong> forces a fresh check; an available release displays an <strong>UPDATE</strong> badge in the sidebar.</p>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Click <strong>Install Update</strong> to download the current <code>main</code> branch, replace application code, and rebuild the frontend while preserving your database, configurations, environment, and virtual environment. Restart Shogun when installation completes. Private repositories can use a locally encrypted GitHub token configured on the Updates page.</p>
+                   <div className="shogun-card space-y-2 border-l-2 border-amber-500/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-amber-400" /> Restore &amp; Recovery</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Every scheduled backup in the list has a <strong>Restore</strong> button for database and configuration rollback. Use <strong>Total Restore</strong> with a Complete Backup when recreating the whole Shogun state on another machine. Both workflows require a restart.</p>
                    </div>
                    <div className="shogun-card space-y-2 border-l-2 border-violet-400/40">
                       <div className="font-bold text-shogun-text flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-violet-400" /> Privacy &amp; Telemetry</div>
                       <p className="text-xs text-shogun-subdued leading-relaxed">Navigate to Privacy &amp; Telemetry in the sidebar to review or control Shogun's optional, pseudonymous installation statistics. Telemetry is disabled by default and requires explicit consent. The page shows the exact fields that may be shared, everything that is never shared, and a preview of the next weekly heartbeat payload. You can send a test event, disable sharing, reveal the installation identifier, or delete your telemetry data. Server installations require administrator authorization.</p>
                    </div>
-                   <div className="shogun-card space-y-2 border-l-2 border-amber-500/40">
-                      <div className="font-bold text-shogun-text flex items-center gap-2"><FileText className="w-4 h-4 text-amber-400" /> Restore & Recovery</div>
-                      <p className="text-xs text-shogun-subdued leading-relaxed">Every scheduled backup in the list has a <strong>Restore</strong> button for database and configuration rollback. Use <strong>Total Restore</strong> with a Complete Backup when recreating the whole Shogun state on another machine. Both workflows require a restart.</p>
+                   <div className="shogun-card space-y-2 border-l-2 border-emerald-500/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Download className="w-4 h-4 text-emerald-400" /> System Updates</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Navigate to <strong>Updates</strong> in the sidebar. The automatic checker reads the repository's <code>version.json</code> manifest, compares its numeric build with the installed build, and caches the result for 6 hours. <strong>Check for Updates</strong> forces a fresh check; an available release displays an <strong>UPDATE</strong> badge in the sidebar.</p>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Click <strong>Install Update</strong> to download the current <code>main</code> branch, replace application code, and rebuild the frontend while preserving your database, configurations, environment, and virtual environment. Restart Shogun when installation completes. Private repositories can use a locally encrypted GitHub token configured on the Updates page.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-cyan-400/40">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><Info className="w-4 h-4 text-cyan-400" /> About</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">Open <strong>About</strong> to identify the installed Shogun version and build, review system information, and find the project and licence references associated with this installation. Record the version and build when reporting a defect so the report can be matched to the correct release.</p>
+                   </div>
+                   <div className="shogun-card space-y-2 border-l-2 border-shogun-subdued/60">
+                      <div className="font-bold text-shogun-text flex items-center gap-2"><HelpCircle className="w-4 h-4 text-shogun-subdued" /> Guide</div>
+                      <p className="text-xs text-shogun-subdued leading-relaxed">The Guide contains onboarding, concepts, this page-by-page Grand Manual, architecture, and safety material. The Grand Manual follows the application&apos;s Navigation, Systems &amp; Governance, Operations, Alliance, and Maintenance order. Use its left index to jump to a section and <strong>Print / Save PDF</strong> to create an offline reference.</p>
                    </div>
                 </div>
              </section>

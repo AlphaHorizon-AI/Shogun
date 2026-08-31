@@ -8,6 +8,7 @@ import pytest
 
 from shogun.api.security import (
     _active_toolgate_context,
+    _ensure_standalone_custom_toolgate_context,
     _get_agent_posture,
     select_active_security_posture,
 )
@@ -39,6 +40,59 @@ class _Session:
     async def get(self, _model, policy_id):
         assert policy_id == self._policy.id
         return self._policy
+
+    async def commit(self):
+        return None
+
+
+class _ScalarResult:
+    def __init__(self, *, one=None, values=None):
+        self._one = one
+        self._values = list(values or [])
+
+    def scalar_one_or_none(self):
+        return self._one
+
+    def scalars(self):
+        return self
+
+    def first(self):
+        return self._values[0] if self._values else None
+
+    def all(self):
+        return self._values
+
+
+class _ToolGateForkSession:
+    def __init__(self, agent, built_in):
+        self.agent = agent
+        self.built_in = built_in
+        self.added = []
+        self._results = [
+            _ScalarResult(one=agent),
+            _ScalarResult(values=[built_in]),
+            _ScalarResult(values=[]),
+        ]
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return None
+
+    async def execute(self, _query):
+        return self._results.pop(0)
+
+    async def get(self, _model, _record_id):
+        return None
+
+    def add(self, record):
+        self.added.append(record)
+
+    async def flush(self):
+        for record in self.added:
+            if record.id is None:
+                record.id = uuid.uuid4()
 
     async def commit(self):
         return None
@@ -102,6 +156,84 @@ async def test_toolgate_uses_custom_policy_identity_and_base_tier(monkeypatch):
     assert mode == "campaign"
     assert scope["key"] == "policy:custom-id"
     assert scope["label"] == "Laptop Custom"
+
+
+@pytest.mark.asyncio
+async def test_standalone_toolgate_edit_forks_and_activates_builtin_posture(monkeypatch):
+    from shogun.api import security
+    from shogun.services import event_logger, tool_gate
+
+    agent = SimpleNamespace(
+        bushido_settings={"security_posture": {"active_tier": "tactical"}},
+        security_policy_id=None,
+    )
+    built_in = SimpleNamespace(
+        permissions={"network": {"mode": "allowlist", "allowed_domains": ["example.com"]}},
+        kill_switch_enabled=True,
+        dry_run_supported=True,
+    )
+    session = _ToolGateForkSession(agent, built_in)
+    calls = 0
+
+    async def context():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return (
+                {"active_tier": "tactical"},
+                None,
+                "standard",
+                {
+                    "key": "tier:tactical",
+                    "kind": "tier",
+                    "label": "TACTICAL",
+                    "base_tier": "tactical",
+                    "policy_id": None,
+                },
+            )
+        policy = session.added[0]
+        return (
+            {"active_tier": "tactical", "active_policy_id": policy.id},
+            None,
+            "standard",
+            {
+                "key": f"policy:{policy.id}",
+                "kind": "custom_policy",
+                "label": policy.name,
+                "base_tier": "tactical",
+                "policy_id": str(policy.id),
+            },
+        )
+
+    cloned = []
+
+    async def no_audit(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(security, "_toolgate_authority", lambda: {"editable": True})
+    monkeypatch.setattr(security, "_active_toolgate_context", context)
+    monkeypatch.setattr(
+        import_module("shogun.db.engine"),
+        "async_session_factory",
+        lambda: session,
+    )
+    monkeypatch.setattr(
+        tool_gate,
+        "clone_local_toolgate_scope",
+        lambda source, target: cloned.append((source, target)),
+    )
+    monkeypatch.setattr(event_logger.EventLogger, "emit_policy_event", no_audit)
+
+    posture, _, _, scope, created = await _ensure_standalone_custom_toolgate_context()
+
+    policy = session.added[0]
+    assert created == {"id": str(policy.id), "name": "Custom Tactical", "tier": "tactical"}
+    assert agent.security_policy_id == policy.id
+    assert policy.is_builtin is False
+    assert policy.permissions["network"]["allowed_domains"] == ["example.com"]
+    assert posture["active_policy_id"] == policy.id
+    assert scope["kind"] == "custom_policy"
+    assert cloned == [("tier:tactical", f"policy:{policy.id}")]
 
 
 @pytest.mark.asyncio

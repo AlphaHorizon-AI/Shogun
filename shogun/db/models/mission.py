@@ -1,7 +1,7 @@
 """Mission ORM model.
 
 The table predates Supermode and is also used by the lightweight Bushido
-mission ledger.  Supermode deliberately extends that durable unit instead of
+mission ledger. Supermode deliberately extends that durable unit instead of
 creating a second, competing mission abstraction.  Existing columns remain
 backwards compatible; Supermode rows are identified by ``is_supermode`` and
 ``mission_type == "supermode"``.
@@ -40,7 +40,7 @@ class Mission(Base, UUIDMixin, AuditMixin):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # Durable Supermode mission record.  Defaults keep legacy rows valid.
+    # Durable Supermode mission record. Defaults keep legacy rows valid.
     is_supermode: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     owner_user_id: Mapped[str] = mapped_column(String(255), nullable=False, default="local_user")
     team_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

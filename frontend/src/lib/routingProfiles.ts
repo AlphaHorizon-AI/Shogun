@@ -39,6 +39,8 @@ export const customProfileUpdate = (
       primary_model_id: modelIds[0],
       fallback_model_ids: modelIds.slice(1),
     }],
-    ...(renameGenericProfile ? { name, description: description || profile.description || null } : {}),
+    ...(renameGenericProfile
+      ? { name, description: description || profile.description || null }
+      : { description: description || null }),
   };
 };

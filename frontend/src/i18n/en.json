@@ -342,7 +342,7 @@
     "security_boundary_body": "Alpha Horizon assesses reports affecting official, unmodified Shogun releases. The deploying organisation operates its instance, infrastructure, integrations, credentials, permissions, data, and incident response. Alpha Horizon is not the deploying organisation's SOC or incident-response provider.",
     "security_regulatory_title": "Regulatory escalation",
     "security_regulatory_body": "Alpha Horizon maintains a regulatory-escalation process where it has an applicable statutory obligation concerning an official Shogun release. Not every defect or reported vulnerability is automatically reportable to ENISA or another authority.",
-    "security_post_install": "After installation, the complete Incident Reporting guidance remains available from the persistent Incident Reporting item in the Shogun sidebar.",
+    "security_post_install": "After installation, the complete Incident Reporting guidance remains available in Guide → Reference → Incident Reporting.",
     "security_acknowledgement": "I acknowledge that I have been provided with the Shogun security and incident reporting information and know where to report suspected security vulnerabilities.",
     "security_team_record": "The Primary Admin acknowledgement is sufficient for this Team Mode installation.",
     "security_single_record": "This acknowledgement is made by the installer/administrator.",

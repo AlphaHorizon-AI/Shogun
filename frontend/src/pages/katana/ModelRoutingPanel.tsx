@@ -144,6 +144,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
         .map(item => item.id));
       setCustomTemperatures(temperaturesFor(selected));
       setCustomReasoning(reasoningFor(selected));
+      setNewProfileDescription(selected?.description || '');
     } catch (error: any) {
       setMessage(error?.response?.data?.detail || 'Model routing data could not be loaded.');
     } finally { setLoading(false); }
@@ -170,6 +171,8 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       .map(item => item.id));
     setCustomTemperatures(temperaturesFor(selected));
     setCustomReasoning(reasoningFor(selected));
+    setNewProfileName('');
+    setNewProfileDescription(selected?.description || '');
   };
   const setActive = async (item: Profile) => {
     setBusy(item.id);
@@ -193,13 +196,16 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
   const toggleCustomCreator = () => {
     if (!isEditingProfiles) {
       setNewProfileName('');
-      setNewProfileDescription('');
+      setNewProfileDescription(customProfile?.description || '');
     }
     onEditProfiles?.();
   };
   const patchModel = async (item: RegistryModel, patch: Partial<RegistryModel>) => {
     if (!registryEditable) return;
+    const previous = item;
     setBusy(item.id);
+    setMessage('');
+    setModels(current => current.map(model => model.id === item.id ? { ...model, ...patch } : model));
     try {
       const response = await axios.patch(`/api/v1/models/registry/${item.id}`, patch);
       setModels(current => current.map(model => model.id === item.id ? response.data.data : model));
@@ -217,7 +223,10 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
         });
       }
       setMessage(`${item.display_name} updated.`);
-    } catch (error: any) { setMessage(error?.response?.data?.detail || 'Model metadata could not be updated.'); }
+    } catch (error: any) {
+      setModels(current => current.map(model => model.id === item.id ? previous : model));
+      setMessage(error?.response?.data?.detail || 'Model metadata could not be updated.');
+    }
     finally { setBusy(''); }
   };
   const testModel = async (item: RegistryModel) => {
@@ -356,10 +365,14 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
 
   if (loading) return <div className="shogun-card flex items-center gap-3 text-sm text-shogun-subdued"><RefreshCw className="w-4 h-4 animate-spin" /> Loading governed routing…</div>;
   return <div className="space-y-6 mb-8">
+    {message && <div role="status" className="flex items-center justify-between gap-3 rounded-lg border border-shogun-border bg-shogun-card px-3 py-2 text-xs">
+      <span>{message}</span>
+      <button type="button" onClick={() => setMessage('')} aria-label="Dismiss model routing status"><X className="h-3.5 w-3.5" /></button>
+    </div>}
     <div className="shogun-card border-purple-500/30 bg-purple-500/5">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
         <div><h3 className="font-bold flex items-center gap-2"><Route className="w-5 h-5 text-purple-400" /> Model Routing Profiles</h3>
-          <p className="text-xs text-shogun-subdued mt-1">Built-in profiles choose models automatically from capability, cost, speed, and task requirements. Custom profiles use your exact model order.</p></div>
+          <p className="text-xs text-shogun-subdued mt-1">Built-in profiles choose models automatically from capability, cost, speed, and task requirements. Custom profiles use your exact model order, and Supermode uses their descriptions to choose the best routing logic for each task.</p></div>
         <div className="flex items-center gap-2">
           <div className={`px-3 py-2 rounded-lg border text-xs ${activeIsAutomatic ? 'border-cyan-400/30 bg-cyan-400/10' : 'border-amber-400/30 bg-amber-400/10'}`}><span className="text-shogun-subdued">Active </span><strong className={activeIsAutomatic ? 'text-cyan-300' : 'text-amber-300'}>{activeProfile?.name || 'Balanced'}</strong></div>
           {onEditProfiles && <button onClick={toggleCustomCreator} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-colors ${isEditingProfiles ? 'border-amber-400 bg-amber-400/15 text-amber-300' : 'border-amber-400/40 text-amber-300 hover:border-amber-300 hover:bg-amber-400/10'}`}>
@@ -413,10 +426,14 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
           </label>
           <div className="grid grid-cols-2 gap-2">
             <label className="text-[9px] uppercase text-shogun-subdued">New profile name
-              <input value={newProfileName} onChange={event => setNewProfileName(event.target.value)} placeholder="Finance" className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-2 text-xs normal-case" />
+              <input value={newProfileName} onChange={event => {
+                const value = event.target.value;
+                if (!newProfileName.trim() && value.trim()) setNewProfileDescription('');
+                setNewProfileName(value);
+              }} placeholder="Finance" className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-2 text-xs normal-case" />
             </label>
-            <label className="text-[9px] uppercase text-shogun-subdued">Description
-              <input value={newProfileDescription} onChange={event => setNewProfileDescription(event.target.value)} placeholder="Models for finance work" className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-2 text-xs normal-case" />
+            <label className="text-[9px] uppercase text-shogun-subdued">Task-fit description · used by Supermode
+              <input value={newProfileDescription} onChange={event => setNewProfileDescription(event.target.value)} placeholder="Use local low-cost models for economic analysis" className="block w-full mt-1 bg-[#050508] border border-shogun-border rounded p-2 text-xs normal-case" />
             </label>
           </div>
           <div className="flex items-end gap-1">
@@ -508,7 +525,8 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
               <div><div className="flex items-center gap-2 flex-wrap"><span className="font-bold font-mono text-sm text-shogun-text">{item.model_id}</span><span className="text-[9px] font-bold uppercase tracking-widest border border-purple-400/30 bg-purple-500/10 text-purple-300 rounded px-1.5 py-0.5">{item.provider}</span>{item.local && <span className="text-[8px] uppercase border border-shogun-border rounded px-1.5 py-0.5">local</span>}</div>
                 <p className="font-mono text-[9px] text-shogun-subdued mt-1">{item.display_name !== item.model_id ? `${item.display_name} · ` : ''}{(item.context_window / 1000).toFixed(0)}K effective context · {item.config_json?.context_limit_mode === 'manual' ? 'manual' : 'auto'}</p></div>
               <div className="flex items-center gap-2"><button onClick={() => verifyToolCalling(item)} disabled={busy === `tools-${item.id}`} className="px-2 py-1 text-[9px] border border-purple-400/40 text-purple-300 rounded hover:bg-purple-400/10 disabled:cursor-not-allowed disabled:opacity-35">{busy === `tools-${item.id}` ? 'Verifying…' : 'Verify tools'}</button><button onClick={() => testModel(item)} disabled={!registryEditable} className="px-2 py-1 text-[9px] border border-shogun-border rounded hover:border-shogun-blue disabled:cursor-not-allowed disabled:opacity-35">{busy === `test-${item.id}` ? 'Testing…' : 'Test'}</button>
-                <button onClick={() => patchModel(item, { enabled: !item.enabled })} disabled={!registryEditable} aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.display_name}`} className={`w-10 h-5 rounded-full p-0.5 disabled:cursor-not-allowed disabled:opacity-35 ${item.enabled ? 'bg-green-500' : 'bg-gray-700'}`}><span className={`block w-4 h-4 bg-white rounded-full transition-transform ${item.enabled ? 'translate-x-5' : ''}`} /></button></div>
+                <span className={`text-[8px] font-bold uppercase ${item.enabled ? 'text-green-300' : 'text-shogun-subdued'}`}>{busy === item.id ? 'Saving…' : item.enabled ? 'Enabled' : 'Disabled'}</span>
+                <button type="button" onClick={() => patchModel(item, { enabled: !item.enabled })} disabled={!registryEditable || busy === item.id} aria-pressed={item.enabled} aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.display_name}`} title={`${item.enabled ? 'Disable' : 'Enable'} ${item.display_name}`} className={`w-10 h-5 rounded-full p-0.5 disabled:cursor-not-allowed disabled:opacity-35 ${item.enabled ? 'bg-green-500' : 'bg-gray-700'}`}><span className={`block w-4 h-4 bg-white rounded-full transition-transform ${item.enabled ? 'translate-x-5' : ''}`} /></button></div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 my-3">
               {(['quality_tier','cost_tier','latency_tier'] as const).map(key => {
@@ -582,7 +600,6 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
           <p className="mt-3 text-[8px] text-shogun-subdued/70">Token counts and context utilization are estimated when a provider does not return native usage metadata.</p></div>
       </div>
     </div>
-    {message && <div className="text-xs border border-shogun-border rounded-lg px-3 py-2" onClick={() => setMessage('')}>{message}</div>}
   </div>;
 }
 

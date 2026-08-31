@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -946,6 +947,178 @@ async def _active_toolgate_context() -> tuple[dict, dict | None, str, dict]:
     return posture, preset, mode, scope
 
 
+async def _toolgate_permissions(posture: dict, scope: dict) -> dict:
+    """Return complete permissions for the active custom or built-in posture."""
+    from sqlalchemy import select
+
+    from shogun.db.engine import async_session_factory
+    from shogun.db.models.security_policy import SecurityPolicy
+    from shogun.schemas.security import PolicyPermissions
+
+    active_permissions = (
+        posture.get("active_custom_permissions")
+        or posture.get("active_policy_permissions")
+    )
+    if active_permissions:
+        return PolicyPermissions.model_validate(active_permissions).model_dump()
+
+    async with async_session_factory() as db:
+        result = await db.execute(
+            select(SecurityPolicy)
+            .where(
+                SecurityPolicy.is_builtin.is_(True),
+                SecurityPolicy.tier == scope["base_tier"],
+            )
+            .limit(1)
+        )
+        built_in = result.scalars().first()
+    return PolicyPermissions.model_validate(
+        deepcopy(built_in.permissions) if built_in else {}
+    ).model_dump()
+
+
+async def _ensure_standalone_custom_toolgate_context() -> tuple[
+    dict,
+    dict | None,
+    str,
+    dict,
+    dict | None,
+]:
+    """Fork an active built-in posture before a standalone ToolGate mutation."""
+    authority = _toolgate_authority()
+    if not authority["editable"]:
+        raise HTTPException(
+            status_code=423,
+            detail="ToolGate is managed by Gensui. Edit the assigned posture in Gensui.",
+        )
+
+    posture, preset, mode, scope = await _active_toolgate_context()
+    if scope["kind"] == "custom_policy" and posture.get("active_policy_id"):
+        return posture, preset, mode, scope, None
+
+    from sqlalchemy import select
+
+    from shogun.db.engine import async_session_factory
+    from shogun.db.models.agent import Agent
+    from shogun.db.models.security_policy import SecurityPolicy
+    from shogun.schemas.security import PolicyPermissions
+
+    source_scope_key = str(scope["key"])
+    tier = str(scope["base_tier"])
+    created: dict | None = None
+    async with async_session_factory() as db:
+        result = await db.execute(
+            select(Agent)
+            .where(
+                Agent.agent_type == "shogun",
+                Agent.is_primary.is_(True),
+                Agent.is_deleted.is_(False),
+            )
+            .limit(1)
+            .with_for_update()
+        )
+        agent = result.scalar_one_or_none()
+        if not agent:
+            raise HTTPException(status_code=404, detail="Primary Shogun agent not found")
+
+        assigned_policy = (
+            await db.get(SecurityPolicy, agent.security_policy_id)
+            if agent.security_policy_id
+            else None
+        )
+        if not assigned_policy or assigned_policy.is_builtin:
+            built_in_result = await db.execute(
+                select(SecurityPolicy)
+                .where(
+                    SecurityPolicy.is_builtin.is_(True),
+                    SecurityPolicy.tier == tier,
+                )
+                .limit(1)
+            )
+            built_in = built_in_result.scalars().first()
+            permissions = PolicyPermissions.model_validate(
+                deepcopy(built_in.permissions) if built_in else {}
+            ).model_dump()
+
+            base_name = f"Custom {tier.title()}"
+            names_result = await db.execute(
+                select(SecurityPolicy.name).where(
+                    SecurityPolicy.is_builtin.is_(False),
+                    SecurityPolicy.name.like(f"{base_name}%"),
+                )
+            )
+            existing_names = set(names_result.scalars().all())
+            name = base_name
+            suffix = 2
+            while name in existing_names:
+                name = f"{base_name} ({suffix})"
+                suffix += 1
+
+            policy = SecurityPolicy(
+                name=name,
+                tier=tier,
+                description=(
+                    f"Created automatically when ToolGate settings were edited from the "
+                    f"{tier.title()} built-in posture."
+                ),
+                permissions=permissions,
+                kill_switch_enabled=(built_in.kill_switch_enabled if built_in else True),
+                dry_run_supported=(built_in.dry_run_supported if built_in else True),
+                is_builtin=False,
+                created_by="toolgate",
+                updated_by="toolgate",
+            )
+            db.add(policy)
+            await db.flush()
+            agent.security_policy_id = policy.id
+
+            bushido = dict(agent.bushido_settings or {})
+            stored_posture = {
+                **_DEFAULT_POSTURE,
+                **_validated_stored_posture(bushido.get(_POSTURE_KEY, {})),
+                "active_tier": tier,
+            }
+            stored_posture.update(TIER_CONSTRAINTS.get(tier, {}))
+            for runtime_key in (
+                "active_policy_id",
+                "active_policy_name",
+                "active_policy_is_builtin",
+                "active_policy_tier",
+                "active_policy_permissions",
+                "active_custom_permissions",
+            ):
+                stored_posture.pop(runtime_key, None)
+            bushido.pop("custom_permissions", None)
+            bushido[_POSTURE_KEY] = stored_posture
+            agent.bushido_settings = bushido
+            created = {"id": str(policy.id), "name": policy.name, "tier": policy.tier}
+        await db.commit()
+
+    if created:
+        from shogun.services.tool_gate import clone_local_toolgate_scope
+
+        clone_local_toolgate_scope(source_scope_key, f"policy:{created['id']}")
+
+    posture, preset, mode, scope = await _active_toolgate_context()
+    if scope["kind"] != "custom_policy" or not posture.get("active_policy_id"):
+        raise HTTPException(status_code=409, detail="ToolGate could not activate the custom posture.")
+
+    if created:
+        try:
+            from shogun.services.event_logger import EventLogger
+
+            await EventLogger.emit_policy_event(
+                "policy.toolgate_custom_posture_created",
+                f"ToolGate created and activated custom posture: {created['name']}",
+                policy_ref=scope["key"],
+                policy_decision="created",
+                detail={"scope": scope, "base_tier": tier},
+            )
+        except Exception:
+            pass
+    return posture, preset, mode, scope, created
+
+
 @router.get("/toolgate", response_model=ApiResponse)
 async def get_toolgate_control():
     """Return ToolGate inventory, effective verdicts, ownership, and pending approvals."""
@@ -973,11 +1146,7 @@ async def get_toolgate_control():
         if authority["mode"] == "gensui"
         else get_local_advanced_controls(scope["key"])
     )
-    effective_permissions = (
-        posture.get("active_custom_permissions")
-        or posture.get("active_policy_permissions")
-        or {}
-    )
+    effective_permissions = await _toolgate_permissions(posture, scope)
     tools = []
     for tool_name, metadata in sorted(
         TOOL_RISK_REGISTRY.items(),
@@ -1013,10 +1182,7 @@ async def get_toolgate_control():
             "capabilities": {
                 "permissions": effective_permissions,
                 "risk_score": calculate_capability_risk(effective_permissions),
-                "editable": bool(
-                    _toolgate_authority()["editable"]
-                    and scope["kind"] == "custom_policy"
-                ),
+                "editable": bool(authority["editable"]),
                 "source": (
                     "agent_override"
                     if posture.get("active_custom_permissions")
@@ -1052,16 +1218,9 @@ async def get_toolgate_control():
 @router.put("/toolgate/overrides", response_model=ApiResponse)
 async def update_toolgate_overrides(body: ToolGateOverridesRequest):
     """Replace standalone overrides. Managed instances remain read-only even while offline."""
-    authority = _toolgate_authority()
-    if not authority["editable"]:
-        raise HTTPException(
-            status_code=423,
-            detail="ToolGate is managed by Gensui. Edit the assigned posture in Gensui.",
-        )
-
     from shogun.services.tool_gate import get_local_overrides, set_local_overrides
 
-    _, _, _, scope = await _active_toolgate_context()
+    _, _, _, scope, created = await _ensure_standalone_custom_toolgate_context()
 
     try:
         set_local_overrides(body.overrides, scope["key"])
@@ -1080,19 +1239,16 @@ async def update_toolgate_overrides(body: ToolGateOverridesRequest):
         )
     except Exception:
         pass
-    return ApiResponse(data={"scope": scope, "overrides": get_local_overrides(scope["key"])})
+    return ApiResponse(data={
+        "scope": scope,
+        "custom_posture_created": created,
+        "overrides": get_local_overrides(scope["key"]),
+    })
 
 
 @router.put("/toolgate/tools/{tool_name}/detail", response_model=ApiResponse)
 async def update_toolgate_tool_detail(tool_name: str, body: ToolGateDetailRequest):
     """Replace detailed standalone controls for one tool and policy scope."""
-    authority = _toolgate_authority()
-    if not authority["editable"]:
-        raise HTTPException(
-            status_code=423,
-            detail="ToolGate is managed by Gensui. Edit detailed controls in Gensui.",
-        )
-
     from shogun.services.tool_gate import (
         get_local_tool_detail,
         set_local_tool_detail,
@@ -1101,79 +1257,71 @@ async def update_toolgate_tool_detail(tool_name: str, body: ToolGateDetailReques
 
     if not tool_supports_path_controls(tool_name):
         raise HTTPException(status_code=400, detail="This tool does not expose filesystem path controls.")
-    _, _, _, scope = await _active_toolgate_context()
+    _, _, _, scope, created = await _ensure_standalone_custom_toolgate_context()
     try:
         set_local_tool_detail(tool_name, body.model_dump(), scope["key"])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     saved = get_local_tool_detail(tool_name, scope["key"])
-    return ApiResponse(data={"scope": scope, "tool_name": tool_name, "detail": saved})
+    return ApiResponse(data={
+        "scope": scope,
+        "custom_posture_created": created,
+        "tool_name": tool_name,
+        "detail": saved,
+    })
 
 
 @router.put("/toolgate/filesystem", response_model=ApiResponse)
 async def update_toolgate_filesystem_controls(body: ToolGateFilesystemRequest):
     """Replace the shared folder and operation policy for this scope."""
-    authority = _toolgate_authority()
-    if not authority["editable"]:
-        raise HTTPException(
-            status_code=423,
-            detail="ToolGate is managed by Gensui. Edit filesystem controls in Gensui.",
-        )
-
     from shogun.services.tool_gate import (
         get_local_filesystem_controls,
         set_local_filesystem_controls,
     )
 
-    _, _, _, scope = await _active_toolgate_context()
+    _, _, _, scope, created = await _ensure_standalone_custom_toolgate_context()
     try:
         set_local_filesystem_controls(body.model_dump(), scope["key"])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     saved = get_local_filesystem_controls(scope["key"])
-    return ApiResponse(data={"scope": scope, "filesystem_controls": saved})
+    return ApiResponse(data={
+        "scope": scope,
+        "custom_posture_created": created,
+        "filesystem_controls": saved,
+    })
 
 
 @router.put("/toolgate/network", response_model=ApiResponse)
 async def update_toolgate_network_controls(body: ToolGateNetworkRequest):
     """Replace the shared Internet mode and domain allowlist for this scope."""
-    authority = _toolgate_authority()
-    if not authority["editable"]:
-        raise HTTPException(
-            status_code=423,
-            detail="ToolGate is managed by Gensui. Edit network controls in Gensui.",
-        )
-
     from shogun.services.tool_gate import (
         get_local_network_controls,
         set_local_network_controls,
     )
 
-    _, _, _, scope = await _active_toolgate_context()
+    _, _, _, scope, created = await _ensure_standalone_custom_toolgate_context()
     try:
         set_local_network_controls(body.model_dump(), scope["key"])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     saved = get_local_network_controls(scope["key"])
-    return ApiResponse(data={"scope": scope, "network_controls": saved})
+    return ApiResponse(data={
+        "scope": scope,
+        "custom_posture_created": created,
+        "network_controls": saved,
+    })
 
 
 @router.put("/toolgate/advanced", response_model=ApiResponse)
 async def update_toolgate_advanced_controls(body: ToolGateAdvancedRequest):
     """Replace advanced content rules for the active standalone policy scope."""
-    authority = _toolgate_authority()
-    if not authority["editable"]:
-        raise HTTPException(
-            status_code=423,
-            detail="ToolGate is managed by Gensui. Edit advanced controls in Gensui.",
-        )
-
     from shogun.services.tool_gate import (
         get_local_advanced_controls,
         set_local_advanced_controls,
     )
 
-    _, _, _, scope = await _active_toolgate_context()
+    _, _, _, scope, created = await _ensure_standalone_custom_toolgate_context()
     config = {"enabled": body.enabled, "rules": body.rules}
     try:
         set_local_advanced_controls(config, scope["key"])
@@ -1193,25 +1341,17 @@ async def update_toolgate_advanced_controls(body: ToolGateAdvancedRequest):
         )
     except Exception:
         pass
-    return ApiResponse(data={"scope": scope, "advanced_controls": saved})
+    return ApiResponse(data={
+        "scope": scope,
+        "custom_posture_created": created,
+        "advanced_controls": saved,
+    })
 
 
 @router.put("/toolgate/capabilities", response_model=ApiResponse)
 async def update_toolgate_capabilities(body: ToolGateCapabilitiesRequest):
-    """Update capability boundaries on the assigned custom policy."""
-    authority = _toolgate_authority()
-    if not authority["editable"]:
-        raise HTTPException(
-            status_code=423,
-            detail="ToolGate is managed by Gensui. Edit capabilities in Gensui.",
-        )
-
-    posture, _, _, scope = await _active_toolgate_context()
-    if scope["kind"] != "custom_policy" or not posture.get("active_policy_id"):
-        raise HTTPException(
-            status_code=403,
-            detail="Built-in tiers are protected presets. Create or assign a custom policy in Torii first.",
-        )
+    """Update capability boundaries, forking a built-in posture when needed."""
+    posture, _, _, scope, created = await _ensure_standalone_custom_toolgate_context()
 
     from sqlalchemy import select
 
@@ -1260,6 +1400,7 @@ async def update_toolgate_capabilities(body: ToolGateCapabilitiesRequest):
     return ApiResponse(
         data={
             "scope": scope,
+            "custom_posture_created": created,
             "permissions": permissions,
             "risk_score": calculate_capability_risk(permissions),
         }

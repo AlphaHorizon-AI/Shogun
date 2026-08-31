@@ -1001,15 +1001,6 @@ class ModelRoutingService:
             for item in candidates
             if item.provider_id and item.provider_id in providers and providers[item.provider_id].status == "connected"
         ]
-        context_capacity_exhausted = False
-        if request.context_size_estimate and task_type not in VISION_TYPES:
-            before_context_filter = len(candidates)
-            candidates = [
-                item
-                for item in candidates
-                if request.context_size_estimate <= configured_max_input_tokens(item)
-            ]
-            context_capacity_exhausted = before_context_filter > 0 and not candidates
         if request.local_only:
             candidates = [item for item in candidates if item.local]
         candidates = [
@@ -1033,6 +1024,20 @@ class ModelRoutingService:
             if not preferred_ids:
                 raise NoEligibleModelError(f"{profile.name} routing has no models configured.")
             candidates = [item for item in candidates if self._matches_preference(item, preferred_ids)]
+        # Diagnose context exhaustion only after every other eligibility gate,
+        # including a custom profile's strict model boundary. Otherwise a
+        # large-context model outside that profile masks the real reason its
+        # selected models were rejected and the operator sees the misleading
+        # generic "Required capabilities: chat" error.
+        context_capacity_exhausted = False
+        if request.context_size_estimate and task_type not in VISION_TYPES:
+            before_context_filter = len(candidates)
+            candidates = [
+                item
+                for item in candidates
+                if request.context_size_estimate <= configured_max_input_tokens(item)
+            ]
+            context_capacity_exhausted = before_context_filter > 0 and not candidates
         if not candidates:
             required = ", ".join(sorted(requirements)) or "connected chat model"
             await self._audit(

@@ -1625,7 +1625,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
 
             <div className="max-w-4xl mx-auto bg-[#d4a017]/5 border border-[#d4a017]/30 rounded-xl p-5 space-y-4">
               <p className="text-[11px] text-[#aaa] leading-relaxed">
-                {securityText('post_install', 'After installation, the complete Incident Reporting guidance remains available from the persistent Incident Reporting item in the Shogun sidebar.')}
+                {securityText('post_install', 'After installation, the complete Incident Reporting guidance remains available in Guide → Reference → Incident Reporting.')}
               </p>
               <label className="flex items-start gap-3 cursor-pointer">
                 <input

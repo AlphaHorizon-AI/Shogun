@@ -1,4 +1,4 @@
-"""Public request contracts for Supermode and Mission Control."""
+"""Public request contracts for Supermode."""
 
 from __future__ import annotations
 

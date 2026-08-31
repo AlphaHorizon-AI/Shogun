@@ -6326,6 +6326,7 @@ async def _call_llm_with_tools(
     tools: list[dict] | None = None,
     tool_executor: Callable | None = None,
     max_tool_rounds: int = 6,
+    max_tool_calls: int | None = None,
     governance_context: dict[str, Any] | None = None,
     tool_profile: dict[str, Any] | None = None,
 ) -> str:
@@ -6377,14 +6378,36 @@ async def _call_llm_with_tools(
             current_messages.insert(0, {"role": "system", "content": tool_prompt})
     url = f"{base_url.rstrip('/')}/chat/completions"
 
-    for _round_num in range(max_tool_rounds):
+    # Reserve a final tool-free response after the last permitted tool round.
+    # The old loop raised immediately after the last tool result, discarded all
+    # gathered evidence, and made callers repeat the entire research run.
+    max_tool_rounds = max(1, int(max_tool_rounds))
+    max_tool_calls = max(1, int(max_tool_calls)) if max_tool_calls is not None else None
+    tool_calls_used = 0
+    force_finalize = False
+    tool_result_cache: dict[str, str] = {}
+
+    for _round_num in range(max_tool_rounds + 1):
+        tools_enabled = _round_num < max_tool_rounds and not force_finalize
+        request_messages = current_messages
+        if not tools_enabled:
+            request_messages = [
+                *current_messages,
+                {
+                    "role": "system",
+                    "content": (
+                        "The governed tool budget is complete. Do not request more tools. "
+                        "Use the evidence already gathered and return the final answer now."
+                    ),
+                },
+            ]
         payload: dict[str, Any] = {
             "model": model_name,
-            "messages": current_messages,
+            "messages": request_messages,
             "stream": False,
             "temperature": temperature,
         }
-        if mode == "native":
+        if mode == "native" and tools_enabled:
             payload["tools"] = formatted_tools
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
@@ -6416,6 +6439,7 @@ async def _call_llm_with_tools(
                             tools=tools,
                             tool_executor=tool_executor,
                             max_tool_rounds=max_tool_rounds,
+                            max_tool_calls=max_tool_calls,
                             governance_context=governance_context,
                             tool_profile=fallback_profile,
                         )
@@ -6432,7 +6456,9 @@ async def _call_llm_with_tools(
                 content = "\n".join(
                     str(part.get("text") or "") for part in content if isinstance(part, dict)
                 )
-            if mode == "native":
+            if not tools_enabled:
+                canonical_calls = []
+            elif mode == "native":
                 canonical_calls = normalize_native_tool_calls(data)
             else:
                 canonical_calls = normalize_text_tool_calls(str(content or ""), allowed_tool_names)
@@ -6478,13 +6504,32 @@ async def _call_llm_with_tools(
                 call_id = str(call.get("id") or f"call-{uuid.uuid4().hex[:10]}")
                 func_name = str(call.get("tool") or "")
                 args = call.get("arguments") or {}
+                cache_key = json.dumps(
+                    {"tool": func_name, "arguments": args},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    default=str,
+                )
 
-                if func_name not in allowed_tool_names:
+                if cache_key in tool_result_cache:
+                    res_str = tool_result_cache[cache_key]
+                elif max_tool_calls is not None and tool_calls_used >= max_tool_calls:
+                    force_finalize = True
+                    res_str = json.dumps({
+                        "status": "budget_complete",
+                        "message": (
+                            f"The governed tool-call budget ({max_tool_calls}) is complete. "
+                            "Use the evidence already gathered and return the final answer."
+                        ),
+                    })
+                elif func_name not in allowed_tool_names:
+                    tool_calls_used += 1
                     res_str = json.dumps({
                         "status": "blocked",
                         "message": f"Tool '{func_name}' is not in this Samurai node's scoped tool set.",
                     })
                 else:
+                    tool_calls_used += 1
                     try:
                         gate_decision = await check_tool_access(
                             mode=gate_mode,
@@ -6525,6 +6570,10 @@ async def _call_llm_with_tools(
                                     "message": f"Tool execution failed for '{func_name}': {exec_error}",
                                 })
 
+                tool_result_cache.setdefault(cache_key, str(res_str))
+                if max_tool_calls is not None and tool_calls_used >= max_tool_calls:
+                    force_finalize = True
+
                 res_str = wrap_tool_result(func_name, str(res_str))
                 if mode == "native":
                     current_messages.append({
@@ -6546,7 +6595,7 @@ async def _call_llm_with_tools(
                         ),
                     })
 
-    raise RuntimeError(f"Samurai node exceeded maximum tool rounds ({max_tool_rounds})")
+    raise RuntimeError(f"Samurai node could not finalize after {max_tool_rounds} governed tool rounds")
 
 
 async def _call_llm_chain_with_tools(
@@ -6561,6 +6610,8 @@ async def _call_llm_chain_with_tools(
     usage_session: AsyncSession | None = None,
     tools: list[dict] | None = None,
     tool_executor: Callable | None = None,
+    max_tool_rounds: int = 6,
+    max_tool_calls: int | None = None,
     governance_context: dict[str, Any] | None = None,
 ) -> str:
     """Call each model in order with tool execution support."""
@@ -6624,6 +6675,8 @@ async def _call_llm_chain_with_tools(
                     seed=seed,
                     tools=tools,
                     tool_executor=tool_executor,
+                    max_tool_rounds=max_tool_rounds,
+                    max_tool_calls=max_tool_calls,
                     governance_context=governance_context,
                     tool_profile=tool_profile,
                 )

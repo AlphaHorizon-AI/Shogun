@@ -555,14 +555,17 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    # Close all active Mado browser sessions
+    # Close all active Mado sessions and the non-daemon Playwright executor.
+    # Leaving that executor alive prevents Uvicorn's development reloader from
+    # replacing the worker after an in-flight browser task completes.
     try:
-        from shogun.services.mado_service import close_all_browsers
-        closed = await close_all_browsers()
+        from shogun.services.mado_service import shutdown_browser_runtime
+
+        closed = await asyncio.wait_for(shutdown_browser_runtime(), timeout=15)
         if closed:
             logging.getLogger(__name__).info("Mado: closed %d browser sessions on shutdown", closed)
     except Exception:
-        pass
+        logging.getLogger(__name__).exception("Mado runtime shutdown failed")
 
     # Stop Ronin and Komainu
     try:
