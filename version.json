@@ -1,8 +1,8 @@
 {
-  "version": "1.47.91",
+  "version": "1.47.92",
   "name": "Shogun AFM",
-  "build": 242,
+  "build": 243,
   "channel": "stable",
-  "released": "2026-08-27T11:28:36Z",
-  "changelog": "Add complete PC migration backup and total restore, real provider OAuth, and per-model reasoning controls."
+  "released": "2026-08-31T13:29:30Z",
+  "changelog": "Add Supermode Canvas mission orchestration, fleet-selected Samurai skill routing, mission controls, and migration and CI fixes."
 }

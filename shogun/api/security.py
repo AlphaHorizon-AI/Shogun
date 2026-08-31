@@ -441,6 +441,7 @@ async def _save_agent_posture(posture: dict) -> None:
 @router.get("/posture", response_model=ApiResponse)
 async def get_security_posture():
     posture = await _get_agent_posture()
+    posture["supermode_enabled"] = posture.get("active_tier") in {"campaign", "ronin"}
     return ApiResponse(data=SecurityPostureResponse(**posture).model_dump())
 
 
@@ -483,6 +484,7 @@ async def update_security_posture(body: dict):
         )
     except Exception:
         pass
+    current["supermode_enabled"] = current.get("active_tier") in {"campaign", "ronin"}
     return ApiResponse(data=SecurityPostureResponse(**current).model_dump())
 
 
@@ -578,6 +580,7 @@ async def select_active_security_posture(body: SecurityPostureSelectRequest):
         )
     except Exception:
         pass
+    selected["supermode_enabled"] = selected.get("active_tier") in {"campaign", "ronin"}
     return ApiResponse(data=SecurityPostureResponse(**selected).model_dump())
 
 

@@ -43,6 +43,15 @@ from shogun.db.models.bushido import (
     ReminderTask,
 )
 from shogun.db.models.mission import Mission
+from shogun.db.models.supermode import (
+    MissionAgent,
+    MissionApproval,
+    MissionArtifact,
+    MissionEvent,
+    MissionLearning,
+    MissionPlan,
+    MissionTask,
+)
 from shogun.db.models.execution_event import ExecutionEvent
 from shogun.db.models.memory_record import MemoryRecord, MemoryProvenanceLink
 from shogun.db.models.memory_retrieval import MemoryRetrievalRun

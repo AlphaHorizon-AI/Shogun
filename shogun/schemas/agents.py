@@ -53,6 +53,7 @@ class SamuraiProfileResponse(ShogunBase):
     specializations: list[str]
     allowed_task_types: list[str]
     blocked_task_types: list[str]
+    assigned_skill_ids: list[uuid.UUID] = Field(default_factory=list)
     max_parallel_jobs: int
     auto_spawnable: bool
     created_at: datetime
@@ -136,5 +137,6 @@ class SamuraiProfileCreate(ShogunBase):
     specializations: list[str] = Field(default_factory=list)
     allowed_task_types: list[str] = Field(default_factory=list)
     blocked_task_types: list[str] = Field(default_factory=list)
+    assigned_skill_ids: list[uuid.UUID] = Field(default_factory=list, max_length=20)
     max_parallel_jobs: int = Field(default=2, ge=1, le=20)
     auto_spawnable: bool = False

@@ -154,6 +154,7 @@ class SecurityPostureResponse(ShogunBase):
     max_active_subagents: int
     kill_switch_enabled: bool
     kill_switch_active: bool = False
+    supermode_enabled: bool = False
     ide_enabled: bool = False
     comms_read_email: bool = True
     comms_send_email: bool = True

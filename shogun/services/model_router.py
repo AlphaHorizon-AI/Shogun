@@ -119,14 +119,21 @@ def is_automatic_profile_name(name: str | None) -> bool:
     return automatic_profile_key(name) is not None
 
 SIMPLE_TYPES = {"simple_chat", "classification", "extraction", "memory_write", "memory_retrieval"}
-MODERATE_TYPES = {"summarization", "productivity_task", "browser_task", "skill_selection", "context_compaction"}
-COMPLEX_TYPES = {"planning", "coding_plan", "coding_edit", "stack_planning", "stack_step_execution"}
+MODERATE_TYPES = {
+    "summarization", "productivity_task", "browser_task", "skill_selection", "context_compaction",
+    "mission_research", "mission_fact_check", "mission_procedural_learning",
+}
+COMPLEX_TYPES = {
+    "planning", "coding_plan", "coding_edit", "stack_planning", "stack_step_execution",
+    "mission_planning", "mission_replanning", "mission_synthesis", "agentflow_synthesis",
+}
 CRITICAL_TYPES = {
     "complex_reasoning",
     "test_failure_analysis",
     "self_verification",
     "final_review",
     "visual_self_verification",
+    "mission_critique",
 }
 VISION_TYPES = {
     "visual_understanding",

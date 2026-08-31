@@ -351,6 +351,17 @@ async def list_agents(
     )
 
 
+@router.get("/samurai-skill-catalog", response_model=ApiResponse)
+async def list_samurai_skill_catalog(
+    svc: AgentService = Depends(get_agent_service),
+):
+    """List validated Shogun skills that may be assigned to fleet Samurai."""
+    from shogun.schemas.skills import SkillResponse
+
+    records = await svc.get_assignable_skills()
+    return ApiResponse(data=[SkillResponse.model_validate(record) for record in records])
+
+
 @router.get("/{agent_id}", response_model=ApiResponse)
 async def get_agent(
     agent_id: uuid.UUID,
@@ -483,7 +494,12 @@ async def update_samurai_profile(
     body: SamuraiProfileCreate,
     svc: AgentService = Depends(get_agent_service),
 ):
-    profile = await svc.update_samurai_profile(agent_id, **body.model_dump())
+    try:
+        profile = await svc.update_samurai_profile(agent_id, **body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Samurai agent not found")
     return ApiResponse(data=SamuraiProfileResponse.model_validate(profile))
 
 

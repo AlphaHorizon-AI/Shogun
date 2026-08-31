@@ -19,6 +19,7 @@ class SamuraiProfile(Base, UUIDMixin, AuditMixin):
     specializations: Mapped[list] = mapped_column(JSONType(), nullable=False, default=list)
     allowed_task_types: Mapped[list] = mapped_column(JSONType(), nullable=False, default=list)
     blocked_task_types: Mapped[list] = mapped_column(JSONType(), nullable=False, default=list)
+    assigned_skill_ids: Mapped[list] = mapped_column(JSONType(), nullable=False, default=list)
     max_parallel_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     auto_spawnable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 

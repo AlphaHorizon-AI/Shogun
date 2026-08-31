@@ -706,6 +706,7 @@ def create_app() -> FastAPI:
     from shogun.api.files import router as files_router
     from shogun.api.telemetry import router as telemetry_router
     from shogun.api.transformation_profiles import router as transformation_profiles_router
+    from shogun.api.supermode import router as supermode_router
 
     prefix = "/api/v1"
     app.include_router(system_router, prefix=prefix)
@@ -750,6 +751,7 @@ def create_app() -> FastAPI:
     app.include_router(ide_router, prefix=prefix)
     app.include_router(files_router, prefix=prefix)
     app.include_router(telemetry_router, prefix=prefix)
+    app.include_router(supermode_router, prefix=prefix)
 
     # Office App Mode (Katana)
     from shogun.api.office import router as office_router

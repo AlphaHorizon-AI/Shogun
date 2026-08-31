@@ -37,6 +37,14 @@ TASK_TYPES = (
     "stack_planning",
     "stack_step_execution",
     "context_compaction",
+    "mission_planning",
+    "mission_replanning",
+    "mission_research",
+    "mission_synthesis",
+    "mission_critique",
+    "mission_fact_check",
+    "mission_procedural_learning",
+    "agentflow_synthesis",
 )
 
 

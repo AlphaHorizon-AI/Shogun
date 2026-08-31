@@ -254,6 +254,13 @@ function SetupPage() {
   )
 }
 
+function MissionControlRedirect() {
+  const location = useLocation()
+  const searchParams = new URLSearchParams(location.search)
+  searchParams.set('tab', 'mission-control')
+  return <Navigate to={`/chat?${searchParams.toString()}`} replace />
+}
+
 function AppContent() {
   return (
     <Router>
@@ -266,6 +273,7 @@ function AppContent() {
           {/* Main Tenshu routes (wrapped in Shell) */}
           <Route path="/" element={<Shell><Dashboard /></Shell>} />
           <Route path="/chat" element={<Shell><Chat /></Shell>} />
+          <Route path="/mission-control" element={<MissionControlRedirect />} />
           <Route path="/shogun" element={<Shell><ShogunProfile /></Shell>} />
           <Route path="/samurai" element={<Shell><SamuraiNetwork /></Shell>} />
           <Route path="/katana" element={<Shell><Katana /></Shell>} />

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Send, Terminal, Bot, User, Trash2, History, X, ChevronDown, ChevronRight, ChevronUp, Globe, Mail, Calendar, MessageSquare, Zap, Shield, ShieldAlert, Target, Sparkles, Monitor, MousePointer2, Keyboard, AlertCircle, Camera, Square, Check, XCircle, FolderOpen, Paperclip, FileText, Pin } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
@@ -6,7 +7,9 @@ import { MailView } from './MailView';
 import { CalendarView } from './CalendarView';
 import { FileExplorer } from './FileExplorer';
 
-type ChatMode = 'auto' | 'fast' | 'governed' | 'mission';
+const SupermodeCanvas = lazy(() => import('./MissionControl').then(module => ({ default: module.MissionControl })));
+
+type ChatMode = 'auto' | 'fast' | 'governed' | 'mission' | 'supermode';
 
 type RoninAttachment =
   | { type: 'screenshot'; url: string; description: string }
@@ -26,6 +29,9 @@ interface Message {
   search?: boolean;
   mode?: ChatMode;
   attachments?: RoninAttachment[];
+  mission_id?: string;
+  mission_status?: string;
+  mission_control_url?: string;
 }
 
 interface Session {
@@ -76,6 +82,9 @@ async function persistSharedMessage(message: Message, mirrorToTelegram = true) {
         search: message.search,
         mode: message.mode,
         attachments: message.attachments,
+        mission_id: message.mission_id,
+        mission_status: message.mission_status,
+        mission_control_url: message.mission_control_url,
       },
     }),
   });
@@ -221,6 +230,7 @@ const ToolGateCard = ({ att, idx, setMessages }: {
 
 export const ChatConsole = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>(() => loadCurrent(t));
   const operatorName = localStorage.getItem('shogun_operator_name') || 'Daimyo';
   const [input, setInput] = useState('');
@@ -239,12 +249,30 @@ export const ChatConsole = () => {
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [routingProfile, setRoutingProfile] = useState('Balanced');
+  const [supermodeEnabled, setSupermodeEnabled] = useState(false);
+  const [activePosture, setActivePosture] = useState('tactical');
 
   useEffect(() => {
     fetch('/api/v1/models/routing/profiles/active')
       .then(response => response.ok ? response.json() : null)
       .then(payload => { if (payload?.data?.name) setRoutingProfile(payload.data.name); })
       .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const refreshPosture = () => {
+      fetch('/api/v1/security/posture')
+        .then(response => response.ok ? response.json() : null)
+        .then(payload => {
+          const posture = payload?.data?.active_tier || 'tactical';
+          setActivePosture(posture);
+          setSupermodeEnabled(Boolean(payload?.data?.supermode_enabled || posture === 'campaign' || posture === 'ronin'));
+        })
+        .catch(() => undefined);
+    };
+    refreshPosture();
+    const timer = window.setInterval(refreshPosture, 5000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const handleAttachmentUpload = async (file?: File) => {
@@ -343,6 +371,56 @@ export const ChatConsole = () => {
     setInput('');
     setPendingImages([]);
     setPendingFiles([]);
+
+    if (chatMode === 'supermode') {
+      setIsThinking(true);
+      setStatusText('Creating durable mission…');
+      try {
+        const response = await fetch('/api/v1/supermode/missions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            objective: outgoingText,
+            chat_session_id: 'web-chat',
+            attachments: [
+              ...outgoingImages.map(image => ({ artifact_id: image.artifact_id, type: 'image' })),
+              ...outgoingFiles.map(file => ({ file_id: file.file_id, type: 'file' })),
+            ],
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.detail?.message || payload.detail || `HTTP ${response.status}`);
+        const created = payload.data;
+        const missionMessage: Message = {
+          id: crypto.randomUUID(),
+          role: 'shogun',
+          content: `Durable mission created: ${created.title}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          channel: 'comms',
+          mode: 'supermode',
+          mission_id: created.id,
+          mission_status: created.status,
+          mission_control_url: created.mission_control_url,
+        };
+        setMessages(previous => [...previous, missionMessage]);
+        await persistSharedMessage(missionMessage);
+      } catch (err: any) {
+        const failure: Message = {
+          id: crypto.randomUUID(),
+          role: 'shogun',
+          content: `Supermode mission could not be created: ${err.message || 'Unknown error'}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          channel: 'comms',
+          mode: 'supermode',
+        };
+        setMessages(previous => [...previous, failure]);
+      } finally {
+        setIsThinking(false);
+        setStatusText(null);
+      }
+      return;
+    }
+
     setIsThinking(true);
     setStatusText(null);
 
@@ -661,7 +739,22 @@ export const ChatConsole = () => {
                     </div>
                   ) : (
                     <>
-                      {msg.content}
+                      {msg.mission_id ? (
+                        <div className="min-w-[300px] max-w-xl rounded-xl border border-purple-500/35 bg-purple-500/5 p-4 text-left font-sans text-shogun-text">
+                          <div className="flex items-center gap-2 text-purple-300">
+                            <Target className="h-4 w-4" />
+                            <span className="text-[10px] font-black uppercase tracking-[0.18em]">Supermode mission</span>
+                          </div>
+                          <p className="mt-3 text-sm font-bold">{msg.content.replace(/^Durable mission created:\s*/, '')}</p>
+                          <div className="mt-3 flex items-center justify-between rounded-lg border border-purple-500/20 bg-black/20 px-3 py-2 text-[10px] uppercase tracking-wider text-shogun-subdued">
+                            <span>Status</span><span className="font-bold text-purple-300">{msg.mission_status || 'planning'}</span>
+                          </div>
+                          <div className="mt-3 flex gap-2">
+                            <button onClick={() => navigate(`/chat?tab=mission-control&mission=${msg.mission_id}`)} className="flex-1 rounded-lg bg-purple-600 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-purple-500">Open Supermode Canvas</button>
+                            <button onClick={() => void fetch(`/api/v1/supermode/missions/${msg.mission_id}/pause`, { method: 'POST' })} className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[10px] font-bold uppercase text-amber-300">Pause</button>
+                          </div>
+                        </div>
+                      ) : msg.content}
                       {/* â”€â”€ Ronin Visual Feed â”€â”€ */}
                       {msg.attachments && msg.attachments.length > 0 && (
                         <div className={cn("space-y-2", msg.content ? "mt-3 border-t border-shogun-border/30 pt-3" : "")}>
@@ -792,7 +885,7 @@ export const ChatConsole = () => {
                               : "bg-purple-500/10 border border-purple-500/30 text-purple-400"
                         )}>
                           {msg.mode === 'fast' ? <Zap className="w-2.5 h-2.5" /> : msg.mode === 'governed' ? <Shield className="w-2.5 h-2.5" /> : <Target className="w-2.5 h-2.5" />}
-                          {msg.mode === 'fast' ? 'Fast' : msg.mode === 'governed' ? 'Governed' : 'Mission'}
+                          {msg.mode === 'fast' ? 'Fast' : msg.mode === 'governed' ? 'Governed' : msg.mode === 'supermode' ? 'Supermode' : 'Mission'}
                         </div>
                       )}
                       {msg.search ? (
@@ -822,17 +915,28 @@ export const ChatConsole = () => {
               { id: 'auto' as ChatMode, label: 'Auto', icon: Sparkles, color: 'cyan', desc: 'Automatically selects the best mode' },
               { id: 'fast' as ChatMode, label: 'Fast Chat', icon: Zap, color: 'emerald', desc: 'Conversation only â€” no tools or memory' },
               { id: 'governed' as ChatMode, label: 'Governed', icon: Shield, color: 'amber', desc: 'Context-aware with memory (coming soon)' },
-              { id: 'mission' as ChatMode, label: 'Mission', icon: Target, color: 'purple', desc: 'Full agent orchestration with tools' },
-            ]).map(({ id, label, icon: Icon, color }) => (
+              { id: 'supermode' as ChatMode, label: 'Supermode', icon: Target, color: 'purple', desc: 'Durable multi-agent problem solving with governed tools and automatic learning' },
+            ]).map(({ id, label, icon: Icon, color, desc }) => (
               <button
                 key={id}
                 type="button"
-                onClick={() => setChatMode(id)}
+                onClick={() => {
+                  if (id === 'supermode' && !supermodeEnabled) {
+                    setStatusText(`Supermode requires Campaign or Ronin posture. Current posture: ${activePosture.toUpperCase()}.`);
+                    return;
+                  }
+                  setStatusText(null);
+                  setChatMode(id);
+                }}
+                aria-disabled={id === 'supermode' && !supermodeEnabled}
+                title={id === 'supermode' && !supermodeEnabled ? `Locked — requires Campaign or Ronin posture (current: ${activePosture})` : desc}
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all",
                   chatMode === id
                     ? `bg-${color}-500/15 border-${color}-500/40 text-${color}-400`
-                    : "bg-transparent border-shogun-border/50 text-shogun-subdued/60 hover:border-shogun-subdued hover:text-shogun-subdued"
+                    : id === 'supermode' && !supermodeEnabled
+                      ? "cursor-not-allowed bg-transparent border-shogun-border/30 text-shogun-subdued/35"
+                      : "bg-transparent border-shogun-border/50 text-shogun-subdued/60 hover:border-shogun-subdued hover:text-shogun-subdued"
                 )}
                 style={chatMode === id ? {
                   backgroundColor: color === 'cyan' ? 'rgba(6,182,212,0.15)' : color === 'emerald' ? 'rgba(16,185,129,0.15)' : color === 'amber' ? 'rgba(245,158,11,0.15)' : 'rgba(168,85,247,0.15)',
@@ -842,6 +946,7 @@ export const ChatConsole = () => {
               >
                 <Icon className="w-3 h-3" />
                 {label}
+                {id === 'supermode' && !supermodeEnabled && <ShieldAlert className="h-3 w-3" />}
               </button>
             ))}
           </div>
@@ -857,7 +962,7 @@ export const ChatConsole = () => {
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
               disabled={isThinking}
-              placeholder={isThinking ? t('chat.placeholder_thinking', 'Shogun is thinking...') : chatMode === 'auto' ? 'Ask anything â€” Shogun routes automatically...' : chatMode === 'fast' ? 'Ask anything...' : chatMode === 'mission' ? 'Enter mission directive...' : 'Ask with context...'}
+              placeholder={isThinking ? t('chat.placeholder_thinking', 'Shogun is thinking...') : chatMode === 'auto' ? 'Ask anything â€” Shogun routes automatically...' : chatMode === 'fast' ? 'Ask anything...' : chatMode === 'supermode' ? 'Describe the outcome Shogun should accomplish…' : 'Ask with context...'}
               className="w-full bg-shogun-card border border-shogun-border rounded-xl py-4 pl-14 pr-14 text-shogun-text placeholder:text-shogun-subdued focus:outline-none focus:border-shogun-blue focus:ring-1 focus:ring-shogun-blue/20 transition-all font-mono text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             />
             {isThinking ? (
@@ -1035,7 +1140,23 @@ export const ChatConsole = () => {
 
 export const Chat = () => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'chat' | 'mail' | 'calendar' | 'files'>('chat');
+  const [searchParams, setSearchParams] = useSearchParams();
+  type CommsTab = 'chat' | 'mail' | 'calendar' | 'files' | 'mission-control';
+  const requestedTab = searchParams.get('tab');
+  const activeTab: CommsTab = requestedTab === 'mail'
+    || requestedTab === 'calendar'
+    || requestedTab === 'files'
+    || requestedTab === 'mission-control'
+    ? requestedTab
+    : 'chat';
+
+  const setActiveTab = (tab: CommsTab) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (tab === 'chat') nextParams.delete('tab');
+    else nextParams.set('tab', tab);
+    if (tab !== 'mission-control') nextParams.delete('mission');
+    setSearchParams(nextParams);
+  };
 
   return (
     <div className="flex flex-col w-full min-w-0 h-[calc(100vh-140px)] space-y-4">
@@ -1049,9 +1170,10 @@ export const Chat = () => {
               {activeTab === 'mail' && t('mail.badge', 'Mail Client')}
               {activeTab === 'calendar' && t('calendar.badge', 'Calendar Board')}
               {activeTab === 'files' && 'File Explorer'}
+              {activeTab === 'mission-control' && t('chat.badge_mission_control', 'Supermode Operations')}
             </span>
           </h2>
-          <p className="text-shogun-subdued text-sm mt-1">{t('comms.subtitle', 'Chat · Mail · Calendar · Files')}</p>
+          <p className="text-shogun-subdued text-sm mt-1">{t('comms.subtitle', 'Chat · Mail · Calendar · Files · Supermode Canvas')}</p>
         </div>
       </div>
 
@@ -1061,7 +1183,8 @@ export const Chat = () => {
           { id: 'chat', label: t('chat.tab_chat', 'Chat'), icon: MessageSquare },
           { id: 'mail', label: t('chat.tab_mail', 'Mail'), icon: Mail },
           { id: 'calendar', label: t('chat.tab_calendar', 'Calendar'), icon: Calendar },
-          { id: 'files', label: 'Files', icon: FolderOpen }
+          { id: 'files', label: 'Files', icon: FolderOpen },
+          { id: 'mission-control', label: t('chat.tab_mission_control', 'Supermode Canvas'), icon: Target }
         ] as const).map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -1086,6 +1209,11 @@ export const Chat = () => {
         {activeTab === 'mail' && <MailView />}
         {activeTab === 'calendar' && <CalendarView />}
         {activeTab === 'files' && <FileExplorer />}
+        {activeTab === 'mission-control' && (
+          <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-shogun-subdued">Loading Supermode Canvas…</div>}>
+            <SupermodeCanvas embedded />
+          </Suspense>
+        )}
       </div>
     </div>
   );

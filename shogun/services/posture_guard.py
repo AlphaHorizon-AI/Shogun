@@ -16,11 +16,24 @@ Enforcement matrix
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import HTTPException
 
 log = logging.getLogger("shogun.posture_guard")
+
+SUPERMODE_ALLOWED_TIERS = frozenset({"campaign", "ronin"})
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveSubagentUsage:
+    permanent: int
+    mission: int
+
+    @property
+    def total(self) -> int:
+        return self.permanent + self.mission
 
 
 # ── Kill-switch gate ─────────────────────────────────────────────────
@@ -53,32 +66,54 @@ async def check_kill_switch() -> None:
 # ── Subagent limit gate ─────────────────────────────────────────────
 
 
+async def get_active_subagent_usage() -> ActiveSubagentUsage:
+    """Count permanent Samurai and temporary mission workers together."""
+    from sqlalchemy import func, select
+
+    from shogun.db.engine import async_session_factory
+    from shogun.db.models.agent import Agent
+    from shogun.db.models.supermode import MissionAgent
+
+    async with async_session_factory() as db:
+        permanent = int(
+            (
+                await db.scalar(
+                    select(func.count()).select_from(Agent).where(
+                        Agent.agent_type == "samurai",
+                        Agent.status.in_(["active", "idle", "running"]),
+                        Agent.is_deleted.is_(False),
+                    )
+                )
+            )
+            or 0
+        )
+        mission = int(
+            (
+                await db.scalar(
+                    select(func.count()).select_from(MissionAgent).where(
+                        MissionAgent.source_type != "fleet",
+                        MissionAgent.status.in_(["planned", "starting", "active", "waiting", "blocked"])
+                    )
+                )
+            )
+            or 0
+        )
+    return ActiveSubagentUsage(permanent=permanent, mission=mission)
+
+
 async def check_subagent_limit() -> None:
     """Raise HTTP 403 if creating another Samurai would exceed the tier limit.
 
     Call this before any Samurai agent creation (API endpoint + native skill).
     """
-    from sqlalchemy import func, select
-
     from shogun.api.security import _get_agent_posture
-    from shogun.db.engine import async_session_factory
-    from shogun.db.models.agent import Agent
 
     posture = await _get_agent_posture()
     max_agents = posture.get("max_active_subagents", 5)
     tier = posture.get("active_tier", "tactical")
 
-    async with async_session_factory() as db:
-        result = await db.execute(
-            select(func.count())
-            .select_from(Agent)
-            .where(
-                Agent.agent_type == "samurai",
-                Agent.status.in_(["active", "idle", "running"]),
-                Agent.is_deleted == False,
-            )
-        )
-        current_count = result.scalar() or 0
+    usage = await get_active_subagent_usage()
+    current_count = usage.total
 
     if current_count >= max_agents:
         log.warning(
@@ -96,7 +131,8 @@ async def check_subagent_limit() -> None:
             status_code=403,
             detail=f"Security posture [{tier.upper()}] allows a maximum of "
             f"{max_agents} active Samurai agents. Currently {current_count} "
-            f"are active. Change the security tier in the Torii to allow more.",
+            f"are active ({usage.permanent} permanent, {usage.mission} mission-scoped). "
+            "Change the security tier in the Torii or retire workers to allow more.",
         )
 
 
@@ -143,8 +179,12 @@ async def get_posture_tool_filter() -> dict[str, Any]:
         "kill_switch_active": posture.get("kill_switch_active", False),
         "skill_auto_install": posture.get("skill_auto_install", False),
         "shell_enabled": posture.get("shell_enabled", False),
+        "filesystem_mode": posture.get("filesystem_mode", "disabled"),
+        "network_mode": posture.get("network_mode", "disabled"),
+        "workspace_enabled": posture.get("workspace_enabled", False),
         "max_active_subagents": posture.get("max_active_subagents", 5),
         "active_tier": tier,
+        "supermode_enabled": tier in SUPERMODE_ALLOWED_TIERS,
         "active_policy_id": posture.get("active_policy_id"),
         "active_policy_name": posture.get("active_policy_name"),
         "active_policy_is_builtin": posture.get("active_policy_is_builtin"),
@@ -194,6 +234,27 @@ async def get_posture_tool_filter() -> dict[str, Any]:
         # IDE Mode is an explicit capability; posture level alone never enables it.
         "ide_enabled": posture.get("ide_enabled", False),
     }
+
+
+async def check_supermode_access() -> dict[str, Any]:
+    """Enforce the code-level Campaign/Ronin Supermode product boundary."""
+    posture = await get_posture_tool_filter()
+    tier = str(posture.get("active_tier") or "tactical").lower()
+    if tier not in SUPERMODE_ALLOWED_TIERS:
+        log.warning("[PostureGuard] Supermode blocked at tier=%s", tier)
+        _emit_block_event(
+            "supermode_tier",
+            f"Supermode creation blocked at tier {tier.upper()}",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Supermode requires CAMPAIGN or RONIN posture. "
+                f"Current posture: {tier.upper()}."
+            ),
+        )
+    await check_kill_switch()
+    return posture
 
 
 # ── Office App Mode access gate ─────────────────────────────────────

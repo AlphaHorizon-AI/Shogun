@@ -159,6 +159,7 @@ class MissionType(str, Enum):
     SKILL_INSTALL = "skill_install"
     SECURITY_CHECK = "security_check"
     SYNC = "sync"
+    SUPERMODE = "supermode"
 
 
 class MissionStatus(str, Enum):
@@ -168,6 +169,17 @@ class MissionStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     PAUSED = "paused"
+    DRAFT = "draft"
+    PLANNING = "planning"
+    WAITING = "waiting"
+    BLOCKED_USER = "blocked_user"
+    BLOCKED_APPROVAL = "blocked_approval"
+    PAUSED_POSTURE = "paused_posture"
+    PAUSED_BUDGET = "paused_budget"
+    PAUSED_HARAKIRI = "paused_harakiri"
+    REPLANNING = "replanning"
+    COMPLETING = "completing"
+    LEARNING = "learning"
 
 
 class MissionPriority(str, Enum):

@@ -42,6 +42,7 @@ export const SamuraiNetwork = () => {
   const [missions, setMissions] = useState<any[]>([]);
   const [samuraiRoles, setSamuraiRoles] = useState<any[]>([]);
   const [routingProfiles, setRoutingProfiles] = useState<any[]>([]);
+  const [skillCatalog, setSkillCatalog] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'fleet' | 'agent-flow' | 'flow-stack'>('fleet');
@@ -53,9 +54,11 @@ export const SamuraiNetwork = () => {
     spawn_policy: 'manual',
     role_id: '',
     model_routing_profile_id: '',
+    assigned_skill_ids: [] as string[],
   });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [skillSearch, setSkillSearch] = useState('');
   const editAvatarRef = useRef<HTMLInputElement>(null);
   const createAvatarRef = useRef<HTMLInputElement>(null);
   const [createAvatarFile, setCreateAvatarFile] = useState<File | null>(null);
@@ -114,21 +117,24 @@ export const SamuraiNetwork = () => {
     setLoading(true);
     logSamuraiDiagnostic('samurai.fetch_all.start');
     try {
-      const [agentRes, missionRes, roleRes, routingRes] = await Promise.all([
+      const [agentRes, missionRes, roleRes, routingRes, skillRes] = await Promise.all([
         axios.get('/api/v1/agents?agent_type=samurai'),
         axios.get('/api/v1/missions'),
         axios.get('/api/v1/samurai-roles'),
         axios.get('/api/v1/models/routing/profiles'),
+        axios.get('/api/v1/agents/samurai-skill-catalog'),
       ]);
       if (agentRes.data.data)   setAgents(agentRes.data.data);
       if (missionRes.data.data) setMissions(missionRes.data.data);
       if (roleRes.data.data)    setSamuraiRoles(roleRes.data.data);
       if (routingRes.data.data) setRoutingProfiles(routingRes.data.data);
+      if (skillRes.data.data)   setSkillCatalog(skillRes.data.data);
       logSamuraiDiagnostic('samurai.fetch_all.success', {
         agents: agentRes.data?.data?.length || 0,
         missions: missionRes.data?.data?.length || 0,
         roles: roleRes.data?.data?.length || 0,
         routingProfiles: routingRes.data?.data?.length || 0,
+        skills: skillRes.data?.data?.length || 0,
       });
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -234,7 +240,9 @@ export const SamuraiNetwork = () => {
       spawn_policy: agent.spawn_policy || 'manual',
       role_id: agent.samurai_profile?.role_id || agent.samurai_profile?.samurai_role?.id || '',
       model_routing_profile_id: agent.model_routing_profile_id || '',
+      assigned_skill_ids: (agent.samurai_profile?.assigned_skill_ids || []).map(String),
     });
+    setSkillSearch('');
     setEditError(null);
   };
 
@@ -248,7 +256,17 @@ export const SamuraiNetwork = () => {
         description: editForm.description,
         spawn_policy: editForm.spawn_policy,
         model_routing_profile_id: editForm.model_routing_profile_id || null,
-        ...(editForm.role_id ? { role_id: editForm.role_id } : {}),
+      });
+      const profile = editAgent.samurai_profile || {};
+      await axios.put(`/api/v1/agents/${editAgent.id}/samurai-profile`, {
+        role: profile.role || editAgent.name,
+        role_id: editForm.role_id || profile.role_id || profile.samurai_role?.id || null,
+        specializations: profile.specializations || [],
+        allowed_task_types: profile.allowed_task_types || [],
+        blocked_task_types: profile.blocked_task_types || [],
+        max_parallel_jobs: profile.max_parallel_jobs || 2,
+        auto_spawnable: Boolean(profile.auto_spawnable),
+        assigned_skill_ids: editForm.assigned_skill_ids,
       });
       setEditAgent(null);
       fetchAll();
@@ -265,6 +283,23 @@ export const SamuraiNetwork = () => {
   const editRoutingProfile = editAgent
     ? resolveAgentRoutingProfile(editAgent, routingProfiles)
     : null;
+
+  const skillById = new Map(skillCatalog.map((skill) => [String(skill.id), skill]));
+  const visibleSkills = skillCatalog.filter((skill) => {
+    const query = skillSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [skill.name, skill.manifest?.description, ...(skill.tags || [])]
+      .some((value) => String(value || '').toLowerCase().includes(query));
+  });
+
+  const toggleAssignedSkill = (skillId: string) => {
+    setEditForm((current) => ({
+      ...current,
+      assigned_skill_ids: current.assigned_skill_ids.includes(skillId)
+        ? current.assigned_skill_ids.filter((id) => id !== skillId)
+        : [...current.assigned_skill_ids, skillId],
+    }));
+  };
 
   const filteredAgents = agents.filter(a =>
     a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -523,14 +558,26 @@ export const SamuraiNetwork = () => {
 
                     {/* Routing */}
                     <td className="p-4">
-                      {routingName ? (
-                        <div className="flex items-center gap-1.5">
-                          <Zap className="w-3 h-3 text-shogun-gold/70 shrink-0" />
-                          <span className="text-[10px] font-bold text-shogun-gold/90 truncate max-w-[120px]" title={routingName}>{routingName}</span>
-                        </div>
-                      ) : (
-                        <span className="text-[10px] text-shogun-subdued italic">{t('samurai_network.default_routing')}</span>
-                      )}
+                      <div className="space-y-1.5">
+                        {routingName ? (
+                          <div className="flex items-center gap-1.5">
+                            <Zap className="w-3 h-3 text-shogun-gold/70 shrink-0" />
+                            <span className="text-[10px] font-bold text-shogun-gold/90 truncate max-w-[120px]" title={routingName}>{routingName}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-shogun-subdued italic">{t('samurai_network.default_routing')}</span>
+                        )}
+                        {(agent.samurai_profile?.assigned_skill_ids || []).length > 0 && (
+                          <div className="flex max-w-[170px] flex-wrap gap-1">
+                            {(agent.samurai_profile.assigned_skill_ids as string[]).slice(0, 2).map((skillId) => (
+                              <span key={skillId} className="max-w-[115px] truncate rounded border border-cyan-500/20 bg-cyan-500/5 px-1.5 py-0.5 text-[8px] font-bold text-cyan-300" title={skillById.get(String(skillId))?.name || String(skillId)}>
+                                {skillById.get(String(skillId))?.name || 'Assigned skill'}
+                              </span>
+                            ))}
+                            {agent.samurai_profile.assigned_skill_ids.length > 2 && <span className="text-[8px] text-cyan-300/70">+{agent.samurai_profile.assigned_skill_ids.length - 2}</span>}
+                          </div>
+                        )}
+                      </div>
                     </td>
 
                     {/* Deployed At */}
@@ -572,7 +619,7 @@ export const SamuraiNetwork = () => {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200"
           onClick={(e) => { if (e.target === e.currentTarget) setEditAgent(null); }}
         >
-          <div className="bg-[#0a0e1a] border border-shogun-border rounded-xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-shogun-border bg-[#0a0e1a] shadow-2xl animate-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="bg-shogun-card border-b border-shogun-border p-6 flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -606,7 +653,7 @@ export const SamuraiNetwork = () => {
             </div>
 
             {/* Form */}
-            <div className="p-6 space-y-5">
+            <div className="min-h-0 space-y-5 overflow-y-auto p-6">
               {/* Name */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai_network.unit_name')}</label>
@@ -662,6 +709,61 @@ export const SamuraiNetwork = () => {
                 )}
               </div>
 
+              {/* Shogun skill inheritance */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest flex items-center gap-1.5">
+                    <Zap className="w-3 h-3 text-cyan-400" /> Shogun skills
+                  </label>
+                  <span className="rounded border border-cyan-500/20 bg-cyan-500/5 px-2 py-0.5 text-[9px] font-bold text-cyan-300">
+                    {editForm.assigned_skill_ids.length} selected
+                  </span>
+                </div>
+                <p className="text-[9px] leading-relaxed text-shogun-subdued">
+                  Selected skills become this Samurai&apos;s routing signature and are injected when Supermode assigns it compatible work. Skills never grant tools or bypass posture controls.
+                </p>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-shogun-subdued" />
+                  <input
+                    value={skillSearch}
+                    onChange={(event) => setSkillSearch(event.target.value)}
+                    placeholder="Filter the Shogun's active skillset…"
+                    className="w-full rounded-lg border border-shogun-border bg-[#050508] py-2 pl-8 pr-3 text-xs outline-none transition-colors focus:border-cyan-500/50"
+                  />
+                </div>
+                <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-shogun-border bg-black/20 p-1.5">
+                  {visibleSkills.map((skill) => {
+                    const skillId = String(skill.id);
+                    const selected = editForm.assigned_skill_ids.includes(skillId);
+                    return (
+                      <button
+                        type="button"
+                        key={skillId}
+                        onClick={() => toggleAssignedSkill(skillId)}
+                        className={cn(
+                          'flex w-full items-start gap-2 rounded-md border p-2 text-left transition-colors',
+                          selected
+                            ? 'border-cyan-500/40 bg-cyan-500/10'
+                            : 'border-transparent hover:border-shogun-border hover:bg-shogun-card/50'
+                        )}
+                      >
+                        <span className={cn('mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px] font-black', selected ? 'border-cyan-400 bg-cyan-400 text-black' : 'border-shogun-border text-transparent')}>
+                          ✓
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[10px] font-bold text-shogun-text">{skill.name}</span>
+                          <span className="mt-0.5 block line-clamp-1 text-[8px] text-shogun-subdued">{skill.manifest?.description || (skill.tags || []).join(' · ') || skill.skill_type}</span>
+                        </span>
+                        <span className="shrink-0 text-[8px] uppercase text-shogun-subdued">{skill.risk_tier}</span>
+                      </button>
+                    );
+                  })}
+                  {visibleSkills.length === 0 && (
+                    <p className="p-3 text-center text-[10px] text-shogun-subdued">No validated active skills match this filter.</p>
+                  )}
+                </div>
+              </div>
+
               {/* Spawn Policy */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('samurai_network.spawn_policy')}</label>
@@ -698,7 +800,7 @@ export const SamuraiNetwork = () => {
             </div>
 
             {/* Footer */}
-            <div className="p-6 pt-0 flex gap-3">
+            <div className="flex shrink-0 gap-3 p-6 pt-4">
               <button
                 onClick={() => setEditAgent(null)}
                 className="flex-1 bg-shogun-card hover:bg-[#1a2040] text-shogun-subdued font-bold py-2.5 rounded-lg transition-all border border-shogun-border text-sm"

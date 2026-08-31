@@ -530,6 +530,19 @@ async def start_scheduler() -> None:
         coalesce=True,
         misfire_grace_time=60,
     )
+    # APScheduler is only a wake-up mechanism. Durable mission/task state,
+    # leases, and wake times remain authoritative in SQL.
+    from shogun.supermode.supervisor import supervisor_tick
+    sched.add_job(
+        supervisor_tick,
+        trigger=IntervalTrigger(seconds=10),
+        id="supermode_mission_supervisor",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=30,
+        next_run_time=datetime.now(timezone.utc),
+    )
     log.info("Bushido scheduler started.")
 
 

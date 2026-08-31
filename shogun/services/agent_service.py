@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.db.models.agent import Agent
 from shogun.db.models.samurai_profile import SamuraiProfile
+from shogun.db.models.skill import Skill
 from shogun.services.base_service import BaseService
 
 
@@ -42,6 +43,32 @@ class AgentService(BaseService[Agent]):
         )
         return list(result.scalars().all())
 
+    async def get_assignable_skills(self) -> list[Skill]:
+        """Return the validated Shogun skillset exposed to fleet Samurai."""
+        result = await self.session.execute(
+            select(Skill)
+            .where(
+                Skill.is_deleted.is_(False),
+                Skill.exam_status == "passed",
+                Skill.status.not_in(["disabled", "archived", "quarantined", "error", "deprecated"]),
+            )
+            .order_by(Skill.priority.desc(), Skill.name)
+        )
+        return list(result.scalars().all())
+
+    async def validate_assigned_skill_ids(self, skill_ids: list[uuid.UUID | str]) -> list[str]:
+        requested = list(dict.fromkeys(str(skill_id) for skill_id in skill_ids))
+        if len(requested) > 20:
+            raise ValueError("A Samurai can inherit at most 20 active skills")
+        eligible = {str(skill.id): skill for skill in await self.get_assignable_skills()}
+        unavailable = [skill_id for skill_id in requested if skill_id not in eligible]
+        if unavailable:
+            raise ValueError(
+                "Selected skills are not in the Shogun's validated active skillset: "
+                + ", ".join(unavailable)
+            )
+        return requested
+
     async def suspend(self, agent_id: uuid.UUID) -> Agent | None:
         return await self.update(agent_id, status="suspended")
 
@@ -51,6 +78,13 @@ class AgentService(BaseService[Agent]):
     async def update_samurai_profile(
         self, agent_id: uuid.UUID, **kwargs
     ) -> SamuraiProfile | None:
+        agent = await self.get_by_id(agent_id)
+        if not agent or agent.is_deleted or agent.agent_type != "samurai":
+            return None
+        if "assigned_skill_ids" in kwargs:
+            kwargs["assigned_skill_ids"] = await self.validate_assigned_skill_ids(
+                kwargs.get("assigned_skill_ids") or []
+            )
         result = await self.session.execute(
             select(SamuraiProfile).where(SamuraiProfile.agent_id == agent_id)
         )
