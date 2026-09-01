@@ -13,6 +13,7 @@ import argparse
 import html
 import json
 import re
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -166,9 +167,55 @@ def translate_catalog(fragments: list[str], language: str) -> dict[str, str]:
     }
 
 
+def check_catalogs(fragments: list[str], languages: list[str]) -> None:
+    """Fail with a concise repair command when committed catalogs drift."""
+    expected = set(fragments)
+    problems: list[str] = []
+
+    for language in ("en", *languages):
+        catalog_path = OUTPUT / f"{language}.json"
+        if not catalog_path.exists():
+            problems.append(f"{language}: catalog is missing")
+            continue
+
+        try:
+            catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            problems.append(f"{language}: catalog cannot be read ({error})")
+            continue
+
+        if not isinstance(catalog, dict):
+            problems.append(f"{language}: catalog root must be a JSON object")
+            continue
+
+        actual = set(catalog)
+        missing = len(expected - actual)
+        stale = len(actual - expected)
+        if missing or stale:
+            problems.append(f"{language}: {missing} missing, {stale} stale keys")
+
+    if problems:
+        print("Guide translation catalogs are out of sync:", file=sys.stderr)
+        for problem in problems:
+            print(f"  - {problem}", file=sys.stderr)
+        print(
+            "Repair them with: python scripts/sync_guide_translations.py "
+            "--offline-fallback",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    print(f"Guide translation catalogs are synchronized ({len(fragments)} keys).")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--extract-only", action="store_true")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Verify committed catalog keys without modifying files or using the network.",
+    )
     parser.add_argument(
         "--offline-fallback",
         action="store_true",
@@ -191,6 +238,13 @@ def main() -> None:
     args = parser.parse_args()
 
     fragments = extract_fragments(SOURCE.read_text(encoding="utf-8"))
+    unsupported = [language for language in args.languages if language not in LANGUAGES]
+    if unsupported:
+        raise SystemExit(f"Unsupported language: {unsupported[0]}")
+    if args.check:
+        check_catalogs(fragments, args.languages)
+        return
+
     OUTPUT.mkdir(parents=True, exist_ok=True)
     (OUTPUT / "en.json").write_text(
         json.dumps({fragment: fragment for fragment in fragments}, ensure_ascii=False, indent=2) + "\n",
@@ -202,8 +256,6 @@ def main() -> None:
 
     if args.offline_fallback:
         for language in args.languages:
-            if language not in LANGUAGES:
-                raise SystemExit(f"Unsupported language: {language}")
             catalog_path = OUTPUT / f"{language}.json"
             existing = (
                 json.loads(catalog_path.read_text(encoding="utf-8"))
@@ -220,8 +272,6 @@ def main() -> None:
         return
 
     for language in args.languages:
-        if language not in LANGUAGES:
-            raise SystemExit(f"Unsupported language: {language}")
         catalog_path = OUTPUT / f"{language}.json"
         if args.missing_only and catalog_path.exists():
             existing = json.loads(catalog_path.read_text(encoding="utf-8"))

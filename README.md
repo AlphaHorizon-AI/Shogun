@@ -365,7 +365,12 @@ a reviewed translation is available.
 ```bash
 git clone https://github.com/AlphaHorizon-AI/Shogun.git
 cd Shogun
+python scripts/configure_git_hooks.py
 ```
+
+The repository hook performs the fast generated-catalog check before every
+push. If Guide text changes, follow its repair command and commit the updated
+catalogs before pushing.
 
 | Platform | Command |
 |---|---|

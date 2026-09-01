@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+repository_root=$(git rev-parse --show-toplevel)
+cd "$repository_root"
+
+if command -v python >/dev/null 2>&1; then
+    python_command=python
+elif command -v python3 >/dev/null 2>&1; then
+    python_command=python3
+else
+    echo "Guide catalog check requires Python 3." >&2
+    exit 1
+fi
+
+"$python_command" scripts/sync_guide_translations.py --check

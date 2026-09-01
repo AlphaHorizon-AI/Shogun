@@ -5,3 +5,4 @@
 
 # Shell scripts always LF
 *.sh  text eol=lf
+.githooks/* text eol=lf
