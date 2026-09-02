@@ -78,6 +78,7 @@ class ProviderType(str, Enum):
 class AuthType(str, Enum):
     API_KEY = "api_key"
     OAUTH = "oauth"
+    CHATGPT = "chatgpt"
     NONE = "none"
     CUSTOM = "custom"
     TOKEN = "token"

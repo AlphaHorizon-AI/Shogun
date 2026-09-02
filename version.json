@@ -1,8 +1,8 @@
 {
-  "version": "1.47.96",
+  "version": "1.47.97",
   "name": "Shogun AFM",
-  "build": 247,
+  "build": 248,
   "channel": "stable",
-  "released": "2026-09-02T10:15:54Z",
-  "changelog": "Allow persistent deletion of the starter Custom routing profile, show intended models on fixed profiles, and enforce AI Model Provider-only routing."
+  "released": "2026-09-02T12:17:19Z",
+  "changelog": "Add browser-based provider authorization, ChatGPT/Codex subscription model access, and safe Tenshu shutdown for managed processes and the dedicated browser."
 }

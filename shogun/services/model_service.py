@@ -59,6 +59,14 @@ class ModelProviderService(BaseService[ModelProvider]):
                     "api_key": {"token", "access_token", "refresh_token", "oauth_client_secret"},
                     "token": {"api_key", "api-key", "access_token", "refresh_token", "oauth_client_secret"},
                     "oauth": {"api_key", "api-key", "token"},
+                    "chatgpt": {
+                        "api_key",
+                        "api-key",
+                        "token",
+                        "access_token",
+                        "refresh_token",
+                        "oauth_client_secret",
+                    },
                     "none": {
                         "api_key",
                         "api-key",

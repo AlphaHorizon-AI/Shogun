@@ -88,6 +88,13 @@ if exist ".states\restart-requested" (
     goto run_shogun
 )
 
+if exist ".states\shutdown-requested" (
+    del /q ".states\shutdown-requested" >nul 2>&1
+    echo.
+    echo   Tenshu shut down safely.
+    exit /b 0
+)
+
 :: If the server exits, keep the window open so the user can see errors
 echo.
 if "!SHOGUN_EXIT_CODE!"=="0" (

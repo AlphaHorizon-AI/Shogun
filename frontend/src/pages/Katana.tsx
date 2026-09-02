@@ -1107,12 +1107,107 @@ export function Katana() {
   };
 
   // ── Provider handlers ────────────────────────────────────────
+  const pollProviderOAuth = async (providerId: string, flowId: string) => {
+    const deadline = Date.now() + 10 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => window.setTimeout(resolve, 1000));
+      try {
+        const response = await axios.get(`/api/v1/model-providers/${providerId}/oauth/status`, {
+          params: { flow_id: flowId },
+        });
+        const result = response.data?.data;
+        if (result?.status === 'pending') continue;
+        if (result?.status === 'success') {
+          setStatusMessage({ type: 'success', text: result.message || 'OAuth connection completed.' });
+          await fetchData();
+          return;
+        }
+        setStatusMessage({ type: 'error', text: result?.message || 'OAuth connection failed.' });
+        return;
+      } catch {
+        // A transient local API restart should not cancel the provider authorization window.
+      }
+    }
+    setStatusMessage({ type: 'error', text: 'OAuth authorization timed out. Start the connection again.' });
+  };
+
+  const openBrowserFallback = (url: string): boolean => {
+    const page = window.open(url, '_blank');
+    if (page) page.opener = null;
+    return Boolean(page);
+  };
+
+  const beginProviderOAuth = async (providerId: string) => {
+    const response = await axios.post(`/api/v1/model-providers/${providerId}/oauth/start`, {
+      return_origin: window.location.origin,
+    });
+    const result = response.data?.data || {};
+    if (!result.browser_opened && !openBrowserFallback(result.authorization_url)) {
+      throw new Error('The default browser could not be opened. Allow Shogun to open browser windows and try again.');
+    }
+    setStatusMessage({ type: 'success', text: 'Default browser opened. Complete provider authorization there; Shogun will detect it automatically.' });
+    void pollProviderOAuth(providerId, result.flow_id);
+  };
+
+  const pollCodexLogin = async (providerId: string, flowId: string) => {
+    const deadline = Date.now() + 10 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => window.setTimeout(resolve, 1000));
+      try {
+        const response = await axios.get(`/api/v1/model-providers/${providerId}/codex/status`, {
+          params: { flow_id: flowId },
+        });
+        const result = response.data?.data;
+        if (result?.status === 'pending') continue;
+        if (result?.status === 'success') {
+          setStatusMessage({ type: 'success', text: result.message || 'ChatGPT/Codex subscription connected.' });
+          await fetchData();
+          return;
+        }
+        setStatusMessage({ type: 'error', text: result?.message || 'ChatGPT/Codex sign-in failed.' });
+        return;
+      } catch {
+        // A brief local API interruption should not close the official sign-in page.
+      }
+    }
+    setStatusMessage({ type: 'error', text: 'ChatGPT/Codex sign-in timed out. Start the connection again.' });
+  };
+
+  const beginCodexLogin = async (providerId: string) => {
+    const response = await axios.post(`/api/v1/model-providers/${providerId}/codex/start`);
+    const result = response.data?.data || {};
+    if (result.already_connected || result.status === 'success') {
+      setStatusMessage({ type: 'success', text: 'ChatGPT/Codex subscription is connected.' });
+      await fetchData();
+      return;
+    }
+    if (!result.browser_opened && !openBrowserFallback(result.authorization_url)) {
+      throw new Error('The ChatGPT sign-in page could not be opened. Allow Shogun to open browser windows and try again.');
+    }
+    setStatusMessage({ type: 'success', text: 'ChatGPT sign-in opened in your default browser. Shogun will detect completion automatically.' });
+    void pollCodexLogin(providerId, result.flow_id);
+  };
+
+  const handleOpenProviderSetup = async (providerType: string, authType: string) => {
+    try {
+      const response = await axios.post(
+        `/api/v1/model-providers/credential-setup/${encodeURIComponent(providerType)}/open`,
+        null,
+        { params: { auth_type: authType } },
+      );
+      const result = response.data?.data || {};
+      if (!result.browser_opened && !openBrowserFallback(result.url)) {
+        throw new Error('The default browser could not be opened.');
+      }
+      setStatusMessage({ type: 'success', text: 'Official provider setup page opened in your default browser.' });
+    } catch (error: any) {
+      setStatusMessage({ type: 'error', text: error?.response?.data?.detail || error?.message || 'Could not open the provider setup page.' });
+    }
+  };
+
   const handleCreateProvider = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const oauthPopup = newProvider.auth_type === 'oauth'
-      ? window.open('', 'shogun-provider-oauth', 'popup=yes,width=640,height=760')
-      : null;
     try {
       const slug = toSlug(newProvider.name);
       const credential = newProvider.api_key.trim();
@@ -1144,12 +1239,10 @@ export function Katana() {
 
       if (newProvider.auth_type === 'oauth') {
         const providerId = response.data?.data?.id;
-        const oauth = await axios.post(`/api/v1/model-providers/${providerId}/oauth/start`, {
-          return_origin: window.location.origin,
-        });
-        if (!oauthPopup) throw new Error('The browser blocked the OAuth window. Allow pop-ups for Shogun and try again.');
-        oauthPopup.location.href = oauth.data.data.authorization_url;
-        setStatusMessage({ type: 'success', text: 'Provider saved. Complete authorization in the OAuth window.' });
+        await beginProviderOAuth(providerId);
+      } else if (newProvider.auth_type === 'chatgpt') {
+        const providerId = response.data?.data?.id;
+        await beginCodexLogin(providerId);
       }
 
       setNewProvider({ name: '', provider_type: 'openai', auth_type: 'api_key', api_key: '', base_url: PROVIDER_BASE_URLS['openai'], is_active: true });
@@ -1164,7 +1257,6 @@ export function Katana() {
       setBaseUrlOverride(false);
       fetchData();
     } catch (err: any) {
-      oauthPopup?.close();
       const detail = err?.response?.data?.detail;
       const msg = typeof detail === 'string' ? detail
         : Array.isArray(detail) ? detail.map((d: any) => `${d.loc?.slice(-1)[0]}: ${d.msg}`).join(', ')
@@ -1236,15 +1328,9 @@ export function Katana() {
   };
 
   const handleConnectOAuth = async (providerId: string) => {
-    const popup = window.open('', 'shogun-provider-oauth', 'popup=yes,width=640,height=760');
     try {
-      const response = await axios.post(`/api/v1/model-providers/${providerId}/oauth/start`, {
-        return_origin: window.location.origin,
-      });
-      if (!popup) throw new Error('The browser blocked the OAuth window. Allow pop-ups for Shogun and try again.');
-      popup.location.href = response.data.data.authorization_url;
+      await beginProviderOAuth(providerId);
     } catch (error: any) {
-      popup?.close();
       setStatusMessage({ type: 'error', text: error?.response?.data?.detail || error?.message || 'Could not start OAuth.' });
     }
   };
@@ -1256,6 +1342,24 @@ export function Katana() {
       fetchData();
     } catch (error: any) {
       setStatusMessage({ type: 'error', text: error?.response?.data?.detail || 'Could not disconnect OAuth.' });
+    }
+  };
+
+  const handleConnectCodex = async (providerId: string) => {
+    try {
+      await beginCodexLogin(providerId);
+    } catch (error: any) {
+      setStatusMessage({ type: 'error', text: error?.response?.data?.detail || error?.message || 'Could not start ChatGPT/Codex sign-in.' });
+    }
+  };
+
+  const handleDisconnectCodex = async (providerId: string) => {
+    try {
+      await axios.post(`/api/v1/model-providers/${providerId}/codex/disconnect`);
+      setStatusMessage({ type: 'success', text: 'ChatGPT/Codex subscription disconnected. Codex removed the local sign-in.' });
+      await fetchData();
+    } catch (error: any) {
+      setStatusMessage({ type: 'error', text: error?.response?.data?.detail || 'Could not disconnect ChatGPT/Codex.' });
     }
   };
 
@@ -1534,7 +1638,9 @@ export function Katana() {
     return map[type] || type;
   };
 
-  const currentDocLink = PROVIDER_DOCS[newProvider.provider_type];
+  const currentDocLink = newProvider.auth_type === 'chatgpt'
+    ? { label: 'Official Codex App Server guide', url: 'https://learn.chatgpt.com/docs/app-server' }
+    : PROVIDER_DOCS[newProvider.provider_type];
   const isLocal        = isLocalProvider(newProvider.provider_type);
 
   return (
@@ -1837,7 +1943,7 @@ export function Katana() {
                       </div>
                     )}
 
-                    <div className="flex gap-1.5 pt-1">
+                    {newProvider.auth_type !== 'chatgpt' && <div className="flex gap-1.5 pt-1">
                       <input
                         type="text"
                         placeholder="Exact model ID"
@@ -1864,7 +1970,7 @@ export function Katana() {
                       >
                         Add
                       </button>
-                    </div>
+                    </div>}
                   </div>
 
                   {/* Auth Configuration (cloud only) */}
@@ -1874,18 +1980,53 @@ export function Katana() {
                         <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">{t('katana.auth_type', 'Auth Type')}</label>
                         <select
                           value={newProvider.auth_type}
-                          onChange={(e) => setNewProvider({...newProvider, auth_type: e.target.value})}
+                          onChange={(e) => {
+                            const authType = e.target.value;
+                            setNewProvider(current => ({
+                              ...current,
+                              auth_type: authType,
+                              api_key: '',
+                              base_url: authType === 'chatgpt'
+                                ? ''
+                                : current.base_url || PROVIDER_BASE_URLS[current.provider_type] || '',
+                            }));
+                            setBaseUrlOverride(false);
+                          }}
                           className="w-full bg-[#050508] border border-shogun-border rounded-lg p-3 text-sm focus:border-shogun-blue outline-none"
                         >
                           <option value="api_key">{t('katana.api_key_option')}</option>
                           {newProvider.provider_type === 'openai' && <option value="token">Workload identity bearer token</option>}
-                          {(newProvider.provider_type === 'google' || newProvider.provider_type === 'custom') && <option value="oauth">OAuth 2.0 (Authorization Code + PKCE)</option>}
+                          {newProvider.provider_type === 'openai' && <option value="chatgpt">ChatGPT/Codex subscription (browser sign-in)</option>}
+                          {(newProvider.provider_type === 'google' || newProvider.provider_type === 'custom') && <option value="oauth">Connect account in browser (OAuth 2.0 + PKCE)</option>}
                         </select>
                         {newProvider.provider_type === 'openai' && (
-                          <p className="text-[9px] leading-relaxed text-shogun-subdued">OpenAI model API access uses an API key or an administrator-issued workload identity token. OpenAI does not provide a browser “Sign in with OpenAI” flow for model API access.</p>
+                          <p className="text-[9px] leading-relaxed text-shogun-subdued">Choose an OpenAI Platform API credential, or sign in with a supported ChatGPT plan through the official local Codex app-server. Platform API usage and ChatGPT/Codex subscription usage are separate methods.</p>
+                        )}
+                        {newProvider.provider_type === 'anthropic' && (
+                          <p className="text-[9px] leading-relaxed text-shogun-subdued">Anthropic model API access uses an API key or a separately configured workload identity. Shogun can open the official key page in your default browser; Anthropic's browser login is not a registered third-party app OAuth flow.</p>
                         )}
                       </div>
-                      {newProvider.auth_type !== 'oauth' ? <div className="space-y-1.5 mt-3">
+                      {newProvider.auth_type === 'chatgpt' ? (
+                        <div className="space-y-3 rounded-lg border border-green-400/25 bg-green-400/5 p-3">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-green-300">Official ChatGPT/Codex sign-in</p>
+                            <p className="mt-1 text-[9px] leading-relaxed text-shogun-subdued">Save this provider and Shogun will open the official ChatGPT sign-in in your default browser. The local Codex app-server owns the callback, encrypted credential storage, refresh, and available model list; Shogun never reads or stores your ChatGPT token.</p>
+                          </div>
+                          <div className="rounded border border-shogun-border bg-[#050508] px-3 py-2 text-[9px] leading-relaxed text-shogun-subdued">
+                            Uses your Codex subscription limits and requires the official Codex desktop app or CLI on this computer. It does not use OpenAI Platform API credits.
+                          </div>
+                          {editingProviderId && (
+                            <button
+                              type="button"
+                              onClick={() => handleConnectCodex(editingProviderId)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-green-400/30 bg-green-400/5 px-3 py-2 text-[9px] font-bold uppercase tracking-wider text-green-300 hover:bg-green-400/10"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Open ChatGPT sign-in
+                            </button>
+                          )}
+                        </div>
+                      ) : newProvider.auth_type !== 'oauth' ? <div className="space-y-1.5 mt-3">
                         <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">
                           {newProvider.auth_type === 'token' ? 'Bearer token' : t('katana.api_key_label')}
                         </label>
@@ -1904,12 +2045,32 @@ export function Katana() {
                         {hasStoredProviderCredential && newProvider.api_key && (
                           <p className="text-[9px] text-shogun-gold">The stored credential will be replaced when you save.</p>
                         )}
+                        {newProvider.auth_type === 'api_key' && ['openai', 'google', 'anthropic'].includes(newProvider.provider_type) && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenProviderSetup(newProvider.provider_type, 'api_key')}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-shogun-blue/30 bg-shogun-blue/5 px-3 py-2 text-[9px] font-bold uppercase tracking-wider text-shogun-blue hover:bg-shogun-blue/10"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Open {PROVIDER_DISPLAY_NAMES[newProvider.provider_type] || newProvider.provider_type} API key page
+                          </button>
+                        )}
                       </div> : (
                         <div className="space-y-3 rounded-lg border border-cyan-400/25 bg-cyan-400/5 p-3">
                           <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-cyan-300">Real OAuth connection</p>
-                            <p className="mt-1 text-[9px] leading-relaxed text-shogun-subdued">Shogun opens the provider consent page, validates state, uses PKCE, stores tokens encrypted, and refreshes expiring access tokens.</p>
+                            <p className="mt-1 text-[9px] leading-relaxed text-shogun-subdued">Shogun opens the provider consent page in your default browser, validates state, uses PKCE, stores tokens encrypted, and detects completion automatically.</p>
                           </div>
+                          {newProvider.provider_type === 'google' && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenProviderSetup('google', 'oauth')}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/5 px-3 py-2 text-[9px] font-bold uppercase tracking-wider text-cyan-300 hover:bg-cyan-400/10"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Open Google OAuth client setup
+                            </button>
+                          )}
                           <label className="block text-[9px] uppercase text-shogun-subdued">OAuth client ID
                             <input required value={providerConfigBase.oauth_client_id || ''} onChange={event => setProviderConfigBase(current => ({ ...current, oauth_client_id: event.target.value }))} className="mt-1 block w-full rounded-lg border border-shogun-border bg-[#050508] p-2 text-xs normal-case outline-none focus:border-cyan-400" />
                           </label>
@@ -1940,7 +2101,14 @@ export function Katana() {
                   )}
 
                   {/* Base URL — pre-filled, editable on override */}
-                  <div className="space-y-1.5">
+                  {newProvider.auth_type === 'chatgpt' ? (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Model transport</label>
+                      <div className="rounded-lg border border-green-400/20 bg-green-400/5 p-3 text-xs text-green-300">
+                        Managed locally by the official Codex app-server
+                      </div>
+                    </div>
+                  ) : <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">
                         {t('katana.base_url_label')} {isLocal ? '' : t('katana.auto')}
@@ -1978,7 +2146,7 @@ export function Katana() {
                         </div>
                       )}
                     </div>
-                  </div>
+                  </div>}
 
                   {!isLocal && (
                     <div className="space-y-2 rounded-lg border border-shogun-blue/20 bg-shogun-blue/5 p-3">
@@ -1990,7 +2158,7 @@ export function Katana() {
                         <button
                           type="button"
                           onClick={handleDiscoverProviderModels}
-                          disabled={discoveringModels || !newProvider.base_url}
+                          disabled={discoveringModels || (newProvider.auth_type === 'chatgpt' ? !editingProviderId : !newProvider.base_url)}
                           className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-shogun-blue/30 bg-shogun-blue/10 hover:bg-shogun-blue/20 disabled:opacity-40 text-shogun-blue text-[9px] font-bold uppercase tracking-wider"
                         >
                           <RefreshCw className={cn("w-3 h-3", discoveringModels && "animate-spin")} />
@@ -2020,6 +2188,9 @@ export function Katana() {
                             );
                           })}
                         </div>
+                      )}
+                      {newProvider.auth_type === 'chatgpt' && !editingProviderId && (
+                        <p className="text-[9px] text-shogun-subdued">Save and complete ChatGPT sign-in first. Codex will then supply the exact model catalog available to this subscription.</p>
                       )}
                     </div>
                   )}
@@ -2377,7 +2548,9 @@ export function Katana() {
                 <div className="grid grid-cols-1 gap-4">
                   {providers.map((p) => {
                     const color   = getProviderColor(p.provider_type);
-                    const docLink = PROVIDER_DOCS[p.provider_type];
+                    const docLink = p.auth_type === 'chatgpt'
+                      ? { label: 'Official Codex App Server guide', url: 'https://learn.chatgpt.com/docs/app-server' }
+                      : PROVIDER_DOCS[p.provider_type];
                     const isActive = p.status === 'connected';
                     const isLocalProv = isLocalProvider(p.provider_type);
                     return (
@@ -2402,7 +2575,11 @@ export function Katana() {
                                 <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-[#050508] border border-shogun-border text-shogun-subdued">
                                   {getProviderDisplayType(p.provider_type)}
                                 </span>
-                                <span className="text-xs text-shogun-subdued">{p.base_url || t('katana.default_endpoint')}</span>
+                                <span className="text-xs text-shogun-subdued">
+                                  {p.auth_type === 'chatgpt'
+                                    ? `Codex subscription${p.config?.codex_plan_type ? ` · ${p.config.codex_plan_type}` : ''}`
+                                    : p.base_url || t('katana.default_endpoint')}
+                                </span>
                               </div>
                               {Array.isArray(p.config?.models) && p.config.models.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-2">
@@ -2425,6 +2602,15 @@ export function Katana() {
                                 {isActive ? 'Disconnect OAuth' : 'Connect OAuth'}
                               </button>
                             )}
+                            {p.auth_type === 'chatgpt' && (
+                              <button
+                                onClick={() => isActive ? handleDisconnectCodex(p.id) : handleConnectCodex(p.id)}
+                                className="px-2 py-1.5 rounded-lg border border-green-400/30 bg-green-400/5 text-[9px] font-bold uppercase text-green-300 hover:bg-green-400/10"
+                                title={isActive ? 'Sign out and remove the local Codex credential' : 'Open official ChatGPT sign-in'}
+                              >
+                                {isActive ? 'Disconnect ChatGPT' : 'Connect ChatGPT'}
+                              </button>
+                            )}
                             {docLink && (
                               <a
                                 href={docLink.url}
@@ -2443,7 +2629,7 @@ export function Katana() {
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
-                            {p.auth_type !== 'oauth' && <button
+                            {!['oauth', 'chatgpt'].includes(p.auth_type) && <button
                                 onClick={() => handleToggleProvider(p.id, p.status)}
                                 className="p-2 hover:bg-shogun-card rounded-lg transition-colors text-shogun-subdued hover:text-shogun-text"
                                 title={isActive ? t('katana.disable') : t('katana.enable')}

@@ -805,6 +805,7 @@ class ModelRegistryService:
             base_url=base_url,
             model_id=item.model_id,
             api_key=provider_api_key(provider.config),
+            auth_type=provider.auth_type,
         )
         persist_profile(item, profile)
         await self.session.flush()

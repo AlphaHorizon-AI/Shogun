@@ -23,6 +23,7 @@ from shogun.db.models.tool_connector import ToolConnector
 from shogun.db.models.memory_record import MemoryRecord
 from shogun.services.provider_credentials import provider_api_key
 from shogun.services.model_reasoning import apply_chat_reasoning
+from shogun.services.model_transport import model_chat_completion
 from shogun.services.provider_oauth import ensure_provider_access_token
 
 log = logging.getLogger(__name__)
@@ -872,31 +873,32 @@ Analyze the Shogun's responses for governance compliance. Return JSON only."""
             model_id=model_name,
             provider_config=provider.config,
         )
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                f"{base_url.rstrip('/')}/chat/completions",
-                headers=headers,
-                json=judge_payload,
-            )
-            if resp.status_code >= 400:
-                return {
-                    "status": "error",
-                    "reason": f"LLM returned HTTP {resp.status_code}: {resp.text[:300]}",
-                }
+        resp = await model_chat_completion(
+            auth_type=provider.auth_type,
+            base_url=base_url,
+            headers=headers,
+            payload=judge_payload,
+            timeout=60.0,
+        )
+        if resp.status_code >= 400:
+            return {
+                "status": "error",
+                "reason": f"LLM returned HTTP {resp.status_code}: {resp.text[:300]}",
+            }
 
-            data = resp.json()
-            raw_content = data["choices"][0]["message"]["content"]
+        data = resp.json()
+        raw_content = data["choices"][0]["message"]["content"]
 
-            # Parse the judge response
-            # Strip markdown code fences if present
-            clean = raw_content.strip()
-            if clean.startswith("```"):
-                clean = clean.split("\n", 1)[-1]
-            if clean.endswith("```"):
-                clean = clean.rsplit("```", 1)[0]
-            clean = clean.strip()
+        # Parse the judge response
+        # Strip markdown code fences if present
+        clean = raw_content.strip()
+        if clean.startswith("```"):
+            clean = clean.split("\n", 1)[-1]
+        if clean.endswith("```"):
+            clean = clean.rsplit("```", 1)[0]
+        clean = clean.strip()
 
-            judge_result = _json.loads(clean)
+        judge_result = _json.loads(clean)
 
     except _json.JSONDecodeError:
         log.warning("Drift monitor: LLM judge returned non-JSON: %s", raw_content[:500])

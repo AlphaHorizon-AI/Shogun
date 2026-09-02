@@ -36,7 +36,17 @@ class OAuthSession:
     created_at: float
 
 
+@dataclass(frozen=True)
+class OAuthFlowResult:
+    provider_id: uuid.UUID
+    status: str
+    message: str
+    created_at: float
+
+
 _pending_sessions: dict[str, OAuthSession] = {}
+_consuming_sessions: dict[str, OAuthSession] = {}
+_flow_results: dict[str, OAuthFlowResult] = {}
 
 
 def _provider_oauth_config(provider: ModelProvider) -> dict[str, Any]:
@@ -107,9 +117,54 @@ def _prune_sessions() -> None:
     for state, session in list(_pending_sessions.items()):
         if session.created_at < cutoff:
             _pending_sessions.pop(state, None)
+    for state, session in list(_consuming_sessions.items()):
+        if session.created_at < cutoff:
+            _consuming_sessions.pop(state, None)
+    for state, result in list(_flow_results.items()):
+        if result.created_at < cutoff:
+            _flow_results.pop(state, None)
 
 
-def start_provider_oauth(provider: ModelProvider, return_origin: str) -> dict[str, str]:
+def _record_flow_result(state: str, pending: OAuthSession, status: str, message: str) -> None:
+    _pending_sessions.pop(state, None)
+    _consuming_sessions.pop(state, None)
+    _flow_results[state] = OAuthFlowResult(pending.provider_id, status, message, time.time())
+
+
+def provider_oauth_status(provider_id: uuid.UUID, flow_id: str) -> dict[str, str]:
+    """Return the bounded, non-secret status of one browser OAuth attempt."""
+
+    _prune_sessions()
+    pending = _pending_sessions.get(flow_id) or _consuming_sessions.get(flow_id)
+    if pending and pending.provider_id == provider_id:
+        return {"status": "pending", "message": "Waiting for provider authorization"}
+    result = _flow_results.get(flow_id)
+    if result and result.provider_id == provider_id:
+        return {"status": result.status, "message": result.message}
+    return {"status": "expired", "message": "OAuth authorization expired or is no longer available"}
+
+
+def reject_provider_oauth(state: str, message: str) -> tuple[uuid.UUID, str]:
+    """Finish a provider-declined flow so the desktop UI can stop polling."""
+
+    _prune_sessions()
+    pending = _pending_sessions.get(state) or _consuming_sessions.get(state)
+    if not pending:
+        raise ProviderOAuthError("OAuth state is invalid or expired")
+    _record_flow_result(state, pending, "error", message)
+    return pending.provider_id, pending.return_origin
+
+
+def accept_provider_oauth(state: str) -> None:
+    """Publish success only after the encrypted provider tokens are committed."""
+
+    pending = _consuming_sessions.get(state)
+    if not pending:
+        raise ProviderOAuthError("OAuth state is invalid or expired")
+    _record_flow_result(state, pending, "success", "OAuth connection completed")
+
+
+def start_provider_oauth(provider: ModelProvider, return_origin: str) -> dict[str, Any]:
     """Create a one-use OAuth state and browser authorization URL."""
 
     if provider.auth_type != "oauth":
@@ -144,6 +199,7 @@ def start_provider_oauth(provider: ModelProvider, return_origin: str) -> dict[st
     return {
         "authorization_url": f"{authorization.url}{'&' if '?' in authorization.url else '?'}{urlencode(params)}",
         "redirect_uri": redirect_uri,
+        "flow_id": state,
     }
 
 
@@ -210,24 +266,32 @@ async def complete_provider_oauth(
     pending = _pending_sessions.pop(state, None)
     if not pending:
         raise ProviderOAuthError("OAuth state is invalid or expired")
-    provider = await session.get(ModelProvider, pending.provider_id)
-    if not provider:
-        raise ProviderOAuthError("OAuth provider no longer exists")
-    oauth = _provider_oauth_config(provider)
-    config = provider.config or {}
-    form = {
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": pending.redirect_uri,
-        "client_id": str(config.get("oauth_client_id") or ""),
-        "code_verifier": pending.verifier,
-    }
-    client_secret = reveal_provider_secret(config.get("oauth_client_secret"))
-    if client_secret:
-        form["client_secret"] = client_secret
-    payload = await _post_token(str(oauth.get("token_url") or ""), form)
-    _store_token_payload(provider, payload)
-    await session.flush()
+    _consuming_sessions[state] = pending
+    try:
+        provider = await session.get(ModelProvider, pending.provider_id)
+        if not provider:
+            raise ProviderOAuthError("OAuth provider no longer exists")
+        oauth = _provider_oauth_config(provider)
+        config = provider.config or {}
+        form = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": pending.redirect_uri,
+            "client_id": str(config.get("oauth_client_id") or ""),
+            "code_verifier": pending.verifier,
+        }
+        client_secret = reveal_provider_secret(config.get("oauth_client_secret"))
+        if client_secret:
+            form["client_secret"] = client_secret
+        payload = await _post_token(str(oauth.get("token_url") or ""), form)
+        _store_token_payload(provider, payload)
+        await session.flush()
+    except ProviderOAuthError as exc:
+        _record_flow_result(state, pending, "error", str(exc))
+        raise
+    except Exception:
+        _record_flow_result(state, pending, "error", "OAuth connection could not be completed")
+        raise
     return provider, pending.return_origin
 
 

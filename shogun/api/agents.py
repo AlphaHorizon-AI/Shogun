@@ -23,6 +23,7 @@ from shogun.services.workflow_operator import (
 )
 from shogun.services.provider_credentials import provider_api_key
 from shogun.services.model_reasoning import apply_chat_reasoning
+from shogun.services.model_transport import model_chat_stream
 from shogun.services.provider_oauth import ensure_provider_access_token
 from shogun.config import settings
 
@@ -1353,8 +1354,13 @@ If the user asks for memory, tools, files, commands, browsing, messages, schedul
         assistant_tokens: list[str] = []
 
         try:
-            async with httpx.AsyncClient(base_url=base_url, headers=req_headers, timeout=120.0) as client:
-                async with client.stream("POST", "/chat/completions", json=req_json) as resp:
+            async with model_chat_stream(
+                auth_type=provider.auth_type,
+                base_url=base_url,
+                headers=req_headers,
+                payload=req_json,
+                timeout=120.0,
+            ) as resp:
                     if resp.status_code != 200:
                         _failed = True
                         body_text = await resp.aread()
@@ -2442,13 +2448,13 @@ BEHAVIOUR:
             )
 
             try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    async with client.stream(
-                        "POST",
-                        f"{base_url.rstrip('/')}/chat/completions",
-                        headers=req_headers,
-                        json=req_json,
-                    ) as resp:
+                async with model_chat_stream(
+                    auth_type=provider.auth_type,
+                    base_url=base_url,
+                    headers=req_headers,
+                    payload=req_json,
+                    timeout=120.0,
+                ) as resp:
                         if resp.status_code >= 400:
                             body_bytes = await resp.aread()
                             err = body_bytes.decode(errors="replace")[:300]

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
-import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.db.models.agent import Agent
 from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.nexus import NexusTaskModel
+from shogun.services.model_transport import model_chat_completion
+from shogun.services.provider_credentials import provider_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ Please process the context and provide the output for capability '{task.requeste
             or provider.name
         )
 
-        api_key = provider.config.get("api_key") or provider.config.get("api-key")
+        api_key = provider_api_key(provider.config)
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -137,10 +138,15 @@ Please process the context and provide the output for capability '{task.requeste
             "stream": False
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(f"{base_url}/chat/completions", json=req_json, headers=headers)
-            if resp.status_code != 200:
-                raise RuntimeError(f"Model API error ({resp.status_code}): {resp.text[:300]}")
-            
-            payload = resp.json()
-            return payload["choices"][0]["message"]["content"]
+        resp = await model_chat_completion(
+            auth_type=provider.auth_type,
+            base_url=base_url,
+            headers=headers,
+            payload=req_json,
+            timeout=60.0,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Model API error ({resp.status_code}): {resp.text[:300]}")
+
+        payload = resp.json()
+        return payload["choices"][0]["message"]["content"]

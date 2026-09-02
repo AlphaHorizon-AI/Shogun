@@ -16,7 +16,7 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
+from shogun.services.model_transport import model_chat_completion
 
 PROFILE_KEY = "tool_calling_profile"
 PROFILE_VERSION = 1
@@ -373,6 +373,7 @@ async def probe_tool_calling_profile(
     base_url: str,
     model_id: str,
     api_key: str | None = None,
+    auth_type: str = "",
     timeout_seconds: float = 30.0,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Ask a model to format a harmless echo call without executing it."""
@@ -380,7 +381,6 @@ async def probe_tool_calling_profile(
     root = base_url.rstrip("/")
     if provider_key == "ollama" and not root.endswith("/v1"):
         root += "/v1"
-    url = f"{root}/chat/completions"
     marker = f"KATANA-{uuid.uuid4().hex[:10]}"
     tool = {
         "type": "function",
@@ -409,13 +409,24 @@ async def probe_tool_calling_profile(
         headers["Authorization"] = f"Bearer {api_key}"
 
     try:
-        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-            response = await client.post(url, headers=headers, json=request)
-            if response.status_code >= 400:
-                # Native tools and forced tool choice are separate provider
-                # features. Retry without forcing before selecting fallback.
-                request.pop("tool_choice", None)
-                response = await client.post(url, headers=headers, json=request)
+        response = await model_chat_completion(
+            auth_type=auth_type,
+            base_url=root,
+            headers=headers,
+            payload=request,
+            timeout=timeout_seconds,
+        )
+        if response.status_code >= 400:
+            # Native tools and forced tool choice are separate provider
+            # features. Retry without forcing before selecting fallback.
+            request.pop("tool_choice", None)
+            response = await model_chat_completion(
+                auth_type=auth_type,
+                base_url=root,
+                headers=headers,
+                payload=request,
+                timeout=timeout_seconds,
+            )
         body_text = response.text[:2000]
         if response.is_success:
             payload = response.json()

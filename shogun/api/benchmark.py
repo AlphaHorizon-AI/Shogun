@@ -21,6 +21,40 @@ router = APIRouter(prefix="/benchmark", tags=["Benchmark Mode"])
 _processes: dict[str, asyncio.subprocess.Process] = {}
 
 
+async def shutdown_benchmark_runs() -> int:
+    """Stop benchmark subprocesses owned by this API process."""
+    processes = {
+        run_id: process
+        for run_id, process in _processes.items()
+        if process.returncode is None
+    }
+    for process in processes.values():
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            continue
+    if processes:
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*(process.wait() for process in processes.values())),
+                timeout=5,
+            )
+        except TimeoutError:
+            for process in processes.values():
+                if process.returncode is None:
+                    try:
+                        process.kill()
+                    except ProcessLookupError:
+                        continue
+            await asyncio.gather(
+                *(process.wait() for process in processes.values()),
+                return_exceptions=True,
+            )
+    for run_id in processes:
+        _processes.pop(run_id, None)
+    return len(processes)
+
+
 def _config() -> dict[str, Any]:
     return dict(_read_setup().get("benchmark_mode") or {})
 

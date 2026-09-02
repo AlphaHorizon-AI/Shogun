@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import html
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,23 +26,75 @@ from shogun.schemas.models import (
     ModelRoutingProfileUpdate,
     ProviderOAuthStartRequest,
 )
+from shogun.services.codex_app_server import CodexAppServerError, get_codex_app_server
 from shogun.services.model_discovery import ModelDiscoveryError, discover_provider_models
 from shogun.services.model_reasoning import reasoning_capability
 from shogun.services.model_service import ModelProviderService, ModelRoutingProfileService
+from shogun.services.provider_browser import (
+    ProviderBrowserError,
+    open_default_browser,
+    provider_setup_url,
+)
 from shogun.services.provider_credentials import provider_api_key, reveal_provider_secret
 from shogun.services.provider_oauth import (
     ProviderOAuthError,
+    accept_provider_oauth,
     complete_provider_oauth,
     disconnect_provider_oauth,
     ensure_provider_access_token,
+    provider_oauth_status,
+    reject_provider_oauth,
     start_provider_oauth,
 )
 
 router = APIRouter(tags=["Models"])
 
+_codex_login_providers: dict[str, uuid.UUID] = {}
+
 # ── Providers ────────────────────────────────────────────────
 
 provider_router = APIRouter(prefix="/model-providers")
+
+
+def _is_loopback_request(request: Request) -> bool:
+    return bool(request.client and request.client.host.casefold() in {"127.0.0.1", "::1", "localhost"})
+
+
+async def _open_for_local_desktop(request: Request, url: str) -> bool:
+    if not _is_loopback_request(request):
+        return False
+    return await asyncio.to_thread(open_default_browser, url)
+
+
+async def _sync_codex_provider(db: AsyncSession, provider: ModelProvider) -> list[str]:
+    client = get_codex_app_server()
+    state = await client.account(refresh=False)
+    account = state.get("account") or {}
+    if account.get("type") != "chatgpt":
+        raise CodexAppServerError("ChatGPT/Codex sign-in has not completed.", status_code=401)
+    catalog = await client.list_models()
+    models = sorted(
+        {
+            str(item.get("model") or item.get("id") or "").strip()
+            for item in catalog
+            if str(item.get("model") or item.get("id") or "").strip()
+        },
+        key=str.casefold,
+    )
+    config = dict(provider.config or {})
+    config.update(
+        {
+            "codex_account_connected": True,
+            "codex_plan_type": account.get("planType"),
+            "models": models,
+        }
+    )
+    provider.config = config
+    provider.status = "connected"
+    provider.health_status = "healthy"
+    provider.base_url = None
+    await db.flush()
+    return models
 
 
 @provider_router.get("", response_model=ApiResponse)
@@ -61,6 +114,8 @@ async def create_provider(
     data = body.model_dump()
     provider_type = body.provider_type.value if hasattr(body.provider_type, "value") else str(body.provider_type)
     auth_type = body.auth_type.value if hasattr(body.auth_type, "value") else str(body.auth_type)
+    if auth_type == "chatgpt" and provider_type != "openai":
+        raise HTTPException(status_code=422, detail="ChatGPT/Codex subscription sign-in is available only for OpenAI.")
     if auth_type == "oauth" and provider_type not in {"google", "custom"}:
         raise HTTPException(
             status_code=422,
@@ -72,6 +127,14 @@ async def create_provider(
         )
     if auth_type == "oauth" and not reveal_provider_secret((body.config or {}).get("access_token")):
         data["status"] = "not_configured"
+    if auth_type == "chatgpt":
+        data["status"] = "not_configured"
+        data["base_url"] = None
+        config = dict(data.get("config") or {})
+        for key in ("api_key", "api-key", "token", "access_token", "refresh_token", "oauth_client_secret"):
+            config.pop(key, None)
+        config["codex_account_connected"] = False
+        data["config"] = config
     record = await svc.create(**data)
     try:
         from shogun.services.event_logger import EventLogger
@@ -102,6 +165,23 @@ async def discover_models(
         if provider.provider_type != provider_type:
             raise HTTPException(status_code=400, detail="Provider type does not match the saved provider")
         base_url = base_url or provider.base_url or ""
+        if provider.auth_type == "chatgpt":
+            try:
+                state = await get_codex_app_server().account(refresh=False)
+                if (state.get("account") or {}).get("type") != "chatgpt":
+                    raise ModelDiscoveryError("Sign in with ChatGPT/Codex before discovering subscription models.")
+                catalog = await get_codex_app_server().list_models()
+                models = sorted(
+                    {
+                        str(item.get("model") or item.get("id") or "").strip()
+                        for item in catalog
+                        if str(item.get("model") or item.get("id") or "").strip()
+                    },
+                    key=str.casefold,
+                )
+            except CodexAppServerError as exc:
+                raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+            return ApiResponse(data=models, meta={"count": len(models), "provider_type": provider_type})
         if provider.auth_type == "oauth":
             api_key = api_key or await ensure_provider_access_token(svc.session, provider)
             await svc.session.commit()
@@ -144,6 +224,8 @@ async def update_provider(
         raise HTTPException(status_code=404, detail="Provider not found")
     requested_auth = body.auth_type.value if hasattr(body.auth_type, "value") else body.auth_type
     effective_auth = requested_auth or current.auth_type
+    if effective_auth == "chatgpt" and current.provider_type != "openai":
+        raise HTTPException(status_code=422, detail="ChatGPT/Codex subscription sign-in is available only for OpenAI.")
     if effective_auth == "oauth" and current.provider_type not in {"google", "custom"}:
         raise HTTPException(
             status_code=422,
@@ -153,12 +235,39 @@ async def update_provider(
                 else f"{current.provider_type} is not registered as an OAuth-capable model provider."
             ),
         )
-    record = await svc.update(provider_id, **body.model_dump(exclude_unset=True))
+    update_data = body.model_dump(exclude_unset=True)
+    if current.auth_type == "chatgpt" and effective_auth != "chatgpt":
+        try:
+            await get_codex_app_server().logout()
+        except CodexAppServerError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=f"Disconnect ChatGPT/Codex before changing the authentication method: {exc}",
+            ) from exc
+    if effective_auth == "chatgpt":
+        update_data["base_url"] = None
+        if "config" in update_data:
+            config = dict(update_data.get("config") or {})
+            for key in ("api_key", "api-key", "token", "access_token", "refresh_token", "oauth_client_secret"):
+                config.pop(key, None)
+            update_data["config"] = config
+    record = await svc.update(provider_id, **update_data)
     if not record:
         raise HTTPException(status_code=404, detail="Provider not found")
     if record.auth_type == "oauth" and not reveal_provider_secret((record.config or {}).get("access_token")):
         record.status = "not_configured"
         await svc.session.flush()
+    if record.auth_type == "chatgpt":
+        try:
+            await _sync_codex_provider(svc.session, record)
+        except CodexAppServerError:
+            config = dict(record.config or {})
+            config["codex_account_connected"] = False
+            record.config = config
+            record.status = "not_configured"
+            record.health_status = "unknown"
+            record.base_url = None
+            await svc.session.flush()
     try:
         from shogun.services.event_logger import EventLogger
         await EventLogger.emit_auth_event(
@@ -174,6 +283,7 @@ async def update_provider(
 async def start_oauth(
     provider_id: uuid.UUID,
     body: ProviderOAuthStartRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     provider = await db.get(ModelProvider, provider_id)
@@ -183,7 +293,136 @@ async def start_oauth(
         result = start_provider_oauth(provider, body.return_origin)
     except ProviderOAuthError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        result["browser_opened"] = await _open_for_local_desktop(request, result["authorization_url"])
+    except ProviderBrowserError:
+        result["browser_opened"] = False
     return ApiResponse(data=result)
+
+
+@provider_router.post("/{provider_id}/codex/start", response_model=ApiResponse)
+async def start_codex_login(
+    provider_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    provider = await db.get(ModelProvider, provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    if provider.provider_type != "openai" or provider.auth_type != "chatgpt":
+        raise HTTPException(status_code=422, detail="This provider does not use ChatGPT/Codex subscription sign-in.")
+    client = get_codex_app_server()
+    try:
+        state = await client.account(refresh=False)
+        if (state.get("account") or {}).get("type") == "chatgpt":
+            models = await _sync_codex_provider(db, provider)
+            await db.commit()
+            return ApiResponse(
+                data={"status": "success", "already_connected": True, "models": models}
+            )
+        result = await client.start_chatgpt_login()
+    except CodexAppServerError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    login_id = str(result.get("loginId") or "")
+    authorization_url = str(result.get("authUrl") or "")
+    if not login_id or not authorization_url:
+        raise HTTPException(status_code=502, detail="Codex did not return a ChatGPT authorization URL.")
+    _codex_login_providers[login_id] = provider_id
+    try:
+        browser_opened = await _open_for_local_desktop(request, authorization_url)
+    except ProviderBrowserError:
+        browser_opened = False
+    return ApiResponse(
+        data={
+            "status": "pending",
+            "flow_id": login_id,
+            "authorization_url": authorization_url,
+            "browser_opened": browser_opened,
+        }
+    )
+
+
+@provider_router.get("/{provider_id}/codex/status", response_model=ApiResponse)
+async def codex_login_status(
+    provider_id: uuid.UUID,
+    flow_id: str = Query(..., min_length=16, max_length=500),
+    db: AsyncSession = Depends(get_db),
+):
+    provider = await db.get(ModelProvider, provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    if _codex_login_providers.get(flow_id) != provider_id:
+        raise HTTPException(status_code=404, detail="ChatGPT/Codex login flow not found")
+    client = get_codex_app_server()
+    result = client.login_result(flow_id)
+    if result and not result.get("success"):
+        _codex_login_providers.pop(flow_id, None)
+        return ApiResponse(data={"status": "error", "message": result.get("error") or "Sign-in failed."})
+    try:
+        state = await client.account(refresh=False)
+        if (state.get("account") or {}).get("type") != "chatgpt":
+            return ApiResponse(data={"status": "pending"})
+        models = await _sync_codex_provider(db, provider)
+        await db.commit()
+    except CodexAppServerError as exc:
+        if result and result.get("success"):
+            _codex_login_providers.pop(flow_id, None)
+            return ApiResponse(data={"status": "error", "message": str(exc)})
+        return ApiResponse(data={"status": "pending"})
+    _codex_login_providers.pop(flow_id, None)
+    return ApiResponse(
+        data={
+            "status": "success",
+            "message": "ChatGPT/Codex subscription connected.",
+            "models": models,
+        }
+    )
+
+
+@provider_router.post("/{provider_id}/codex/disconnect", response_model=ApiResponse)
+async def disconnect_codex(provider_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    provider = await db.get(ModelProvider, provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    if provider.auth_type != "chatgpt":
+        raise HTTPException(status_code=422, detail="This provider does not use ChatGPT/Codex sign-in.")
+    try:
+        await get_codex_app_server().logout()
+    except CodexAppServerError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    config = dict(provider.config or {})
+    config["codex_account_connected"] = False
+    config.pop("codex_plan_type", None)
+    provider.config = config
+    provider.status = "not_configured"
+    provider.health_status = "unknown"
+    await db.commit()
+    return ApiResponse(data={"status": "not_configured", "provider_id": str(provider_id)})
+
+
+@provider_router.get("/{provider_id}/oauth/status", response_model=ApiResponse)
+async def oauth_status(
+    provider_id: uuid.UUID,
+    flow_id: str = Query(..., min_length=16, max_length=500),
+    db: AsyncSession = Depends(get_db),
+):
+    if not await db.get(ModelProvider, provider_id):
+        raise HTTPException(status_code=404, detail="Provider not found")
+    return ApiResponse(data=provider_oauth_status(provider_id, flow_id))
+
+
+@provider_router.post("/credential-setup/{provider_type}/open", response_model=ApiResponse)
+async def open_credential_setup(
+    provider_type: str,
+    request: Request,
+    auth_type: str = Query("api_key", min_length=1, max_length=30),
+):
+    try:
+        url = provider_setup_url(provider_type, auth_type)
+        browser_opened = await _open_for_local_desktop(request, url)
+    except ProviderBrowserError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return ApiResponse(data={"url": url, "browser_opened": browser_opened})
 
 
 @provider_router.get("/oauth/callback", response_class=HTMLResponse)
@@ -197,16 +436,30 @@ async def oauth_callback(
     message = error or "OAuth provider did not return an authorization code"
     provider_id = ""
     return_origin = ""
-    if code and not error:
+    if error or not code:
+        try:
+            pending_provider_id, return_origin = reject_provider_oauth(state, message)
+            provider_id = str(pending_provider_id)
+        except ProviderOAuthError as exc:
+            message = str(exc)
+    else:
         try:
             provider, return_origin = await complete_provider_oauth(db, state=state, code=code)
             await db.commit()
+            accept_provider_oauth(state)
             status = "success"
             message = "OAuth connection completed"
             provider_id = str(provider.id)
         except ProviderOAuthError as exc:
             await db.rollback()
             message = str(exc)
+        except Exception:
+            await db.rollback()
+            try:
+                reject_provider_oauth(state, "OAuth tokens could not be saved")
+            except ProviderOAuthError:
+                pass
+            message = "OAuth tokens could not be saved"
     payload = json.dumps(
         {"type": "shogun.provider-oauth", "status": status, "message": message, "providerId": provider_id}
     ).replace("</", "<\\/")
@@ -215,7 +468,7 @@ async def oauth_callback(
         "<!doctype html><meta charset='utf-8'><title>Shogun OAuth</title>"
         "<body style='font-family:system-ui;background:#080b14;color:#e5e7eb;padding:2rem'>"
         f"<h2>{'Connection complete' if status == 'success' else 'Connection failed'}</h2>"
-        f"<p>{html.escape(message)}</p><script>"
+        f"<p>{html.escape(message)}</p><p>You can close this tab and return to Shogun.</p><script>"
         f"if(window.opener){{window.opener.postMessage({payload},{target});setTimeout(()=>window.close(),500);}}"
         "</script></body>"
     )
@@ -241,6 +494,17 @@ async def delete_provider(
     provider_id: uuid.UUID,
     svc: ModelProviderService = Depends(get_model_provider_service),
 ):
+    current = await svc.get_by_id(provider_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    if current.auth_type == "chatgpt":
+        try:
+            await get_codex_app_server().logout()
+        except CodexAppServerError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=f"ChatGPT/Codex could not be disconnected before deletion: {exc}",
+            ) from exc
     deleted = await svc.delete(provider_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Provider not found")

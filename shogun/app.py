@@ -543,6 +543,34 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    # Stop API-owned subprocess pools before tearing down their dependencies.
+    try:
+        from shogun.services.ide_service import ide_service
+
+        stopped = await ide_service.shutdown_runtime()
+        if stopped:
+            logging.getLogger(__name__).info("IDE: stopped %d managed processes on shutdown", stopped)
+    except Exception:
+        logging.getLogger(__name__).exception("IDE runtime shutdown failed")
+
+    try:
+        from shogun.api.benchmark import shutdown_benchmark_runs
+
+        stopped = await shutdown_benchmark_runs()
+        if stopped:
+            logging.getLogger(__name__).info(
+                "Benchmark: stopped %d managed processes on shutdown", stopped
+            )
+    except Exception:
+        logging.getLogger(__name__).exception("Benchmark runtime shutdown failed")
+
+    try:
+        from shogun.services.codex_app_server import shutdown_codex_app_server
+
+        await shutdown_codex_app_server()
+    except Exception:
+        logging.getLogger(__name__).exception("Codex app-server shutdown failed")
+
     # Close all active Mado sessions and the non-daemon Playwright executor.
     # Leaving that executor alive prevents Uvicorn's development reloader from
     # replacing the worker after an in-flight browser task completes.

@@ -8,7 +8,14 @@ import pytest
 
 from shogun.db.models.model_provider import ModelProvider
 from shogun.services.provider_credentials import protect_provider_config, reveal_provider_secret
-from shogun.services.provider_oauth import ProviderOAuthError, start_provider_oauth
+from shogun.services.provider_oauth import (
+    ProviderOAuthError,
+    accept_provider_oauth,
+    complete_provider_oauth,
+    provider_oauth_status,
+    reject_provider_oauth,
+    start_provider_oauth,
+)
 
 
 def _provider(provider_type: str, config: dict) -> ModelProvider:
@@ -44,8 +51,9 @@ def test_google_oauth_uses_authorization_code_pkce(monkeypatch: pytest.MonkeyPat
         return SimpleNamespace(url=url)
 
     monkeypatch.setattr("shogun.services.provider_oauth._validated_public_destination", approve)
+    provider = _provider("google", {"oauth_client_id": "desktop-client"})
     result = start_provider_oauth(
-        _provider("google", {"oauth_client_id": "desktop-client"}),
+        provider,
         "http://127.0.0.1:5173",
     )
     query = parse_qs(urlsplit(result["authorization_url"]).query)
@@ -57,3 +65,43 @@ def test_google_oauth_uses_authorization_code_pkce(monkeypatch: pytest.MonkeyPat
     assert query["state"][0]
     assert query["access_type"] == ["offline"]
     assert result["redirect_uri"].endswith("/api/v1/model-providers/oauth/callback")
+    assert provider_oauth_status(provider.id, result["flow_id"])["status"] == "pending"
+
+    rejected_provider_id, return_origin = reject_provider_oauth(result["flow_id"], "access_denied")
+
+    assert rejected_provider_id == provider.id
+    assert return_origin == "http://127.0.0.1:5173"
+    assert provider_oauth_status(provider.id, result["flow_id"]) == {
+        "status": "error",
+        "message": "access_denied",
+    }
+
+
+@pytest.mark.asyncio
+async def test_oauth_success_is_published_after_token_storage(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider = _provider("google", {"oauth_client_id": "desktop-client"})
+
+    def approve(url: str, _label: str):
+        return SimpleNamespace(url=url)
+
+    async def token_response(_url: str, _form: dict[str, str]):
+        return {"access_token": "provider-access-token", "expires_in": 3600}
+
+    class Session:
+        async def get(self, _model, provider_id):
+            return provider if provider_id == provider.id else None
+
+        async def flush(self):
+            return None
+
+    monkeypatch.setattr("shogun.services.provider_oauth._validated_public_destination", approve)
+    monkeypatch.setattr("shogun.services.provider_oauth._post_token", token_response)
+    result = start_provider_oauth(provider, "http://127.0.0.1:5173")
+
+    await complete_provider_oauth(Session(), state=result["flow_id"], code="authorization-code")
+
+    assert provider_oauth_status(provider.id, result["flow_id"])["status"] == "pending"
+    accept_provider_oauth(result["flow_id"])
+    assert provider_oauth_status(provider.id, result["flow_id"])["status"] == "success"
+    with pytest.raises(ProviderOAuthError, match="invalid or expired"):
+        await complete_provider_oauth(Session(), state=result["flow_id"], code="replayed-code")

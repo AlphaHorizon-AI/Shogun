@@ -43,6 +43,7 @@ from shogun.db.models.model_router import ModelRegistryEntry
 from shogun.db.models.model_routing import ModelRoutingProfile
 from shogun.services.provider_credentials import provider_api_key
 from shogun.services.model_reasoning import apply_chat_reasoning
+from shogun.services.model_transport import model_chat_completion
 from shogun.services.provider_oauth import ensure_provider_access_token
 from shogun.services.structured_transformations import (
     deterministic_profile_source_units,
@@ -5754,11 +5755,11 @@ async def _call_llm(
     temperature: float = 0.3,
     seed: int | None = None,
     provider_type: str = "",
+    provider_auth_type: str = "",
     provider_config: dict[str, Any] | None = None,
     reasoning_effort: str | None = None,
 ) -> str:
     """Make a non-streaming chat completion call and return the response text."""
-    url = f"{base_url.rstrip('/')}/chat/completions"
     payload = {
         "model": model_name,
         "messages": messages,
@@ -5778,23 +5779,27 @@ async def _call_llm(
             explicit_effort=reasoning_effort,
         )
 
-    async with httpx.AsyncClient(timeout=float(timeout)) as client:
-        resp = await client.post(url, headers=headers, json=payload)
+    resp = await model_chat_completion(
+        auth_type=provider_auth_type,
+        base_url=base_url,
+        headers=headers,
+        payload=payload,
+        timeout=float(timeout),
+    )
+    if resp.status_code >= 400:
+        body = resp.text[:500]
+        raise ValueError(f"LLM API error {resp.status_code}: {body}")
 
-        if resp.status_code >= 400:
-            body = resp.text[:500]
-            raise ValueError(f"LLM API error {resp.status_code}: {body}")
+    data = resp.json()
+    choices = data.get("choices", [])
+    if not choices:
+        raise ValueError("LLM returned no choices")
 
-        data = resp.json()
-        choices = data.get("choices", [])
-        if not choices:
-            raise ValueError("LLM returned no choices")
+    content = choices[0].get("message", {}).get("content", "")
+    if not content:
+        raise ValueError("LLM returned empty content")
 
-        content = choices[0].get("message", {}).get("content", "")
-        if not content:
-            raise ValueError("LLM returned empty content")
-
-        return content
+    return content
 
 
 _AGENTFLOW_ROWS_TOOL_NAME = "agentflow_submit_rows"
@@ -5884,6 +5889,7 @@ async def _call_llm_rows(
     max_tokens: int | None,
     temperature: float,
     seed: int | None,
+    provider_auth_type: str = "",
     row_validator: Callable[[list[list[Any]]], None] | None = None,
 ) -> tuple[list[list[Any]], str, str]:
     """Request rows through the model's persisted tool transport.
@@ -5911,16 +5917,25 @@ async def _call_llm_rows(
             "function": {"name": _AGENTFLOW_ROWS_TOOL_NAME},
         }
 
-    url = f"{base_url.rstrip('/')}/chat/completions"
-    async with httpx.AsyncClient(timeout=float(timeout)) as client:
-        response = await client.post(url, headers=headers, json=payload)
+    response = await model_chat_completion(
+        auth_type=provider_auth_type,
+        base_url=base_url,
+        headers=headers,
+        payload=payload,
+        timeout=float(timeout),
+    )
     if response.status_code >= 400 and mode == "native" and "tool_choice" in payload:
         # Some OpenAI-compatible servers implement native tools but not forced
         # function choice. A second native attempt distinguishes that case
         # from models that do not support the tools field at all.
         payload.pop("tool_choice", None)
-        async with httpx.AsyncClient(timeout=float(timeout)) as client:
-            response = await client.post(url, headers=headers, json=payload)
+        response = await model_chat_completion(
+            auth_type=provider_auth_type,
+            base_url=base_url,
+            headers=headers,
+            payload=payload,
+            timeout=float(timeout),
+        )
     if response.status_code >= 400:
         # A model/provider may claim native support while rejecting the tools
         # field. Retry the same bounded operation through Shogun's text adapter.
@@ -5939,6 +5954,7 @@ async def _call_llm_rows(
                 max_tokens=max_tokens,
                 temperature=temperature,
                 seed=seed,
+                provider_auth_type=provider_auth_type,
                 row_validator=row_validator,
             )
         raise ValueError(f"LLM API error {response.status_code}: {response.text[:500]}")
@@ -6001,6 +6017,7 @@ async def _call_llm_rows(
                 max_tokens=max_tokens,
                 temperature=temperature,
                 seed=seed,
+                provider_auth_type=provider_auth_type,
                 row_validator=row_validator,
             )
         if isinstance(parse_error, IncompleteMatrixOutputError):
@@ -6055,6 +6072,7 @@ async def _call_llm_chain_rows(
                     max_tokens=max_tokens,
                     temperature=temperature,
                     seed=seed,
+                    provider_auth_type=str(getattr(provider, "auth_type", "") or ""),
                     row_validator=row_validator,
                 )
                 if row_validator:
@@ -6162,6 +6180,7 @@ async def _call_llm_chain(
                 provider_kwargs = (
                     {
                         "provider_type": provider_type,
+                        "provider_auth_type": str(getattr(_provider, "auth_type", "") or ""),
                         "provider_config": provider_config,
                         "reasoning_effort": reasoning_effort,
                     }
@@ -6350,6 +6369,7 @@ async def _call_llm_with_tools(
     max_tokens: int | None = None,
     temperature: float = 0.3,
     seed: int | None = None,
+    provider_auth_type: str = "",
     tools: list[dict] | None = None,
     tool_executor: Callable | None = None,
     max_tool_rounds: int = 6,
@@ -6368,6 +6388,7 @@ async def _call_llm_with_tools(
             max_tokens=max_tokens,
             temperature=temperature,
             seed=seed,
+            provider_auth_type=provider_auth_type,
         )
 
     profile = dict(tool_profile or {})
@@ -6382,6 +6403,7 @@ async def _call_llm_with_tools(
             max_tokens=max_tokens,
             temperature=temperature,
             seed=seed,
+            provider_auth_type=provider_auth_type,
         )
     formatted_tools = [
         {"type": t.get("type", "function"), "function": t["function"]}
@@ -6403,8 +6425,6 @@ async def _call_llm_with_tools(
             )
         else:
             current_messages.insert(0, {"role": "system", "content": tool_prompt})
-    url = f"{base_url.rstrip('/')}/chat/completions"
-
     # Reserve a final tool-free response after the last permitted tool round.
     # The old loop raised immediately after the last tool result, discarded all
     # gathered evidence, and made callers repeat the entire research run.
@@ -6441,69 +6461,76 @@ async def _call_llm_with_tools(
         if seed is not None:
             payload["seed"] = seed
 
-        async with httpx.AsyncClient(timeout=float(timeout)) as client:
-            resp = await client.post(url, headers=headers, json=payload)
-            if resp.status_code >= 400:
-                body = resp.text[:500]
-                err_lower = body.lower()
-                if any(k in err_lower for k in ("invalid tool", "does not support tool", "tool use is not supported")):
-                    if mode == "native" and bool(profile.get("fallback_enabled", True)):
-                        log.warning(
-                            "Model %s rejected native tools; using its Shogun text adapter",
-                            model_name,
-                        )
-                        fallback_profile = dict(profile)
-                        fallback_profile.update({"mode": "text", "adapter_id": "shogun_text_v1"})
-                        return await _call_llm_with_tools(
-                            messages,
-                            model_name,
-                            base_url,
-                            headers,
-                            timeout=timeout,
-                            max_tokens=max_tokens,
-                            temperature=temperature,
-                            seed=seed,
-                            tools=tools,
-                            tool_executor=tool_executor,
-                            max_tool_rounds=max_tool_rounds,
-                            max_tool_calls=max_tool_calls,
-                            governance_context=governance_context,
-                            tool_profile=fallback_profile,
-                        )
-                raise ValueError(f"LLM API error {resp.status_code}: {body}")
+        resp = await model_chat_completion(
+            auth_type=provider_auth_type,
+            base_url=base_url,
+            headers=headers,
+            payload=payload,
+            timeout=float(timeout),
+        )
+        if resp.status_code >= 400:
+            body = resp.text[:500]
+            err_lower = body.lower()
+            if any(k in err_lower for k in ("invalid tool", "does not support tool", "tool use is not supported")):
+                if mode == "native" and bool(profile.get("fallback_enabled", True)):
+                    log.warning(
+                        "Model %s rejected native tools; using its Shogun text adapter",
+                        model_name,
+                    )
+                    fallback_profile = dict(profile)
+                    fallback_profile.update({"mode": "text", "adapter_id": "shogun_text_v1"})
+                    return await _call_llm_with_tools(
+                        messages,
+                        model_name,
+                        base_url,
+                        headers,
+                        timeout=timeout,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        seed=seed,
+                        provider_auth_type=provider_auth_type,
+                        tools=tools,
+                        tool_executor=tool_executor,
+                        max_tool_rounds=max_tool_rounds,
+                        max_tool_calls=max_tool_calls,
+                        governance_context=governance_context,
+                        tool_profile=fallback_profile,
+                    )
+            raise ValueError(f"LLM API error {resp.status_code}: {body}")
 
-            data = resp.json()
-            choices = data.get("choices", [])
-            if not choices:
-                raise ValueError("LLM returned no choices")
+        data = resp.json()
+        choices = data.get("choices", [])
+        if not choices:
+            raise ValueError("LLM returned no choices")
 
-            message_obj = choices[0].get("message", {})
-            content = message_obj.get("content", "")
-            if isinstance(content, list):
-                content = "\n".join(
-                    str(part.get("text") or "") for part in content if isinstance(part, dict)
-                )
-            if not tools_enabled:
-                canonical_calls = []
-            elif mode == "native":
-                canonical_calls = normalize_native_tool_calls(data)
-            else:
-                canonical_calls = normalize_text_tool_calls(str(content or ""), allowed_tool_names)
+        message_obj = choices[0].get("message", {})
+        content = message_obj.get("content", "")
+        if isinstance(content, list):
+            content = "\n".join(
+                str(part.get("text") or "") for part in content if isinstance(part, dict)
+            )
+        if not tools_enabled:
+            canonical_calls = []
+        elif mode == "native":
+            canonical_calls = normalize_native_tool_calls(data)
+        else:
+            canonical_calls = normalize_text_tool_calls(str(content or ""), allowed_tool_names)
 
-            if not canonical_calls:
-                if not content:
-                    raise ValueError("LLM returned empty content and no tool calls")
-                return str(content)
+        if not canonical_calls:
+            if not content:
+                raise ValueError("LLM returned empty content and no tool calls")
+            return str(content)
 
-            if mode == "native":
-                current_messages.append({
-                    "role": "assistant",
-                    "content": content,
-                    "tool_calls": message_obj.get("tool_calls", []),
-                })
-            else:
-                current_messages.append({"role": "assistant", "content": str(content or "")})
+        if mode == "native":
+            current_messages.append({
+                "role": "assistant",
+                "content": content,
+                "tool_calls": message_obj.get("tool_calls", []),
+            })
+        else:
+            current_messages.append({"role": "assistant", "content": str(content or "")})
 
+        if canonical_calls:
             from shogun.services.content_wrapper import wrap_tool_result
             from shogun.services.tool_gate import GateAction, check_tool_access
 
@@ -6700,6 +6727,7 @@ async def _call_llm_chain_with_tools(
                     max_tokens=max_tokens,
                     temperature=temperature,
                     seed=seed,
+                    provider_auth_type=str(getattr(_provider, "auth_type", "") or ""),
                     tools=tools,
                     tool_executor=tool_executor,
                     max_tool_rounds=max_tool_rounds,

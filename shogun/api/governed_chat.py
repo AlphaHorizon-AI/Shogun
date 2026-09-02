@@ -21,6 +21,7 @@ from sqlalchemy import select
 
 from shogun.services.provider_credentials import provider_api_key
 from shogun.services.model_reasoning import apply_chat_reasoning
+from shogun.services.model_transport import model_chat_stream
 from shogun.services.provider_oauth import ensure_provider_access_token
 
 logger = logging.getLogger(__name__)
@@ -345,8 +346,13 @@ Explicit operator corrections are durable learning signals. Acknowledge them and
         assistant_tokens: list[str] = []
 
         try:
-            async with httpx.AsyncClient(base_url=base_url, headers=req_headers, timeout=120.0) as client:
-                async with client.stream("POST", "/chat/completions", json=req_json) as resp:
+            async with model_chat_stream(
+                auth_type=provider.auth_type,
+                base_url=base_url,
+                headers=req_headers,
+                payload=req_json,
+                timeout=120.0,
+            ) as resp:
                     if resp.status_code != 200:
                         _failed = True
                         body_text = await resp.aread()

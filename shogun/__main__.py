@@ -329,6 +329,7 @@ def main() -> None:
             factory=True,
             reload=development_reload,
             log_level="info",
+            timeout_graceful_shutdown=30,
         )
     else:
         print("  [PRODUCTION MODE]")
@@ -342,6 +343,7 @@ def main() -> None:
             factory=True,
             reload=False,
             log_level="info",
+            timeout_graceful_shutdown=30,
         )
 
 

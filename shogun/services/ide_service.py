@@ -161,16 +161,48 @@ class IDEService:
         posture["ide_enabled"] = False
         from shogun.api.security import _save_agent_posture
         await _save_agent_posture(posture)
-        for process in list(self.active_processes.values()):
-            if process.returncode is None:
-                process.kill()
-        self.active_processes.clear()
-        for ws in list(self.connections.values()):
-            await ws.close(code=4001, reason="IDE Mode disabled")
-        self.connections.clear()
-        self.pairings.clear()
+        await self.shutdown_runtime(reason="IDE Mode disabled")
         await self.event("ide.mode.disabled", "IDE Mode disabled and bridge sessions revoked")
         return await self.status()
+
+    async def shutdown_runtime(self, *, reason: str = "Tenshu is shutting down") -> int:
+        """Stop only processes and bridge sessions owned by this IDE runtime."""
+        processes = [process for process in self.active_processes.values() if process.returncode is None]
+        for process in processes:
+            try:
+                process.terminate()
+            except ProcessLookupError:
+                continue
+        if processes:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*(process.wait() for process in processes)),
+                    timeout=5,
+                )
+            except TimeoutError:
+                for process in processes:
+                    if process.returncode is None:
+                        try:
+                            process.kill()
+                        except ProcessLookupError:
+                            continue
+                await asyncio.gather(
+                    *(process.wait() for process in processes),
+                    return_exceptions=True,
+                )
+        self.active_processes.clear()
+
+        await asyncio.gather(
+            *(ws.close(code=4001, reason=reason) for ws in list(self.connections.values())),
+            return_exceptions=True,
+        )
+        self.connections.clear()
+        for pending in self.pending.values():
+            if not pending.done():
+                pending.cancel()
+        self.pending.clear()
+        self.pairings.clear()
+        return len(processes)
 
     async def status(self) -> dict[str, Any]:
         posture = await self.posture()

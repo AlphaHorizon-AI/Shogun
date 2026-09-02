@@ -1,8 +1,24 @@
-import { Activity, ShieldCheck, Database, Globe } from 'lucide-react';
+import { useState } from 'react';
+import { Activity, ShieldCheck, Database, Globe, Loader2, Power } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 
 export const TopBar = () => {
   const { language, setLanguage, languages, t } = useTranslation();
+  const [shuttingDown, setShuttingDown] = useState(false);
+
+  const shutdownTenshu = async () => {
+    if (!confirm('Safely shut down Tenshu now? Active operations will stop, managed processes will close, and the dedicated Shogun browser window will exit.')) return;
+    setShuttingDown(true);
+    try {
+      const response = await fetch('/api/v1/updates/shutdown', { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+      window.setTimeout(() => window.close(), 350);
+    } catch (error: unknown) {
+      setShuttingDown(false);
+      alert(`Tenshu could not shut down: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
 
   return (
     <header className="h-[68px] w-full bg-gradient-to-r from-[#050508] to-shogun-bg border-b border-shogun-border flex items-center justify-between px-6 shrink-0 shadow-lg relative z-10">
@@ -47,6 +63,17 @@ export const TopBar = () => {
             <span className="text-xs">{t('topbar.guarded', 'Guarded')}</span>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={shutdownTenshu}
+          disabled={shuttingDown}
+          className="flex items-center gap-2 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-[10px] font-black tracking-wider text-red-300 transition-colors hover:border-red-400/60 hover:bg-red-500/20 disabled:cursor-wait disabled:opacity-60"
+          title="Safely shut down Tenshu"
+        >
+          {shuttingDown ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+          <span className="hidden xl:inline">{shuttingDown ? 'SHUTTING DOWN' : 'SHUT DOWN'}</span>
+        </button>
       </div>
     </header>
   );

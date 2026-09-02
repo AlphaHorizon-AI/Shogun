@@ -195,6 +195,17 @@ async def restart_shogun(_actor: str = Depends(require_infrastructure_admin)):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post("/shutdown", status_code=202)
+async def shutdown_shogun(_actor: str = Depends(require_infrastructure_admin)):
+    """Gracefully stop Tenshu and its launcher-owned desktop resources."""
+    from shogun.services.restart_service import request_shutdown
+
+    try:
+        return request_shutdown()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.post("/apply")
 async def apply_update():
     """
