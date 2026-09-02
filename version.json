@@ -1,8 +1,8 @@
 {
-  "version": "1.47.95",
+  "version": "1.47.96",
   "name": "Shogun AFM",
-  "build": 246,
+  "build": 247,
   "channel": "stable",
-  "released": "2026-09-02T09:54:16Z",
-  "changelog": "Restore the complete Yellow Label Guide structure, clarify the commercial White Label inquiry flow, and add routing-profile creation and deletion controls."
+  "released": "2026-09-02T10:15:54Z",
+  "changelog": "Allow persistent deletion of the starter Custom routing profile, show intended models on fixed profiles, and enforce AI Model Provider-only routing."
 }

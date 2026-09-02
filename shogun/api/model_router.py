@@ -224,6 +224,12 @@ async def preview_route(body: ModelRouteRequest, db: AsyncSession = Depends(get_
     return ApiResponse(data=result.payload)
 
 
+@router.post("/route/previews/automatic", response_model=ApiResponse)
+async def preview_automatic_routes(body: ModelRouteRequest, db: AsyncSession = Depends(get_db)):
+    previews = await ModelRoutingService(db).automatic_previews(body)
+    return ApiResponse(data=previews, meta={"total": len(previews)})
+
+
 @router.get("/routing/decisions", response_model=ApiResponse)
 async def decisions(
     run_id: uuid.UUID | None = None,

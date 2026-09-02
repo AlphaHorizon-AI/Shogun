@@ -21,6 +21,9 @@ type Decision = {
   fallback_models?: Array<{ model_id: string; display_name: string; provider: string; temperature?: number; reasoning_effort?: string | null }>;
   complexity_score: number; estimated_cost_tier: number; estimated_latency_tier: number; active_profile: string;
 };
+type AutomaticProfilePreview = {
+  profile_id: string; profile_name: string; decision: Decision | null; error?: string | null;
+};
 type ToolCallingProfile = {
   version: number; adapter_id: string; mode: 'native' | 'text' | 'unsupported';
   request_schema: string; response_schema: string; result_schema: string;
@@ -110,6 +113,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
   const [complexity, setComplexity] = useState(4);
   const [requirements, setRequirements] = useState<string[]>(['coding', 'tool_use']);
   const [decision, setDecision] = useState<Decision | null>(null);
+  const [automaticPreviews, setAutomaticPreviews] = useState<Record<string, AutomaticProfilePreview>>({});
   const [customModels, setCustomModels] = useState<string[]>([]);
   const [customTemperatures, setCustomTemperatures] = useState<Record<string, number>>({});
   const [customReasoning, setCustomReasoning] = useState<Record<string, string>>({});
@@ -150,6 +154,35 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
     } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const fixedProfiles = profiles.filter(item => AUTOMATIC_PROFILE_NAMES.has(item.name));
+    if (!fixedProfiles.length) {
+      setAutomaticPreviews({});
+      return;
+    }
+    let cancelled = false;
+    setAutomaticPreviews({});
+    axios.post('/api/v1/models/route/previews/automatic', {
+      prompt: `Preview ${taskType}`,
+      task_type: taskType,
+      complexity_override: complexity,
+      required_capabilities: requirements,
+    }).then(response => {
+      if (cancelled) return;
+      const previews: AutomaticProfilePreview[] = response.data.data || [];
+      setAutomaticPreviews(Object.fromEntries(previews.map(item => [item.profile_id, item])));
+    }).catch((error: any) => {
+      if (cancelled) return;
+      const detail = error?.response?.data?.detail || 'Route preview unavailable.';
+      setAutomaticPreviews(Object.fromEntries(fixedProfiles.map(item => [item.id, {
+        profile_id: item.id,
+        profile_name: item.name,
+        decision: null,
+        error: detail,
+      }])));
+    });
+    return () => { cancelled = true; };
+  }, [profiles, taskType, complexity, requirements]);
 
   const activeProfile = useMemo(() => profiles.find(item => item.is_default), [profiles]);
   const activeIsAutomatic = Boolean(activeProfile && AUTOMATIC_PROFILE_NAMES.has(activeProfile.name));
@@ -344,10 +377,6 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
     } finally { setBusy(''); }
   };
   const deleteCustomProfile = async (item: Profile) => {
-    if (item.name === 'Custom') {
-      setMessage('The base Custom profile is always available and cannot be deleted.');
-      return;
-    }
     if (item.is_default) {
       setMessage('Activate another routing profile before deleting the active profile.');
       return;
@@ -392,9 +421,10 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
           </button>}
         </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6 gap-2">
         {profiles.map(item => {
           const automatic = AUTOMATIC_PROFILE_NAMES.has(item.name);
+          const routePreview = automaticPreviews[item.id];
           const displayName = item.name === 'Custom' && isEditingProfiles && newProfileName.trim()
             ? newProfileName.trim()
             : item.name;
@@ -405,24 +435,33 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
             : item.is_default
               ? 'border-amber-300/70 bg-amber-400/15 shadow-[0_0_18px_rgba(251,191,36,0.12)]'
               : 'border-amber-400/30 bg-amber-400/[0.06] hover:border-amber-300/70 hover:bg-amber-400/10';
-          const deleteBlockedReason = item.name === 'Custom'
-            ? 'The base Custom profile cannot be deleted'
-            : item.is_default
-              ? 'Activate another profile before deleting this one'
-              : `Delete ${item.name}`;
+          const deleteBlockedReason = item.is_default
+            ? 'Activate another profile before deleting this one'
+            : `Delete ${item.name}`;
           return <div key={item.id} className="relative min-w-0">
             <button type="button" onClick={() => chooseProfile(item)} disabled={busy === item.id}
-              className={`h-full w-full text-left p-3 rounded-lg border transition-all ${!automatic ? 'pr-10' : ''} ${cardStyle}`}>
+              className={`h-full min-h-[152px] w-full text-left p-3 rounded-lg border transition-all ${!automatic ? 'pr-10' : ''} ${cardStyle}`}>
               <div className="text-xs font-bold flex items-center gap-1.5">{item.is_default && <CheckCircle2 className={`w-3.5 h-3.5 ${automatic ? 'text-cyan-300' : 'text-amber-300'}`} />}{displayName}</div>
               <p className="text-[9px] text-shogun-subdued mt-1 line-clamp-2">{item.description}</p>
               <span className={`mt-2 inline-block text-[8px] font-bold uppercase tracking-wider ${automatic ? 'text-cyan-300' : 'text-amber-300'}`}>
                 {automatic ? 'Fixed · automatic · read-only' : 'Custom · operator-defined'}
               </span>
+              {automatic && <div className="mt-2 border-t border-cyan-400/15 pt-2">
+                <p className="text-[8px] font-bold uppercase tracking-wider text-cyan-300/70">Intended route · {taskType.replaceAll('_', ' ')}</p>
+                {!routePreview && <p className="mt-1 text-[9px] text-shogun-subdued">Calculating from configured providers…</p>}
+                {routePreview?.decision && <div className="mt-1 space-y-0.5 font-mono text-[9px] leading-tight">
+                  <p className="truncate" title={`${routePreview.decision.selected_provider} · ${routePreview.decision.selected_model}`}><span className="text-cyan-300">P</span> {routePreview.decision.selected_provider} · {routePreview.decision.selected_model}</p>
+                  {(routePreview.decision.fallback_models || []).map((fallback, index) => <p key={`${fallback.provider}:${fallback.model_id}`} className="truncate text-shogun-subdued" title={`${fallback.provider} · ${fallback.model_id}`}><span className="text-cyan-300/70">F{index + 1}</span> {fallback.provider} · {fallback.model_id}</p>)}
+                  {!routePreview.decision.fallback_models?.length && <p className="text-shogun-subdued">No eligible fallback</p>}
+                </div>}
+                {routePreview?.error && <p className="mt-1 line-clamp-2 text-[9px] leading-tight text-amber-300" title={routePreview.error}>{routePreview.error}</p>}
+                <p className="mt-1.5 text-[7px] font-bold uppercase tracking-wider text-shogun-subdued">AI Model Provider models only</p>
+              </div>}
             </button>
             {!automatic && <button
               type="button"
               onClick={() => deleteCustomProfile(item)}
-              disabled={item.name === 'Custom' || item.is_default || busy !== ''}
+              disabled={item.is_default || busy !== ''}
               title={deleteBlockedReason}
               aria-label={deleteBlockedReason}
               className="absolute right-2 top-2 rounded-md border border-red-400/30 bg-[#080b14]/90 p-1.5 text-red-400 transition-colors hover:border-red-400/60 hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-35"
@@ -475,7 +514,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
           </div>
           <div className="flex items-end gap-1">
             <button onClick={createCustomProfile} disabled={!newProfileName.trim() || busy !== ''} title="Create clean custom profile" className="h-[34px] px-3 rounded border border-amber-400/40 text-amber-300 hover:bg-amber-400/10 disabled:opacity-40"><Plus className="w-4 h-4" /></button>
-            <button onClick={() => customProfile && deleteCustomProfile(customProfile)} disabled={!customProfile || customProfile.name === 'Custom' || customProfile.is_default || busy !== ''} title={customProfile?.is_default ? 'Activate another profile before deleting this one' : 'Delete named profile'} className="h-[34px] px-3 rounded border border-red-400/30 text-red-400 hover:bg-red-400/10 disabled:opacity-30"><Trash2 className="w-4 h-4" /></button>
+            <button onClick={() => customProfile && deleteCustomProfile(customProfile)} disabled={!customProfile || customProfile.is_default || busy !== ''} title={customProfile?.is_default ? 'Activate another profile before deleting this one' : 'Delete custom profile'} className="h-[34px] px-3 rounded border border-red-400/30 text-red-400 hover:bg-red-400/10 disabled:opacity-30"><Trash2 className="w-4 h-4" /></button>
           </div>
         </div>
         {customProfile ? <>

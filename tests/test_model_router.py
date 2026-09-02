@@ -214,6 +214,48 @@ async def test_registry_sync_uses_explicit_models_even_when_definitions_exist(ro
 
 
 @pytest.mark.asyncio
+async def test_routing_only_uses_models_selected_in_provider_configuration(routing_session):
+    rogue = await _model(
+        routing_session,
+        "vendor/not-selected",
+        quality=5,
+        cost=1,
+    )
+    provider = await routing_session.get(ModelProvider, rogue.provider_id)
+    provider.config = {"models": ["vendor/operator-selected"]}
+
+    result = await ModelRoutingService(routing_session).route(ModelRouteRequest(prompt="Hello"))
+
+    assert result.selected.model_id == "vendor/operator-selected"
+    assert rogue.enabled is False
+    assert (rogue.config_json or {}).get("provider_available") is False
+
+
+@pytest.mark.asyncio
+async def test_automatic_previews_show_routes_from_configured_provider_models(routing_session):
+    configured = {
+        (await _model(routing_session, "vendor/economy", quality=2, cost=1)).model_id,
+        (await _model(routing_session, "vendor/balanced", quality=3, cost=2)).model_id,
+        (await _model(routing_session, "vendor/premium", quality=5, cost=5)).model_id,
+    }
+
+    previews = await ModelRoutingService(routing_session).automatic_previews(
+        ModelRouteRequest(prompt="Preview a general task", task_type="simple_chat")
+    )
+
+    assert {item["profile_name"] for item in previews} == {
+        "Ultra Economy", "Economy", "Balanced", "High Capability", "Premium"
+    }
+    assert all(item["error"] is None for item in previews)
+    assert all(item["decision"]["selected_model"] in configured for item in previews)
+    assert all(
+        fallback["model_id"] in configured
+        for item in previews
+        for fallback in item["decision"]["fallback_models"]
+    )
+
+
+@pytest.mark.asyncio
 async def test_registry_sync_repairs_stale_auto_discovered_capabilities(routing_session):
     provider = ModelProvider(
         provider_type="openrouter",
@@ -559,6 +601,21 @@ async def test_default_profiles_include_custom_with_balanced_active(routing_sess
         "Ultra Economy", "Economy", "Balanced", "High Capability", "Premium", "Custom"
     }
     assert (await service.active_profile()).name == "Balanced"
+
+
+@pytest.mark.asyncio
+async def test_deleted_starter_custom_profile_is_not_recreated(routing_session):
+    routing_service = ModelRoutingService(routing_session)
+    profiles = await routing_service.ensure_defaults()
+    custom = next(item for item in profiles if item.name == "Custom")
+
+    assert await ModelRoutingProfileService(routing_session).delete(custom.id) is True
+
+    refreshed = await routing_service.ensure_defaults()
+    assert "Custom" not in {item.name for item in refreshed}
+    assert {item.name for item in refreshed} >= {
+        "Ultra Economy", "Economy", "Balanced", "High Capability", "Premium"
+    }
 
 
 @pytest.mark.asyncio

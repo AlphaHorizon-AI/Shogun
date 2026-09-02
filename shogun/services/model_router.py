@@ -894,7 +894,12 @@ class ModelRoutingService:
     async def ensure_defaults(self) -> list[ModelRoutingProfile]:
         profiles = list((await self.session.execute(select(ModelRoutingProfile))).scalars().all())
         names = {_slug(item.name) for item in profiles}
+        seed_starter_custom = not profiles
         for key, config in DEFAULT_PROFILES.items():
+            # Custom is an editable starter, not a protected system profile. Seed it
+            # for a new installation, but preserve an operator's explicit deletion.
+            if key == "custom" and not seed_starter_custom:
+                continue
             if key not in names:
                 item = ModelRoutingProfile(
                     name=config["name"], description=config["description"], rules=[], is_default=False
@@ -937,7 +942,14 @@ class ModelRoutingService:
             db_session=self.session,
         )
 
-    async def route(self, request: ModelRouteRequest, *, persist: bool = True) -> RoutingResult:
+    async def route(
+        self,
+        request: ModelRouteRequest,
+        *,
+        persist: bool = True,
+        registry_items: list[ModelRegistryEntry] | None = None,
+        providers: dict[uuid.UUID, ModelProvider] | None = None,
+    ) -> RoutingResult:
         profile = await self.active_profile(request.profile_override)
         profile_key = _slug(profile.name)
         automatic_strategy = automatic_profile_key(profile.name)
@@ -987,15 +999,18 @@ class ModelRoutingService:
         # long-context model and exclude otherwise compatible local vision.
         if request.context_size_estimate > 32000 and task_type not in VISION_TYPES:
             requirements.add("long_context")
-        registry_items = await self.registry.list()
+        registry_items = registry_items if registry_items is not None else await self.registry.list()
         candidates = [
             item
             for item in registry_items
             if item.enabled
+            and (item.config_json or {}).get("provider_available") is True
             and item.model_id not in request.exclude_model_ids
             and is_concrete_model_id(item.model_id, item.provider)
         ]
-        providers = {item.id: item for item in (await self.session.execute(select(ModelProvider))).scalars().all()}
+        providers = providers or {
+            item.id: item for item in (await self.session.execute(select(ModelProvider))).scalars().all()
+        }
         candidates = [
             item
             for item in candidates
@@ -1278,6 +1293,39 @@ class ModelRoutingService:
         if escalation:
             detail += f", escalation level {escalation}"
         return f"{profile} selected {item.display_name} as the cheapest sufficient eligible model for {detail}."
+
+    async def automatic_previews(self, request: ModelRouteRequest) -> list[dict[str, Any]]:
+        """Preview every fixed profile against one synchronized provider registry."""
+        profiles = await self.ensure_defaults()
+        automatic_profiles = [item for item in profiles if automatic_profile_key(item.name)]
+        registry_items = await self.registry.list()
+        providers = {
+            item.id: item for item in (await self.session.execute(select(ModelProvider))).scalars().all()
+        }
+        previews: list[dict[str, Any]] = []
+        for profile in automatic_profiles:
+            profile_request = request.model_copy(update={"profile_override": str(profile.id)})
+            try:
+                result = await self.route(
+                    profile_request,
+                    persist=False,
+                    registry_items=registry_items,
+                    providers=providers,
+                )
+                previews.append({
+                    "profile_id": str(profile.id),
+                    "profile_name": profile.name,
+                    "decision": result.payload,
+                    "error": None,
+                })
+            except NoEligibleModelError as exc:
+                previews.append({
+                    "profile_id": str(profile.id),
+                    "profile_name": profile.name,
+                    "decision": None,
+                    "error": str(exc),
+                })
+        return previews
 
     async def decisions(self, run_id: uuid.UUID | None = None, stack_run_id: uuid.UUID | None = None, limit: int = 100):
         query = select(ModelRoutingDecision)
