@@ -57,12 +57,14 @@ async def test_white_label_upgrade_rejects_blank_token():
     assert exc_info.value.status_code == 400
 
 
-def test_updates_page_offers_both_white_label_upgrade_paths():
+def test_updates_page_offers_commercial_inquiry_and_token_upgrade_paths():
     source = (
         Path(__file__).resolve().parents[1] / "frontend/src/pages/Updates.tsx"
     ).read_text(encoding="utf-8")
 
-    assert "I need White Label access" in source
+    assert "Discuss White Label for my company" in source
+    assert "White Label is a paid commercial product" in source
+    assert "Sending an inquiry does not automatically provide an access token" in source
     assert "mailto:contact@alphahorizon.io" in source
     assert "I already have an access token" in source
     assert "type=\"password\"" in source
