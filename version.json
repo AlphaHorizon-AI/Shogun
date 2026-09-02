@@ -1,8 +1,8 @@
 {
-  "version": "1.47.97",
+  "version": "1.47.98",
   "name": "Shogun AFM",
-  "build": 248,
+  "build": 249,
   "channel": "stable",
-  "released": "2026-09-02T12:17:19Z",
-  "changelog": "Add browser-based provider authorization, ChatGPT/Codex subscription model access, and safe Tenshu shutdown for managed processes and the dedicated browser."
+  "released": "2026-09-02T12:39:38Z",
+  "changelog": "Remove the remaining Gensui installer and deployment surfaces from the Yellow Label distribution while retaining upgrade-safe compatibility data."
 }

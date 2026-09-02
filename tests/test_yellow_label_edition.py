@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -15,6 +17,8 @@ from shogun.db.models.teams import TeamsConfig
 from shogun.edition import EDITION_NAME, REMOVED_FEATURES, REMOVED_NATIVE_TOOLS
 from shogun.services.native_skills import NATIVE_TOOLS
 from shogun.services.notification_service import send_channel_message
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 EXPECTED_REMOVED_FEATURES = {
     "flow_stack",
@@ -109,3 +113,33 @@ def test_premium_persistence_models_remain_for_future_white_label_upgrade() -> N
     assert Operator.__table__.c.preferences is not None
     assert TeamsConfig.__table__.name == "katana_teams_config"
     assert NexusTaskModel.__table__.name == "nexus_tasks"
+
+
+def test_gensui_is_absent_from_yellow_label_installation_surfaces() -> None:
+    for relative_path in (
+        ".env.example",
+        ".env.server.example",
+        "docker-compose.server.yml",
+    ):
+        content = (PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
+        assert "gensui" not in content.lower(), relative_path
+
+    dockerignore_lines = {
+        line.strip()
+        for line in (PROJECT_ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    assert "gensui" in dockerignore_lines
+    assert not any(line.startswith("!gensui") for line in dockerignore_lines)
+
+    for relative_path in (
+        "Gensui-Docker-Install.bat",
+        "Gensui-Docker-Install.sh",
+        "Gensui-Install.bat",
+        "Gensui-Install.command",
+        "gensui/Dockerfile",
+        "gensui/docker-compose.yml",
+        "gensui/install.bat",
+        "gensui/install.sh",
+    ):
+        assert not (PROJECT_ROOT / relative_path).exists(), relative_path

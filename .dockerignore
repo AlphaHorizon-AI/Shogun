@@ -15,14 +15,6 @@ configs
 frontend/node_modules
 frontend/dist
 gensui
-!gensui/
-!gensui/**
-gensui/.env
-gensui/certs
-gensui/data
-gensui/logs
-gensui/frontend/node_modules
-gensui/frontend/dist
 tests
 certs
 *.db

@@ -2,7 +2,6 @@ vulnerabilities:
   - id: GHSA-qwww-vcr4-c8h2
     paths:
       - "frontend/package-lock.json"
-      - "gensui/frontend/package-lock.json"
     expired_at: 2026-08-31
     statement: >-
       The advisory affects unstable React Server Components APIs, which these
