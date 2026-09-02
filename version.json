@@ -1,8 +1,8 @@
 {
-  "version": "1.47.94",
+  "version": "1.47.95",
   "name": "Shogun AFM",
-  "build": 245,
+  "build": 246,
   "channel": "stable",
-  "released": "2026-09-02T08:23:13Z",
-  "changelog": "Release the Yellow Label edition boundary, add White Label upgrade and license acceptance flows, and harden Supermode layout, artifacts, and learning memory."
+  "released": "2026-09-02T09:54:16Z",
+  "changelog": "Restore the complete Yellow Label Guide structure, clarify the commercial White Label inquiry flow, and add routing-profile creation and deletion controls."
 }

@@ -200,6 +200,11 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
     }
     onEditProfiles?.();
   };
+  const openCustomCreator = () => {
+    setNewProfileName('');
+    setNewProfileDescription('');
+    if (!isEditingProfiles) onEditProfiles?.();
+  };
   const patchModel = async (item: RegistryModel, patch: Partial<RegistryModel>) => {
     if (!registryEditable) return;
     const previous = item;
@@ -338,14 +343,21 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
       setMessage(error?.response?.data?.detail || 'Routing profile could not be created.');
     } finally { setBusy(''); }
   };
-  const deleteCustomProfile = async () => {
-    if (!customProfile || customProfile.name === 'Custom' || customProfile.is_default) return;
-    if (!window.confirm(`Delete routing profile "${customProfile.name}"?`)) return;
-    setBusy('custom-delete');
+  const deleteCustomProfile = async (item: Profile) => {
+    if (item.name === 'Custom') {
+      setMessage('The base Custom profile is always available and cannot be deleted.');
+      return;
+    }
+    if (item.is_default) {
+      setMessage('Activate another routing profile before deleting the active profile.');
+      return;
+    }
+    if (!window.confirm(`Delete routing profile "${item.name}"?`)) return;
+    setBusy(`custom-delete-${item.id}`);
     try {
-      await axios.delete(`/api/v1/model-routing-profiles/${customProfile.id}`);
-      setCustomProfileId('');
-      setMessage(`${customProfile.name} deleted.`);
+      await axios.delete(`/api/v1/model-routing-profiles/${item.id}`);
+      if (customProfileId === item.id) setCustomProfileId('');
+      setMessage(`${item.name} deleted.`);
       await load();
     } catch (error: any) {
       setMessage(error?.response?.data?.detail || 'Routing profile could not be deleted.');
@@ -393,15 +405,40 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
             : item.is_default
               ? 'border-amber-300/70 bg-amber-400/15 shadow-[0_0_18px_rgba(251,191,36,0.12)]'
               : 'border-amber-400/30 bg-amber-400/[0.06] hover:border-amber-300/70 hover:bg-amber-400/10';
-          return <button key={item.id} onClick={() => chooseProfile(item)} disabled={busy === item.id}
-            className={`text-left p-3 rounded-lg border transition-all ${cardStyle}`}>
-            <div className="text-xs font-bold flex items-center gap-1.5">{item.is_default && <CheckCircle2 className={`w-3.5 h-3.5 ${automatic ? 'text-cyan-300' : 'text-amber-300'}`} />}{displayName}</div>
-            <p className="text-[9px] text-shogun-subdued mt-1 line-clamp-2">{item.description}</p>
-            <span className={`mt-2 inline-block text-[8px] font-bold uppercase tracking-wider ${automatic ? 'text-cyan-300' : 'text-amber-300'}`}>
-              {automatic ? 'Fixed · automatic · read-only' : 'Custom · operator-defined'}
-            </span>
-          </button>;
+          const deleteBlockedReason = item.name === 'Custom'
+            ? 'The base Custom profile cannot be deleted'
+            : item.is_default
+              ? 'Activate another profile before deleting this one'
+              : `Delete ${item.name}`;
+          return <div key={item.id} className="relative min-w-0">
+            <button type="button" onClick={() => chooseProfile(item)} disabled={busy === item.id}
+              className={`h-full w-full text-left p-3 rounded-lg border transition-all ${!automatic ? 'pr-10' : ''} ${cardStyle}`}>
+              <div className="text-xs font-bold flex items-center gap-1.5">{item.is_default && <CheckCircle2 className={`w-3.5 h-3.5 ${automatic ? 'text-cyan-300' : 'text-amber-300'}`} />}{displayName}</div>
+              <p className="text-[9px] text-shogun-subdued mt-1 line-clamp-2">{item.description}</p>
+              <span className={`mt-2 inline-block text-[8px] font-bold uppercase tracking-wider ${automatic ? 'text-cyan-300' : 'text-amber-300'}`}>
+                {automatic ? 'Fixed · automatic · read-only' : 'Custom · operator-defined'}
+              </span>
+            </button>
+            {!automatic && <button
+              type="button"
+              onClick={() => deleteCustomProfile(item)}
+              disabled={item.name === 'Custom' || item.is_default || busy !== ''}
+              title={deleteBlockedReason}
+              aria-label={deleteBlockedReason}
+              className="absolute right-2 top-2 rounded-md border border-red-400/30 bg-[#080b14]/90 p-1.5 text-red-400 transition-colors hover:border-red-400/60 hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-35"
+            >
+              {busy === `custom-delete-${item.id}` ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            </button>}
+          </div>;
         })}
+        <button
+          type="button"
+          onClick={openCustomCreator}
+          className="min-h-[92px] rounded-lg border border-dashed border-amber-400/35 bg-amber-400/[0.02] p-3 text-center text-amber-300 transition-all hover:border-amber-300/80 hover:bg-amber-400/10"
+        >
+          <Plus className="mx-auto h-5 w-5" />
+          <span className="mt-2 block text-[10px] font-bold uppercase tracking-wider">Add new profile</span>
+        </button>
       </div>
       {(isEditingProfiles || !activeIsAutomatic) && <div className="mt-5 pt-5 border-t border-amber-400/20">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
@@ -438,7 +475,7 @@ export default function ModelRoutingPanel({ isEditingProfiles = false, onEditPro
           </div>
           <div className="flex items-end gap-1">
             <button onClick={createCustomProfile} disabled={!newProfileName.trim() || busy !== ''} title="Create clean custom profile" className="h-[34px] px-3 rounded border border-amber-400/40 text-amber-300 hover:bg-amber-400/10 disabled:opacity-40"><Plus className="w-4 h-4" /></button>
-            <button onClick={deleteCustomProfile} disabled={!customProfile || customProfile.name === 'Custom' || customProfile.is_default || busy !== ''} title={customProfile?.is_default ? 'Activate another profile before deleting this one' : 'Delete named profile'} className="h-[34px] px-3 rounded border border-red-400/30 text-red-400 hover:bg-red-400/10 disabled:opacity-30"><Trash2 className="w-4 h-4" /></button>
+            <button onClick={() => customProfile && deleteCustomProfile(customProfile)} disabled={!customProfile || customProfile.name === 'Custom' || customProfile.is_default || busy !== ''} title={customProfile?.is_default ? 'Activate another profile before deleting this one' : 'Delete named profile'} className="h-[34px] px-3 rounded border border-red-400/30 text-red-400 hover:bg-red-400/10 disabled:opacity-30"><Trash2 className="w-4 h-4" /></button>
           </div>
         </div>
         {customProfile ? <>

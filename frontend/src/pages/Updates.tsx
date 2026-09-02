@@ -14,7 +14,9 @@ import {
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
-const WHITE_LABEL_ACCESS_EMAIL = 'mailto:contact@alphahorizon.io?subject=Shogun%20White-Label%20Access';
+const WHITE_LABEL_ACCESS_EMAIL =
+  'mailto:contact@alphahorizon.io?subject=Shogun%20White%20Label%20Commercial%20Inquiry'
+  + '&body=Hello%20Alpha%20Horizon%2C%0D%0A%0D%0AI%20would%20like%20to%20discuss%20Shogun%20White%20Label%20pricing%20and%20the%20appropriate%20company%20tier.%0D%0A%0D%0ACompany%3A%0D%0ACompany%20size%3A%0D%0AExpected%20users%3A%0D%0A';
 
 type WhiteLabelResult = {
   tone: 'success' | 'error';
@@ -216,19 +218,19 @@ export const Updates = () => {
           <div className="flex flex-col rounded-xl border border-shogun-border bg-shogun-bg/60 p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-shogun-text">
               <Mail className="h-4 w-4 text-[#d4a017]" />
-              {t('updates_page.white_label_need_access', 'I need White Label access')}
+              {t('updates_page.white_label_need_access', 'Discuss White Label for my company')}
             </div>
             <p className="mt-2 flex-1 text-xs leading-relaxed text-shogun-subdued">
               {t(
                 'updates_page.white_label_need_access_description',
-                'If you do not have a private-repository access token, send us an email to request commercial access.',
+                'White Label is a paid commercial product. Email us to start a conversation about pricing and the appropriate company tier. Sending an inquiry does not automatically provide an access token.',
               )}
             </p>
             <a
               href={WHITE_LABEL_ACCESS_EMAIL}
               className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-[#d4a017]/50 px-4 py-2.5 text-sm font-semibold text-[#e6b422] transition-colors hover:bg-[#d4a017]/10"
             >
-              {t('updates_page.white_label_send_email', 'Send access email')}
+              {t('updates_page.white_label_send_email', 'Contact us about pricing')}
               <ExternalLink className="h-4 w-4" />
             </a>
           </div>

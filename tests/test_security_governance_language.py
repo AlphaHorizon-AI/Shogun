@@ -290,7 +290,7 @@ def test_guide_scopes_ide_checkpoints_policy_and_secret_controls() -> None:
     assert "Environment variables, legacy configuration, plugins" in guide
 
 
-def test_guide_scopes_constitution_toolgate_a2a_and_emergency_controls() -> None:
+def test_guide_scopes_constitution_toolgate_and_emergency_controls() -> None:
     guide = _text("frontend/src/pages/Guide.tsx")
 
     for unsupported_claim in (
@@ -310,9 +310,8 @@ def test_guide_scopes_constitution_toolgate_a2a_and_emergency_controls() -> None
 
     assert "Covered operations routed through the Kaizen constitutional validator" in guide
     assert "Custom plugins, integrations, and future execution paths" in guide
-    assert "per-peer shared-secret HMAC" in guide
-    assert "verify signing and peer authentication separately for every connector" in guide
-    assert "This is not a network-isolation guarantee" in guide
+    for removed_yellow_label_feature in ("A2A", "Nexus", "Gensui"):
+        assert removed_yellow_label_feature not in guide
 
 
 def test_guide_describes_toolgate_modes_and_trace_limits_factually() -> None:

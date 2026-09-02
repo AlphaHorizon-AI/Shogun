@@ -228,3 +228,18 @@ def test_all_guide_catalogs_have_the_same_keys() -> None:
 
     for language, catalog in catalogs.items():
         assert set(catalog) == expected, f"Guide catalog drift for {language}"
+
+
+def test_yellow_label_guide_omits_removed_product_features() -> None:
+    source = GUIDE.read_text(encoding="utf-8")
+
+    for removed_feature in (
+        "Flow Stack",
+        "Team Mode",
+        "Microsoft Teams",
+        "ref-teams",
+        "ref-logs",
+        "Nexus",
+        "Gensui",
+    ):
+        assert removed_feature not in source

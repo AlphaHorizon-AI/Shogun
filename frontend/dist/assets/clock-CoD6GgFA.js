@@ -1,0 +1,1 @@
+import{q as e}from"./vendor-shared~index~About~Backups~PrivacyTelemetry~ToolGate~Updates~Torii~ShogunProfile~Set~ju2kxw3e-DGyQf_Bx.js";var t=e(`clock`,[[`circle`,{cx:`12`,cy:`12`,r:`10`,key:`1mglay`}],[`path`,{d:`M12 6v6l4 2`,key:`mmk7yg`}]]);export{t};

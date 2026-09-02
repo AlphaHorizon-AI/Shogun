@@ -1,0 +1,1 @@
+import{q as e}from"./vendor-shared~index~About~Backups~PrivacyTelemetry~ToolGate~Updates~Torii~ShogunProfile~Set~ju2kxw3e-DGyQf_Bx.js";var t=e(`check`,[[`path`,{d:`M20 6 9 17l-5-5`,key:`1gmf2c`}]]);export{t};
