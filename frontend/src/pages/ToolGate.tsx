@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronRight,
   CircleHelp,
   Clock3,
   FlaskConical,
@@ -24,7 +23,6 @@ import {
   X,
 } from 'lucide-react';
 import axios from 'axios';
-import { useNavigate } from '../lib/routerCompat';
 import { cn } from '../lib/utils';
 
 type GateAction = 'allow' | 'confirm' | 'block';
@@ -61,7 +59,6 @@ interface ToolRecord {
   default_action: GateAction;
   local_override: GateAction | null;
   campaign_override: GateAction | null;
-  gensui_override: GateAction | null;
   effective_action: GateAction;
   reason: string;
 }
@@ -92,7 +89,7 @@ interface NetworkControls {
 
 interface ToolGateData {
   authority: {
-    mode: 'standalone' | 'gensui';
+    mode: 'standalone';
     editable: boolean;
     enrolled: boolean;
     connected: boolean;
@@ -121,17 +118,17 @@ interface ToolGateData {
     enabled: boolean;
     rules: AdvancedRule[];
     editable: boolean;
-    source: 'local' | 'gensui';
+    source: 'local';
   };
   filesystem_controls: {
     enabled: boolean;
     folders: FilesystemFolder[];
     editable: boolean;
-    source: 'local' | 'gensui';
+    source: 'local';
   };
   network_controls: NetworkControls & {
     editable: boolean;
-    source: 'local' | 'gensui';
+    source: 'local';
   };
   tools: ToolRecord[];
   pending_confirmations: Array<{
@@ -226,20 +223,12 @@ const CAPABILITY_HELP: Record<string, Record<string, string>> = {
     allow_save_as_template: 'Permits saving an AgentFlow as a reusable template.',
     allow_delete: 'Permits deleting AgentFlows.',
   },
-  flow_stack: {
-    allow_create: 'Permits creating new Flow Stacks.',
-    allow_edit: 'Permits changing the composition or settings of existing Flow Stacks.',
-    allow_activate: 'Permits activating or deactivating Flow Stacks.',
-    allow_execute: 'Permits running Flow Stacks and their nested flows.',
-    allow_save_as_template: 'Permits saving a Flow Stack as a reusable template.',
-    allow_delete: 'Permits deleting Flow Stacks.',
-  },
   visual_intake: {
     allow_image_intake: 'Permits images to be uploaded and processed as visual input.',
     allow_local_vision: 'Permits visual analysis using locally hosted models.',
     allow_cloud_vision: 'Permits visual input to be sent to configured cloud vision models.',
     allow_ocr: 'Permits optical character recognition to extract text from images.',
-    allow_attach_to_stack: 'Permits visual inputs to be attached to Flow Stack execution context.',
+    allow_attach_to_stack: 'Permits visual inputs to be attached to workflow execution context.',
     allow_auto_memory: 'Permits visual findings to be stored automatically in memory.',
     allow_delete: 'Permits deletion of stored visual-intake records and artifacts.',
     retention_days: 'Sets how many days visual-intake artifacts are retained.',
@@ -300,7 +289,7 @@ const TOOL_THEMES: ToolTheme[] = [
   {
     id: 'automation',
     label: 'Workflows & agents',
-    description: 'AgentFlow, Flow Stack, agent spawning, editing, execution, and deletion.',
+    description: 'AgentFlow creation, editing, execution, and deletion.',
     categories: ['workflow', 'agents'],
   },
   {
@@ -469,7 +458,9 @@ function mergePermissionDefaults(
 }
 
 function capabilityEntries(permissions: Record<string, Record<string, unknown>>) {
-  return Object.entries(permissions).filter(([categoryName]) => categoryName !== 'capability_decisions');
+  return Object.entries(permissions).filter(
+    ([categoryName]) => categoryName !== 'capability_decisions' && categoryName !== 'flow_stack',
+  );
 }
 
 function capabilityDecision(
@@ -660,7 +651,6 @@ function mutationMessage(response: any, saved: string) {
 }
 
 export function ToolGate() {
-  const navigate = useNavigate();
   const [data, setData] = useState<ToolGateData | null>(null);
   const [policies, setPolicies] = useState<SecurityPolicy[]>([]);
   const [builtInPolicies, setBuiltInPolicies] = useState<SecurityPolicy[]>([]);
@@ -735,7 +725,7 @@ export function ToolGate() {
           enabled: false,
           rules: [],
           editable: payload.authority?.editable ?? true,
-          source: payload.authority?.mode === 'gensui' ? 'gensui' : 'local',
+          source: 'local',
         },
         filesystem_controls: payload.filesystem_controls || {
           enabled: false,
@@ -1174,7 +1164,8 @@ export function ToolGate() {
   }
 
   if (!data) return null;
-  const managed = data.authority.mode === 'gensui';
+  // Yellow Label always uses local authority, regardless of legacy cached enrollment data.
+  const managed = false;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-14 animate-in fade-in duration-500">
@@ -1234,9 +1225,7 @@ export function ToolGate() {
               : <SlidersHorizontal className="mt-0.5 h-5 w-5 text-emerald-300" />}
             <div>
               <p className="text-sm font-bold text-shogun-text">
-                {managed
-                  ? data.authority.connected ? 'Managed by Gensui' : 'Managed by Gensui — connection offline'
-                  : 'Standalone authority'}
+                {managed ? 'Managed authority' : 'Standalone authority'}
               </p>
               <p className="mt-1 text-xs leading-relaxed text-shogun-subdued">
                 {managed
@@ -1247,11 +1236,6 @@ export function ToolGate() {
               </p>
             </div>
           </div>
-          {managed && (
-            <button onClick={() => navigate('/gensui')} className="flex items-center gap-2 self-start rounded-lg border border-indigo-400/25 bg-indigo-500/10 px-3 py-2 text-xs font-bold text-indigo-200 hover:bg-indigo-500/20">
-              View Gensui connection <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          )}
         </div>
       </div>
 
@@ -1290,7 +1274,7 @@ export function ToolGate() {
           <div className="flex gap-2 rounded-lg border border-indigo-400/20 bg-indigo-500/[0.05] p-3">
             <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-indigo-300" />
             <p className="text-xs leading-relaxed text-indigo-100/75">
-              Custom posture lifecycle is centrally owned by Gensui while this Tenshu is enrolled.
+              Custom posture lifecycle is read-only under the current authority.
             </p>
           </div>
         )}
@@ -1412,7 +1396,7 @@ export function ToolGate() {
             <div className="flex gap-2">
               <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
               <p className="text-xs leading-relaxed text-amber-100/75">
-                Capability boundaries are centrally owned by Gensui.
+                Capability boundaries are read-only under the current authority.
               </p>
             </div>
           </div>
@@ -1595,7 +1579,7 @@ export function ToolGate() {
           <div className="flex gap-2 rounded-lg border border-indigo-400/20 bg-indigo-500/[0.05] p-3">
             <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-indigo-300" />
             <p className="text-xs leading-relaxed text-indigo-100/75">
-              These content rules are centrally owned by Gensui and remain enforced from the cached policy if the connection is temporarily unavailable.
+              These content rules are read-only under the current authority.
             </p>
           </div>
         )}
@@ -2117,7 +2101,6 @@ export function ToolGate() {
                                     <span className="rounded border border-shogun-border px-2 py-1 text-[9px] uppercase text-shogun-subdued">
                                       Policy default: {tool.default_action}
                                     </span>
-                                    {tool.gensui_override && <span className="rounded bg-indigo-500/10 px-2 py-1 text-[9px] text-indigo-300">Gensui: {tool.gensui_override}</span>}
                                     {tool.campaign_override && <span className="rounded bg-orange-500/10 px-2 py-1 text-[9px] text-orange-300">Campaign: {tool.campaign_override}</span>}
                                     {tool.local_override && <span className="rounded bg-cyan-500/10 px-2 py-1 text-[9px] text-cyan-300">Local: {tool.local_override}</span>}
                                   </div>
@@ -2160,7 +2143,7 @@ export function ToolGate() {
             <p className="mt-1 text-xs text-shogun-subdued">
               {data.scope.kind === 'custom_policy'
                 ? `${data.scope.label} inherits ${data.scope.base_tier.toUpperCase()} thresholds; its ToolGate overrides remain isolated from every other tier.`
-                : `Default ${data.scope.base_tier.toUpperCase()} thresholds plus local, Campaign, Gensui, and parameter-aware restrictions.`}
+                : `Default ${data.scope.base_tier.toUpperCase()} thresholds plus local, Campaign, and parameter-aware restrictions.`}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -2219,10 +2202,9 @@ export function ToolGate() {
                   <td className="px-4 py-3"><ActionBadge action={tool.effective_action} /></td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1.5">
-                      {tool.gensui_override && <span className="rounded bg-indigo-500/10 px-2 py-1 text-[9px] text-indigo-300">Gensui: {tool.gensui_override}</span>}
                       {tool.campaign_override && <span className="rounded bg-orange-500/10 px-2 py-1 text-[9px] text-orange-300">Campaign: {tool.campaign_override}</span>}
                       {tool.local_override && <span className="rounded bg-cyan-500/10 px-2 py-1 text-[9px] text-cyan-300">Local: {tool.local_override}</span>}
-                      {!tool.gensui_override && !tool.campaign_override && !tool.local_override && <span className="text-[10px] text-shogun-subdued">Mode default: {tool.default_action}</span>}
+                      {!tool.campaign_override && !tool.local_override && <span className="text-[10px] text-shogun-subdued">Mode default: {tool.default_action}</span>}
                     </div>
                     <p className="mt-1.5 max-w-xl truncate text-[9px] text-shogun-subdued" title={tool.reason}>{tool.reason}</p>
                   </td>
@@ -2441,7 +2423,7 @@ export function ToolGate() {
           })}
           <div className="flex gap-2 rounded-lg bg-shogun-bg/70 p-3">
             <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 text-shogun-subdued" />
-            <p className="text-[10px] leading-relaxed text-shogun-subdued">Approval is valid for this call only. Unanswered requests auto-deny after 60 seconds, and every operator decision remains available in Logs.</p>
+            <p className="text-[10px] leading-relaxed text-shogun-subdued">Approval is valid for this call only. Unanswered requests auto-deny after 60 seconds, and the decision remains part of Shogun's internal audit record.</p>
           </div>
         </div>
       </div>

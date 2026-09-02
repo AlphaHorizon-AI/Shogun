@@ -308,7 +308,7 @@ async def test_defaults_seed_operational_validated_skills(skill_session):
     agentflow_skill = (
         await skill_session.execute(select(Skill).where(Skill.slug == "agentflow-operator"))
     ).scalar_one()
-    assert "`channel_send` node for Telegram or Teams" in agentflow_skill.body_text
+    assert "Flow Stack is not part of Yellow Label" in agentflow_skill.body_text
     assert agentflow_skill.local_path.endswith("agentflow-operator\\SKILL.md") or agentflow_skill.local_path.endswith(
         "agentflow-operator/SKILL.md"
     )

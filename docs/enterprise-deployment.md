@@ -4,9 +4,8 @@ Enterprises may keep `SHOGUN_TELEMETRY=off` or block
 `telemetry.alphahorizon.io` in DNS/firewall policy. No Shogun capability depends
 on the endpoint.
 
-Team Mode changes require the infrastructure/Primary Admin credential. Ordinary
-members cannot call telemetry routes. Status is installation-level and never
-includes member identity or member count.
+Telemetry changes require the infrastructure-administrator credential in Server
+mode. Status is installation-level and never includes operator identity.
 
 The Alpha Horizon console must sit behind an EU-hosted SSO identity proxy that
 injects authenticated email, group membership, and MFA assertions plus the

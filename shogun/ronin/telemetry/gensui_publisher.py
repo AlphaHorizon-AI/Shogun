@@ -17,6 +17,10 @@ log = logging.getLogger("shogun.ronin.telemetry.gensui")
 
 async def publish_node_state() -> None:
     """Publish the current Ronin node state to Gensui."""
+    from shogun.edition import feature_available
+
+    if not feature_available("gensui"):
+        return
     try:
         from shogun.config import settings
         if not settings.gensui_enabled:
@@ -51,6 +55,10 @@ async def publish_node_state() -> None:
 
 async def publish_action(action_type: str, status: str, current_app: str | None = None) -> None:
     """Publish a Ronin action event to Gensui."""
+    from shogun.edition import feature_available
+
+    if not feature_available("gensui"):
+        return
     try:
         from shogun.config import settings
         if not settings.gensui_enabled:

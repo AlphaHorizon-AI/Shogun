@@ -102,7 +102,10 @@ def test_telegram_attachment_context_mentions_workspace_path():
     assert "Telegram/2026-07-07/123/photo.jpg" in message
 
 
-def test_chat_attachment_content_includes_image_bytes(tmp_path):
+def test_chat_attachment_content_includes_image_bytes(tmp_path, monkeypatch):
+    from shogun.config import settings
+
+    monkeypatch.setattr(settings, "visual_artifacts_path", tmp_path)
     image_path = tmp_path / "tiny.png"
     image_path.write_bytes(
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"

@@ -1,4 +1,4 @@
-"""Deterministic operating rules for AgentFlow and Flow Stack chat requests.
+"""Deterministic operating rules for AgentFlow chat requests.
 
 This module is deliberately independent from semantic memory and skill retrieval.
 When workflow intent is detected, the guide is injected directly into the system
@@ -14,7 +14,6 @@ from pathlib import Path
 WORKFLOW_READ_TOOLS = {
     "list_agent_flows",
     "get_agent_flow",
-    "get_flow_stack",
 }
 
 WORKFLOW_MUTATION_TOOLS = {
@@ -23,16 +22,12 @@ WORKFLOW_MUTATION_TOOLS = {
     "patch_agent_flow",
     "set_agent_flow_status",
     "delete_agent_flow",
-    "create_flow_stack",
-    "edit_flow_stack",
-    "delete_flow_stack",
 }
 
-WORKFLOW_DELETE_TOOLS = {"delete_agent_flow", "delete_flow_stack"}
+WORKFLOW_DELETE_TOOLS = {"delete_agent_flow"}
 
 _WORKFLOW_TERMS = re.compile(
-    r"\b(agent\s*flows?|agentflows?|work\s*flows?|workflows?|flow\s*stacks?|"
-    r"flowstacks?|stack\s*orchestrator|pipelines?)\b",
+    r"\b(agent\s*flows?|agentflows?|work\s*flows?|workflows?|pipelines?)\b",
     re.IGNORECASE,
 )
 _FLOW_ACTION = re.compile(
@@ -54,8 +49,8 @@ def is_workflow_request(message: str) -> bool:
     text = " ".join(str(message or "").split())
     if _WORKFLOW_TERMS.search(text):
         return True
-    # Natural follow-ups often shorten AgentFlow to just "flow" or "stack".
-    return bool(_FLOW_ACTION.search(text) and re.search(r"\b(flows?|stacks?)\b", text, re.IGNORECASE))
+    # Natural follow-ups often shorten AgentFlow to just "flow".
+    return bool(_FLOW_ACTION.search(text) and re.search(r"\bflows?\b", text, re.IGNORECASE))
 
 
 def requires_workflow_tools(message: str) -> bool:
@@ -75,17 +70,13 @@ def operator_authorized_workflow_tools(message: str) -> set[str]:
     if not is_workflow_request(text) or _NEGATED_MUTATION.search(text):
         return set()
 
-    is_stack = bool(re.search(r"\b(flow\s*stack|flowstack|stack\s*orchestrator)\b", text))
     authorized: set[str] = set()
 
     if re.search(r"\b(create|build|make|design|add)\b", text):
-        authorized.add("create_flow_stack" if is_stack else "create_agent_flow")
+        authorized.add("create_agent_flow")
     if re.search(r"\b(edit|update|change|modify|patch|rebuild|convert|remove|replace|fix)\b", text):
-        if is_stack:
-            authorized.add("edit_flow_stack")
-        else:
-            authorized.update({"patch_agent_flow", "edit_agent_flow"})
-    if not is_stack and re.search(r"\b(activate|enable|deactivate|disable|pause)\b", text):
+        authorized.update({"patch_agent_flow", "edit_agent_flow"})
+    if re.search(r"\b(activate|enable|deactivate|disable|pause)\b", text):
         authorized.add("set_agent_flow_status")
     return authorized
 
@@ -171,4 +162,15 @@ def _load_workflow_operator_guide() -> str:
     return _FALLBACK_WORKFLOW_OPERATOR_GUIDE
 
 
-WORKFLOW_OPERATOR_GUIDE = _load_workflow_operator_guide()
+WORKFLOW_OPERATOR_GUIDE = """
+MANDATORY AGENTFLOW OPERATOR GUIDE (SYSTEM-MANAGED)
+
+- Use list_agent_flows to discover stored AgentFlows and get_agent_flow before
+  editing or deleting one. Never invent an ID or claim an unverified result.
+- Preserve untouched nodes and edges. Prefer patch_agent_flow for targeted
+  changes, and create drafts unless activation was explicitly requested.
+- Deletion requires the normal ToolGate approval. Verify every mutation by
+  inspecting or listing the affected AgentFlow again.
+- Flow Stack is not part of Yellow Label. Do not propose or call Flow Stack
+  tools; help the operator express the work as one AgentFlow instead.
+""".strip()

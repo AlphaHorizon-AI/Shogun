@@ -168,7 +168,7 @@ class Settings(BaseSettings):
     file_archive_block_executables: bool = True
 
     # Flow Stacking / governed hierarchical AgentFlow execution
-    flow_stacking_enabled: bool = True
+    flow_stacking_enabled: bool = False
     flow_stacking_max_depth: int = 3
     flow_stacking_hard_max_depth: int = 5
     flow_stacking_max_child_runs_per_parent: int = 20
@@ -178,7 +178,7 @@ class Settings(BaseSettings):
     flow_stacking_max_parallel_children: int = 4
 
     # Stack Orchestrator / long-horizon runtime control
-    stack_orchestrator_enabled: bool = True
+    stack_orchestrator_enabled: bool = False
     stack_orchestrator_allow_supervised: bool = True
     stack_orchestrator_default_runtime_minutes: int = 60
     stack_orchestrator_poll_interval_seconds: float = 0.25

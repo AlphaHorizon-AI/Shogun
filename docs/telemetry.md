@@ -2,7 +2,7 @@
 
 Shogun installation telemetry is a voluntary, pseudonymous adoption signal. It is
 disabled by default and is separate from Shogun's licence, operational logging,
-Gensui fleet telemetry, model routing metrics, and College analytics.
+model-routing metrics, and College analytics.
 
 No request is made to `telemetry.alphahorizon.io` until an administrator explicitly
 accepts consent notice `1.0`. Blocking that hostname has no effect on Shogun.
@@ -24,7 +24,7 @@ Registration sends:
 | `platform_family` | `windows`, `linux`, `macos`, or `other` |
 | `architecture` | Normalized architecture enum |
 | `install_type` | `native`, `docker`, `headless_server`, or `development` |
-| `operation_mode` | `single_user` or `team` |
+| `operation_mode` | `single_user` |
 
 Events send the same product/platform dimensions plus `event_id`, `event_type`,
 and `occurred_at`. `update_completed` may include `previous_version`. The
@@ -66,7 +66,7 @@ and there is no plaintext fallback.
 ## Enable, disable, preview, and delete
 
 Use **The Tenshu → Privacy & Telemetry**. In desktop mode the local administrator
-may change the setting. In Server/Team Mode, a valid infrastructure/Primary Admin
+may change the setting. In Server mode, a valid infrastructure-administrator
 token is required.
 
 Unattended native installation:

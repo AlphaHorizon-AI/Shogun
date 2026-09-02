@@ -203,7 +203,7 @@ class ReminderCreate(ShogunBase):
     tenant_id: str = Field(default="local", min_length=1, max_length=255)
     user_id: str = Field(default="local_user", min_length=1, max_length=255)
     agent_id: uuid.UUID | None = None
-    conversation_provider: str = Field(default="web", pattern="^(web|telegram|teams)$")
+    conversation_provider: str = Field(default="web", pattern="^(web|telegram)$")
     conversation_id: str | None = Field(default=None, max_length=255)
     topic_id: str | None = Field(default=None, max_length=255)
     priority: int = Field(default=50, ge=0, le=100)
@@ -215,7 +215,7 @@ class ReminderCreate(ShogunBase):
     run_at: datetime | None = None
     end_at: datetime | None = None
     max_occurrences: int | None = Field(default=None, ge=1)
-    delivery_channel: str = Field(default="web", pattern="^(web|telegram|teams|both)$")
+    delivery_channel: str = Field(default="web", pattern="^(web|telegram|both)$")
     metadata_json: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("title")
@@ -271,7 +271,7 @@ class ReminderUpdate(ShogunBase):
     reason: str | None = Field(default=None, max_length=4000)
     expires_at: datetime | None = None
     priority: int | None = Field(default=None, ge=0, le=100)
-    delivery_channel: str | None = Field(default=None, pattern="^(web|telegram|teams|both)$")
+    delivery_channel: str | None = Field(default=None, pattern="^(web|telegram|both)$")
     metadata_json: dict[str, Any] | None = None
 
 

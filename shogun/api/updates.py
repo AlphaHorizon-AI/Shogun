@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, SecretStr
 
 from shogun.api.infrastructure_auth import require_infrastructure_admin
 from shogun.services.release_metadata import get_release_metadata, write_release_metadata_evidence
@@ -24,6 +25,12 @@ from shogun.services.update_checker import (
 logger = logging.getLogger("shogun.api.updates")
 router = APIRouter(prefix="/updates", tags=["updates"])
 RUNNING_VERSION = get_local_version_sync()
+
+
+class WhiteLabelUpgradeRequest(BaseModel):
+    """One-use credential for the future private White Label release source."""
+
+    github_token: SecretStr = Field(min_length=1, max_length=2048)
 
 
 def _frontend_install_failure_detail(output: str) -> str:
@@ -155,6 +162,26 @@ async def configure_update_credentials(body: dict):
     if result.get("error"):
         raise HTTPException(status_code=400, detail=result["error"])
     return {"success": True, "token_configured": True, "status": result}
+
+
+@router.post("/white-label/upgrade")
+async def start_white_label_upgrade(
+    body: WhiteLabelUpgradeRequest,
+    _actor: str = Depends(require_infrastructure_admin),
+):
+    """Accept a one-use token only after the approved White Label source is configured."""
+    if not body.github_token.get_secret_value().strip():
+        raise HTTPException(status_code=400, detail="White Label access token is required.")
+
+    # The private repository and approved release filename are intentionally not
+    # guessed. Until both are supplied, do not retain or attempt to use the token.
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "White Label upgrade is not configured yet. The approved private "
+            "repository and release file must be added before this action can start."
+        ),
+    )
 
 
 @router.post("/restart", status_code=202)

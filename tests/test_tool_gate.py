@@ -97,7 +97,7 @@ async def test_campaign_preset_override_can_still_confirm_email():
 
 
 @pytest.mark.asyncio
-async def test_campaign_cannot_relax_gensui_block():
+async def test_yellow_label_ignores_legacy_gensui_block():
     apply_gensui_overrides({"send_email": "block"})
 
     decision = await check_tool_access(
@@ -110,8 +110,7 @@ async def test_campaign_cannot_relax_gensui_block():
         },
     )
 
-    assert decision.action == GateAction.BLOCK
-    assert "gensui" in decision.reason
+    assert decision.action == GateAction.ALLOW
 
 
 @pytest.mark.asyncio
@@ -766,7 +765,7 @@ async def test_advanced_rule_only_applies_to_targeted_tools():
 
 
 @pytest.mark.asyncio
-async def test_gensui_advanced_block_cannot_be_relaxed_by_local_confirm():
+async def test_yellow_label_ignores_legacy_gensui_advanced_block():
     set_local_advanced_controls(
         {
             "enabled": True,
@@ -786,12 +785,12 @@ async def test_gensui_advanced_block_cannot_be_relaxed_by_local_confirm():
         args={"body": "restricted"},
     )
 
-    assert decision.action == GateAction.BLOCK
-    assert "gensui" in decision.reason
+    assert decision.action == GateAction.CONFIRM
+    assert "local" in decision.reason
 
 
 @pytest.mark.asyncio
-async def test_cached_gensui_policy_is_reapplied_for_offline_startup(tmp_path):
+async def test_cached_gensui_policy_is_retained_but_not_applied_in_yellow_label(tmp_path):
     from shogun.services.gensui_client import GensuiClient
 
     cache_path = tmp_path / "gensui_membership.json"
@@ -825,12 +824,11 @@ async def test_cached_gensui_policy_is_reapplied_for_offline_startup(tmp_path):
 
     assert client._shogun_id == "managed-shogun"
     assert client._effective_posture["tool_overrides"]["send_email"] == "block"
-    assert get_gensui_overrides()["send_email"] == "block"
+    assert get_gensui_overrides() == {}
 
     decision = await check_tool_access(
         mode="campaign",
         tool_name="send_email",
         args={"body": "fleet secret"},
     )
-    assert decision.action == GateAction.BLOCK
-    assert "gensui" in decision.reason
+    assert decision.action == GateAction.ALLOW

@@ -46,14 +46,12 @@ import {
   FileText,
   AppWindow,
   Crosshair,
-  Users,
 } from "lucide-react";
 import axios from 'axios';
 import { useNavigate } from '../lib/routerCompat';
 import { cn } from '../lib/utils';
 import { setSafeObjectPath } from '../lib/safeObjectPath';
 import { useTranslation } from '../i18n';
-import { MicrosoftTeamsAdapterTab } from './katana/MicrosoftTeamsAdapterTab';
 import { Mado } from './Mado';
 import { Ronin } from './Ronin';
 import { IdeModeTab } from './katana/IdeModeTab';
@@ -61,9 +59,8 @@ import ModelRoutingPanel from './katana/ModelRoutingPanel';
 import ActiveSkillsPanel from './katana/ActiveSkillsPanel';
 import { SkillOptTab } from './katana/SkillOptTab';
 import { FileFormatsPanel } from './katana/FileFormatsPanel';
-import { TeamMembersPanel } from './katana/TeamMembersPanel';
 
-type TabType = 'providers' | 'tools' | 'files' | 'routing' | 'skills' | 'team' | 'telegram' | 'teams' | 'mail_calendar' | 'office' | 'ide' | 'mado' | 'ronin' | 'skillopt';
+type TabType = 'providers' | 'tools' | 'files' | 'routing' | 'skills' | 'telegram' | 'mail_calendar' | 'office' | 'ide' | 'mado' | 'ronin' | 'skillopt';
 type RegisterMode = 'quick' | 'manual';
 
 // ── Documentation links for cloud providers ─────────────────────
@@ -337,7 +334,7 @@ export function Katana() {
   useEffect(() => {
     const syncTabFromHash = () => {
       const requested = window.location.hash.replace('#', '') as TabType;
-      if (['providers', 'tools', 'files', 'routing', 'skills', 'team', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'].includes(requested)) {
+      if (['providers', 'tools', 'files', 'routing', 'skills', 'telegram', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'].includes(requested)) {
         setActiveTab(requested);
       }
     };
@@ -1575,7 +1572,7 @@ export function Katana() {
 
       {/* ── Tab bar ────────────────────────────────────────────── */}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(68px,1fr))] border-b border-shogun-border">
-        {(['providers', 'tools', 'files', 'routing', 'skills', 'team', 'telegram', 'teams', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'] as TabType[]).filter(tab => tab !== 'ide' || ['campaign', 'ronin'].includes(officePosture)).map((tab) => (
+        {(['providers', 'tools', 'files', 'routing', 'skills', 'telegram', 'mail_calendar', 'office', 'ide', 'mado', 'ronin', 'skillopt'] as TabType[]).filter(tab => tab !== 'ide' || ['campaign', 'ronin'].includes(officePosture)).map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -1593,7 +1590,6 @@ export function Katana() {
             {tab === 'tools'     && t('katana.tab_tools', 'Toolbox & APIs')}
             {tab === 'files'     && <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5"><FileText className="h-3.5 w-3.5 shrink-0" />File Formats</span>}
             {tab === 'routing'   && t('katana.tab_routing', 'Logic Routing')}
-            {tab === 'team'      && <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5"><Users className="h-3.5 w-3.5 shrink-0" />{t('katana.team.tab', 'Team')}</span>}
             {tab === 'skills'    && <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5"><Puzzle className="h-3.5 w-3.5 shrink-0" />Skills · Active Usage</span>}
             {tab === 'telegram'  && (
               <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5">
@@ -1602,12 +1598,6 @@ export function Katana() {
                 {tgStatus?.connected && (
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
                 )}
-              </span>
-            )}
-            {tab === 'teams' && (
-              <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5">
-                <MessageCircle className="h-3.5 w-3.5 shrink-0" />
-                Microsoft Teams
               </span>
             )}
             {tab === 'mail_calendar' && (
@@ -1662,7 +1652,6 @@ export function Katana() {
         ════════════════════════════════════════════════════════ */}
         {activeTab === 'skills' && <ActiveSkillsPanel />}
         {activeTab === 'files' && <FileFormatsPanel />}
-        {activeTab === 'team' && <TeamMembersPanel />}
 
         {activeTab === 'providers' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -3693,8 +3682,6 @@ export function Katana() {
         )}
 
         {/* ══ TELEGRAM TAB ══════════════════════════════════════════ */}
-        {activeTab === 'teams' && <MicrosoftTeamsAdapterTab />}
-
         {activeTab === 'telegram' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="flex items-center justify-between">

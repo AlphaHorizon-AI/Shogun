@@ -78,7 +78,6 @@ import {
   WandSparkles,
 } from 'lucide-react';
 import axios from 'axios';
-import { useNavigate } from '../lib/routerCompat';
 import { cn } from '../lib/utils';
 import { logSamuraiDiagnostic } from '../lib/samuraiDiagnostics';
 import { apiErrorMessage } from '../lib/apiError';
@@ -276,12 +275,11 @@ const NODE_PALETTE = [
   { type: 'output',          label: 'Output',           icon: LogOut,    color: '#f97316', desc: 'Final delivery' },
   { type: 'mado_browser',    label: 'Mado Browser',     icon: Globe,     color: '#06b6d4', desc: 'Browser automation' },
   { type: 'email_send',      label: 'Email Send',       icon: Mail,      color: '#e879a8', desc: 'Send email via SMTP' },
-  { type: 'channel_send',    label: 'Telegram / Teams', icon: MessageSquare, color: '#38bdf8', desc: 'Send an operator message' },
+  { type: 'channel_send',    label: 'Telegram',         icon: MessageSquare, color: '#38bdf8', desc: 'Send an operator message' },
   { type: 'workspace',       label: 'Workspace',        icon: FolderOpen, color: '#f59e0b', desc: 'File operations' },
   { type: 'mapping_rpa',     label: 'Mapping / RPA',    icon: WandSparkles, color: '#2dd4bf', desc: 'Deterministic validation and field placement' },
   { type: 'file_template',   label: 'File Template',    icon: Clipboard, color: '#60a5fa', desc: 'Triggered Word or Excel output contract' },
   { type: 'office',          label: 'Files',            icon: FileText, color: '#10b981', desc: 'PDF, Word, Excel, and PowerPoint files' },
-  { type: 'subflow',         label: 'Run AgentFlow',     icon: Layers3, color: '#8b5cf6', desc: 'Run a reusable AgentFlow as one governed step' },
 ] as const;
 
 
@@ -330,8 +328,7 @@ const nodeIcons: Record<string, React.ElementType> = {
 };
 
 function nodeTypeLabel(nodeType: string): string {
-  if (nodeType === 'subflow') return 'Run AgentFlow';
-  if (nodeType === 'stack_orchestrator') return 'Stack Orchestrator (Legacy)';
+  if (nodeType === 'subflow' || nodeType === 'stack_orchestrator') return 'Unavailable legacy node';
   return nodeType.replaceAll('_', ' ');
 }
 
@@ -377,7 +374,6 @@ function ExecutionTreeNode({ node }: { node: any }) {
 }
 
 function FlowNode({ id, data, selected, type }: { id: string; data: Record<string, any>; selected: boolean; type: string }) {
-  const navigate = useNavigate();
   const color = nodeColors[type] || '#d4a017';
   const Icon = nodeIcons[type] || Users;
   const config: Record<string, any> = data.config || {};
@@ -390,22 +386,6 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
   const progressValue = Number(authoritativeState?.progress_percent);
   const hasMeasuredProgress = isRunning && Number.isFinite(progressValue);
   const progressPercent = Math.max(0, Math.min(100, Math.round(progressValue)));
-  const openFailureLog = (event: React.SyntheticEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const params = new URLSearchParams({
-      event_type: 'agent_flow.node.failed',
-      node_id: id,
-    });
-    if (authoritativeState?.failure_event_id) {
-      params.set('event_id', authoritativeState.failure_event_id);
-    }
-    if (executionRunId) {
-      params.set('trace_id', executionRunId);
-    }
-    navigate(`/logs?${params.toString()}`);
-  };
-
   return (
     <div
       className={cn(
@@ -754,14 +734,10 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             <div className="flex items-center gap-1">
               <Layers3 className="w-2.5 h-2.5 text-[#8b5cf6]/70" />
               <span className="text-[8px] font-bold text-[#8b5cf6]/80 uppercase">
-                {config.child_flow_name || 'Select AgentFlow'}
+                Unavailable in this edition
               </span>
             </div>
-            <p className="text-[8px] text-[#7a8899]">
-              {config.child_flow_version_mode || 'locked'}
-              {config.child_flow_version ? ` · v${config.child_flow_version}` : ''}
-              {' · '}{config.on_failure || 'fail_parent'}
-            </p>
+            <p className="text-[8px] text-[#7a8899]">Retained for data compatibility only</p>
           </>
         )}
         {type === 'stack_orchestrator' && (
@@ -769,11 +745,11 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             <div className="flex items-center gap-1">
               <Network className="w-2.5 h-2.5 text-[#c084fc]/80" />
               <span className="text-[8px] font-bold text-[#c084fc] uppercase">
-                {config.mode || 'selected_stack'}
+                Unavailable in this edition
               </span>
             </div>
             <p className="text-[9px] text-[#7a8899] line-clamp-2">
-              {config.objective || 'Configure a governed long-running objective'}
+              Retained for data compatibility only
             </p>
           </>
         )}
@@ -888,20 +864,13 @@ function FlowNode({ id, data, selected, type }: { id: string; data: Record<strin
             </div>
           )}
           {executionStatus === 'failed' && (
-            <button
-              type="button"
-              title="Open exact failure log"
-              aria-label={`Open failure log for ${data.label || 'node'}`}
-              className="nodrag nopan w-5 h-5 rounded-full bg-[#ef4444] hover:bg-[#dc2626] flex items-center justify-center shadow-[0_0_8px_rgba(239,68,68,0.4)] focus:outline-none focus:ring-2 focus:ring-white/70"
-              onPointerDown={(event) => event.stopPropagation()}
-              onPointerUp={openFailureLog}
-              onClick={(event) => {
-                // Keyboard activation has no preceding pointer event.
-                if (event.detail === 0) openFailureLog(event);
-              }}
+            <div
+              title="Node execution failed"
+              aria-label={`Execution failed for ${data.label || 'node'}`}
+              className="w-5 h-5 rounded-full bg-[#ef4444] flex items-center justify-center shadow-[0_0_8px_rgba(239,68,68,0.4)]"
             >
               <XCircle className="w-3 h-3 text-white" />
-            </button>
+            </div>
           )}
           {executionStatus === 'skipped' && (
             <div className="w-5 h-5 rounded-full bg-[#7a8899] flex items-center justify-center">
@@ -3345,7 +3314,6 @@ function NodeInspector({
                 <option value="api">API Trigger</option>
                 <option value="scheduled">Scheduled Trigger</option>
                 <option value="event">Event-Based Trigger</option>
-                <option value="nexus">Nexus Task</option>
               </select>
             </div>
 
@@ -3771,64 +3739,6 @@ Content-Type: application/json
               </>
             )}
 
-            {/* ── Nexus Task ────────────────────────────── */}
-            {config.input_type === 'nexus' && (() => {
-              // Load workspaces on mount if not cached
-              const [wsLoading, setWsLoading] = useState(false);
-              const [workspaces, setWorkspaces] = useState<{id: string; name: string; topic: string | null}[]>([]);
-
-              useEffect(() => {
-                let cancelled = false;
-                setWsLoading(true);
-                axios.get('/api/v1/workspaces').then((res) => {
-                  if (!cancelled) setWorkspaces(res.data?.data || []);
-                }).catch(() => {}).finally(() => { if (!cancelled) setWsLoading(false); });
-                return () => { cancelled = true; };
-              }, []);
-
-              return (
-                <>
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest flex items-center gap-1">
-                      <Zap className="w-3 h-3" /> Nexus Workspace
-                    </label>
-                    <select
-                      value={config.nexus_workspace_id || ''}
-                      onChange={(e) => updateConfig('nexus_workspace_id', e.target.value)}
-                      className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#22c55e] transition-colors outline-none cursor-pointer"
-                    >
-                      <option value="">— Select workspace —</option>
-                      {wsLoading && <option disabled>Loading...</option>}
-                      {workspaces.map((ws) => (
-                        <option key={ws.id} value={ws.id}>
-                          {ws.name}{ws.topic ? ` (${ws.topic})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Trigger on Message Type</label>
-                    <select
-                      value={config.nexus_message_type || 'task'}
-                      onChange={(e) => updateConfig('nexus_message_type', e.target.value)}
-                      className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#22c55e] transition-colors outline-none cursor-pointer"
-                    >
-                      <option value="task">Task messages</option>
-                      <option value="proposal">Proposals</option>
-                      <option value="signal">Signals / Alerts</option>
-                      <option value="any">Any message</option>
-                    </select>
-                    <p className="text-[8px] text-[#555]">This flow triggers when a matching message arrives in the workspace</p>
-                  </div>
-                  <div className="bg-[#22c55e]/5 border border-[#22c55e]/20 rounded-lg p-2.5 space-y-1">
-                    <p className="text-[9px] text-[#22c55e]/80 leading-relaxed">
-                      <strong>How it works:</strong> When a <code className="bg-[#0a0e1a] px-1 py-0.5 rounded text-[8px]">{config.nexus_message_type || 'task'}</code> message arrives in the linked workspace, the message content is passed as input to this flow.
-                    </p>
-                  </div>
-                </>
-              );
-            })()}
-
             {/* Description — always shown */}
             <div className="space-y-1.5">
               <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Description</label>
@@ -4054,8 +3964,17 @@ Content-Type: application/json
           </>
         )}
 
-        {/* Reusable AgentFlow execution (internal node type remains "subflow"). */}
-        {nodeType === 'subflow' && (
+        {(nodeType === 'subflow' || nodeType === 'stack_orchestrator') && (
+          <div className="rounded-lg border border-[#f59e0b]/25 bg-[#f59e0b]/5 p-3">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[#f59e0b]">Unavailable legacy node</p>
+            <p className="mt-1 text-[9px] leading-relaxed text-[#7a8899]">
+              This saved node is retained so a full-edition installation can restore it. Yellow Label cannot edit or execute it.
+            </p>
+          </div>
+        )}
+
+        {/* Full-edition compatibility editor; excluded from the Yellow Label runtime. */}
+        {false && nodeType === 'subflow' && (
           <>
             <div className="rounded-lg border border-[#8b5cf6]/25 bg-[#8b5cf6]/5 p-3">
               <p className="text-[9px] font-bold uppercase tracking-widest text-[#8b5cf6]">Governed child execution</p>
@@ -4154,14 +4073,14 @@ Content-Type: application/json
             {subflowValidation && (
               <div className={cn(
                 "rounded-lg border p-2.5 text-[9px]",
-                subflowValidation.valid
+                subflowValidation!.valid
                   ? "border-[#22c55e]/25 bg-[#22c55e]/5 text-[#22c55e]"
                   : "border-[#ef4444]/25 bg-[#ef4444]/5 text-[#ef4444]",
               )}>
                 <p className="font-bold uppercase tracking-wider">
-                  {subflowValidation.valid ? 'Reference is safe' : 'Reference is blocked'}
+                  {subflowValidation!.valid ? 'Reference is safe' : 'Reference is blocked'}
                 </p>
-                {[...subflowValidation.warnings, ...subflowValidation.errors].map((message, index) => (
+                {[...subflowValidation!.warnings, ...subflowValidation!.errors].map((message, index) => (
                   <p key={index} className="mt-1 opacity-80">{message}</p>
                 ))}
               </div>
@@ -4169,8 +4088,7 @@ Content-Type: application/json
           </>
         )}
 
-        {/* Legacy compatibility editor. New orchestration is created from Flow Stack. */}
-        {nodeType === 'stack_orchestrator' && (
+        {false && nodeType === 'stack_orchestrator' && (
           <>
             <div className="rounded-lg border border-[#c084fc]/25 bg-[#c084fc]/5 p-3">
               <p className="text-[9px] font-bold uppercase tracking-widest text-[#c084fc]">Legacy compatibility node</p>
@@ -4625,18 +4543,6 @@ Content-Type: application/json
         {nodeType === 'channel_send' && (
           <>
             <div className="space-y-1.5">
-              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Channel</label>
-              <select
-                value={config.channel || 'both'}
-                onChange={(e) => updateConfig('channel', e.target.value)}
-                className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#38bdf8] transition-colors outline-none"
-              >
-                <option value="both">Telegram and Teams</option>
-                <option value="telegram">Telegram</option>
-                <option value="teams">Microsoft Teams</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
               <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Message Template</label>
               <textarea
                 value={config.message_template || ''}
@@ -4666,16 +4572,6 @@ Content-Type: application/json
                 onChange={(e) => updateConfig('message_thread_id', e.target.value === '' ? null : Number(e.target.value))}
                 className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#38bdf8] transition-colors outline-none"
                 placeholder="For example, 22 for the News topic"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Teams Conversation IDs (optional)</label>
-              <input
-                type="text"
-                value={(config.teams_conversation_ids || []).join(', ')}
-                onChange={(e) => updateConfig('teams_conversation_ids', e.target.value.split(',').map(v => v.trim()).filter(Boolean))}
-                className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#38bdf8] transition-colors outline-none"
-                placeholder="Uses notification routes or known conversations when empty"
               />
             </div>
           </>
@@ -5133,7 +5029,7 @@ export function AgentFlowCanvas({
     (event: DragEvent) => {
       event.preventDefault();
       const nodeType = event.dataTransfer.getData('application/agentflow-node-type');
-      if (!nodeType || nodeType === 'stack_orchestrator') return;
+      if (!nodeType || nodeType === 'subflow' || nodeType === 'stack_orchestrator') return;
 
       const position = reactFlowInstance.screenToFlowPosition({
         x: event.clientX,
@@ -5998,7 +5894,7 @@ export function AgentFlowCanvas({
                         <div className="space-y-3">
                           <div className="flex items-center gap-2 border-b border-[#1a2040] pb-2">
                             <Network className="w-4 h-4 text-[#8b5cf6]" />
-                            <h3 className="text-xs font-bold text-[#c8d0d8] uppercase tracking-wider">Flow Stacking Execution Tree</h3>
+                            <h3 className="text-xs font-bold text-[#c8d0d8] uppercase tracking-wider">Legacy Execution Tree</h3>
                           </div>
                           <ExecutionTreeNode node={selectedRunTree} />
                         </div>
@@ -6323,11 +6219,6 @@ function FlowListView({
                 </div>
 
                 <div className="flex items-center gap-3 mt-4">
-                  {flow.flow_type === 'stack' && (
-                    <span className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border text-[#a78bfa] bg-[#8b5cf6]/10 border-[#8b5cf6]/30">
-                      Flow Stack
-                    </span>
-                  )}
                   <span
                     className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border"
                     style={{

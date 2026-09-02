@@ -638,36 +638,25 @@ def calculate_capability_risk(permissions: dict[str, Any] | None) -> int:
 
 
 def apply_gensui_overrides(overrides: dict[str, str]) -> None:
-    """Set tool-level overrides pushed from Gensui central governance.
-
-    Called by GensuiClient when it receives tool_overrides in the
-    effective posture payload during policy sync.
-    """
+    """Ignore legacy central-governance overrides in Yellow Label."""
     global _gensui_overrides
-    _gensui_overrides = dict(overrides) if overrides else {}
-    if _gensui_overrides:
-        log.info("[ToolGate] Applied %d Gensui governance overrides", len(_gensui_overrides))
+    _gensui_overrides = {}
 
 
 def get_gensui_overrides() -> dict[str, str]:
-    """Return current Gensui overrides (for diagnostics/API)."""
-    return dict(_gensui_overrides)
+    """Return no central overrides in Yellow Label."""
+    return {}
 
 
 def apply_gensui_advanced_controls(config: dict[str, Any] | None) -> None:
-    """Apply centrally managed advanced content rules, including cached policy."""
+    """Ignore legacy central content rules in Yellow Label."""
     global _gensui_advanced_controls
-    _gensui_advanced_controls = normalize_advanced_controls(config)
-    if _gensui_advanced_controls["enabled"]:
-        log.info(
-            "[ToolGate] Applied %d Gensui advanced content rules",
-            len(_gensui_advanced_controls["rules"]),
-        )
+    _gensui_advanced_controls = {"enabled": False, "rules": []}
 
 
 def get_gensui_advanced_controls() -> dict[str, Any]:
-    """Return centrally managed advanced controls for diagnostics/API."""
-    return normalize_advanced_controls(_gensui_advanced_controls)
+    """Return no central content rules in Yellow Label."""
+    return {"enabled": False, "rules": []}
 
 
 # ── Risk Levels ──────────────────────────────────────────────────────
@@ -774,9 +763,6 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     "edit_agent_flow":        {"risk": "medium",   "category": "workflow"},
     "patch_agent_flow":       {"risk": "medium",   "category": "workflow"},
     "delete_agent_flow":      {"risk": "high",     "category": "workflow"},
-    "create_flow_stack":      {"risk": "medium",   "category": "workflow"},
-    "edit_flow_stack":        {"risk": "medium",   "category": "workflow"},
-    "delete_flow_stack":      {"risk": "high",     "category": "workflow"},
     # Skills
     "skills_request_activation": {"risk": "low",   "category": "skills"},
     "skills_explain_active":     {"risk": "low",   "category": "skills"},
@@ -796,6 +782,7 @@ TOOL_RISK_REGISTRY: dict[str, dict[str, str]] = {
     "mcp_list_resources":     {"risk": "low",      "category": "mcp"},
     "mcp_read_resource":      {"risk": "low",      "category": "mcp"},
     # Office — Excel (Katana)
+    "office_excel_create":        {"risk": "medium",   "category": "office"},
     "office_excel_open":          {"risk": "low",      "category": "office"},
     "office_excel_open_attachment": {"risk": "low",    "category": "office"},
     "office_excel_read_range":    {"risk": "low",      "category": "office"},
@@ -882,9 +869,6 @@ TOOL_CAPABILITY_RULES: dict[str, tuple[tuple[str, str], ...]] = {
     "edit_agent_flow": (("agentflow", "allow_edit"),),
     "patch_agent_flow": (("agentflow", "allow_edit"),),
     "delete_agent_flow": (("agentflow", "allow_delete"),),
-    "create_flow_stack": (("flow_stack", "allow_create"),),
-    "edit_flow_stack": (("flow_stack", "allow_edit"),),
-    "delete_flow_stack": (("flow_stack", "allow_delete"),),
 }
 
 

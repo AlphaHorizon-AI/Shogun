@@ -15,12 +15,9 @@ const Kaizen = lazy(() => import('./pages/Kaizen').then(module => ({ default: mo
 const Bushido = lazy(() => import('./pages/Bushido').then(module => ({ default: module.Bushido })))
 const Archives = lazy(() => import('./pages/Archives').then(module => ({ default: module.Archives })))
 const Dojo = lazy(() => import('./pages/Dojo').then(module => ({ default: module.Dojo })))
-const Logs = lazy(() => import('./pages/Logs').then(module => ({ default: module.Logs })))
 const Guide = lazy(() => import('./pages/Guide').then(module => ({ default: module.Guide })))
-const Nexus = lazy(() => import('./pages/Nexus').then(module => ({ default: module.Nexus })))
 const Updates = lazy(() => import('./pages/Updates').then(module => ({ default: module.Updates })))
 const Backups = lazy(() => import('./pages/Backups').then(module => ({ default: module.Backups })))
-const Gensui = lazy(() => import('./pages/Gensui').then(module => ({ default: module.Gensui })))
 const SetupWizard = lazy(() => import('./pages/SetupWizard').then(module => ({ default: module.SetupWizard })))
 const PrivacyTelemetry = lazy(() => import('./pages/PrivacyTelemetry').then(module => ({ default: module.PrivacyTelemetry })))
 const About = lazy(() => import('./pages/About').then(module => ({ default: module.About })))
@@ -283,12 +280,9 @@ function AppContent() {
           <Route path="/bushido" element={<Shell><Bushido /></Shell>} />
           <Route path="/archives" element={<Shell><Archives /></Shell>} />
           <Route path="/dojo" element={<Shell><Dojo /></Shell>} />
-          <Route path="/logs" element={<Shell><Logs /></Shell>} />
           <Route path="/guide" element={<Shell><Guide /></Shell>} />
-          <Route path="/nexus" element={<Shell><Nexus /></Shell>} />
           <Route path="/updates" element={<Shell><Updates /></Shell>} />
           <Route path="/backups" element={<Shell><Backups /></Shell>} />
-          <Route path="/gensui" element={<Shell><Gensui /></Shell>} />
           <Route path="/privacy-telemetry" element={<Shell><PrivacyTelemetry /></Shell>} />
           <Route path="/about" element={<Shell><About /></Shell>} />
 

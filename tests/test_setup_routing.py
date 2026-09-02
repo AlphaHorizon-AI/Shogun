@@ -22,11 +22,13 @@ async def test_setup_defaults_to_custom_routing_with_selected_model_order(tmp_pa
         await connection.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(setup_api, "async_session_factory", factory)
-    monkeypatch.setattr(setup_api, "_write_setup", lambda _data: None)
+    written_setup = {}
+    monkeypatch.setattr(setup_api, "_write_setup", written_setup.update)
     monkeypatch.setattr(model_router, "_setup_path", lambda: tmp_path / "setup.json")
 
     payload = SetupCompletePayload(
         security_incident_acknowledged=True,
+        license_terms_accepted=True,
         providers=[ProviderSetup(
             provider_type="openai", name="OpenAI", models=["gpt-primary", "gpt-fallback"]
         )],
@@ -51,5 +53,8 @@ async def test_setup_defaults_to_custom_routing_with_selected_model_order(tmp_pa
             "fallback_model_ids": [f"{provider.id}::gpt-fallback"],
         }]
         assert {item.model_id for item in registry_models} == {"gpt-primary", "gpt-fallback"}
+
+    assert written_setup["license_terms_acceptance"]["license_file"] == "LICENSE.md"
+    assert written_setup["license_terms_acceptance"]["license_sha256"]
 
     await engine.dispose()

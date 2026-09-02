@@ -19,16 +19,8 @@ def _username(name: str, index: int) -> str:
 
 
 def configured_telegram_member_ids(bushido_settings: dict[str, Any]) -> list[str]:
-    """Return Telegram sender IDs registered during Team-mode onboarding."""
-    return list(
-        dict.fromkeys(
-            str(member.get("telegram_user_id") or "").strip()
-            for member in bushido_settings.get("team_members", [])
-            if member.get("active", True)
-            and not member.get("deleted", False)
-            and str(member.get("telegram_user_id") or "").strip()
-        )
-    )
+    """Do not extend Telegram access from legacy Team-mode records."""
+    return []
 
 
 async def configure_team_members(
@@ -334,6 +326,8 @@ async def resolve_channel_member(
     """Resolve a channel identity to its setup member without guessing by name."""
     operators = list((await session.scalars(select(Operator))).all())
     for operator in operators:
+        if operator.role != "owner":
+            continue
         prefs = operator.preferences or {}
         if not prefs.get("active", True):
             continue

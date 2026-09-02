@@ -140,7 +140,7 @@ if not exist ".env.server" (
 if /I "%TELEMETRY_MODE%"=="ask" (
   echo.
   echo Help improve Shogun AFM ^(optional^)
-  echo Share version, OS family, Docker install type, Team Mode, a random
+  echo Share version, OS family, Docker install type, single-user operation mode, a random
   echo installation ID, and one weekly active signal.
   echo No prompts, files, memory, messages, identities, or credentials are shared.
   echo Privacy: https://www.alphahorizon.io/shogun/telemetry-privacy/
@@ -193,7 +193,7 @@ if errorlevel 1 (
 )
 echo.
 echo Shogun Server is ready at %SETUP_ORIGIN%.
-echo Team members should connect through Telegram or Microsoft Teams.
+echo Connect to Shogun through The Tenshu or Telegram.
 echo.
 if defined PRINT_SETUP_LINK (
   set "SETUP_URL="

@@ -262,16 +262,13 @@ async def _deliver(task: ReminderTask) -> dict:
             severity="info",
             detail={"reminder_id": str(task.id), "user_id": task.user_id},
         )
-    if task.delivery_channel in {"telegram", "teams", "both"}:
-        channel = task.delivery_channel
-        telegram_ids = [task.conversation_id] if channel in {"telegram", "both"} and task.conversation_id else None
-        teams_ids = [task.conversation_id] if channel in {"teams", "both"} and task.conversation_id else None
+    if task.delivery_channel in {"telegram", "both"}:
+        telegram_ids = [task.conversation_id] if task.conversation_id else None
         external = await send_channel_message(
             f"REMINDER: {message}",
-            channel=channel,
+            channel="telegram",
             telegram_chat_ids=telegram_ids,
             telegram_message_thread_id=int(task.topic_id) if task.topic_id and task.topic_id.isdigit() else None,
-            teams_conversation_ids=teams_ids,
             event_type="reminder.due",
         )
         result.update(external)
@@ -281,7 +278,7 @@ async def _deliver(task: ReminderTask) -> dict:
 def _delivery_succeeded(task: ReminderTask, result: dict) -> bool:
     if task.delivery_channel == "web":
         return "web" in result
-    expected = {"telegram", "teams"} if task.delivery_channel == "both" else {task.delivery_channel}
+    expected = {"web", "telegram"} if task.delivery_channel == "both" else {task.delivery_channel}
     return all(bool(result.get(channel, {}).get("ok")) for channel in expected)
 
 

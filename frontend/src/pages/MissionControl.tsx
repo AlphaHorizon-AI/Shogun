@@ -5,6 +5,7 @@ import {
   Controls,
   ReactFlow,
   ReactFlowProvider,
+  useReactFlow,
 } from '@xyflow/react'
 import type { Edge, Node } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -33,6 +34,7 @@ import {
   X,
 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
+import { layoutSupermodeGraph } from '../lib/supermodeGraphLayout'
 import { cn } from '../lib/utils'
 
 type RecordData = Record<string, any>
@@ -107,6 +109,7 @@ interface MissionControlProps {
 }
 
 function MissionControlContent({ embedded = false }: MissionControlProps) {
+  const reactFlow = useReactFlow()
   const [searchParams, setSearchParams] = useSearchParams()
   const [missions, setMissions] = useState<MissionSummary[]>([])
   const [mission, setMission] = useState<MissionDetail | null>(null)
@@ -258,6 +261,18 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
     if (!mission) return { nodes: [] as Node[], edges: [] as Edge[] }
     const nodes: Node[] = []
     const edges: Edge[] = []
+    const layout = layoutSupermodeGraph(
+      mission.agents.map(agent => ({ id: String(agent.id) })),
+      showTasks
+        ? mission.tasks.map(task => ({
+            id: String(task.id),
+            assigned_agent_id: task.assigned_agent_id
+              ? String(task.assigned_agent_id)
+              : null,
+          }))
+        : [],
+      showAgents,
+    )
     nodes.push({
       id: 'commander',
       position: { x: 360, y: 20 },
@@ -279,15 +294,12 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
         boxShadow: '0 0 28px rgba(212,160,23,.13)',
       },
     })
-    const agentPositions = new Map<string, { x: number; y: number }>()
     if (showAgents) {
-      mission.agents.forEach((agent, index) => {
-        const x = 35 + (index % 4) * 255
-        const y = 180 + Math.floor(index / 4) * 190
-        agentPositions.set(agent.id, { x, y })
+      mission.agents.forEach(agent => {
+        const position = layout.agentPositions.get(String(agent.id)) || { x: 35, y: 180 }
         nodes.push({
           id: `agent:${agent.id}`,
-          position: { x, y },
+          position,
           data: {
             kind: 'agent',
             label: `${agent.role_name}\n${agent.source_type === 'fleet' ? 'fleet' : 'spawned'} · ${label(agent.status)}${agent.model_calls ? ` · ${agent.model_calls} calls` : ''}`,
@@ -309,14 +321,12 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
       })
     }
     if (showTasks) {
-      mission.tasks.forEach((task, index) => {
-        const agentPosition = agentPositions.get(task.assigned_agent_id)
-        const x = agentPosition ? agentPosition.x + 12 : 30 + (index % 4) * 250
-        const y = agentPosition ? agentPosition.y + 112 + (index % 2) * 90 : 390 + Math.floor(index / 4) * 120
+      mission.tasks.forEach(task => {
+        const position = layout.taskPositions.get(String(task.id)) || { x: 35, y: 180 }
         const routingProfile = task.input_payload?.supermode_routing?.profile_name
         nodes.push({
           id: `task:${task.id}`,
-          position: { x, y },
+          position,
           data: { kind: 'task', label: `${task.title}\n${label(task.status)}${routingProfile ? ` · ${routingProfile}` : task.model_name ? ` · ${task.model_name}` : ''}`, record: task },
           style: {
             width: 190,
@@ -344,6 +354,24 @@ function MissionControlContent({ embedded = false }: MissionControlProps) {
     }
     return { nodes, edges }
   }, [mission, showAgents, showTasks, showDependencies])
+
+  const graphLayoutKey = mission
+    ? [
+        mission.id,
+        showAgents,
+        showTasks,
+        ...mission.agents.map(agent => `agent:${agent.id}`),
+        ...mission.tasks.map(task => `task:${task.id}:${task.assigned_agent_id || ''}`),
+      ].join('|')
+    : ''
+
+  useEffect(() => {
+    if (!graphLayoutKey) return
+    const animationFrame = window.requestAnimationFrame(() => {
+      void reactFlow.fitView({ padding: 0.18, duration: 240 })
+    })
+    return () => window.cancelAnimationFrame(animationFrame)
+  }, [graphLayoutKey, reactFlow])
 
   const detailRecord = selectedNode?.record || mission
   const selectedKind = selectedNode?.kind

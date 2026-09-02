@@ -30,9 +30,6 @@ def _workflow_tools():
             "edit_agent_flow",
             "delete_agent_flow",
             "set_agent_flow_status",
-            "create_flow_stack",
-            "edit_flow_stack",
-            "delete_flow_stack",
         }
     ]
 
@@ -45,9 +42,6 @@ def test_workflow_creation_tools_exist_and_activation_is_explicit():
         "edit_agent_flow",
         "delete_agent_flow",
         "set_agent_flow_status",
-        "create_flow_stack",
-        "edit_flow_stack",
-        "delete_flow_stack",
     }
     for name, tool in tools.items():
         parameters = tool["function"]["parameters"]
@@ -70,9 +64,6 @@ def test_workflow_tools_are_blocked_below_tactical_posture():
         "edit_agent_flow",
         "delete_agent_flow",
         "set_agent_flow_status",
-        "create_flow_stack",
-        "edit_flow_stack",
-        "delete_flow_stack",
     }
 
 
@@ -87,9 +78,6 @@ def test_workflow_tools_are_posture_eligible_at_tactical_and_above():
         "edit_agent_flow",
         "delete_agent_flow",
         "set_agent_flow_status",
-        "create_flow_stack",
-        "edit_flow_stack",
-        "delete_flow_stack",
     }
     assert denied == []
 
@@ -98,9 +86,9 @@ def test_delete_tools_use_the_explicit_delete_toggles():
     from shogun.services.tool_gate import TOOL_RISK_REGISTRY
 
     assert WORKFLOW_TOOL_PERMISSIONS["delete_agent_flow"] == ("agentflow", "allow_delete")
-    assert WORKFLOW_TOOL_PERMISSIONS["delete_flow_stack"] == ("flow_stack", "allow_delete")
+    assert "delete_flow_stack" not in WORKFLOW_TOOL_PERMISSIONS
     assert TOOL_RISK_REGISTRY["delete_agent_flow"] == {"risk": "high", "category": "workflow"}
-    assert TOOL_RISK_REGISTRY["delete_flow_stack"] == {"risk": "high", "category": "workflow"}
+    assert "delete_flow_stack" not in TOOL_RISK_REGISTRY
 
 
 def test_toolgate_allow_verdict_maps_to_native_workflow_permission():
@@ -140,7 +128,7 @@ async def test_campaign_toolgate_allow_authorizes_native_agentflow_capability():
 
 
 @pytest.mark.asyncio
-async def test_gensui_block_remains_authoritative_for_agentflow_create():
+async def test_legacy_gensui_block_is_ignored_for_agentflow_create():
     from shogun.api.agents import _toolgate_workflow_permissions
     from shogun.services.tool_gate import (
         GateAction,
@@ -157,13 +145,12 @@ async def test_gensui_block_remains_authoritative_for_agentflow_create():
             local_scope="test:gensui-block",
         )
 
-        assert decision.action == GateAction.BLOCK
-        assert "gensui" in decision.reason.lower()
-        assert not _toolgate_workflow_permissions(
+        assert decision.action == GateAction.ALLOW
+        assert _toolgate_workflow_permissions(
             "create_agent_flow",
             decision.action,
             WORKFLOW_TOOL_PERMISSIONS,
-        )
+        ) == {("agentflow", "allow_create")}
     finally:
         apply_gensui_overrides({})
 
@@ -213,7 +200,6 @@ async def test_native_permission_reads_primary_shogun_and_falls_back_to_policy()
     ("tool_name", "flow_type", "argument_name", "permission_category"),
     [
         ("delete_agent_flow", "standard", "flow_id", "agentflow"),
-        ("delete_flow_stack", "stack", "flow_stack_id", "flow_stack"),
     ],
 )
 async def test_enabled_delete_tool_soft_deletes_the_requested_workflow(

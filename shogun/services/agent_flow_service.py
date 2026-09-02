@@ -29,6 +29,7 @@ class AgentFlowService(BaseService[AgentFlow]):
         *,
         status: str | None = None,
         search: str | None = None,
+        flow_type: str | None = None,
         offset: int = 0,
         limit: int = 50,
         include_templates: bool = False,
@@ -41,6 +42,8 @@ class AgentFlowService(BaseService[AgentFlow]):
             filters.append(AgentFlow.is_template == False)
         if status:
             filters.append(AgentFlow.status == status)
+        if flow_type:
+            filters.append(AgentFlow.flow_type == flow_type)
         if search:
             pattern = f"%{search}%"
             filters.append(
@@ -63,10 +66,18 @@ class AgentFlowService(BaseService[AgentFlow]):
     # ── Get full flow with nodes and edges ───────────────────
 
     async def get_flow_full(self, flow_id: uuid.UUID) -> AgentFlow | None:
-        """Load a flow with all nodes and edges eagerly."""
+        """Load an included-edition AgentFlow with all nodes and edges eagerly.
+
+        Flow Stack rows remain stored so moving an installation to White Label
+        later does not lose its work, but Yellow Label never exposes them.
+        """
         result = await self.session.execute(
             select(AgentFlow)
-            .where(AgentFlow.id == flow_id, AgentFlow.is_deleted == False)
+            .where(
+                AgentFlow.id == flow_id,
+                AgentFlow.is_deleted == False,
+                AgentFlow.flow_type == "standard",
+            )
             .options(
                 selectinload(AgentFlow.nodes),
                 selectinload(AgentFlow.edges),
@@ -438,7 +449,7 @@ class AgentFlowService(BaseService[AgentFlow]):
     async def update_status(self, flow_id: uuid.UUID, status: str) -> AgentFlow | None:
         """Update flow status (draft, active, paused, archived)."""
         flow = await self.get_by_id(flow_id)
-        if flow is None or flow.is_deleted:
+        if flow is None or flow.is_deleted or flow.flow_type != "standard":
             return None
         flow.status = status
         await self.session.flush()

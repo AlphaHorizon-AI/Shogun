@@ -3,12 +3,13 @@ import {
   Globe, FolderOpen, User, Shield, Cpu, FileText, Zap, ChevronRight,
   ChevronLeft, Check, CheckCircle2, AlertCircle, Database, HardDrive,
   Settings, ScrollText, X, GripVertical, Loader2, Sparkles, Crosshair,
-  Monitor, Mouse, Keyboard, Camera, AlertTriangle, Users, UserPlus, Server,
+  Monitor, Mouse, Keyboard, Camera, AlertTriangle, Server,
   ExternalLink, ShieldAlert, Mail
 } from 'lucide-react';
 import axios from 'axios';
 import { AVAILABLE_LANGUAGES, useTranslation } from '../i18n';
 import type { LanguageMeta } from '../i18n';
+import licenseText from '../../../LICENSE.md?raw';
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -22,16 +23,6 @@ interface ProviderConfig {
   discoveredModels: string[];  // All models found via API
   status: 'pending' | 'testing' | 'connected' | 'failed';
   auth_type: string;
-}
-
-interface TeamMemberConfig {
-  id: string;
-  display_name: string;
-  email: string;
-  channel: 'telegram' | 'microsoft_teams';
-  telegram_user_id: string;
-  teams_aad_object_id: string;
-  teams_user_principal_name: string;
 }
 
 interface SetupWizardProps {
@@ -146,34 +137,6 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
   // Step 1: Language & Identity
   const [language, setLanguage] = useState(activeLanguage);
   const [operatorName, setOperatorName] = useState('Daimyo');
-  const [installationMode, setInstallationMode] = useState<'single' | 'team'>('single');
-  const [teamMembers, setTeamMembers] = useState<TeamMemberConfig[]>([]);
-
-  const addTeamMember = () => setTeamMembers(prev => [...prev, {
-    id: crypto.randomUUID(),
-    display_name: '',
-    email: '',
-    channel: 'telegram',
-    telegram_user_id: '',
-    teams_aad_object_id: '',
-    teams_user_principal_name: '',
-  }]);
-
-  const updateTeamMember = (id: string, updates: Partial<TeamMemberConfig>) => {
-    setTeamMembers(prev => prev.map(member => member.id === id ? { ...member, ...updates } : member));
-  };
-
-  const teamSetupValid = installationMode === 'single' || (
-    operatorName.trim().length > 0 &&
-    teamMembers.length > 0 &&
-    teamMembers.every(member =>
-      member.display_name.trim().length > 0 &&
-      (member.channel === 'telegram'
-        ? member.telegram_user_id.trim().length > 0
-        : member.teams_aad_object_id.trim().length > 0 || member.teams_user_principal_name.trim().length > 0)
-    )
-  );
-
   // Sync wizard language choice → global i18n context
   const handleLanguageSelect = (code: string) => {
     setLanguage(code);
@@ -225,6 +188,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
   const [securityIncidentAcknowledged, setSecurityIncidentAcknowledged] = useState(false);
 
   // Step 10: Completing
+  const [licenseTermsAccepted, setLicenseTermsAccepted] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [completionError, setCompletionError] = useState<string | null>(null);
@@ -416,29 +380,14 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
 
   // ── Complete setup ───────────────────────────────────────────
   const handleComplete = async () => {
+    if (!licenseTermsAccepted) return;
     setCompleting(true);
     setCompletionError(null);
     try {
       await axios.post('/api/v1/setup/complete', {
         language,
         operator_name: operatorName,
-        installation_mode: installationMode,
-        team_members: installationMode === 'team' ? [
-          {
-            display_name: operatorName,
-            is_primary: true,
-            channel: 'web',
-          },
-          ...teamMembers.map(member => ({
-            display_name: member.display_name,
-            email: member.email || null,
-            is_primary: false,
-            channel: member.channel,
-            telegram_user_id: member.channel === 'telegram' ? member.telegram_user_id : null,
-            teams_aad_object_id: member.channel === 'microsoft_teams' ? member.teams_aad_object_id || null : null,
-            teams_user_principal_name: member.channel === 'microsoft_teams' ? member.teams_user_principal_name || null : null,
-          })),
-        ] : [],
+        installation_mode: 'single',
         data_path: dataPath,
         agent_name: agentName,
         description,
@@ -467,6 +416,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
         routing_profile: routingProfile,
         ronin_enabled: roninEnabled,
         security_incident_acknowledged: securityIncidentAcknowledged,
+        license_terms_accepted: licenseTermsAccepted,
       });
 
       // Store language & operator in localStorage
@@ -569,33 +519,9 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
             </div>
 
             <div className="max-w-3xl mx-auto pt-4 border-t border-[#1a1f2e] space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setInstallationMode('single')}
-                  className={`p-4 rounded-xl border-2 text-left transition-all ${installationMode === 'single' ? 'border-[#d4a017] bg-[#d4a017]/10' : 'border-[#2a2f3e] bg-[#0d1117]'}`}
-                >
-                  <User className="w-5 h-5 text-[#d4a017] mb-2" />
-                  <p className="font-bold text-white">{t('setup.mode_single')}</p>
-                  <p className="text-xs text-[#777] mt-1">{t('setup.mode_single_desc')}</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setInstallationMode('team');
-                    if (teamMembers.length === 0) addTeamMember();
-                  }}
-                  className={`p-4 rounded-xl border-2 text-left transition-all ${installationMode === 'team' ? 'border-[#3b82f6] bg-[#3b82f6]/10' : 'border-[#2a2f3e] bg-[#0d1117]'}`}
-                >
-                  <Users className="w-5 h-5 text-[#3b82f6] mb-2" />
-                  <p className="font-bold text-white">{t('setup.mode_team')}</p>
-                  <p className="text-xs text-[#777] mt-1">{t('setup.mode_team_desc')}</p>
-                </button>
-              </div>
-
               <div>
                 <label className="text-[10px] text-[#888] uppercase tracking-widest font-bold block mb-1.5">
-                  {installationMode === 'team' ? t('setup.primary_admin_name') : t('setup.calling_name')}
+                  {t('setup.calling_name')}
                 </label>
                 <input
                   type="text"
@@ -605,52 +531,9 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                   className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#d4a017] outline-none transition-colors"
                 />
                 <p className="text-[10px] text-[#666] mt-2">
-                  {installationMode === 'team'
-                    ? t('setup.primary_admin_desc')
-                    : t('setup.calling_name_desc')}
+                  {t('setup.calling_name_desc')}
                 </p>
               </div>
-
-              {installationMode === 'team' && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-bold text-white">{t('setup.team_members')}</p>
-                      <p className="text-[10px] text-[#666]">{t('setup.team_members_desc')}</p>
-                    </div>
-                    <button type="button" onClick={addTeamMember} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#3b82f6]/15 text-[#60a5fa] text-xs font-bold hover:bg-[#3b82f6]/25">
-                      <UserPlus className="w-4 h-4" /> {t('setup.add_member')}
-                    </button>
-                  </div>
-                  {teamMembers.map((member, index) => (
-                    <div key={member.id} className="bg-[#0d1117] border border-[#2a2f3e] rounded-xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-[#3b82f6] uppercase tracking-widest">{formatTranslation('setup.member_number', { number: index + 1 })}</p>
-                        <button type="button" onClick={() => setTeamMembers(prev => prev.filter(item => item.id !== member.id))} className="text-[#666] hover:text-red-400">
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <input value={member.display_name} onChange={e => updateTeamMember(member.id, { display_name: e.target.value })} placeholder={t('setup.full_name')} className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#3b82f6] outline-none" />
-                        <input value={member.email} onChange={e => updateTeamMember(member.id, { email: e.target.value })} placeholder={t('setup.email_optional')} className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#3b82f6] outline-none" />
-                        <select value={member.channel} onChange={e => updateTeamMember(member.id, { channel: e.target.value as TeamMemberConfig['channel'] })} className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm text-white focus:border-[#3b82f6] outline-none">
-                          <option value="telegram">Telegram</option>
-                          <option value="microsoft_teams">Microsoft Teams</option>
-                        </select>
-                        {member.channel === 'telegram' ? (
-                          <input value={member.telegram_user_id} onChange={e => updateTeamMember(member.id, { telegram_user_id: e.target.value })} placeholder={t('setup.telegram_user_id')} className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none" />
-                        ) : (
-                          <input value={member.teams_user_principal_name} onChange={e => updateTeamMember(member.id, { teams_user_principal_name: e.target.value })} placeholder={t('setup.teams_upn')} className="bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none" />
-                        )}
-                      </div>
-                      {member.channel === 'microsoft_teams' && (
-                        <input value={member.teams_aad_object_id} onChange={e => updateTeamMember(member.id, { teams_aad_object_id: e.target.value })} placeholder={t('setup.teams_object_id')} className="w-full bg-[#050508] border border-[#2a2f3e] rounded-lg p-2.5 text-sm font-mono text-white focus:border-[#3b82f6] outline-none" />
-                      )}
-                    </div>
-                  ))}
-                  {!teamSetupValid && <p className="text-xs text-amber-400">{t('setup.team_validation')}</p>}
-                </div>
-              )}
             </div>
           </div>
         );
@@ -1287,7 +1170,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                   <Shield className="w-6 h-6 text-[#3b82f6] shrink-0" />
                   <div className="space-y-2">
                     <h3 className="text-sm font-bold text-white">{t('setup.server_mode_ronin_unavailable')}</h3>
-                    <p className="text-xs text-[#999] leading-relaxed">{t('setup.server_mode_ronin_explainer')}</p>
+                    <p className="text-xs text-[#999] leading-relaxed">Ronin controls the physical desktop of the machine running Shogun. A container has no safe access to the host desktop, so Ronin stays disabled. Browser automation, AgentFlows, and Telegram remain available.</p>
                   </div>
                 </div>
               </div>
@@ -1639,9 +1522,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
                     {securityText('acknowledgement', 'I acknowledge that I have been provided with the Shogun security and incident reporting information and know where to report suspected security vulnerabilities.')}
                   </p>
                   <p className="text-[10px] text-[#888] mt-1 leading-relaxed">
-                    {installationMode === 'team'
-                      ? securityText('team_record', 'The Primary Admin acknowledgement is sufficient for this Team Mode installation.')
-                      : securityText('single_record', 'This acknowledgement is made by the installer/administrator.')}
+                    {securityText('single_record', 'This acknowledgement is made by the installer/administrator.')}
                     {' '}
                     {securityText('local_record', 'A UTC timestamp and the installed Shogun version/build are recorded locally only and are not sent to Alpha Horizon as telemetry.')}
                   </p>
@@ -1731,6 +1612,38 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               </div>
             )}
 
+            {/* Licence acceptance is the final installation gate. */}
+            <section className="max-w-3xl mx-auto overflow-hidden rounded-xl border border-[#d4a017]/30 bg-[#d4a017]/5">
+              <div className="flex items-center justify-between gap-4 border-b border-[#d4a017]/20 px-5 py-4">
+                <div>
+                  <h3 className="text-sm font-bold text-white">Shogun AFM Free Use License</h3>
+                  <p className="mt-1 text-[10px] text-[#888]">Read the complete licence bundled with this release before activating Shogun.</p>
+                </div>
+                <a
+                  href="https://github.com/AlphaHorizon-AI/Shogun/blob/main/LICENSE.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center gap-1 text-[10px] font-bold text-[#d4a017] hover:text-[#e6b422]"
+                >
+                  Repository copy <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+              <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words border-b border-[#d4a017]/20 bg-[#080b12]/70 px-5 py-4 font-sans text-[10px] leading-relaxed text-[#aaa]">
+                {licenseText}
+              </pre>
+              <label className="flex cursor-pointer items-start gap-3 px-5 py-4">
+                <input
+                  type="checkbox"
+                  checked={licenseTermsAccepted}
+                  onChange={event => setLicenseTermsAccepted(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#d4a017]"
+                />
+                <span className="text-xs font-bold leading-relaxed text-white">
+                  I have read and accept the Shogun AFM Free Use License bundled with this release.
+                </span>
+              </label>
+            </section>
+
             {/* Rise + Cancel buttons */}
             <div className="flex items-center justify-center gap-4 pt-4">
               <button
@@ -1744,13 +1657,13 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
               </button>
               <button
                 onClick={handleComplete}
-                disabled={completing}
+                disabled={completing || !licenseTermsAccepted}
                 className="
                   relative px-12 py-4 rounded-2xl font-bold text-lg text-black
                   bg-gradient-to-r from-[#d4a017] via-[#e6b422] to-[#d4a017]
                   hover:from-[#e6b422] hover:via-[#f0c040] hover:to-[#e6b422]
                   shadow-[0_0_40px_rgba(212,160,23,0.3)] hover:shadow-[0_0_60px_rgba(212,160,23,0.5)]
-                  transition-all duration-500 disabled:opacity-50
+                  transition-all duration-500 disabled:cursor-not-allowed disabled:opacity-30
                   animate-in zoom-in duration-500
                 "
               >
@@ -1820,7 +1733,7 @@ export const SetupWizard = ({ onComplete }: SetupWizardProps) => {
             <button
               onClick={goNext}
               disabled={
-                (step === 1 && (!operatorName.trim() || !teamSetupValid))
+                (step === 1 && !operatorName.trim())
                 || (step === 9 && !securityIncidentAcknowledged)
               }
               className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[#3b82f6] hover:bg-[#3b82f6]/80 text-sm font-bold text-white shadow-lg shadow-[#3b82f6]/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"

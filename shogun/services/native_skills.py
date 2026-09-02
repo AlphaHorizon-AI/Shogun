@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from shogun.edition import REMOVED_NATIVE_TOOLS
 from shogun.schemas.common import DecayClass
 
 logger = logging.getLogger("shogun.native_skills")
@@ -796,6 +797,37 @@ NATIVE_TOOLS = [
         },
     },
     # ── Office App Mode — Excel (Katana) ─────────────────────────
+    {
+        "type": "function",
+        "risk": "medium",
+        "category": "office",
+        "function": {
+            "name": "office_excel_create",
+            "description": (
+                "Create a new Excel workbook (.xlsx) in the approved workspace/output folder "
+                "from bounded two-dimensional row data."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "output_path": {
+                        "type": "string",
+                        "description": "Output path relative to the workspace, e.g. 'output/customers.xlsx'.",
+                    },
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Worksheet name. Defaults to Sheet1.",
+                    },
+                    "values": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {}},
+                        "description": "2D array of header and data rows.",
+                    },
+                },
+                "required": ["output_path", "values"],
+            },
+        },
+    },
     {
         "type": "function",
         "risk": "low",
@@ -2715,6 +2747,12 @@ NATIVE_TOOLS = [
     },
 ]
 
+NATIVE_TOOLS = [
+    tool
+    for tool in NATIVE_TOOLS
+    if tool.get("function", {}).get("name") not in REMOVED_NATIVE_TOOLS
+]
+
 
 def generate_tool_prompt(tools: list[dict]) -> str:
     """Generate a human-readable tool description block for prompt injection.
@@ -2860,9 +2898,6 @@ WORKFLOW_TOOL_PERMISSIONS = {
     "patch_agent_flow": ("agentflow", "allow_edit"),
     "set_agent_flow_status": ("agentflow", "allow_activate"),
     "delete_agent_flow": ("agentflow", "allow_delete"),
-    "create_flow_stack": ("flow_stack", "allow_create"),
-    "edit_flow_stack": ("flow_stack", "allow_edit"),
-    "delete_flow_stack": ("flow_stack", "allow_delete"),
 }
 
 # Keep workflow mutation tools callable when their persistent permission is
@@ -2924,6 +2959,13 @@ async def execute_native_tool(
     operator_confirmed_permissions: set[tuple[str, str]] | None = None,
 ) -> str:
     """Route tool execution from LLM to underlying services."""
+    if name in REMOVED_NATIVE_TOOLS:
+        return json.dumps(
+            {
+                "status": "error",
+                "message": "Flow Stack is not available in Yellow Label.",
+            }
+        )
     if name == "transformation_sources_inspect":
         logger.info(
             "Executing native skill: %s with %d bounded source artifact(s)",
@@ -3744,6 +3786,7 @@ async def execute_native_tool(
             records, total = await flow_svc.list_flows(
                 status=status_filter,
                 search=search_filter,
+                flow_type="standard",
                 offset=offset,
                 limit=per_page,
             )
@@ -5094,6 +5137,67 @@ async def _execute_office_tool(name: str, args: dict[str, Any], db_session=None)
         tier = await get_current_posture_tier()
 
         # ── Excel Tools ──────────────────────────────────────────
+        if name == "office_excel_create":
+            perm = check_office_permission(OfficeAction.SAVE_AS_NEW, "excel", tier)
+            if not perm.allowed:
+                return json.dumps({"status": "blocked", "message": perm.reason})
+            vp = validator.validate(args["output_path"], PathPurpose.WRITE)
+            rows = args.get("values") or []
+            if not isinstance(rows, list) or any(not isinstance(row, list) for row in rows):
+                return json.dumps({"status": "error", "message": "values must be a two-dimensional array."})
+            if len(rows) > 2000 or any(len(row) > 100 for row in rows):
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "message": "Workbook payload exceeds the 2,000-row or 100-column safety limit.",
+                    }
+                )
+
+            def spreadsheet_safe(value):
+                if value is None or isinstance(value, (int, float, bool)):
+                    return value
+                if not isinstance(value, str):
+                    raise ValueError(f"Spreadsheet cells must be scalar values; received {type(value).__name__}")
+                if any(ord(character) < 32 and character not in {"\t", "\n", "\r"} for character in value):
+                    raise ValueError("Spreadsheet text contains an illegal control character")
+                if len(value) > 32_767:
+                    raise ValueError("Spreadsheet text exceeds Excel's 32,767-character cell limit")
+                if value.lstrip().startswith(("=", "+", "-", "@")):
+                    return "'" + value
+                return value
+
+            import openpyxl
+
+            output_path = vp.resolved_path
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            workbook = openpyxl.Workbook()
+            worksheet = workbook.active
+            requested_title = str(args.get("sheet_name") or "Sheet1").strip() or "Sheet1"
+            worksheet.title = "".join(
+                "_" if character in "[]:*?/\\" else character
+                for character in requested_title
+            )[:31]
+            for row in rows:
+                worksheet.append([spreadsheet_safe(value) for value in row])
+            workbook.save(output_path)
+            await _log_office_event(
+                "office.excel.create",
+                f"Created workbook {output_path.name} with {len(rows)} row(s)",
+                "excel",
+                str(output_path),
+                output_file=str(output_path),
+                start_ms=start_ms,
+            )
+            return json.dumps(
+                {
+                    "status": "success",
+                    "output_file": str(output_path),
+                    "size_bytes": output_path.stat().st_size,
+                    "row_count": len(rows),
+                    "message": f"Created Excel workbook: {output_path.name}",
+                }
+            )
+
         if name == "office_excel_open_attachment":
             if db_session is None:
                 return json.dumps({"status": "error", "message": "A database session is required."})

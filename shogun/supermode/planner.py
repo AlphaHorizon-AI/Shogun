@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shogun.db.models.mission import Mission
 from shogun.db.models.supermode import MissionAgent, MissionPlan, MissionTask
+from shogun.supermode.artifacts import mission_artifact_contract, output_tools_for_contract
 from shogun.supermode.events import append_event
 from shogun.supermode.fleet_router import FleetSamuraiRouter
+from shogun.supermode.memory import recall_relevant_memories
 
 
 def _domain_role(objective: str) -> tuple[str, str]:
@@ -72,6 +74,13 @@ async def create_initial_plan(session: AsyncSession, mission: Mission) -> Missio
     """
     criteria = list(mission.success_criteria or []) or _default_success_criteria(mission.objective or mission.title)
     mission.success_criteria = criteria
+    recalled_memories = await recall_relevant_memories(session, mission)
+    artifact_contract = mission_artifact_contract(mission)
+    mission.input_payload = {
+        **(mission.input_payload or {}),
+        "artifact_contract": artifact_contract,
+    }
+    output_tools = output_tools_for_contract(artifact_contract)
     role_name, role_description = _domain_role(mission.objective or "")
     compact_plan = _use_compact_plan(mission.objective or "")
 
@@ -205,7 +214,12 @@ async def create_initial_plan(session: AsyncSession, mission: Mission) -> Missio
     ]
 
     attachments = list((mission.input_payload or {}).get("attachments") or [])
-    common_input = {"attachments": attachments, "success_criteria": criteria}
+    common_input = {
+        "attachments": attachments,
+        "success_criteria": criteria,
+        "recalled_memories": recalled_memories,
+        "artifact_contract": artifact_contract,
+    }
     research = MissionTask(
         mission_id=mission.id,
         plan_version=1,
@@ -266,6 +280,11 @@ async def create_initial_plan(session: AsyncSession, mission: Mission) -> Missio
         session.add(review)
         await session.flush()
     synthesis_agent_index = 2 if compact_plan else 3
+    synthesis_agent = resolved_role_agents[min(synthesis_agent_index, len(resolved_role_agents) - 1)]
+    if output_tools:
+        synthesis_agent.tool_allowlist = list(
+            dict.fromkeys([*(synthesis_agent.tool_allowlist or []), *output_tools])
+        )
     synthesis_dependencies = (
         [str(research.id), str(domain.id)]
         if compact_plan
@@ -283,16 +302,29 @@ async def create_initial_plan(session: AsyncSession, mission: Mission) -> Missio
         instructions=(
             "Independently challenge unsupported claims and omissions, then integrate the workstreams. "
             "Explicitly address every success criterion, "
-            "state remaining uncertainty, and provide a practical next-step plan."
+            "state remaining uncertainty, and provide a practical next-step plan. "
+            + (
+                "Create every requested deliverable in the approved output folder and report only files that "
+                "were actually written. "
+                if artifact_contract["required"]
+                else ""
+            )
         ),
         task_type="mission_synthesis",
         status="pending",
         priority=100,
         max_retries=1,
-        assigned_agent_id=resolved_role_agents[min(synthesis_agent_index, len(resolved_role_agents) - 1)].id,
+        assigned_agent_id=synthesis_agent.id,
         depends_on_task_ids=synthesis_dependencies,
-        required_capabilities=["chat"],
-        required_tools=resolved_role_agents[min(synthesis_agent_index, len(resolved_role_agents) - 1)].tool_allowlist,
+        required_capabilities=["chat", "tool_use"] if output_tools else ["chat"],
+        required_tools=list(
+            dict.fromkeys(
+                [
+                    *synthesis_agent.tool_allowlist,
+                    *output_tools,
+                ]
+            )
+        ),
         input_payload=common_input,
     )
     session.add(synthesis)
@@ -302,6 +334,8 @@ async def create_initial_plan(session: AsyncSession, mission: Mission) -> Missio
     plan_json = {
         "summary": f"Durable multi-agent plan for {mission.title}",
         "success_criteria": criteria,
+        "artifact_contract": artifact_contract,
+        "recalled_memory_ids": [item["memory_id"] for item in recalled_memories],
         "workstreams": [
             {
                 "id": str(task.id),

@@ -1,8 +1,8 @@
 {
-  "version": "1.47.93",
+  "version": "1.47.94",
   "name": "Shogun AFM",
-  "build": 244,
+  "build": 245,
   "channel": "stable",
-  "released": "2026-08-31T19:41:26Z",
-  "changelog": "Improve Supermode Canvas routing and controls, restore user-managed security settings, expand the Grand Manual, and optimize frontend bundle chunking."
+  "released": "2026-09-02T08:23:13Z",
+  "changelog": "Release the Yellow Label edition boundary, add White Label upgrade and license acceptance flows, and harden Supermode layout, artifacts, and learning memory."
 }

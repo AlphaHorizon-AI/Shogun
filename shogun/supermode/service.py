@@ -423,7 +423,11 @@ class SupermodeMissionService:
             assigned_agent_id=agent.id,
             required_capabilities=required_capabilities or ["chat", "tool_use"],
             required_tools=tools,
-            input_payload={"attachments": (mission.input_payload or {}).get("attachments", [])},
+            input_payload={
+                "attachments": (mission.input_payload or {}).get("attachments", []),
+                "artifact_contract": (mission.input_payload or {}).get("artifact_contract", {}),
+                "recalled_memories": (mission.input_payload or {}).get("recalled_memories", []),
+            },
         )
         self.session.add(task)
         await self.session.flush()

@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const catalogPath = path.join(root, 'shogun', 'resources', 'flow_templates.json');
-const i18nDir = path.join(root, 'frontend', 'src', 'i18n', 'templates');
 
 const specs = [
   ['feature-build', 'Full-Stack Feature Build', 'Design and implement a complete feature with explicit contracts, migrations, tests, and rollout checks.'],
@@ -95,39 +94,4 @@ catalog.categories.push({ name: 'Coding', count: specs.length, templates: specs.
 catalog.total_templates = catalog.templates.length;
 fs.writeFileSync(catalogPath, `${JSON.stringify(catalog, null, 2)}\n`);
 
-const stackLabels = [
-  'Frame coding objective and acceptance criteria',
-  'Inspect repository architecture and dependencies',
-  'Recall relevant project programming memory',
-  'Analyze risks, contracts, and change boundaries',
-  'Design the smallest safe implementation',
-  'Apply governed and reversible code changes',
-  'Run targeted and regression verification',
-  'Produce the final diff and engineering review',
-];
-
-for (const filename of fs.readdirSync(i18nDir).filter((name) => name.endsWith('.json'))) {
-  const target = path.join(i18nDir, filename);
-  const locale = path.basename(filename, '.json');
-  const data = JSON.parse(fs.readFileSync(target, 'utf8'));
-  data.categories.Coding = 'Coding';
-  for (const [index, spec] of specs.entries()) {
-    const [slug, name, description] = spec;
-    const id = `coding-${slug}`;
-    data.agentFlow[id] = {
-      name,
-      description,
-    };
-    const builder_labels = {};
-    stackLabels.forEach((label, phase) => { builder_labels[`ide-${slug}-${phase + 1}`] = label; });
-    data.flowStack[id] = {
-      name: `${name} Stack`,
-      description: `A governed, resumable coding Flow Stack for ${description.charAt(0).toLowerCase()}${description.slice(1)}`,
-      duration_label: '1–12 hours, resumable',
-      builder_labels,
-    };
-  }
-  fs.writeFileSync(target, `${JSON.stringify(data, null, 2)}\n`);
-}
-
-console.log(`Built ${specs.length} Coding AgentFlows and localized catalog entries.`);
+console.log(`Built ${specs.length} Coding AgentFlow catalog entries.`);

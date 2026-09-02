@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-import hashlib
 import uuid
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 from starlette.responses import Response
 
-from gensui.api.commands import get_pending_commands
-from gensui.api.deps import get_shogun_identity
-from gensui.services.member_service import MemberService
 from shogun.api.a2a import InboundEnvelope, _check_a2a_replay, _seen_signatures
 from shogun.api.control_plane_auth import enforce_control_plane_access
 from shogun.config import settings
@@ -230,38 +225,3 @@ def test_loopback_only_destination_policy_rejects_private_network():
             resolver=lambda _host, _port: ["10.10.1.9"],
         )
     assert exc_info.value.reason == "non_loopback_address"
-
-
-@pytest.mark.asyncio
-async def test_gensui_member_auth_requires_matching_secret(monkeypatch):
-    member_id = uuid.uuid4()
-    secret = "s" * 48
-    member = SimpleNamespace(
-        id=member_id,
-        instance_name="member",
-        enrollment_status="active",
-        member_token_hash=hashlib.sha256(secret.encode("ascii")).hexdigest(),
-    )
-
-    async def fake_get_by_id(_service, _member_id):
-        return member
-
-    monkeypatch.setattr(MemberService, "get_by_id", fake_get_by_id)
-
-    with pytest.raises(HTTPException) as exc_info:
-        await get_shogun_identity(str(member_id), "wrong", object())
-    assert exc_info.value.status_code == 401
-
-    identity = await get_shogun_identity(str(member_id), secret, object())
-    assert identity["shogun_id"] == str(member_id)
-
-
-@pytest.mark.asyncio
-async def test_gensui_command_poll_cannot_cross_member_boundary():
-    requested = uuid.uuid4()
-    result = await get_pending_commands(
-        requested,
-        db=object(),
-        identity={"shogun_id": str(uuid.uuid4())},
-    )
-    assert result == []

@@ -12,8 +12,6 @@ import json
 import urllib.request
 from pathlib import Path
 
-from shogun.api.agent_flow import _flow_stack_templates
-
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "shogun" / "resources" / "flow_templates.json"
 OUTPUT = ROOT / "frontend" / "src" / "i18n" / "templates"
@@ -38,7 +36,6 @@ MANUAL_OVERRIDES = {
     },
     "sv": {
         "Blank Flow": "Tomt flöde",
-        "Flow Stacking": "Flödesstapling",
         "Orchestrator": "Orkestrator",
         "Legal & Compliance": "Juridik och regelefterlevnad",
         "Incident & Resilience": "Incidenter och motståndskraft",
@@ -85,21 +82,6 @@ UI_COPY = {
     "templates_unavailable": "Templates unavailable",
     "no_templates": "No templates match your search",
     "nodes": "nodes",
-    "flow_stacking": "Flow Stacking",
-    "flow_stacking_subtitle": "Compose AgentFlows into connected, orchestrated systems.",
-    "built_in_stacks": "built-in stacks",
-    "stack_builder": "Stack Builder",
-    "stack_templates": "Stack Templates",
-    "orchestrator": "Orchestrator",
-    "search_stack_templates": "Search Flow Stack templates",
-    "all_stack_categories": "All Flow Stack Categories",
-    "reusable_templates": "reusable templates",
-    "shown": "shown",
-    "phases": "phases",
-    "resumable": "Resumable",
-    "open_program": "Open long-running program",
-    "building_stack": "Building your Flow Stack...",
-    "could_not_create_stack": "Could not create this stack.",
 }
 
 DIFFICULTY = {
@@ -205,22 +187,17 @@ def _translate_all_argos(texts: list[str], language: str) -> dict[str, str]:
     return translated
 
 
-def _source_payload() -> tuple[list[dict], list[dict], list[str]]:
+def _source_payload() -> tuple[list[dict], list[str]]:
     agent_templates = json.loads(SOURCE.read_text(encoding="utf-8"))["templates"]
-    stack_templates = _flow_stack_templates()
     copy = [*UI_COPY.values(), *DIFFICULTY.values()]
     for item in agent_templates:
         copy.extend((item["name"], item["description"], item["category"]))
-    for item in stack_templates:
-        copy.extend((item["name"], item["description"], item["category"], item["duration_label"]))
-        copy.extend(node["label"] for node in item.get("builder_nodes", []))
-    return agent_templates, stack_templates, copy
+    return agent_templates, copy
 
 
 def _build_locale(
     language: str,
     agent_templates: list[dict],
-    stack_templates: list[dict],
     translations: dict[str, str],
 ) -> dict:
     overrides = MANUAL_OVERRIDES.get(language, {})
@@ -230,19 +207,10 @@ def _build_locale(
 
     return {
         "ui": {key: tr(value) for key, value in UI_COPY.items()},
-        "categories": {item["category"]: tr(item["category"]) for item in [*agent_templates, *stack_templates]},
+        "categories": {item["category"]: tr(item["category"]) for item in agent_templates},
         "difficulty": {key: tr(value) for key, value in DIFFICULTY.items()},
         "agentFlow": {
             item["id"]: {"name": tr(item["name"]), "description": tr(item["description"])} for item in agent_templates
-        },
-        "flowStack": {
-            item["id"]: {
-                "name": tr(item["name"]),
-                "description": tr(item["description"]),
-                "duration_label": tr(item["duration_label"]),
-                "builder_labels": {node["id"]: tr(node["label"]) for node in item.get("builder_nodes", [])},
-            }
-            for item in stack_templates
         },
     }
 
@@ -270,19 +238,17 @@ def main() -> None:
         _install_argos_models(args.languages)
 
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    agent_templates, stack_templates, copy = _source_payload()
+    agent_templates, copy = _source_payload()
     english = {text: text for text in copy}
     (OUTPUT / "en.json").write_text(
-        json.dumps(_build_locale("en", agent_templates, stack_templates, english), ensure_ascii=False, indent=2) + "\n",
+        json.dumps(_build_locale("en", agent_templates, english), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     for language in args.languages:
         target = OUTPUT / f"{language}.json"
         if target.exists() and not args.force:
             existing = json.loads(target.read_text(encoding="utf-8"))
-            if len(existing.get("agentFlow", {})) == len(agent_templates) and len(existing.get("flowStack", {})) == len(
-                stack_templates
-            ):
+            if len(existing.get("agentFlow", {})) == len(agent_templates) and "flowStack" not in existing:
                 print(f"{language}: complete; skipping", flush=True)
                 continue
         translations = (
@@ -290,7 +256,7 @@ def main() -> None:
             if args.provider == "argos"
             else _translate_all_libre(copy, language, args.endpoint, args.api_key)
         )
-        payload = _build_locale(language, agent_templates, stack_templates, translations)
+        payload = _build_locale(language, agent_templates, translations)
         target.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",

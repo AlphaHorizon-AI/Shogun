@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
@@ -9,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from shogun.config import PROJECT_ROOT, settings
 from shogun.db.engine import async_session_factory
@@ -27,6 +28,10 @@ SECURITY_INCIDENT_ACKNOWLEDGEMENT_VERSION = 1
 SECURITY_INCIDENT_ACKNOWLEDGEMENT_STATEMENT = (
     "I acknowledge that I have been provided with the Shogun security and incident "
     "reporting information and know where to report suspected security vulnerabilities."
+)
+LICENSE_TERMS_ACCEPTANCE_VERSION = 1
+LICENSE_TERMS_ACCEPTANCE_STATEMENT = (
+    "I have read and accept the Shogun AFM Free Use License bundled with this release."
 )
 
 RONIN_DESKTOP_DEFAULTS = {
@@ -218,9 +223,31 @@ def _security_incident_acknowledgement(installation_mode: str) -> dict:
         "record_version": SECURITY_INCIDENT_ACKNOWLEDGEMENT_VERSION,
         "statement": SECURITY_INCIDENT_ACKNOWLEDGEMENT_STATEMENT,
         "acknowledged_at": datetime.now(timezone.utc).isoformat(),
-        "acknowledged_by_role": (
-            "primary_admin" if installation_mode == "team" else "installer"
+        "acknowledged_by_role": "installer",
+        "installed_version": version,
+        "installed_build": build,
+        "installed_release_identifier": str(
+            release.get("release_id") or f"{version}+build.{build}"
         ),
+        "installed_release_date": release.get("release_date"),
+    }
+
+
+def _license_terms_acceptance() -> dict:
+    """Create a local audit record tied to the exact bundled licence text."""
+    release = _installation_release_metadata()
+    license_sha256 = hashlib.sha256((PROJECT_ROOT / "LICENSE.md").read_bytes()).hexdigest()
+    version = str(release.get("version") or "0.0.0")
+    build = release.get("build")
+    if build in (None, ""):
+        build = "unknown"
+    return {
+        "record_version": LICENSE_TERMS_ACCEPTANCE_VERSION,
+        "statement": LICENSE_TERMS_ACCEPTANCE_STATEMENT,
+        "accepted_at": datetime.now(timezone.utc).isoformat(),
+        "accepted_by_role": "installer",
+        "license_file": "LICENSE.md",
+        "license_sha256": license_sha256,
         "installed_version": version,
         "installed_build": build,
         "installed_release_identifier": str(
@@ -239,8 +266,8 @@ async def get_setup_status():
             "setup_complete": setup.get("setup_complete", False),
             "language": setup.get("language", "en"),
             "operator_name": setup.get("operator_name", "Daimyo"),
-            "installation_mode": setup.get("installation_mode", "single"),
-            "team_members": setup.get("team_members", []),
+            "installation_mode": "single",
+            "team_members": [],
             "deployment_mode": settings.deployment_mode,
             "ronin_available": settings.deployment_mode == "desktop",
             "data_path": setup.get("data_path", str(PROJECT_ROOT / "data")),
@@ -248,6 +275,7 @@ async def get_setup_status():
             "security_incident_acknowledgement": setup.get(
                 "security_incident_acknowledgement"
             ),
+            "license_terms_acceptance": setup.get("license_terms_acceptance"),
         }
     )
 
@@ -270,21 +298,10 @@ class ProviderSetup(BaseModel):
     models: list[str] = Field(default_factory=list)
 
 
-class TeamMemberSetup(BaseModel):
-    display_name: str = Field(min_length=1, max_length=255)
-    email: str | None = None
-    is_primary: bool = False
-    channel: Literal["web", "telegram", "microsoft_teams"] = "telegram"
-    telegram_user_id: str | None = None
-    teams_aad_object_id: str | None = None
-    teams_user_principal_name: str | None = None
-
-
 class SetupCompletePayload(BaseModel):
     language: str = "en"
     operator_name: str = "Daimyo"
-    installation_mode: Literal["single", "team"] = "single"
-    team_members: list[TeamMemberSetup] = Field(default_factory=list)
+    installation_mode: Literal["single"] = "single"
     data_path: str = ""
     agent_name: str = "Shogun Prime"
     description: str = "Master orchestrator of the Samurai Network."
@@ -306,47 +323,7 @@ class SetupCompletePayload(BaseModel):
     routing_profile: str = "custom"
     ronin_enabled: bool = False
     security_incident_acknowledged: Literal[True]
-
-    @model_validator(mode="after")
-    def validate_team_setup(self):
-        if self.installation_mode == "single":
-            return self
-        if len(self.team_members) < 2:
-            raise ValueError("Team mode requires a Primary Admin and at least one Team Member.")
-        primary = [member for member in self.team_members if member.is_primary]
-        if len(primary) != 1:
-            raise ValueError("Team mode requires exactly one Primary Admin.")
-        if primary[0].channel != "web":
-            raise ValueError("The Primary Admin must use the web platform.")
-        for member in self.team_members:
-            if member.is_primary:
-                continue
-            if member.channel == "web":
-                raise ValueError("Only the Primary Admin may use the web platform.")
-            if member.channel == "telegram" and not str(member.telegram_user_id or "").strip():
-                raise ValueError(f"Telegram user ID is required for {member.display_name}.")
-            if member.channel == "microsoft_teams" and not (
-                str(member.teams_aad_object_id or "").strip()
-                or str(member.teams_user_principal_name or "").strip()
-            ):
-                raise ValueError(f"Teams Entra Object ID or sign-in email is required for {member.display_name}.")
-        identities = [
-            (
-                member.channel,
-                str(
-                    member.telegram_user_id
-                    or member.teams_aad_object_id
-                    or member.teams_user_principal_name
-                    or ""
-                ).strip().casefold(),
-            )
-            for member in self.team_members
-            if not member.is_primary
-        ]
-        if len(identities) != len(set(identities)):
-            raise ValueError("Each Team Member must have a unique Telegram or Teams identity.")
-        return self
-
+    license_terms_accepted: Literal[True]
 
 @router.post("/complete", response_model=ApiResponse)
 async def complete_setup(payload: SetupCompletePayload):
@@ -528,14 +505,14 @@ async def complete_setup(payload: SetupCompletePayload):
 
         persisted_members = await configure_team_members(
             session,
-            installation_mode=payload.installation_mode,
+            installation_mode="single",
             admin_name=payload.operator_name,
-            members=[member.model_dump() for member in payload.team_members],
+            members=[],
             agent_id=shogun.id,
         )
         shogun.bushido_settings = {
             **dict(shogun.bushido_settings or {}),
-            "installation_mode": payload.installation_mode,
+            "installation_mode": "single",
             "team_members": persisted_members,
         }
 
@@ -561,7 +538,7 @@ async def complete_setup(payload: SetupCompletePayload):
         "setup_complete": True,
         "language": payload.language,
         "operator_name": payload.operator_name,
-        "installation_mode": payload.installation_mode,
+        "installation_mode": "single",
         "team_members": persisted_members,
         "data_path": payload.data_path or str(PROJECT_ROOT / "data"),
         "completed_at": datetime.now(timezone.utc).isoformat(),
@@ -569,8 +546,9 @@ async def complete_setup(payload: SetupCompletePayload):
         "providers_created": len(created_provider_ids),
         "ronin_enabled": payload.ronin_enabled,
         "security_incident_acknowledgement": _security_incident_acknowledgement(
-            payload.installation_mode
+            "single"
         ),
+        "license_terms_acceptance": _license_terms_acceptance(),
     }
     _write_setup(setup_data)
 

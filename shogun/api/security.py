@@ -903,32 +903,16 @@ class ToolGateSimulateRequest(BaseModel):
 
 
 def _toolgate_authority() -> dict:
-    """Resolve policy ownership independently from transient connectivity."""
-    try:
-        from shogun.api.gensui_config import _get_client_status, _load_config
-
-        config = _load_config()
-        status = _get_client_status()
-        managed = bool(config.get("enabled") and status.get("enrolled"))
-        return {
-            "mode": "gensui" if managed else "standalone",
-            "editable": not managed,
-            "enrolled": bool(status.get("enrolled")),
-            "connected": bool(status.get("connected")),
-            "server_url": config.get("server_url", ""),
-            "last_sync_at": status.get("last_sync_at"),
-            "effective_posture": status.get("effective_posture"),
-        }
-    except Exception:
-        return {
-            "mode": "standalone",
-            "editable": True,
-            "enrolled": False,
-            "connected": False,
-            "server_url": "",
-            "last_sync_at": None,
-            "effective_posture": None,
-        }
+    """Yellow Label always owns its local ToolGate policy."""
+    return {
+        "mode": "standalone",
+        "editable": True,
+        "enrolled": False,
+        "connected": False,
+        "server_url": "",
+        "last_sync_at": None,
+        "effective_posture": None,
+    }
 
 
 async def _active_toolgate_context() -> tuple[dict, dict | None, str, dict]:

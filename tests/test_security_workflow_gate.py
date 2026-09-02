@@ -14,8 +14,6 @@ REQUIRED_REGRESSION_TESTS = {
     "tests/test_college_telemetry.py",
     "tests/test_cascade_retrieval.py",
     "tests/test_chat_sync.py",
-    "tests/test_gensui_identity_boundaries.py",
-    "tests/test_gensui_installer_hardening.py",
     "tests/test_guide_incident_reporting.py",
     "tests/test_install_telemetry.py",
     "tests/test_installer_release_provenance.py",
@@ -32,11 +30,11 @@ REQUIRED_REGRESSION_TESTS = {
     "tests/test_server_setup_url.py",
     "tests/test_setup_routing.py",
     "tests/test_setup_security_incident_acknowledgement.py",
-    "tests/test_team_mode_setup.py",
     "tests/test_telemetry_ingestion.py",
     "tests/test_update_checker.py",
     "tests/test_update_provenance.py",
     "tests/test_updates.py",
+    "tests/test_yellow_label_edition.py",
 }
 
 REQUIRED_RUFF_BOUNDARIES = {
@@ -63,10 +61,6 @@ REQUIRED_RUFF_BOUNDARIES = {
     "shogun/services/telegram_poller.py",
     "shogun/setup_link.py",
     "shogun/telemetry/payload.py",
-    "gensui/api/fleet_audit.py",
-    "gensui/api/identity.py",
-    "gensui/api/deps.py",
-    "gensui/services/identity_service.py",
 } | REQUIRED_REGRESSION_TESTS
 
 PINNED_ACTIONS = {

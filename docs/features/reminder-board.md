@@ -11,7 +11,7 @@ An AI-owned one-time item becomes `due` after its notification and stays visible
 - One-time, daily, weekday, weekly, and minute/hour interval reminders
 - UTC timestamp storage with IANA timezones for calendar recurrence
 - User, tenant, agent, conversation, and topic ownership fields
-- In-app, Telegram, Teams, or combined delivery
+- In-app, Telegram, or combined in-app and Telegram delivery
 - Pause, resume, ten-minute-or-custom snooze, complete, and cancel actions
 - Durable occurrence history and duplicate-worker claim protection
 - Deterministic parsing for common phrases such as `tomorrow at 9`, `in 30 minutes`, `every weekday at 7:30`, `every Monday`, and `every 30 minutes`
@@ -19,7 +19,7 @@ An AI-owned one-time item becomes `due` after its notification and stays visible
 - Prompt injection of a compact list of unresolved obligations on every Mission Mode turn
 - AI-owned obligations, follow-ups, checks, and deferred work with rationale and expiry
 
-External checks, conditional watches, autonomous tool actions, shared team boards, and AgentFlow triggering remain separate governed capabilities. A board item records the obligation; it does not itself authorize or execute external work.
+External checks, conditional watches, autonomous tool actions, and AgentFlow triggering remain separate governed capabilities. A board item records the obligation; it does not itself authorize or execute external work.
 
 ## UI
 

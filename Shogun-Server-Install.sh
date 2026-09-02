@@ -104,7 +104,7 @@ cd "$INSTALL_DIR"
 if [ "$TELEMETRY_MODE" = "ask" ]; then
   echo ""
   echo "Help improve Shogun AFM (optional)"
-  echo "Share version, platform family, Docker install type, Team Mode, a random"
+  echo "Share version, platform family, Docker install type, single-user operation mode, a random"
   echo "installation ID, and one weekly active signal. No operational content is shared."
   echo "Privacy notice: https://www.alphahorizon.io/shogun/telemetry-privacy/"
   read -r -p "Share pseudonymous installation statistics? [y/N]: " TELEMETRY_CHOICE
@@ -187,7 +187,7 @@ for attempt in $(seq 1 90); do
   if curl --fail --silent "$HEALTH_URL" >/dev/null 2>&1; then
     echo ""
     echo "Shogun Server is ready at $SETUP_ORIGIN."
-    echo "Team members should connect through Telegram or Microsoft Teams."
+    echo "Connect to Shogun through The Tenshu or Telegram."
     echo ""
     if { [ -t 1 ] && [ -z "${CI:-}" ]; } || [ "$SHOW_SETUP_LINK" = "1" ]; then
       if ! SETUP_URL="$(docker compose --env-file .env.server -f docker-compose.server.yml \

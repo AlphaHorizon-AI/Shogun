@@ -184,12 +184,15 @@ class SetupCompletePayload(BaseModel):
     constitution: str | None
     mandate: str | None
     security_incident_acknowledged: Literal[True]
+    license_terms_accepted: Literal[True]
 ```
 
-`security_incident_acknowledged` is required. The client sends the literal value
-`true` only after showing the security and incident-reporting information and the
-installer or Primary Admin explicitly acknowledges it. The API rejects an absent or
-false value; it does not infer acknowledgement from continuing through the wizard.
+Both literal-`true` fields are required. The client sends
+`security_incident_acknowledged` only after showing the security and
+incident-reporting information, and sends `license_terms_accepted` only after the
+installer reads and accepts the bundled `LICENSE.md` on the final step. The API
+rejects an absent or false value; it does not infer either action from continuing
+through the wizard.
 
 ### ProviderSetup Schema
 
@@ -231,8 +234,8 @@ POST /setup/complete
   ├─ 3. Write constitution.yaml (if provided)
   ├─ 4. Write mandate.md (if provided)
   ├─ 5. Create data directory (if custom path)
-  └─ 6. Write setup.json (marks setup_complete=true and stores the local
-        security_incident_acknowledgement record)
+  └─ 6. Write setup.json (marks setup_complete=true and stores local security
+        acknowledgement and licence-acceptance records)
 ```
 
 The server generates `security_incident_acknowledgement` rather than accepting a
@@ -242,6 +245,11 @@ version, build, identifier, and release date. This record remains in local
 `setup.json`, is returned by `GET /setup/status`, and is excluded from telemetry. It
 records that the information was presented and acknowledged; it is not evidence of a
 regulatory conformity assessment or of incident-response performance.
+
+The server also generates `license_terms_acceptance`, including a UTC timestamp,
+the installed release identity, and the SHA-256 hash of the exact `LICENSE.md` that
+was shown. The legal record remains local, is returned by `GET /setup/status`, and is
+excluded from telemetry.
 
 ### API Key Storage
 

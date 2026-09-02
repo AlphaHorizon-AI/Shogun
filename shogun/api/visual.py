@@ -196,23 +196,6 @@ async def pin_image(artifact_id: uuid.UUID, body: dict | None = None, svc: Visua
     return {"data": svc._public(artifact)}
 
 
-@router.post("/{artifact_id}/attach-to-stack/{stack_run_id}")
-async def attach_to_stack(artifact_id: uuid.UUID, stack_run_id: uuid.UUID, svc: VisualIntakeService = Depends(_svc)):
-    artifact = await _artifact_or_404(artifact_id, svc)
-    try:
-        linked = await svc.attach_to_stack(artifact, stack_run_id)
-        await svc.session.commit()
-        await EventLogger.emit(
-            "visual",
-            "visual.stack_attach",
-            f"Attached image {artifact.id} to stack run {stack_run_id}",
-            detail={"artifact_id": str(artifact.id), "stack_run_id": str(stack_run_id)},
-        )
-        return {"data": {"id": str(linked.id), "stack_run_id": str(stack_run_id)}}
-    except VisualIntakeError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
 @router.delete("/{artifact_id}")
 async def delete_image(artifact_id: uuid.UUID, svc: VisualIntakeService = Depends(_svc)):
     artifact = await _artifact_or_404(artifact_id, svc)

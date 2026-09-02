@@ -21,6 +21,11 @@ async def check_gensui_policy(action_type: str, context: dict | None = None) -> 
 
     Raises HTTPException(403) if the action is blocked.
     """
+    from shogun.edition import feature_available
+
+    if not feature_available("gensui"):
+        return
+
     try:
         from shogun.services.gensui_client import gensui_client
 

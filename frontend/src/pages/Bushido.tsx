@@ -382,7 +382,7 @@ export function Bushido() {
               {['daily', 'weekdays', 'weekly'].includes(reminderForm.schedule_type) && <input type="time" value={reminderForm.schedule_time} onChange={event => setReminderForm(prev => ({ ...prev, schedule_time: event.target.value }))} className="bg-shogun-card border border-shogun-border rounded-lg px-3 py-2 text-xs text-shogun-text" />}
               {reminderForm.schedule_type === 'interval' && <div className="flex items-center gap-2"><span className="text-[10px] uppercase text-shogun-subdued">Every</span><input type="number" min={1} value={reminderForm.interval_minutes} onChange={event => setReminderForm(prev => ({ ...prev, interval_minutes: Number(event.target.value) }))} className="w-full bg-shogun-card border border-shogun-border rounded-lg px-3 py-2 text-xs text-shogun-text" /><span className="text-[10px] uppercase text-shogun-subdued">minutes</span></div>}
               <select value={reminderForm.delivery_channel} onChange={event => setReminderForm(prev => ({ ...prev, delivery_channel: event.target.value }))} className="bg-shogun-card border border-shogun-border rounded-lg px-3 py-2 text-xs text-shogun-text">
-                <option value="web">In-app</option><option value="telegram">Telegram</option><option value="teams">Teams</option><option value="both">All channels</option>
+                <option value="web">In-app</option><option value="telegram">Telegram</option><option value="both">In-app + Telegram</option>
               </select>
             </div>
             <div className="flex justify-end gap-2">

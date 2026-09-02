@@ -105,19 +105,13 @@ async def test_harakiri_blocks_native_outbound_channel_bypass(monkeypatch):
         calls.append("telegram")
         return {"ok": True, "sent": 1}
 
-    async def unexpected_teams(*_args, **_kwargs):
-        calls.append("teams")
-        return {"ok": True, "sent": 1}
-
     monkeypatch.setattr(notification_service, "_send_telegram", unexpected_telegram)
-    monkeypatch.setattr(notification_service, "_send_teams", unexpected_teams)
     harakiri_runtime.engage_harakiri_latch()
 
     result = await notification_service.send_channel_message("stale agent output", channel="both")
 
     assert calls == []
     assert result["telegram"]["blocked"] is True
-    assert result["teams"]["blocked"] is True
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-"""Operator-visible notifications and outbound Telegram/Teams delivery."""
+"""Operator-visible notifications and outbound Telegram delivery."""
 
 from __future__ import annotations
 
@@ -10,9 +10,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from sqlalchemy import select
-
-from shogun.config import settings
 
 logger = logging.getLogger("shogun.notifications")
 
@@ -61,8 +58,19 @@ async def send_channel_message(
     teams_conversation_ids: list[str] | None = None,
     event_type: str = "agentflow.message",
 ) -> dict[str, Any]:
-    """Send a plain-text message to configured operator channels."""
+    """Send a plain-text message to Yellow Label's Telegram channel."""
     from shogun.services.harakiri_runtime import harakiri_latch_active
+
+    if channel == "teams":
+        return {
+            "teams": {
+                "ok": False,
+                "error": "Microsoft Teams is not available in Yellow Label",
+                "sent": 0,
+            }
+        }
+    if channel == "both":
+        channel = "telegram"
 
     if harakiri_latch_active():
         blocked = {"ok": False, "error": "HARAKIRI is active", "sent": 0, "blocked": True}
@@ -78,8 +86,6 @@ async def send_channel_message(
             telegram_chat_ids,
             message_thread_id=telegram_message_thread_id,
         )
-    if channel in {"teams", "both"}:
-        results["teams"] = await _send_teams(message, teams_conversation_ids, event_type)
     return results
 
 
@@ -205,71 +211,6 @@ async def _send_telegram(
         "errors": errors,
         "parts_per_target": len(chunks),
     }
-
-
-async def _send_teams(
-    message: str,
-    conversation_ids: list[str] | None,
-    event_type: str,
-) -> dict[str, Any]:
-    from shogun.services.harakiri_runtime import harakiri_latch_active
-
-    if harakiri_latch_active():
-        return {"ok": False, "error": "HARAKIRI is active", "sent": 0, "blocked": True}
-    from shogun.db.engine import async_session_factory
-    from shogun.db.models.teams import TeamsConfig, TeamsConversation, TeamsNotificationRoute
-
-    async with async_session_factory() as db:
-        config = await db.scalar(select(TeamsConfig).limit(1))
-        if not config or not config.enabled or not config.proactive_enabled:
-            return {"ok": False, "error": "Teams proactive messaging is not enabled", "sent": 0}
-
-        targets = [str(x) for x in (conversation_ids or []) if str(x)]
-        if not targets:
-            route_result = await db.execute(
-                select(TeamsNotificationRoute).where(
-                    TeamsNotificationRoute.enabled.is_(True),
-                    TeamsNotificationRoute.event_type.in_([event_type, "*"]),
-                )
-            )
-            targets = [r.target_conversation_id for r in route_result.scalars().all()]
-        if not targets:
-            conversation_result = await db.execute(
-                select(TeamsConversation).where(
-                    TeamsConversation.installed.is_(True),
-                    TeamsConversation.proactive_enabled.is_(True),
-                )
-            )
-            targets = [c.conversation_id for c in conversation_result.scalars().all()]
-
-    targets = list(dict.fromkeys(targets))
-    if not targets:
-        return {"ok": False, "error": "No Teams conversation target is configured", "sent": 0}
-    if not settings.teams_bridge_url or not settings.shogun_internal_api_key:
-        return {"ok": False, "error": "Teams bridge URL/internal API key is not configured", "sent": 0}
-
-    sent = 0
-    errors: list[str] = []
-    url = f"{settings.teams_bridge_url.rstrip('/')}/api/teams/proactive"
-    headers = {"Authorization": f"Bearer {settings.shogun_internal_api_key}"}
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        for conversation_id in targets:
-            if harakiri_latch_active():
-                errors.append(f"{conversation_id}: blocked by HARAKIRI")
-                continue
-            try:
-                response = await client.post(
-                    url,
-                    headers=headers,
-                    json={"conversation_id": conversation_id, "text": message},
-                )
-                if response.is_success:
-                    sent += 1
-                else:
-                    errors.append(f"{conversation_id}: HTTP {response.status_code}")
-            except Exception as exc:
-                errors.append(f"{conversation_id}: {exc}")
-    return {"ok": sent == len(targets), "sent": sent, "errors": errors}
 
 
 async def notify_model_fallback(

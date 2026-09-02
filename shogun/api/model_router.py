@@ -261,12 +261,6 @@ async def usage_summary(db: AsyncSession = Depends(get_db)):
     return ApiResponse(data=await ModelUsageLogger(db).summary())
 
 
-@router.get("/usage/by-stack/{stack_run_id}", response_model=ApiResponse)
-async def usage_by_stack(stack_run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    records = await ModelUsageLogger(db).list(stack_run_id)
-    return ApiResponse(data=records, meta={"total": len(records)})
-
-
 @router.get("/routing/task-types", response_model=ApiResponse)
 async def task_types():
     return ApiResponse(data=list(TASK_TYPES))

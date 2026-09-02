@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -13,19 +15,29 @@ from sqlalchemy.pool import StaticPool
 import shogun.db.models  # noqa: F401 - register every FK target in metadata
 from shogun.api import control_plane_auth
 from shogun.api.deps import get_db
+from shogun.config import settings
 from shogun.db.base import Base
 from shogun.db.models.agent import Agent
 from shogun.db.models.agent_flow import AgentFlowEdge, AgentFlowNode
+from shogun.db.models.memory_record import MemoryRecord
 from shogun.db.models.mission import Mission
 from shogun.db.models.samurai_profile import SamuraiProfile
 from shogun.db.models.skill import Skill
-from shogun.db.models.supermode import MissionAgent, MissionEvent, MissionPlan, MissionTask
-from shogun.services import posture_guard
+from shogun.db.models.supermode import (
+    MissionAgent,
+    MissionArtifact,
+    MissionEvent,
+    MissionPlan,
+    MissionTask,
+)
+from shogun.services import native_skills, posture_guard
 from shogun.services.active_skill_service import SkillEmbeddingService, SkillHierarchyService
 from shogun.services.agent_service import AgentService
+from shogun.services.memory_service import MemoryService
 from shogun.services.posture_guard import ActiveSubagentUsage
 from shogun.supermode import supervisor
 from shogun.supermode import worker as mission_worker
+from shogun.supermode.artifacts import mission_artifact_contract, register_task_artifacts
 from shogun.supermode.planner import create_initial_plan
 from shogun.supermode.service import SupermodeMissionService
 from shogun.supermode.state_machine import (
@@ -72,6 +84,339 @@ def test_supermode_accepts_ordinary_language_confidence_scores():
     assert mission_worker._normalized_score("High", 0.6) == 0.8
     assert mission_worker._normalized_score("75%", 0.6) == 0.75
     assert mission_worker._normalized_score("not scored", 0.6) == 0.6
+
+
+def test_artifact_contract_counts_explicit_word_and_excel_deliverables():
+    mission = mission_record()
+    mission.objective = (
+        "Create a market analysis in Word, a customer list in Excel, and a GTM strategy in Word. "
+        "Place all three in the output folder."
+    )
+
+    contract = mission_artifact_contract(mission)
+
+    assert contract == {
+        "required": True,
+        "minimum_count": 3,
+        "formats": ["docx", "xlsx"],
+    }
+
+
+def test_artifact_contract_does_not_treat_an_input_spreadsheet_as_an_output():
+    mission = mission_record()
+    mission.objective = "Analyze the attached customers.xlsx workbook and summarize the findings."
+
+    assert mission_artifact_contract(mission)["required"] is False
+
+
+@pytest.mark.asyncio
+async def test_task_artifacts_are_registered_only_when_the_file_exists(
+    supermode_session_factory,
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    output = tmp_path / "output"
+    output.mkdir()
+    real_file = output / "validated-report.docx"
+    real_file.write_bytes(b"verified document bytes")
+
+    async with supermode_session_factory() as session:
+        mission = mission_record(status="running")
+        session.add(mission)
+        await session.flush()
+        task = MissionTask(
+            mission_id=mission.id,
+            title="Create deliverables",
+            objective="Create the requested report",
+            status="completed",
+        )
+        session.add(task)
+        await session.flush()
+
+        registered, rejected = await register_task_artifacts(
+            session,
+            mission,
+            task,
+            [
+                {"path": "output/validated-report.docx", "type": "docx"},
+                {"path": "output/does-not-exist.xlsx", "type": "xlsx"},
+            ],
+        )
+        await session.commit()
+
+        artifacts = list(
+            (await session.scalars(select(MissionArtifact).where(MissionArtifact.mission_id == mission.id))).all()
+        )
+        assert [item.filename for item in registered] == ["validated-report.docx"]
+        assert [item.filename for item in artifacts] == ["validated-report.docx"]
+        assert artifacts[0].size == len(b"verified document bytes")
+        assert len(artifacts[0].hash) == 64
+        assert rejected == [{"path": "output/does-not-exist.xlsx", "type": "xlsx"}]
+
+
+@pytest.mark.asyncio
+async def test_office_excel_create_writes_a_real_formula_safe_workbook(monkeypatch, tmp_path):
+    import openpyxl
+
+    from shogun.office import config as office_config
+    from shogun.office import permission_engine
+    from shogun.office.config import OfficeAppConfig, OfficeFolderConfig
+
+    config = OfficeAppConfig(
+        enabled=True,
+        folders=OfficeFolderConfig(output=str(tmp_path)),
+    )
+
+    async def campaign_tier():
+        return "campaign"
+
+    async def no_log(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(office_config, "load_office_config", lambda: config)
+    monkeypatch.setattr(permission_engine, "get_current_posture_tier", campaign_tier)
+    monkeypatch.setattr(
+        permission_engine,
+        "check_office_permission",
+        lambda *_args, **_kwargs: SimpleNamespace(allowed=True, reason=""),
+    )
+    monkeypatch.setattr(native_skills, "_log_office_event", no_log)
+
+    result = json.loads(
+        await native_skills._execute_office_tool(
+            "office_excel_create",
+            {
+                "output_path": "customers.xlsx",
+                "sheet_name": "Customers",
+                "values": [["Name", "Value"], ["Alpha", "=2+2"]],
+            },
+        )
+    )
+
+    workbook = openpyxl.load_workbook(result["output_file"], data_only=False)
+    assert result["status"] == "success"
+    assert workbook["Customers"]["A2"].value == "Alpha"
+    assert workbook["Customers"]["B2"].value == "'=2+2"
+
+
+@pytest.mark.asyncio
+async def test_missing_required_artifacts_retry_synthesis_instead_of_completing(
+    supermode_session_factory,
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    async with supermode_session_factory() as session:
+        mission = mission_record(status="running")
+        mission.objective = "Create a verified market report in Word and place it in the output folder."
+        session.add(mission)
+        await session.flush()
+        synthesis = MissionTask(
+            mission_id=mission.id,
+            title="Synthesize and create report",
+            objective=mission.objective,
+            task_type="mission_synthesis",
+            status="completed",
+            max_retries=1,
+            output_payload={"summary": "Done", "completion_status": "complete"},
+            task_summary="Done",
+            completed_at=datetime.now(timezone.utc),
+        )
+        session.add(synthesis)
+        await session.commit()
+        mission_id = mission.id
+        task_id = synthesis.id
+
+    monkeypatch.setattr(mission_worker, "async_session_factory", supermode_session_factory)
+    await mission_worker.update_mission_progress_and_completion(mission_id)
+
+    async with supermode_session_factory() as session:
+        mission = await session.get(Mission, mission_id)
+        synthesis = await session.get(MissionTask, task_id)
+        assert mission.status == "running"
+        assert mission.progress_percent < 100
+        assert synthesis.status == "ready"
+        assert synthesis.retry_count == 1
+        assert synthesis.error_code == "completion_validation"
+        assert "Verified artifact count is 0" in synthesis.error_message
+
+
+@pytest.mark.asyncio
+async def test_missing_required_artifacts_fail_after_validation_retry_is_exhausted(
+    supermode_session_factory,
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    async with supermode_session_factory() as session:
+        mission = mission_record(status="running")
+        mission.objective = "Create a verified market report in Word and place it in the output folder."
+        session.add(mission)
+        await session.flush()
+        synthesis = MissionTask(
+            mission_id=mission.id,
+            title="Synthesize and create report",
+            objective=mission.objective,
+            task_type="mission_synthesis",
+            status="completed",
+            retry_count=1,
+            max_retries=1,
+            output_payload={"summary": "Done", "completion_status": "complete"},
+            task_summary="Done",
+            completed_at=datetime.now(timezone.utc),
+        )
+        session.add(synthesis)
+        await session.commit()
+        mission_id = mission.id
+
+    monkeypatch.setattr(mission_worker, "async_session_factory", supermode_session_factory)
+    await mission_worker.update_mission_progress_and_completion(mission_id)
+
+    async with supermode_session_factory() as session:
+        mission = await session.get(Mission, mission_id)
+        assert mission.status == "failed"
+        assert "Verified artifact count is 0" in mission.error_message
+
+
+@pytest.mark.asyncio
+async def test_verified_required_artifact_allows_mission_completion(
+    supermode_session_factory,
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "market-report.docx").write_bytes(b"verified report")
+
+    async with supermode_session_factory() as session:
+        mission = mission_record(status="running")
+        mission.objective = "Create a verified market report in Word and place it in the output folder."
+        session.add(mission)
+        await session.flush()
+        synthesis = MissionTask(
+            mission_id=mission.id,
+            title="Synthesize and create report",
+            objective=mission.objective,
+            task_type="mission_synthesis",
+            status="completed",
+            output_payload={"summary": "Done", "completion_status": "complete"},
+            task_summary="Done",
+            completed_at=datetime.now(timezone.utc),
+        )
+        session.add(synthesis)
+        await session.flush()
+        await register_task_artifacts(
+            session,
+            mission,
+            synthesis,
+            [{"path": "output/market-report.docx", "type": "docx"}],
+        )
+        await session.commit()
+        mission_id = mission.id
+
+    monkeypatch.setattr(mission_worker, "async_session_factory", supermode_session_factory)
+    await mission_worker.update_mission_progress_and_completion(mission_id)
+
+    async with supermode_session_factory() as session:
+        mission = await session.get(Mission, mission_id)
+        artifacts = list(
+            (await session.scalars(select(MissionArtifact).where(MissionArtifact.mission_id == mission_id))).all()
+        )
+        assert mission.status == "completed"
+        assert mission.progress_percent == 100.0
+        assert [item.filename for item in artifacts] == ["market-report.docx"]
+
+
+@pytest.mark.asyncio
+async def test_initial_plan_recalls_prior_supermode_learning(
+    supermode_session_factory,
+    monkeypatch,
+):
+    async with supermode_session_factory() as session:
+        primary = Agent(
+            agent_type="shogun",
+            name="Primary Shogun",
+            slug="primary-shogun",
+            status="active",
+            is_primary=True,
+        )
+        session.add(primary)
+        await session.flush()
+        memory = MemoryRecord(
+            memory_type="procedural",
+            agent_id=primary.id,
+            title="Learned procedure: market analysis",
+            content="Verify sources before document generation and confirm every requested output exists.",
+            importance_score=0.9,
+            confidence_score=0.85,
+            decay_class="sticky",
+            tags=["supermode", "procedure"],
+            user_id="test",
+            scope_status="classified",
+        )
+        session.add(memory)
+        await session.flush()
+
+        async def relevant_search(*_args, **_kwargs):
+            return [
+                {
+                    "memory_id": str(memory.id),
+                    "title": memory.title,
+                    "content": memory.content,
+                    "summary": None,
+                    "memory_type": memory.memory_type,
+                    "confidence_score": memory.confidence_score,
+                    "scores": {"final": 0.91},
+                }
+            ]
+
+        monkeypatch.setattr(MemoryService, "search", relevant_search)
+        mission = mission_record()
+        mission.objective = "Create a verified market analysis"
+        session.add(mission)
+        await session.flush()
+
+        plan = await create_initial_plan(session, mission)
+        await session.commit()
+
+        task = await session.scalar(
+            select(MissionTask).where(MissionTask.mission_id == mission.id).order_by(MissionTask.created_at)
+        )
+        context = json.loads(await mission_worker._task_context(session, mission, task))
+        await session.refresh(memory)
+
+        assert plan.plan_json["recalled_memory_ids"] == [str(memory.id)]
+        assert context["recalled_memories"][0]["memory_id"] == str(memory.id)
+        assert "confirm every requested output exists" in context["recalled_memories"][0]["content"]
+        assert memory.recall_count == 1
+
+
+@pytest.mark.asyncio
+async def test_initial_plan_preserves_artifact_count_when_default_criteria_repeat_objective(
+    supermode_session_factory,
+):
+    async with supermode_session_factory() as session:
+        mission = mission_record()
+        mission.objective = (
+            "Create a market analysis in Word, a customer list in Excel, and a GTM strategy in Word. "
+            "Place all three in the output folder."
+        )
+        mission.objective_original = mission.objective
+        session.add(mission)
+        await session.flush()
+
+        plan = await create_initial_plan(session, mission)
+        tasks = list(
+            (await session.scalars(select(MissionTask).where(MissionTask.mission_id == mission.id))).all()
+        )
+        synthesis = next(item for item in tasks if item.task_type == "mission_synthesis")
+
+        assert plan.plan_json["artifact_contract"]["minimum_count"] == 3
+        assert {"workspace_write", "office_word_create_from_text", "office_excel_create"} <= set(
+            synthesis.required_tools
+        )
 
 
 @pytest.mark.asyncio

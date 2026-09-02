@@ -39,7 +39,7 @@ def test_workflow_inspection_and_patch_tools_are_exposed() -> None:
     tools = {tool["function"]["name"]: tool for tool in NATIVE_TOOLS}
 
     assert tools["get_agent_flow"]["risk"] == "low"
-    assert tools["get_flow_stack"]["risk"] == "low"
+    assert "get_flow_stack" not in tools
     assert tools["patch_agent_flow"]["risk"] == "medium"
     assert tools["set_agent_flow_status"]["risk"] == "medium"
     assert "get_agent_flow" not in WORKFLOW_TOOL_PERMISSIONS
@@ -158,13 +158,12 @@ async def test_excel_attachment_can_be_opened_by_server_file_id(tmp_path, monkey
 
 
 def test_workflow_operator_guide_is_fixed_and_requires_verified_execution() -> None:
-    assert "Call `list_agent_flows` before" in WORKFLOW_OPERATOR_GUIDE
-    assert "`channel_send` node for Telegram or Teams" in WORKFLOW_OPERATOR_GUIDE
-    assert "Do not tell a Telegram or Teams operator" in WORKFLOW_OPERATOR_GUIDE
-    assert "Never claim" in WORKFLOW_OPERATOR_GUIDE
-    assert "A UUID cannot bypass that mismatch" in WORKFLOW_OPERATOR_GUIDE
-    assert "### `coding`" in WORKFLOW_OPERATOR_GUIDE
-    assert "project-scoped programming memory" in WORKFLOW_OPERATOR_GUIDE
+    assert "Use list_agent_flows to discover stored AgentFlows" in WORKFLOW_OPERATOR_GUIDE
+    assert "get_agent_flow before" in WORKFLOW_OPERATOR_GUIDE
+    assert "Never invent an ID or claim an unverified result" in WORKFLOW_OPERATOR_GUIDE
+    assert "Prefer patch_agent_flow" in WORKFLOW_OPERATOR_GUIDE
+    assert "Verify every mutation" in WORKFLOW_OPERATOR_GUIDE
+    assert "Flow Stack is not part of Yellow Label" in WORKFLOW_OPERATOR_GUIDE
 
 
 @pytest.mark.asyncio
@@ -197,7 +196,7 @@ def test_explicit_workflow_writes_authorize_medium_risk_tools_only() -> None:
         "edit_agent_flow",
     }
     assert operator_authorized_workflow_tools("Build a Flow Stack from these flows.") == {
-        "create_flow_stack"
+        "create_agent_flow"
     }
     assert operator_authorized_workflow_tools("Delete the Daily Brief AgentFlow.") == set()
     assert operator_authorized_workflow_tools("Do not edit the AgentFlow; inspect it.") == set()
@@ -219,12 +218,12 @@ def test_read_tools_remain_available_when_write_posture_is_disabled() -> None:
         {"agentflow_create": False, "flowstack_create": False},
     )
 
-    assert {tool["function"]["name"] for tool in allowed} == {"get_agent_flow", "get_flow_stack"}
+    assert {tool["function"]["name"] for tool in allowed} == {"get_agent_flow"}
     assert denied == ["patch_agent_flow"]
 
 
 @pytest.mark.asyncio
-async def test_read_tools_return_complete_flow_and_stack_graphs() -> None:
+async def test_read_tools_return_agentflow_graphs_and_hide_legacy_flow_stacks() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -282,21 +281,10 @@ async def test_read_tools_return_complete_flow_and_stack_graphs() -> None:
         assert len(flow_result["flow"]["nodes"]) == 2
         assert len(flow_result["flow"]["edges"]) == 1
         assert flow_result["flow"]["nodes"][1]["config"]["domains"] == ["openai.com"]
-        assert stack_result["status"] == "success"
-        assert stack_result["flow"]["flow_type"] == "stack"
-        assert stack_result["flow"]["phases"] == [{
-            "phase": 1,
-            "node_id": str(phase.id),
-            "label": "Research phase",
-            "child_flow_id": str(flow.id),
-            "version_mode": "locked",
-            "child_flow_version": 1,
-            "execution_mode": None,
-            "timeout_seconds": None,
-            "on_failure": None,
-            "input_mapping": {"topic": "topic"},
-            "output_mapping": {"brief": "result"},
-        }]
+        assert stack_result == {
+            "status": "error",
+            "message": "Flow Stack is not available in Yellow Label.",
+        }
 
     await engine.dispose()
 

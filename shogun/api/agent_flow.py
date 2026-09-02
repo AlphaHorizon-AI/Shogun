@@ -51,6 +51,7 @@ async def list_flows(
     records, total = await svc.list_flows(
         status=status,
         search=search,
+        flow_type="standard",
         offset=offset,
         limit=per_page,
     )
@@ -70,6 +71,8 @@ async def create_flow(
 ):
     """Create a new Agent Flow."""
     data = body.model_dump()
+    data["flow_type"] = "standard"
+    data["allow_as_subflow"] = False
     if data.get("trigger_type") == "scheduled":
         data["schedule_config"] = _normalized_schedule_config(data.get("schedule_config") or {})
         data["status"] = "active"
@@ -84,13 +87,12 @@ async def create_flow(
     return ApiResponse(data=AgentFlowResponse.model_validate(record))
 
 
-@router.post("/flow-stacks", response_model=ApiResponse, status_code=201)
-async def create_flow_stack(
+async def _legacy_create_flow_stack(
     body: FlowStackCreate,
-    svc: AgentFlowService = Depends(get_agent_flow_service),
-    db: AsyncSession = Depends(get_db),
+    svc: AgentFlowService,
+    db: AsyncSession,
 ):
-    """Generate a normal AgentFlow containing sequential Subflow nodes."""
+    """Retained only to read and migrate pre-existing stack records."""
     from shogun.db.models.agent_flow import AgentFlow
 
     result = await db.execute(
@@ -482,8 +484,7 @@ async def list_templates(svc: AgentFlowService = Depends(get_agent_flow_service)
     })
 
 
-@router.get("/flow-stack-templates", response_model=ApiResponse)
-async def list_flow_stack_templates(svc: AgentFlowService = Depends(get_agent_flow_service)):
+async def _legacy_list_flow_stack_templates(svc: AgentFlowService):
     built_in = _flow_stack_templates()
     custom = await svc.list_saved_templates(flow_type="stack")
     custom_items = []
@@ -551,10 +552,9 @@ async def get_template_detail(
     return ApiResponse(data=template)
 
 
-@router.post("/flow-stacks/from-template", response_model=ApiResponse, status_code=201)
-async def create_stack_from_template(
+async def _legacy_create_stack_from_template(
     body: FlowStackTemplateInstantiate,
-    svc: AgentFlowService = Depends(get_agent_flow_service),
+    svc: AgentFlowService,
 ):
     if body.template_id.startswith("custom:"):
         stack = await _instantiate_flow_template(body.template_id, svc, body.name)
@@ -573,15 +573,14 @@ async def create_stack_from_template(
                for item in recipe["builder_edges"]],
         orchestrator_config=recipe["orchestrator_config"],
     )
-    return await compose_flow_stack(stack_body, svc)
+    return await _legacy_compose_flow_stack(stack_body, svc)
 
 
-@router.post("/flow-stacks/compose", response_model=ApiResponse, status_code=201)
-async def compose_flow_stack(
+async def _legacy_compose_flow_stack(
     body: FlowStackComposeRequest,
-    svc: AgentFlowService = Depends(get_agent_flow_service),
+    svc: AgentFlowService,
 ):
-    """Persist the connected canvas as an executable stack with embedded orchestrator policy."""
+    """Retained only to support migration of pre-existing stack data."""
     ids = {item.id for item in body.nodes}
     if len(ids) != len(body.nodes):
         raise HTTPException(422, "Every canvas node must have a unique id")
@@ -745,7 +744,7 @@ async def get_flow(
 ):
     """Get a single Agent Flow with all nodes and edges."""
     record = await svc.get_flow_full(flow_id)
-    if not record:
+    if not record or getattr(record, "flow_type", "standard") != "standard":
         raise HTTPException(status_code=404, detail="Agent Flow not found")
     return ApiResponse(data=AgentFlowResponse.model_validate(record))
 
@@ -761,10 +760,12 @@ async def update_flow(
 ):
     """Update Agent Flow metadata (name, description, trigger, status)."""
     current = await svc.get_by_id(flow_id)
-    if not current or current.is_deleted:
+    if not current or current.is_deleted or getattr(current, "flow_type", "standard") != "standard":
         raise HTTPException(status_code=404, detail="Agent Flow not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    update_data.pop("flow_type", None)
+    update_data.pop("allow_as_subflow", None)
     next_trigger = update_data.get("trigger_type", current.trigger_type)
     if next_trigger == "scheduled":
         update_data["schedule_config"] = _normalized_schedule_config(
@@ -799,7 +800,7 @@ async def delete_flows_bulk(
     missing: list[str] = []
     for flow_id in flow_ids:
         record = await svc.get_by_id(flow_id)
-        if not record or record.is_deleted:
+        if not record or record.is_deleted or getattr(record, "flow_type", "standard") != "standard":
             missing.append(str(flow_id))
         else:
             records.append(record)
@@ -824,6 +825,8 @@ async def delete_flow(
 ):
     """Soft-delete an Agent Flow."""
     record = await svc.get_by_id(flow_id)
+    if not record or record.is_deleted or getattr(record, "flow_type", "standard") != "standard":
+        raise HTTPException(status_code=404, detail="Agent Flow not found")
     success = await svc.delete(flow_id)
     if not success:
         raise HTTPException(status_code=404, detail="Agent Flow not found")
@@ -904,11 +907,10 @@ async def _validate_subflow_graph(
     return list(dict.fromkeys(warnings))
 
 
-@router.post("/{flow_id}/validate-subflow", response_model=ApiResponse)
-async def validate_subflow(
+async def _legacy_validate_subflow(
     flow_id: uuid.UUID,
     body: SubflowValidationRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession,
 ):
     config = {
         "child_flow_id": str(body.child_flow_id),
@@ -937,6 +939,9 @@ async def save_graph(
 ):
     """Atomically save the full canvas graph (all nodes and edges)."""
     proposed = [n.model_dump() for n in body.nodes]
+    removed_node_types = {"subflow", "stack_orchestrator"}
+    if any(node.get("node_type") in removed_node_types for node in proposed):
+        raise HTTPException(status_code=422, detail="Flow Stack nodes are not available in Yellow Label")
     try:
         await _validate_subflow_graph(svc.session, flow_id, proposed)
     except ValueError as exc:

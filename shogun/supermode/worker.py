@@ -16,7 +16,19 @@ from sqlalchemy import func, select
 from shogun.db.engine import async_session_factory
 from shogun.db.models.agent import Agent
 from shogun.db.models.mission import Mission
-from shogun.db.models.supermode import MissionAgent, MissionLearning, MissionPlan, MissionTask
+from shogun.db.models.supermode import (
+    MissionAgent,
+    MissionArtifact,
+    MissionLearning,
+    MissionPlan,
+    MissionTask,
+)
+from shogun.supermode.artifacts import (
+    artifact_record_payload,
+    mission_artifact_contract,
+    register_task_artifacts,
+    resolve_artifact_path,
+)
 from shogun.supermode.events import append_event
 from shogun.supermode.service import SupermodeMissionService
 from shogun.supermode.state_machine import transition_mission
@@ -37,12 +49,22 @@ SAFE_MISSION_TOOLS = frozenset(
         "list_calendar_events",
         "list_agent_flows",
         "get_agent_flow",
-        "get_flow_stack",
         "workspace_info",
         "workspace_list",
         "workspace_read",
         "workspace_read_image",
         "workspace_read_pdf",
+        "workspace_write",
+        "workspace_mkdir",
+        "office_excel_create",
+        "office_excel_open",
+        "office_excel_write_range",
+        "office_excel_save_as",
+        "office_word_create",
+        "office_word_create_from_text",
+        "office_word_insert_paragraph",
+        "office_word_insert_table",
+        "office_word_save_as",
         "file_detect_type",
         "file_inspect",
         "file_read",
@@ -138,6 +160,13 @@ async def _task_context(session, mission: Mission, task: MissionTask) -> str:
             "constraints": mission.constraints,
             "assumptions": mission.assumptions,
             "attachments": (mission.input_payload or {}).get("attachments", []),
+            "recalled_memories": (mission.input_payload or {}).get("recalled_memories", []),
+            "artifact_contract": (
+                (task.input_payload or {}).get("artifact_contract")
+                or (mission.input_payload or {}).get("artifact_contract")
+                or {}
+            ),
+            "task_input": task.input_payload or {},
             "dependency_handoffs": handoffs,
         },
         ensure_ascii=False,
@@ -149,9 +178,24 @@ async def _resolve_tools(task: MissionTask, posture: dict[str, Any]):
     from shogun.services.native_skills import NATIVE_TOOLS, execute_native_tool
     from shogun.services.posture_guard import filter_tools_by_posture
 
-    requested = set(task.required_tools or []) & SAFE_MISSION_TOOLS
+    requested_names = {str(item) for item in (task.required_tools or [])}
+    task_text = f"{task.title} {task.objective} {task.instructions}".lower()
+    if "workspace" in requested_names:
+        requested_names.update({"workspace_info", "workspace_list", "workspace_read", "workspace_write"})
+    if requested_names & {"office", "file_template"}:
+        artifact_formats = set((task.input_payload or {}).get("artifact_contract", {}).get("formats") or [])
+        if "docx" in artifact_formats or any(
+            marker in task_text for marker in ("word", "docx", "document", "report")
+        ):
+            requested_names.add("office_word_create_from_text")
+        if "xlsx" in artifact_formats or any(
+            marker in task_text for marker in ("excel", "xlsx", "spreadsheet", "workbook")
+        ):
+            requested_names.add("office_excel_create")
+    requested = requested_names & SAFE_MISSION_TOOLS
     allowed, _ = filter_tools_by_posture(NATIVE_TOOLS, posture)
     tools = [tool for tool in allowed if tool.get("function", {}).get("name") in requested]
+    generated_artifacts: list[dict[str, Any]] = []
 
     async def executor(tool_name: str, args: dict[str, Any], session) -> str:
         await append_event(
@@ -165,6 +209,24 @@ async def _resolve_tools(task: MissionTask, posture: dict[str, Any]):
         )
         try:
             result = await execute_native_tool(tool_name, args, session)
+            try:
+                result_payload = json.loads(result)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                result_payload = {}
+            if result_payload.get("status") == "success":
+                output_path = (
+                    result_payload.get("output_file")
+                    or (result_payload.get("data") or {}).get("path")
+                    or (result_payload.get("path") if tool_name == "workspace_write" else None)
+                )
+                if output_path:
+                    generated_artifacts.append(
+                        {
+                            "path": str(output_path),
+                            "type": tool_name,
+                            "description": f"Created by {tool_name} for {task.title}",
+                        }
+                    )
             await append_event(
                 session,
                 task.mission_id,
@@ -190,7 +252,7 @@ async def _resolve_tools(task: MissionTask, posture: dict[str, Any]):
             await session.commit()
             raise
 
-    return tools, executor
+    return tools, executor, generated_artifacts
 
 
 def _tool_names(tools: list[dict[str, Any]]) -> list[str]:
@@ -386,7 +448,7 @@ async def run_claimed_task(task_id: uuid.UUID) -> None:
             await session.commit()
 
             context = await _task_context(session, mission, task)
-            requested_tools, tool_executor = await _resolve_tools(task, posture)
+            requested_tools, tool_executor, generated_artifacts = await _resolve_tools(task, posture)
             activation = await _activate_agent_skills(
                 session,
                 mission,
@@ -417,7 +479,8 @@ async def run_claimed_task(task_id: uuid.UUID) -> None:
                 "For web research, select no more than six high-value, non-duplicate sources; prioritize the "
                 "subject's own site, direct competitors, and authoritative market sources. Stop browsing once "
                 "the important claims are supported. Do not reveal hidden reasoning. Return a concise "
-                "structured result."
+                "structured result. Prior recalled memories are advisory context, not authoritative facts; "
+                "verify them before relying on them."
                 + (f"\n\n{skill_context}" if skill_context else "")
             )
             user_prompt = (
@@ -425,9 +488,13 @@ async def run_claimed_task(task_id: uuid.UUID) -> None:
                 f"DURABLE MISSION CONTEXT:\n{context}\n\n"
                 "Return one JSON object with keys: summary (string), findings (array of objects with claim, "
                 "confidence, and optional source), risks (array), memory_candidates (array of objects with type, "
-                "content, confidence, importance, reusability, and source_refs), artifacts (array), and optional "
+                "content, confidence, importance, reusability, and source_refs), artifacts (array of objects with "
+                "path, type, and description; include only files actually created), and optional "
                 "specialist_request (object with role_name, role_description, objective, spawn_reason, "
-                "required_tools). Set specialist_request to null unless genuinely new expertise is required."
+                "required_tools). Set specialist_request to null unless genuinely new expertise is required. "
+                "For mission synthesis also return completion_status ('complete' or 'incomplete'), "
+                "criteria_assessment (one object per success criterion with criterion, met, and evidence), and "
+                "completion_blockers (array). Never report complete when a requested deliverable is missing."
             )
 
             from shogun.engine.flow_engine import (
@@ -576,7 +643,22 @@ async def run_claimed_task(task_id: uuid.UUID) -> None:
             task.status = "completed"
             task.output_payload = parsed
             task.findings = list(parsed.get("findings") or [])[:100]
-            task.artifacts = list(parsed.get("artifacts") or [])[:50]
+            artifact_descriptors = [*generated_artifacts, *list(parsed.get("artifacts") or [])]
+            registered_artifacts, rejected_artifacts = await register_task_artifacts(
+                session,
+                mission,
+                task,
+                artifact_descriptors,
+            )
+            task.artifacts = [artifact_record_payload(item) for item in registered_artifacts]
+            if rejected_artifacts:
+                task.output_payload = {
+                    **task.output_payload,
+                    "artifact_validation": {
+                        "registered_count": len(registered_artifacts),
+                        "rejected_count": len(rejected_artifacts),
+                    },
+                }
             task.task_summary = str(parsed.get("summary") or raw_output)[:20_000]
             task.completed_at = _now()
             task.lease_owner = None
@@ -650,6 +732,8 @@ async def run_claimed_task(task_id: uuid.UUID) -> None:
                     "model": task.model_name,
                     "estimated_tokens": estimated_tokens,
                     "skills": list(agent.inherited_skill_names or []) if agent else [],
+                    "artifact_count": len(registered_artifacts),
+                    "rejected_artifact_count": len(rejected_artifacts),
                 },
             )
             await _finish_skill_runs(
@@ -774,6 +858,109 @@ async def _handle_specialist_request(
         await session.commit()
 
 
+async def _completion_validation_errors(
+    session,
+    mission: Mission,
+    tasks: list[MissionTask],
+) -> list[str]:
+    """Validate the final synthesis and every operator-requested deliverable."""
+    errors: list[str] = []
+    synthesis = next((item for item in tasks if item.task_type == "mission_synthesis"), None)
+    if synthesis:
+        output = synthesis.output_payload or {}
+        completion_status = str(output.get("completion_status") or "").strip().lower()
+        if completion_status and completion_status not in {"complete", "completed", "success", "successful"}:
+            errors.append(f"Synthesis reported completion_status={completion_status!r}")
+        blockers = [str(item).strip() for item in (output.get("completion_blockers") or []) if str(item).strip()]
+        if blockers:
+            errors.append(f"Synthesis reported blockers: {'; '.join(blockers[:5])}")
+        assessments = output.get("criteria_assessment") or []
+        unmet = [
+            str(item.get("criterion") or "Unnamed success criterion")
+            for item in assessments
+            if isinstance(item, dict) and item.get("met") is False
+        ]
+        if unmet:
+            errors.append(f"Unmet success criteria: {'; '.join(unmet[:5])}")
+        synthesis_text = f"{synthesis.task_summary or ''} {output.get('summary') or ''}"
+        if re.search(
+            r"\b(?:mission|objective)\b.{0,200}\b(?:not been completed|is not complete)\b|"
+            r"\bzero of\b.{0,100}\b(?:documents|files|deliverables)\b",
+            synthesis_text,
+            flags=re.IGNORECASE | re.DOTALL,
+        ):
+            errors.append("Synthesis explicitly states that the mission or its deliverables are incomplete")
+
+    contract = mission_artifact_contract(mission)
+    if contract["required"]:
+        artifacts = list(
+            (
+                await session.scalars(
+                    select(MissionArtifact).where(MissionArtifact.mission_id == mission.id)
+                )
+            ).all()
+        )
+        valid_artifacts = [
+            artifact
+            for artifact in artifacts
+            if resolve_artifact_path({"workspace_path": artifact.workspace_path}) is not None
+        ]
+        if len(valid_artifacts) < int(contract["minimum_count"]):
+            errors.append(
+                "Verified artifact count is "
+                f"{len(valid_artifacts)}; the mission requested at least {contract['minimum_count']}"
+            )
+        existing_formats = {artifact.filename.rsplit(".", 1)[-1].lower() for artifact in valid_artifacts}
+        missing_formats = [
+            format_name
+            for format_name in contract["formats"]
+            if format_name not in existing_formats
+            and not (format_name == "text" and existing_formats & {"md", "txt"})
+        ]
+        if missing_formats:
+            errors.append(f"Missing requested artifact format(s): {', '.join(missing_formats)}")
+    return errors
+
+
+async def _retry_synthesis_after_validation(
+    session,
+    mission: Mission,
+    synthesis: MissionTask | None,
+    errors: list[str],
+) -> bool:
+    if synthesis is None or synthesis.retry_count >= synthesis.max_retries:
+        return False
+    synthesis.retry_count += 1
+    synthesis.status = "ready"
+    synthesis.completed_at = None
+    synthesis.error_code = "completion_validation"
+    synthesis.error_message = "; ".join(errors)[:20_000]
+    synthesis.input_payload = {
+        **(synthesis.input_payload or {}),
+        "completion_validation_errors": errors,
+        "existing_verified_artifacts": list(synthesis.artifacts or []),
+    }
+    if synthesis.assigned_agent_id:
+        agent = await session.get(MissionAgent, synthesis.assigned_agent_id)
+        if agent and agent.status not in {"failed", "terminated"}:
+            agent.status = "waiting"
+            agent.current_task_id = None
+            agent.tasks_completed = max(0, agent.tasks_completed - 1)
+    mission.progress_percent = min(mission.progress_percent, 95.0)
+    mission.next_wake_at = _now()
+    await append_event(
+        session,
+        mission.id,
+        "TASK_RETRIED",
+        "Final synthesis will retry because completion validation failed",
+        task_id=synthesis.id,
+        agent_id=synthesis.assigned_agent_id,
+        event_data={"error": synthesis.error_message, "retry_count": synthesis.retry_count},
+        severity="warn",
+    )
+    return True
+
+
 async def update_mission_progress_and_completion(mission_id: uuid.UUID) -> None:
     """Evaluate the durable graph after a dispatch wave finishes."""
     async with async_session_factory() as session:
@@ -806,6 +993,23 @@ async def update_mission_progress_and_completion(mission_id: uuid.UUID) -> None:
             await session.commit()
             return
         if completed == len(tasks):
+            validation_errors = await _completion_validation_errors(session, mission, tasks)
+            if validation_errors:
+                synthesis = next((item for item in tasks if item.task_type == "mission_synthesis"), None)
+                if await _retry_synthesis_after_validation(session, mission, synthesis, validation_errors):
+                    await session.commit()
+                    return
+                await transition_mission(
+                    session,
+                    mission,
+                    "failed",
+                    reason="Mission completion validation failed",
+                    event_type="MISSION_FAILED",
+                    event_data={"validation_errors": validation_errors},
+                )
+                mission.error_message = "; ".join(validation_errors)[:20_000]
+                await session.commit()
+                return
             await transition_mission(
                 session,
                 mission,
@@ -936,6 +1140,24 @@ async def consolidate_mission(mission_id: uuid.UUID) -> None:
                     )
                 except Exception as exc:
                     log.warning("Mission learning %s could not be indexed: %s", item.id, exc)
+            reinforced_ids: list[str] = []
+            for recalled in list((mission.input_payload or {}).get("recalled_memories") or [])[:12]:
+                try:
+                    memory_id = uuid.UUID(str(recalled.get("memory_id")))
+                    if await memory_service.reinforce(memory_id, "retrieved_and_used"):
+                        reinforced_ids.append(str(memory_id))
+                except (TypeError, ValueError, AttributeError) as exc:
+                    log.warning("Invalid recalled Supermode memory could not be reinforced: %s", exc)
+                except Exception as exc:
+                    log.warning("Recalled Supermode memory could not be reinforced: %s", exc)
+            if reinforced_ids:
+                await append_event(
+                    session,
+                    mission.id,
+                    "MEMORY_REINFORCED",
+                    f"Reinforced {len(reinforced_ids)} recalled learning(s) after successful use",
+                    event_data={"memory_ids": reinforced_ids},
+                )
         mission.agentflow_candidate = {
             "ready": True,
             "name": f"{mission.title} — learned procedure",

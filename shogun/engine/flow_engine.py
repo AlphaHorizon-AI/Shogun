@@ -458,6 +458,7 @@ async def start_flow_run(
             select(AgentFlow).where(
                 AgentFlow.id == flow_id,
                 AgentFlow.is_deleted.is_(False),
+                AgentFlow.flow_type == "standard",
             )
         )
         flow = result.scalar_one_or_none()
@@ -1224,7 +1225,7 @@ async def _execute_single_node(
                 governance_context or {},
             )
         elif node_type == "stack_orchestrator":
-            result = await _exec_stack_orchestrator(run_id, config, run_input or {})
+            raise ValueError("Flow Stacking is not available in Yellow Label.")
         else:
             raise ValueError(f"Unknown node type: {node_type}")
         result = _validated_node_result(result)
@@ -1525,10 +1526,11 @@ async def execute_child_flow(
 ) -> dict[str, Any]:
     """Create, govern, await, and audit one child run using `_execute_flow`."""
     from shogun.config import settings
+    from shogun.edition import feature_available
     from shogun.services.event_logger import EventLogger
 
-    if not settings.flow_stacking_enabled:
-        raise ValueError("Flow Stacking is disabled in Shogun configuration.")
+    if not feature_available("flow_stack") or not settings.flow_stacking_enabled:
+        raise ValueError("Flow Stacking is not available in Yellow Label.")
 
     child_input = _json_object(child_input, "Child flow input")
     child_run_id = uuid.uuid4()
@@ -3495,10 +3497,10 @@ async def _exec_coding(
 
 
 async def _exec_channel_send(config: dict, context_str: str) -> str:
-    """Send an AgentFlow message to Telegram, Teams, or both."""
+    """Send an AgentFlow message to Telegram."""
     from shogun.services.notification_service import send_channel_message
 
-    channel = config.get("channel", "both")
+    channel = "telegram"
     template = config.get("message_template") or "{{context}}"
     message = template.replace("{{context}}", context_str).strip()
     if not message:
@@ -3513,9 +3515,8 @@ async def _exec_channel_send(config: dict, context_str: str) -> str:
         channel=channel,
         telegram_chat_ids=telegram_chat_ids,
         telegram_message_thread_id=config.get("message_thread_id"),
-        teams_conversation_ids=config.get("teams_conversation_ids") or None,
     )
-    selected = [channel] if channel != "both" else ["telegram", "teams"]
+    selected = [channel]
     failures = [name for name in selected if not results.get(name, {}).get("ok")]
     if failures:
         detail = "; ".join(
@@ -5704,11 +5705,13 @@ async def _resolve_task_llm_chain(
         for entry in [result.selected, *result.fallbacks]:
             provider = await session.get(ModelProvider, entry.provider_id) if entry.provider_id else None
             if provider and provider.status == "connected":
-                if provider.auth_type == "oauth":
+                if getattr(provider, "auth_type", None) == "oauth":
                     await ensure_provider_access_token(session, provider)
                 chain.append(_provider_connection(provider, entry.model_id))
         if chain:
-            await session.flush()
+            flush = getattr(session, "flush", None)
+            if flush is not None:
+                await flush()
             return chain, result.payload
     except NoEligibleModelError as exc:
         # Compatibility path for upgraded desktop installations: Comms and
@@ -6154,6 +6157,17 @@ async def _call_llm_chain(
                 model_parameters = ((routing_context or {}).get("request_parameters") or {}).get(route_key) or {}
                 temperature = max(0.0, min(2.0, float(model_parameters.get("temperature", 0.3))))
                 reasoning_effort = model_parameters.get("reasoning_effort")
+                provider_config = getattr(_provider, "config", {}) or {}
+                provider_type = getattr(_provider, "provider_type", None)
+                provider_kwargs = (
+                    {
+                        "provider_type": provider_type,
+                        "provider_config": provider_config,
+                        "reasoning_effort": reasoning_effort,
+                    }
+                    if provider_type
+                    else {}
+                )
                 configured_seed = (routing_context or {}).get("flow_seed")
                 seed_match = str((routing_context or {}).get("flow_seed_model_id") or "").strip()
                 physical_model = f"{getattr(_provider, 'id', '')}:{model_name}"
@@ -6166,9 +6180,24 @@ async def _call_llm_chain(
                 )
                 default_controls = temperature == 0.3 and seed is None
                 if max_tokens is None and default_controls:
-                    result = await _call_llm(messages, model_name, base_url, headers, timeout, provider_type=_provider.provider_type, provider_config=_provider.config, reasoning_effort=reasoning_effort)
+                    result = await _call_llm(
+                        messages,
+                        model_name,
+                        base_url,
+                        headers,
+                        timeout,
+                        **provider_kwargs,
+                    )
                 elif default_controls:
-                    result = await _call_llm(messages, model_name, base_url, headers, timeout, max_tokens=max_tokens, provider_type=_provider.provider_type, provider_config=_provider.config, reasoning_effort=reasoning_effort)
+                    result = await _call_llm(
+                        messages,
+                        model_name,
+                        base_url,
+                        headers,
+                        timeout,
+                        max_tokens=max_tokens,
+                        **provider_kwargs,
+                    )
                 else:
                     result = await _call_llm(
                         messages,
@@ -6179,9 +6208,7 @@ async def _call_llm_chain(
                         max_tokens=max_tokens,
                         temperature=temperature,
                         seed=seed,
-                        provider_type=_provider.provider_type,
-                        provider_config=_provider.config,
-                        reasoning_effort=reasoning_effort,
+                        **provider_kwargs,
                     )
                 await _record_model_usage(
                     _provider,

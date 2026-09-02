@@ -373,8 +373,6 @@ async def lifespan(app: FastAPI):
             await ensure_enterprise_transformation_specialist_skills(session)
             await TransformationProfileRegistryService(session).sync_bundled_profiles()
             await session.commit()
-        from shogun.services.stack_orchestrator import recover_interrupted_stack_runs
-        await recover_interrupted_stack_runs()
         resolve_startup_notice("database_repair_incomplete")
     except Exception:
         record_startup_notice(
@@ -532,16 +530,6 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logging.getLogger(__name__).debug("Office detection/cleanup skipped: %s", exc)
 
-    # ── Start Gensui Membership Client ────────────────────────
-    gensui = None
-    if settings.gensui_enabled:
-        try:
-            from shogun.services.gensui_client import gensui_client
-            gensui = gensui_client
-            await gensui.start()
-        except Exception as exc:
-            logging.getLogger(__name__).warning("Gensui client startup failed: %s", exc)
-
     # Installation telemetry is an independent, opt-in subsystem. Its startup
     # never blocks Shogun and it performs no network request while disabled.
     try:
@@ -610,13 +598,6 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
-    # ── Stop Gensui client ───────────────────────────────────
-    if gensui:
-        try:
-            await gensui.stop()
-        except Exception:
-            pass
-
     try:
         from shogun.telemetry.service import telemetry_service
         await telemetry_service.stop()
@@ -671,7 +652,6 @@ def create_app() -> FastAPI:
 
     # Register routers
     from shogun.api.system import router as system_router
-    from shogun.api.team import router as team_router
     from shogun.api.personas import router as personas_router
     from shogun.api.agents import router as agents_router
     from shogun.api.model_providers import router as models_router
@@ -681,13 +661,11 @@ def create_app() -> FastAPI:
     from shogun.api.missions import router as missions_router
     from shogun.api.bushido import router as bushido_router
     from shogun.api.channels import router as channels_router
-    from shogun.api.logs import router as logs_router
     from shogun.api.memory import router as memory_router
     from shogun.api.memory_graph import router as memory_graph_router
     from shogun.api.dojo import router as dojo_router
     from shogun.api.samurai_roles import router as samurai_roles_router
     from shogun.api.kaizen import router as kaizen_router
-    from shogun.api.a2a import a2a_router, workspace_router
     from shogun.api.i18n import router as i18n_router
     from shogun.api.setup import router as setup_router
     from shogun.api.updates import router as updates_router
@@ -697,12 +675,8 @@ def create_app() -> FastAPI:
     from shogun.api.comms import router as comms_router
     from shogun.api.visual import router as visual_router
     from shogun.api.agent_flow import router as agent_flow_router
-    from shogun.api.stack_orchestrator import router as stack_orchestrator_router
     from shogun.api.mado import router as mado_router
-    from shogun.api.gensui_config import router as gensui_config_router
     from shogun.api.ronin import router as ronin_router
-    from shogun.nexus.gateway.external_gateway import router as nexus_router
-    from shogun.api.teams import command_router as katana_command_router, router as teams_router
     from shogun.api.ide import router as ide_router
     from shogun.api.skillopt import router as skillopt_router
     from shogun.api.skill_lifecycle import router as skill_lifecycle_router
@@ -713,7 +687,6 @@ def create_app() -> FastAPI:
 
     prefix = "/api/v1"
     app.include_router(system_router, prefix=prefix)
-    app.include_router(team_router, prefix=prefix)
     app.include_router(personas_router, prefix=prefix)
     app.include_router(agents_router, prefix=prefix)
     app.include_router(models_router, prefix=prefix)
@@ -725,14 +698,11 @@ def create_app() -> FastAPI:
     app.include_router(missions_router, prefix=prefix)
     app.include_router(bushido_router, prefix=prefix)
     app.include_router(channels_router, prefix=prefix)
-    app.include_router(logs_router, prefix=prefix)
     app.include_router(memory_router, prefix=prefix)
     app.include_router(memory_graph_router, prefix=prefix)
     app.include_router(dojo_router, prefix=prefix)
     app.include_router(samurai_roles_router, prefix=prefix)
     app.include_router(kaizen_router, prefix=prefix)
-    app.include_router(a2a_router, prefix=prefix)
-    app.include_router(workspace_router, prefix=prefix)
     app.include_router(i18n_router, prefix=prefix)
     app.include_router(setup_router, prefix=prefix)
     app.include_router(updates_router, prefix=prefix)
@@ -745,12 +715,8 @@ def create_app() -> FastAPI:
     from shogun.api.mapping_rpa import router as mapping_rpa_router
     app.include_router(mapping_rpa_router, prefix=prefix)
     app.include_router(transformation_profiles_router, prefix=prefix)
-    app.include_router(stack_orchestrator_router, prefix=prefix)
     app.include_router(mado_router, prefix=prefix)
-    app.include_router(gensui_config_router, prefix=prefix)
     app.include_router(ronin_router, prefix=prefix)
-    app.include_router(teams_router, prefix=prefix)
-    app.include_router(katana_command_router, prefix=prefix)
     app.include_router(ide_router, prefix=prefix)
     app.include_router(files_router, prefix=prefix)
     app.include_router(telemetry_router, prefix=prefix)
@@ -764,10 +730,8 @@ def create_app() -> FastAPI:
     from shogun.api.workspace import router as workspace_router
     app.include_router(workspace_router, prefix=prefix)
 
-    app.include_router(nexus_router, prefix=prefix)
-
     # ── Health / Identity Endpoint ───────────────────────────
-    # Used by Gensui network scanner to identify Shogun instances on the LAN.
+    # Used by installers and operators to verify that Shogun is healthy.
     @app.get("/api/v1/health")
     async def health_check():
         from shogun.services.release_metadata import get_release_metadata

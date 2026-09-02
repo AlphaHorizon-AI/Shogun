@@ -1,6 +1,25 @@
 import { useState, useEffect } from 'react';
-import { Download, RefreshCw, CheckCircle, AlertTriangle, ArrowUpCircle, Clock, Power } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowUpCircle,
+  CheckCircle,
+  Clock,
+  Crown,
+  Download,
+  ExternalLink,
+  KeyRound,
+  Mail,
+  Power,
+  RefreshCw,
+} from 'lucide-react';
 import { useTranslation } from '../i18n';
+
+const WHITE_LABEL_ACCESS_EMAIL = 'mailto:contact@alphahorizon.io?subject=Shogun%20White-Label%20Access';
+
+type WhiteLabelResult = {
+  tone: 'success' | 'error';
+  message: string;
+};
 
 interface UpdateStatus {
   update_available: boolean;
@@ -32,6 +51,41 @@ export const Updates = () => {
   const [installResult, setInstallResult] = useState<string | null>(null);
   const [githubToken, setGithubToken] = useState('');
   const [savingToken, setSavingToken] = useState(false);
+  const [whiteLabelToken, setWhiteLabelToken] = useState('');
+  const [startingWhiteLabelUpgrade, setStartingWhiteLabelUpgrade] = useState(false);
+  const [whiteLabelResult, setWhiteLabelResult] = useState<WhiteLabelResult | null>(null);
+
+  const startWhiteLabelUpgrade = async () => {
+    const token = whiteLabelToken.trim();
+    if (!token) return;
+
+    setStartingWhiteLabelUpgrade(true);
+    setWhiteLabelResult(null);
+    try {
+      const response = await fetch('/api/v1/updates/white-label/upgrade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ github_token: token }),
+      });
+      const data = await response.json().catch(() => ({}));
+      const detail = typeof data.detail === 'string' ? data.detail : data.detail?.message;
+      if (!response.ok) throw new Error(detail || `HTTP ${response.status}`);
+      setWhiteLabelResult({
+        tone: 'success',
+        message: data.message || 'White Label upgrade started. Shogun will report when it is ready.',
+      });
+    } catch (error: unknown) {
+      setWhiteLabelResult({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Could not start the White Label upgrade.',
+      });
+    } finally {
+      // The White Label credential is intentionally never persisted by this page.
+      setWhiteLabelToken('');
+      setStartingWhiteLabelUpgrade(false);
+    }
+  };
+
   const saveUpdateAccess = async () => {
     if (!githubToken.trim()) return;
     setSavingToken(true);
@@ -139,6 +193,96 @@ export const Updates = () => {
         </h1>
         <p className="text-shogun-subdued mt-1">{t('updates_page.subtitle')}</p>
       </div>
+
+      <section className="rounded-xl border border-[#d4a017]/35 bg-gradient-to-br from-[#d4a017]/10 via-shogun-card to-violet-500/10 p-6">
+        <div className="flex items-start gap-4">
+          <div className="rounded-xl border border-[#d4a017]/30 bg-[#d4a017]/10 p-3">
+            <Crown className="h-6 w-6 text-[#d4a017]" />
+          </div>
+          <div>
+            <h2 className="font-bold text-shogun-text">
+              {t('updates_page.white_label_title', 'Move to the full commercial edition')}
+            </h2>
+            <p className="mt-1 max-w-xl text-xs leading-relaxed text-shogun-subdued">
+              {t(
+                'updates_page.white_label_description',
+                'Official Yellow Label updates may be discontinued in the future. White Label provides licensed commercial access and private-repository updates; independently maintained Yellow Label installations can continue to be updated manually.',
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <div className="flex flex-col rounded-xl border border-shogun-border bg-shogun-bg/60 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-shogun-text">
+              <Mail className="h-4 w-4 text-[#d4a017]" />
+              {t('updates_page.white_label_need_access', 'I need White Label access')}
+            </div>
+            <p className="mt-2 flex-1 text-xs leading-relaxed text-shogun-subdued">
+              {t(
+                'updates_page.white_label_need_access_description',
+                'If you do not have a private-repository access token, send us an email to request commercial access.',
+              )}
+            </p>
+            <a
+              href={WHITE_LABEL_ACCESS_EMAIL}
+              className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-[#d4a017]/50 px-4 py-2.5 text-sm font-semibold text-[#e6b422] transition-colors hover:bg-[#d4a017]/10"
+            >
+              {t('updates_page.white_label_send_email', 'Send access email')}
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </div>
+
+          <div className="flex flex-col rounded-xl border border-shogun-border bg-shogun-bg/60 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-shogun-text">
+              <KeyRound className="h-4 w-4 text-violet-300" />
+              {t('updates_page.white_label_have_token', 'I already have an access token')}
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-shogun-subdued">
+              {t(
+                'updates_page.white_label_have_token_description',
+                'Enter the token issued for the White Label repository. It is used only for this upgrade request and is not saved by this page.',
+              )}
+            </p>
+            <div className="mt-4 space-y-3">
+              <input
+                type="password"
+                value={whiteLabelToken}
+                onChange={event => setWhiteLabelToken(event.target.value)}
+                onKeyDown={event => { if (event.key === 'Enter') void startWhiteLabelUpgrade(); }}
+                placeholder={t('updates_page.white_label_token_placeholder', 'White Label access token')}
+                aria-label={t('updates_page.white_label_token_placeholder', 'White Label access token')}
+                autoComplete="off"
+                className="w-full rounded-lg border border-shogun-border bg-shogun-bg px-3 py-2.5 text-sm text-shogun-text outline-none focus:border-violet-400"
+              />
+              <button
+                type="button"
+                onClick={startWhiteLabelUpgrade}
+                disabled={startingWhiteLabelUpgrade || !whiteLabelToken.trim()}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#d4a017] px-4 py-2.5 text-sm font-bold text-black transition-colors hover:bg-[#e6b422] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {startingWhiteLabelUpgrade
+                  ? t('updates_page.white_label_starting', 'Starting…')
+                  : t('updates_page.upgrade_white_label', 'Upgrade to White Label')}
+                <ArrowUpCircle className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {whiteLabelResult && (
+          <div
+            role="status"
+            className={`mt-4 rounded-lg border px-4 py-3 text-xs ${
+              whiteLabelResult.tone === 'success'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+            }`}
+          >
+            {whiteLabelResult.message}
+          </div>
+        )}
+      </section>
 
       {/* Version Card */}
       <div className="bg-shogun-card border border-shogun-border rounded-xl p-6">

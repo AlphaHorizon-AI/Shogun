@@ -39,10 +39,6 @@ def test_audit_components_do_not_claim_regulatory_compliance_or_immutable_storag
             "shogun/api/logs.py",
             "shogun/schemas/logs.py",
             "shogun/db/models/execution_event.py",
-            "gensui/services/fleet_audit_service.py",
-            "gensui/api/fleet_audit.py",
-            "gensui/frontend/src/pages/Guide.tsx",
-            "gensui/frontend/src/pages/FleetAudit.tsx",
             "Knowledge Item/immutable_audit_log.md",
             "frontend/src/pages/Ronin.tsx",
             "shogun/ronin/core/audit_logger.py",
@@ -73,61 +69,6 @@ def test_audit_components_do_not_claim_regulatory_compliance_or_immutable_storag
     assert "constitutional governance is always enforced" not in current_surfaces
 
 
-def test_gensui_locale_claims_are_present_and_old_overclaims_are_removed() -> None:
-    locale_dir = ROOT / "gensui" / "frontend" / "src" / "i18n"
-    locale_paths = sorted(locale_dir.glob("*.json"))
-    assert len(locale_paths) == 14
-
-    unsafe_values = {
-        "HMAC-chained immutable event log",
-        "Tamper-resistant record of every administrative action.",
-        "Comprehensive runtime security architecture protecting every Shogun instance in the fleet.",
-        (
-            "NIS2/SOC2/EU AI Act compliance report. Shows fleet size, harakiri activations, "
-            "posture changes, enrollment events, token revocations, and HMAC chain integrity."
-        ),
-        "Immutable Audit Chain (HMAC-SHA256)",
-        (
-            "Create → shown once. Rotate → invalidates old key, generates new. "
-            "Revoke → permanently deactivates. All actions are audit-logged."
-        ),
-    }
-    required_guide_keys = {
-        "sec_audit_desc",
-        "sec_security_desc",
-        "sec_fleet_audit_desc",
-        "card_injection_governance_desc",
-        "card_audit_compliance_desc",
-        "card_compliance_tab_desc",
-        "security_architecture_desc",
-        "security_toolgate_confirm_desc",
-        "security_toolgate_audit_desc",
-        "security_fleet_audit_full_desc",
-        "security_immutable_chain",
-        "security_immutable_chain_full_desc",
-        "key_lifecycle_desc",
-        "card_raw_log_tab_desc",
-        "key_lifecycle_desc",
-    }
-
-    for path in locale_paths:
-        pack = json.loads(path.read_text(encoding="utf-8"))
-        assert pack["audit"]["subtitle"]
-        assert pack["fleet_audit"]["subtitle"]
-        assert required_guide_keys <= pack["guide"].keys()
-        assert pack["guide"]["card_raw_log_tab_desc"] == (
-            "Available audit records with action filtering. "
-            "Displayed fields depend on captured events."
-        )
-        assert not (unsafe_values & set(pack["guide"].values())), path.name
-        assert pack["audit"]["subtitle"] not in unsafe_values, path.name
-
-    english = json.loads((locale_dir / "en.json").read_text(encoding="utf-8"))
-    assert "does not determine compliance" in english["guide"]["card_compliance_tab_desc"]
-    assert "do not prove completeness" in english["guide"]["card_audit_compliance_desc"]
-    assert "do not prove completeness" in english["guide"]["security_immutable_chain_full_desc"]
-
-
 def test_direct_chat_discloses_ai_agent_in_every_locale() -> None:
     assert "chat.ai_agent_disclosure" in _text("frontend/src/pages/Chat.tsx")
 
@@ -147,14 +88,17 @@ def test_setup_docs_describe_ten_steps_and_local_security_acknowledgement() -> N
 
     assert "ten-step Setup Wizard" in readme
     assert "9. Security and incident-reporting information" in readme
-    assert "10. Configuration review and activation" in readme
+    assert "10. Configuration review, bundled licence review and acceptance" in readme
     assert "nine-step Setup Wizard" not in readme
     assert "All setup screens are available" not in readme
     assert "canonical English" in readme
 
     assert "security_incident_acknowledged: Literal[True]" in setup_knowledge
-    assert "API rejects an absent or\nfalse value" in setup_knowledge
+    assert "license_terms_accepted: Literal[True]" in setup_knowledge
+    assert "rejects an absent or false value" in setup_knowledge
     assert "security_incident_acknowledgement" in setup_knowledge
+    assert "license_terms_acceptance" in setup_knowledge
+    assert "SHA-256 hash of the exact `LICENSE.md`" in setup_knowledge
     assert "excluded from telemetry" in setup_knowledge
     assert "not evidence of a\nregulatory conformity assessment" in setup_knowledge
 
@@ -387,19 +331,8 @@ def test_guide_describes_toolgate_modes_and_trace_limits_factually() -> None:
     assert "missing events or a missing trace are not proof" in guide
 
 
-def test_guide_describes_the_actual_nexus_endpoint_card() -> None:
+def test_guide_does_not_guarantee_complete_layer_enforcement() -> None:
     guide = _text("frontend/src/pages/Guide.tsx")
-
-    assert "A2A Endpoint Card (Top)" in guide
-    assert "A2A name and inbound endpoint URL" in guide
-    assert "The card does not display a public key" in guide
-    assert "Displays your Shogun's unique ID and public key" not in guide
-    assert "put your agent ID on the clipboard" not in guide
-
-
-def test_guides_do_not_guarantee_complete_layer_or_fleet_enforcement() -> None:
-    guide = _text("frontend/src/pages/Guide.tsx")
-    gensui_guide = _text("gensui/frontend/src/pages/Guide.tsx")
 
     for unsupported_claim in (
         "self-improvement never violates",
@@ -410,26 +343,7 @@ def test_guides_do_not_guarantee_complete_layer_or_fleet_enforcement() -> None:
     ):
         assert unsupported_claim not in guide
 
-    for unsupported_claim in (
-        "suspends all active operations gracefully",
-        "immediately kills all processes",
-        "Every tool call passes through ToolGate",
-        "automatically wraps all untrusted external content",
-        "ensures fleet-wide policy consistency",
-    ):
-        assert unsupported_claim not in gensui_guide
-
     assert "Common-mode failures, configuration errors, uninstrumented paths" in guide
-    assert "Custom plugins and execution paths require separate coverage verification" in gensui_guide
-    assert "may retain a cached posture" in gensui_guide
-
-    for path in sorted((ROOT / "gensui" / "frontend" / "src" / "i18n").glob("*.json")):
-        pack = json.loads(path.read_text(encoding="utf-8"))["guide"]
-        assert "best-effort cancellation" in pack["card_soft_freeze_desc"], path.name
-        assert "does not guarantee" in pack["card_hard_stop_desc"], path.name
-        assert "instrumented Shogun tool-execution paths" in pack["security_toolgate_full_desc"], path.name
-        assert "does not eliminate prompt-injection risk" in pack["security_injection_full_desc"], path.name
-        assert "may retain a cached posture" in pack["security_posture_push_full_desc"], path.name
 
 
 def test_torii_emergency_copy_does_not_claim_safety_gates_are_removed() -> None:
@@ -486,32 +400,3 @@ async def test_broken_audit_chain_schedules_an_incident(monkeypatch) -> None:
 
     assert response.data["chain_intact"] is False
     assert len(scheduled) == 1
-
-
-@pytest.mark.asyncio
-async def test_fleet_governance_evidence_has_non_conformity_notice(monkeypatch) -> None:
-    from gensui.services.fleet_audit_service import FleetAuditService
-
-    class Result:
-        @staticmethod
-        def scalar():
-            return 0
-
-    class Session:
-        @staticmethod
-        async def execute(_query):
-            return Result()
-
-    service = FleetAuditService(Session())
-
-    async def consistent_chain(*, limit):
-        assert limit == 5000
-        return {"valid": True, "checked": 0, "errors": []}
-
-    monkeypatch.setattr(service._audit, "verify_chain", consistent_chain)
-
-    report = await service.get_compliance_report()
-
-    assert report["report_purpose"] == "governance_evidence"
-    assert "does not establish conformity" in report["assessment_notice"]
-    assert "prove that every relevant event was captured" in report["assessment_notice"]

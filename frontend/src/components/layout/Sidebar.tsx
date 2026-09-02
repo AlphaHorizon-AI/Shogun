@@ -8,13 +8,10 @@ import {
   HelpCircle,
   Database,
   ScrollText,
-  History,
   Sword,
   BookOpen,
-  Network,
   Download,
   HardDrive,
-  ShieldCheck,
   LockKeyhole,
   Radio,
   Info,
@@ -191,33 +188,6 @@ export const Sidebar = () => {
             subLabel={t('nav.dojo_sub', 'Skill Registry')} 
             active={location.pathname === '/dojo'}
             onClick={() => navigate('/dojo')}
-          />
-          <NavItem 
-            icon={History} 
-            label={t('nav.logs', 'Logs')} 
-            subLabel={t('nav.logs_sub', 'Audit Trail')} 
-            active={location.pathname === '/logs'}
-            onClick={() => navigate('/logs')}
-          />
-        </nav>
-      </div>
-
-      <div>
-        <h3 className="text-[10px] font-bold tracking-[0.2em] mb-3 pl-3 uppercase" style={{color: 'rgb(129,140,248)'}}>{t('nav.alliance', 'Alliance')}</h3>
-        <nav className="flex flex-col gap-1">
-          <NavItem 
-            icon={Network} 
-            label={t('nav.nexus', 'Nexus')} 
-            subLabel={t('nav.nexus_sub', 'A2A Workspaces')} 
-            active={location.pathname === '/nexus'}
-            onClick={() => navigate('/nexus')}
-          />
-          <NavItem 
-            icon={ShieldCheck} 
-            label={t('nav.gensui', 'Gensui')} 
-            subLabel={t('nav.gensui_sub', 'Fleet Command')} 
-            active={location.pathname === '/gensui'}
-            onClick={() => navigate('/gensui')}
           />
         </nav>
       </div>

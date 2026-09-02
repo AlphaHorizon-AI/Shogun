@@ -31,7 +31,7 @@ policy_version
 
 Existing records are migrated safely as `tenant_id=local`, `sensitivity=internal`, and `scope_status=agent_private`. They are not promoted to global memory.
 
-Telegram requests resolve `chat_id + message_thread_id` into conversation/topic scope. Private chats also carry user scope; group/forum memories are shared only inside the matching conversation/topic. Microsoft Teams requests resolve tenant, team, and conversation identity, adding user scope for non-channel chats.
+Telegram requests resolve `chat_id + message_thread_id` into conversation/topic scope. Private chats also carry user scope; group/forum memories are shared only inside the matching conversation/topic.
 
 ## Authorization order
 

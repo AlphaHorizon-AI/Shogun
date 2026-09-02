@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +10,7 @@ from pydantic import ValidationError
 
 from shogun.api import setup as setup_api
 from shogun.api.setup import (
+    LICENSE_TERMS_ACCEPTANCE_STATEMENT,
     SECURITY_INCIDENT_ACKNOWLEDGEMENT_STATEMENT,
     SetupCompletePayload,
 )
@@ -21,10 +23,27 @@ def test_setup_completion_requires_explicit_security_acknowledgement() -> None:
         SetupCompletePayload()
 
     with pytest.raises(ValidationError, match="Input should be True"):
-        SetupCompletePayload(security_incident_acknowledged=False)
+        SetupCompletePayload(
+            security_incident_acknowledged=False,
+            license_terms_accepted=True,
+        )
 
-    payload = SetupCompletePayload(security_incident_acknowledged=True)
+    payload = SetupCompletePayload(
+        security_incident_acknowledged=True,
+        license_terms_accepted=True,
+    )
     assert payload.security_incident_acknowledged is True
+
+
+def test_setup_completion_requires_explicit_license_acceptance() -> None:
+    with pytest.raises(ValidationError, match="license_terms_accepted"):
+        SetupCompletePayload(security_incident_acknowledged=True)
+
+    with pytest.raises(ValidationError, match="Input should be True"):
+        SetupCompletePayload(
+            security_incident_acknowledged=True,
+            license_terms_accepted=False,
+        )
 
 
 def test_acknowledgement_uses_server_release_metadata(monkeypatch) -> None:
@@ -45,13 +64,48 @@ def test_acknowledgement_uses_server_release_metadata(monkeypatch) -> None:
         "record_version": 1,
         "statement": SECURITY_INCIDENT_ACKNOWLEDGEMENT_STATEMENT,
         "acknowledged_at": record["acknowledged_at"],
-        "acknowledged_by_role": "primary_admin",
+        "acknowledged_by_role": "installer",
         "installed_version": "9.8.7",
         "installed_build": 654,
         "installed_release_identifier": "9.8.7+build.654",
         "installed_release_date": "2026-08-21T12:34:56Z",
     }
     assert datetime.fromisoformat(record["acknowledged_at"]).tzinfo is not None
+
+
+def test_license_acceptance_is_tied_to_bundled_release(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    license_bytes = b"exact bundled licence\n"
+    (tmp_path / "LICENSE.md").write_bytes(license_bytes)
+    monkeypatch.setattr(setup_api, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        setup_api,
+        "_installation_release_metadata",
+        lambda: {
+            "version": "9.8.7",
+            "build": 654,
+            "release_id": "9.8.7+build.654",
+            "release_date": "2026-08-21T12:34:56Z",
+        },
+    )
+
+    record = setup_api._license_terms_acceptance()
+
+    assert record == {
+        "record_version": 1,
+        "statement": LICENSE_TERMS_ACCEPTANCE_STATEMENT,
+        "accepted_at": record["accepted_at"],
+        "accepted_by_role": "installer",
+        "license_file": "LICENSE.md",
+        "license_sha256": hashlib.sha256(license_bytes).hexdigest(),
+        "installed_version": "9.8.7",
+        "installed_build": 654,
+        "installed_release_identifier": "9.8.7+build.654",
+        "installed_release_date": "2026-08-21T12:34:56Z",
+    }
+    assert datetime.fromisoformat(record["accepted_at"]).tzinfo is not None
 
 
 def test_local_acknowledgement_is_never_serialized_as_telemetry(
@@ -93,6 +147,12 @@ def test_local_acknowledgement_is_never_serialized_as_telemetry(
         "acknowledged_at",
         "acknowledged_by_role",
         "installed_release_identifier",
+        "license_terms_acceptance",
+        "license_terms_accepted",
+        "license_sha256",
+        "accepted_at",
+        "accepted_by_role",
+        "license_file",
     ):
         with pytest.raises(ValueError, match="Forbidden telemetry field"):
             telemetry_payload.enforce_payload({**event, key: "must-stay-local"})
@@ -111,6 +171,10 @@ def test_installer_and_guide_include_security_routes() -> None:
         SECURITY_INCIDENT_ACKNOWLEDGEMENT_STATEMENT
     )
     assert "security_incident_acknowledged: securityIncidentAcknowledged" in wizard
+    assert "import licenseText from '../../../LICENSE.md?raw'" in wizard
+    assert "license_terms_accepted: licenseTermsAccepted" in wizard
+    assert "disabled={completing || !licenseTermsAccepted}" in wizard
+    assert LICENSE_TERMS_ACCEPTANCE_STATEMENT in wizard
     assert "https://github.com/AlphaHorizon-AI/Shogun/issues/new" in wizard
     assert "https://github.com/AlphaHorizon-AI/Shogun/security/advisories/new" in wizard
     assert "mailto:contact@alphahorizon.io?subject=Shogun%20Security%20Report" in wizard

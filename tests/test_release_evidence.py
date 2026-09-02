@@ -57,10 +57,9 @@ def test_sbom_covers_all_shipped_runtime_manifests_without_claiming_python_resol
     for package in packages:
         by_name.setdefault(package["name"].casefold(), []).append(package)
 
-    assert "fastapi" in by_name  # root + Gensui + telemetry Python manifests
+    assert "fastapi" in by_name  # Shogun and telemetry Python manifests
     assert "psycopg" in by_name  # telemetry_service/requirements.txt
-    assert "react" in by_name  # Tenshu/Gensui frontend locks
-    assert "@microsoft/agents-hosting" in by_name  # Teams bridge lock
+    assert "react" in by_name  # Tenshu frontend lock
 
     fastapi = by_name["fastapi"][0]
     assert "versionInfo" not in fastapi

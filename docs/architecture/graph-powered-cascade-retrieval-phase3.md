@@ -4,7 +4,7 @@
 
 Phase 3 makes Shogun actively use the Kiroku MemoryGraph built in Phase 2. It
 combines scoped vector retrieval with relationship expansion, deterministic
-verification, Gensui/ToolGate filtering, and bounded context-pack construction.
+verification, ToolGate filtering, and bounded context-pack construction.
 
 The existing memory path remains the fallback. The external `jcode` project is
 conceptual inspiration only; no source code is copied, imported, vendored,
@@ -50,13 +50,13 @@ context-budgeted result set.
 - Graph expansion follows only the configured relationship allowlist.
 - Traversal depth is hard-capped at two.
 - SQL scope and sensitivity authorization is applied after expansion.
-- Gensui's `MEMORY_READ` posture can block retrieval.
-- Local and Gensui advanced content rules can block or require confirmation for
+- The active `MEMORY_READ` posture can block retrieval.
+- Local advanced content rules can block or require confirmation for
   individual memories; such memories are not injected.
 - Cross-agent graph reads are disabled by default. If explicitly enabled, only
   classified memories with an exact shared team/workspace/project/workflow/
   conversation/topic boundary may cross agent ownership.
-- Graph errors fail safely to the scoped vector result set. A Gensui denial does
+- Graph errors fail safely to the scoped vector result set. A ToolGate denial does
   not use that fallback; memory results are withheld.
 
 ## Context packs

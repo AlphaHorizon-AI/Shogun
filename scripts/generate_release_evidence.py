@@ -121,7 +121,7 @@ def _python_components(root: Path) -> list[dict[str, Any]]:
             declaration_note = f"{source} ({constraint or 'no version constraint'})"
             sources.setdefault(purl, set()).add(declaration_note)
 
-    for relative in (Path("pyproject.toml"), Path("gensui/pyproject.toml")):
+    for relative in (Path("pyproject.toml"),):
         pyproject_path = root / relative
         if not pyproject_path.exists():
             continue
@@ -161,8 +161,6 @@ def _npm_components(root: Path) -> list[dict[str, Any]]:
     components: dict[str, dict[str, Any]] = {}
     for relative in (
         Path("frontend/package-lock.json"),
-        Path("gensui/frontend/package-lock.json"),
-        Path("bridge/teams/package-lock.json"),
     ):
         lock_path = root / relative
         if not lock_path.exists():

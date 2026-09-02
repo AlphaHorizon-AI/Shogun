@@ -64,9 +64,9 @@ machine-readable artifacts from the exact checked-out release source:
 - `release-metadata.json` records semantic version, build, release date, and
   the full Git commit SHA.
 - `shogun-direct-dependencies.spdx.json` is an SPDX 2.3 SBOM covering direct
-  runtime Python dependencies for Shogun, Gensui, and the telemetry service
+  runtime Python dependencies for Shogun and the telemetry service
   (including non-development optional groups), plus locked production
-  dependencies for Tenshu, the Gensui frontend, and the Microsoft Teams bridge.
+  dependencies for The Tenshu.
   Python constraints are preserved as declaration metadata and are not
   misrepresented as resolved installed versions.
 

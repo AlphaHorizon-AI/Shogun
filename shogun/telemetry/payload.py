@@ -34,6 +34,8 @@ FORBIDDEN_KEYS = frozenset(
         "security_incident_acknowledgement", "security_incident_acknowledged",
         "acknowledged_at", "acknowledged_by_role", "installed_version",
         "installed_build", "installed_release_identifier", "installed_release_date",
+        "license_terms_acceptance", "license_terms_accepted", "license_sha256",
+        "accepted_at", "accepted_by_role", "license_file",
     }
 )
 
@@ -62,14 +64,6 @@ def architecture() -> str:
 def runtime_dimensions() -> dict:
     metadata = _version_metadata()
     docker = settings.deployment_mode == "server"
-    team_mode = docker
-    try:
-        setup = json.loads(
-            (settings.config_path / "setup.json").read_text(encoding="utf-8")
-        )
-        team_mode = setup.get("installation_mode") == "team"
-    except (OSError, ValueError):
-        pass
     distribution = (
         DistributionChannel.OFFICIAL_DOCKER
         if docker
@@ -91,9 +85,7 @@ def runtime_dimensions() -> dict:
             if settings.app_env == "development"
             else InstallType.NATIVE
         ),
-        "operation_mode": (
-            OperationMode.TEAM if team_mode else OperationMode.SINGLE_USER
-        ),
+        "operation_mode": OperationMode.SINGLE_USER,
     }
 
 
