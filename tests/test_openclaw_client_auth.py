@@ -153,3 +153,87 @@ async def test_exam_submission_includes_genuine_review():
 
     assert captured["review"] == review
     assert captured["agentId"] == "ag-primary"
+
+
+@pytest.mark.asyncio
+async def test_public_catalog_retries_transient_upstream_failure(monkeypatch):
+    attempts = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(503, json={"error": "temporarily unavailable"})
+        return httpx.Response(200, json=[{
+            "id": "skill-1",
+            "slug": "reliable-catalog",
+            "name": "Reliable Catalog",
+            "currentVersion": {"versionLabel": "1.0.0"},
+        }])
+
+    async def no_wait(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr("shogun.integrations.openclaw_client.asyncio.sleep", no_wait)
+    transport_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = OpenClawClient(base_url="https://college.test/api")
+    client._client = transport_client
+    try:
+        skills = await client.get_skills(limit=1)
+    finally:
+        await transport_client.aclose()
+
+    assert [skill.id for skill in skills] == ["skill-1"]
+    assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_public_skill_detail_preserves_not_found_result():
+    requested_paths: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requested_paths.append(request.url.raw_path.decode("ascii"))
+        return httpx.Response(404, json={"error": "not found"})
+
+    transport_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = OpenClawClient(base_url="https://college.test/api")
+    client._client = transport_client
+    try:
+        skill = await client.get_skill_by_id("missing/skill")
+    finally:
+        await transport_client.aclose()
+
+    assert skill is None
+    assert requested_paths == ["/api/skills/missing%2Fskill"]
+
+
+@pytest.mark.asyncio
+async def test_dojo_catalog_reports_upstream_failure_without_losing_registration(monkeypatch):
+    from fastapi import HTTPException
+
+    from shogun.api import dojo
+
+    request = httpx.Request("GET", "https://college.test/api/skills")
+    response = httpx.Response(503, request=request)
+
+    class FailingCollegeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get_skills(self, **_kwargs):
+            raise httpx.HTTPStatusError(
+                "Service Unavailable",
+                request=request,
+                response=response,
+            )
+
+    monkeypatch.setattr(dojo, "get_openclaw_client", FailingCollegeClient)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await dojo.openclaw_skills(limit=200)
+
+    assert exc_info.value.status_code == 502
+    assert "registration is still saved" in exc_info.value.detail

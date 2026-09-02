@@ -12,7 +12,12 @@ export const TopBar = () => {
     try {
       const response = await fetch('/api/v1/updates/shutdown', { method: 'POST' });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+      if (!response.ok) {
+        if (response.status === 404 || response.status === 405) {
+          throw new Error('The updated Tenshu interface is waiting for Shogun to restart. Use Restart Shogun on the Updates page, then try shutting down again.');
+        }
+        throw new Error(data.detail || `HTTP ${response.status}`);
+      }
       window.setTimeout(() => window.close(), 350);
     } catch (error: unknown) {
       setShuttingDown(false);

@@ -120,15 +120,19 @@ export function Dojo() {
   // ── Data Fetching ──────────────────────────────────────────
 
   const fetchStats = useCallback(async () => {
-    try {
-      const [statsRes, regRes] = await Promise.all([
-        axios.get('/api/v1/dojo/openclaw/stats'),
-        axios.get('/api/v1/dojo/openclaw/registration-status'),
-      ]);
-      setStats(statsRes.data.data);
-      setRegistrationStatus(regRes.data.data);
-    } catch (error) {
-      console.error('Error fetching stats:', error);
+    const [statsResult, registrationResult] = await Promise.allSettled([
+      axios.get('/api/v1/dojo/openclaw/stats'),
+      axios.get('/api/v1/dojo/openclaw/registration-status'),
+    ]);
+    if (statsResult.status === 'fulfilled') {
+      setStats(statsResult.value.data.data);
+    } else {
+      console.error('Error fetching OpenClaw stats:', statsResult.reason);
+    }
+    if (registrationResult.status === 'fulfilled') {
+      setRegistrationStatus(registrationResult.value.data.data);
+    } else {
+      console.error('Error fetching local registration:', registrationResult.reason);
     }
   }, []);
 
@@ -676,6 +680,9 @@ export function Dojo() {
                 <p className="text-[10px] text-shogun-subdued leading-relaxed">
                   Your Shogun is enrolled at OpenClaw College as <strong className="text-shogun-text">{registrationStatus.agent_name}</strong>.
                 </p>
+                <p className="text-[9px] leading-relaxed text-shogun-subdued">
+                  Registration is stored locally; live catalog availability is checked separately.
+                </p>
                 <code className="block text-[9px] bg-[#050508] p-2 rounded border border-shogun-border text-shogun-subdued font-mono truncate">
                   ID: {registrationStatus.openclaw_agent_id}
                 </code>
@@ -753,8 +760,17 @@ export function Dojo() {
              <>
                {tabError && (
                  <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-xs text-red-300">
-                   <div className="flex items-center gap-2 font-bold">
-                     <AlertCircle className="h-4 w-4" /> Dojo sync failed
+                   <div className="flex items-center justify-between gap-3">
+                     <div className="flex items-center gap-2 font-bold">
+                       <AlertCircle className="h-4 w-4" /> Dojo sync failed
+                     </div>
+                     <button
+                       type="button"
+                       onClick={() => void fetchTabData()}
+                       className="rounded border border-red-400/30 px-2 py-1 text-[9px] font-bold uppercase tracking-wider hover:bg-red-400/10"
+                     >
+                       Try again
+                     </button>
                    </div>
                    <p className="mt-1 font-mono text-[10px]">{tabError}</p>
                  </div>

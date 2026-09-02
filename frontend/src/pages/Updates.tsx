@@ -145,9 +145,10 @@ export const Updates = () => {
       const data = await r.json();
       if (data.success) {
         const warningText = data.warnings?.length ? ` Warnings: ${data.warnings.join(' ')}` : '';
-        setInstallResult(`✅ Updated to v${data.new_version} (build ${data.new_build}). ${data.files_updated} files updated. Please restart Shogun.${warningText}`);
-        checkForUpdates(true);
-        window.setTimeout(() => window.location.reload(), 1800);
+        setInstallResult(`✅ Updated to v${data.new_version} (build ${data.new_build}). ${data.files_updated} files updated. Restart Shogun before using the updated interface.${warningText}`);
+        // Keep this bundle paired with the backend that served it. Reloading here
+        // can expose newly added UI actions before their API routes are running.
+        await checkForUpdates(true);
       } else {
         setInstallResult(`❌ ${data.detail || 'Update failed'}`);
       }

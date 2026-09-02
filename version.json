@@ -1,8 +1,8 @@
 {
-  "version": "1.47.98",
+  "version": "1.47.99",
   "name": "Shogun AFM",
-  "build": 249,
+  "build": 250,
   "channel": "stable",
-  "released": "2026-09-02T12:39:38Z",
-  "changelog": "Remove the remaining Gensui installer and deployment surfaces from the Yellow Label distribution while retaining upgrade-safe compatibility data."
+  "released": "2026-09-02T13:44:39Z",
+  "changelog": "Prevent frontend/backend version skew during updates and make OpenClaw Dojo catalog synchronization resilient to transient upstream failures."
 }

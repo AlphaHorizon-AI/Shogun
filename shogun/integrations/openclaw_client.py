@@ -8,6 +8,7 @@ API Reference: https://github.com/AlphaHorizon-AI/OpenClawCollege.com
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -16,6 +17,10 @@ from urllib.parse import quote
 import httpx
 
 logger = logging.getLogger(__name__)
+
+_PUBLIC_GET_ATTEMPTS = 3
+_PUBLIC_GET_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+_PUBLIC_GET_RETRY_DELAY_SECONDS = 0.25
 
 # ── Constants ────────────────────────────────────────────────
 OPENCLAW_BASE_URL = "https://www.openclawcollege.com/api"
@@ -219,6 +224,42 @@ class OpenClawClient:
             raise RuntimeError("OpenClawClient must be used as async context manager")
         return self._client
 
+    async def _get_public(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        allowed_statuses: frozenset[int] | None = None,
+    ) -> httpx.Response:
+        """GET a public College resource with bounded transient retries."""
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        for attempt in range(1, _PUBLIC_GET_ATTEMPTS + 1):
+            try:
+                response = await self.client.get(url, params=params)
+                if allowed_statuses and response.status_code in allowed_statuses:
+                    return response
+                if response.status_code not in _PUBLIC_GET_RETRY_STATUSES:
+                    response.raise_for_status()
+                    return response
+                if attempt == _PUBLIC_GET_ATTEMPTS:
+                    response.raise_for_status()
+                failure = f"HTTP {response.status_code}"
+            except httpx.RequestError as exc:
+                if attempt == _PUBLIC_GET_ATTEMPTS:
+                    raise
+                failure = type(exc).__name__
+
+            logger.warning(
+                "OpenClaw public GET retry path=%s attempt=%d/%d failure=%s",
+                path,
+                attempt,
+                _PUBLIC_GET_ATTEMPTS,
+                failure,
+            )
+            await asyncio.sleep(_PUBLIC_GET_RETRY_DELAY_SECONDS * (2 ** (attempt - 1)))
+
+        raise RuntimeError("OpenClaw public GET exhausted retries without a response")
+
     # ── Health ────────────────────────────────────────────────
 
     async def health_check(self) -> bool:
@@ -234,8 +275,7 @@ class OpenClawClient:
 
     async def get_stats(self) -> OpenClawStats:
         """Get platform statistics."""
-        resp = await self.client.get(f"{self.base_url}/stats")
-        resp.raise_for_status()
+        resp = await self._get_public("stats")
         data = resp.json()
         return OpenClawStats(
             skills=data.get("skills", 0),
@@ -252,8 +292,7 @@ class OpenClawClient:
 
     async def get_categories(self) -> list[dict[str, Any]]:
         """Get all skill categories."""
-        resp = await self.client.get(f"{self.base_url}/categories")
-        resp.raise_for_status()
+        resp = await self._get_public("categories")
         return resp.json()
 
     async def get_subcategories(self) -> list[dict[str, Any]]:
@@ -261,8 +300,7 @@ class OpenClawClient:
 
         Returns the full subcategory list matching the College UI dropdown.
         """
-        resp = await self.client.get(f"{self.base_url}/subcategories")
-        resp.raise_for_status()
+        resp = await self._get_public("subcategories")
         return resp.json()
 
     # ── Skills ────────────────────────────────────────────────
@@ -281,8 +319,19 @@ class OpenClawClient:
         Because the API returns the full catalog (4000+ skills),
         filtering is done client-side for now.
         """
-        resp = await self.client.get(f"{self.base_url}/skills")
-        resp.raise_for_status()
+        # The College currently returns the complete catalog, but forwarding
+        # filters keeps this client ready for server-side filtering support.
+        params = {
+            "facultyId": faculty,
+            "subcategoryId": subcategory,
+            "riskTier": risk_tier,
+            "search": search,
+            "limit": limit,
+        }
+        resp = await self._get_public(
+            "skills",
+            params={key: value for key, value in params.items() if value is not None},
+        )
         raw_skills = resp.json()
 
         # Client-side filtering
@@ -306,18 +355,19 @@ class OpenClawClient:
 
     async def get_skill_by_id(self, skill_id: str) -> OpenClawSkill | None:
         """Get a single skill by its OpenClaw ID."""
-        resp = await self.client.get(f"{self.base_url}/skills/{skill_id}")
+        resp = await self._get_public(
+            f"skills/{quote(skill_id, safe='')}",
+            allowed_statuses=frozenset({404}),
+        )
         if resp.status_code == 404:
             return None
-        resp.raise_for_status()
         return self._parse_skill(resp.json())
 
     # ── Bundles ───────────────────────────────────────────────
 
     async def get_bundles(self, *, faculty: str | None = None) -> list[OpenClawBundle]:
         """Fetch all curated skill bundles."""
-        resp = await self.client.get(f"{self.base_url}/bundles")
-        resp.raise_for_status()
+        resp = await self._get_public("bundles")
         raw = resp.json()
         if faculty:
             raw = [b for b in raw if b.get("facultyId") == faculty]
@@ -337,8 +387,7 @@ class OpenClawClient:
 
     async def get_specializations(self) -> list[OpenClawSpecialization]:
         """Fetch all certification pathways."""
-        resp = await self.client.get(f"{self.base_url}/specializations")
-        resp.raise_for_status()
+        resp = await self._get_public("specializations")
         raw = resp.json()
         return [
             OpenClawSpecialization(
@@ -518,8 +567,7 @@ class OpenClawClient:
 
     async def get_badges(self) -> list[dict[str, Any]]:
         """Fetch all available badges from OpenClaw College."""
-        resp = await self.client.get(f"{self.base_url}/badges")
-        resp.raise_for_status()
+        resp = await self._get_public("badges")
         return resp.json()
 
     async def enroll_specialization(

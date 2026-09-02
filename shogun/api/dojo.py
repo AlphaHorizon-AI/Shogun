@@ -12,6 +12,7 @@ import logging
 import re
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -121,14 +122,40 @@ async def openclaw_skills(
     Returns up to `limit` skills, optionally filtered by faculty,
     subcategory, risk tier, or search query.
     """
-    async with get_openclaw_client() as client:
-        skills = await client.get_skills(
-            faculty=faculty,
-            subcategory=subcategory,
-            risk_tier=risk_tier,
-            search=search,
-            limit=limit,
-        )
+    try:
+        async with get_openclaw_client() as client:
+            skills = await client.get_skills(
+                faculty=faculty,
+                subcategory=subcategory,
+                risk_tier=risk_tier,
+                search=search,
+                limit=limit,
+            )
+    except httpx.HTTPStatusError as exc:
+        upstream_status = exc.response.status_code
+        logger.warning("OpenClaw catalog returned HTTP %d", upstream_status)
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"OpenClaw College catalog is temporarily unavailable (HTTP {upstream_status}). "
+                "Your registration is still saved; retry the catalog sync."
+            ),
+        ) from exc
+    except httpx.RequestError as exc:
+        logger.warning("OpenClaw catalog connection failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Could not reach the OpenClaw College catalog. "
+                "Your registration is still saved; check the connection and retry."
+            ),
+        ) from exc
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.warning("OpenClaw catalog response was invalid: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=502,
+            detail="OpenClaw College returned an invalid catalog response. Please retry shortly.",
+        ) from exc
     return ApiResponse(
         data=[
             {

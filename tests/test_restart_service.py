@@ -160,3 +160,12 @@ def test_desktop_launcher_exits_after_controlled_shutdown():
     shutdown_check = content.index('if exist ".states\\shutdown-requested"')
     normal_pause = content.index(":: If the server exits, keep the window open")
     assert shutdown_check < normal_pause
+
+
+def test_update_ui_waits_for_backend_restart_before_loading_new_bundle():
+    content = (
+        restart_service.PROJECT_ROOT / "frontend" / "src" / "pages" / "Updates.tsx"
+    ).read_text(encoding="utf-8")
+
+    assert "window.location.reload()" not in content
+    assert "Restart Shogun before using the updated interface." in content
