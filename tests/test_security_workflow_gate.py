@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "security-hardening.yml"
 CODEQL_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "codeql.yml"
 RELEASE_EVIDENCE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "release-evidence.yml"
+VERIFY_SCRIPT_PATH = ROOT / "scripts" / "verify_security_ci.py"
+PRE_PUSH_HOOK_PATH = ROOT / ".githooks" / "pre-push"
 
 REQUIRED_REGRESSION_TESTS = {
     "tests/test_college_telemetry.py",
@@ -63,15 +65,15 @@ REQUIRED_RUFF_BOUNDARIES = {
     "shogun/telemetry/payload.py",
 } | REQUIRED_REGRESSION_TESTS
 
-PINNED_ACTIONS = {
-    "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803": "v6.1.0",
-    "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e": "v6.4.0",
-    "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1": "v6.3.0",
-    "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25": "v0.36.0",
-    "github/codeql-action/analyze@c54b30b7df092240050e69945842bc67aee0f0f4": "v4.37.3",
-    "github/codeql-action/init@c54b30b7df092240050e69945842bc67aee0f0f4": "v4.37.3",
-    "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093": "v4.3.0",
-    "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02": "v4.6.2",
+APPROVED_ACTIONS = {
+    "actions/checkout",
+    "actions/download-artifact",
+    "actions/setup-node",
+    "actions/setup-python",
+    "actions/upload-artifact",
+    "aquasecurity/trivy-action",
+    "github/codeql-action/analyze",
+    "github/codeql-action/init",
 }
 
 
@@ -85,14 +87,48 @@ def _command_block(workflow: str, start: str, end: str) -> str:
 
 def test_required_regressions_are_in_the_pytest_and_ruff_gates() -> None:
     workflow = _workflow()
-    ruff_block = _command_block(workflow, "python -m ruff check", "- name: Security regression tests")
-    pytest_block = _command_block(workflow, "python -m pytest -q", "python scripts/check-telemetry-privacy.py")
+    verification_script = VERIFY_SCRIPT_PATH.read_text(encoding="utf-8")
 
-    missing_pytest = sorted(REQUIRED_REGRESSION_TESTS.difference(pytest_block.split()))
-    missing_ruff = sorted(REQUIRED_RUFF_BOUNDARIES.difference(ruff_block.split()))
+    missing_pytest = sorted(
+        path for path in REQUIRED_REGRESSION_TESTS if f'"{path}"' not in verification_script
+    )
+    missing_ruff = sorted(
+        path for path in REQUIRED_RUFF_BOUNDARIES if f'"{path}"' not in verification_script
+    )
 
     assert not missing_pytest, f"Required security tests missing from pytest gate: {missing_pytest}"
     assert not missing_ruff, f"Security boundaries missing from Ruff gate: {missing_ruff}"
+    assert "python scripts/verify_security_ci.py --backend" in workflow
+    assert "python ../scripts/verify_security_ci.py --frontend" in workflow
+    assert "name: Dependency security - Tenshu" in workflow
+    assert "run: npm run audit:security" in workflow
+
+
+def _action_policy_errors(workflow: str) -> list[str]:
+    action_lines = re.findall(
+        r"^[ \t]*-?[ \t]*uses:[ \t]*([^\s#]+)(?:[ \t]+#[ \t]*(\S+))?",
+        workflow,
+        re.MULTILINE,
+    )
+    errors: list[str] = []
+    action_names: set[str] = set()
+
+    for reference, version_comment in action_lines:
+        match = re.fullmatch(r"([^@]+)@([0-9a-f]{40})", reference)
+        if match is None:
+            errors.append(f"Action is not pinned to a full commit SHA: {reference}")
+            continue
+        action_names.add(match.group(1))
+        if re.fullmatch(r"v\d+\.\d+\.\d+", version_comment) is None:
+            errors.append(
+                f"Pinned action must retain its release comment: {reference}"
+            )
+
+    for action_name in sorted(action_names.difference(APPROVED_ACTIONS)):
+        errors.append(f"Action is not approved: {action_name}")
+    for action_name in sorted(APPROVED_ACTIONS.difference(action_names)):
+        errors.append(f"Approved action is absent: {action_name}")
+    return errors
 
 
 def test_actions_are_immutably_pinned() -> None:
@@ -103,30 +139,20 @@ def test_actions_are_immutably_pinned() -> None:
             RELEASE_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8"),
         )
     )
-    action_lines = re.findall(
-        r"^[ \t]*-?[ \t]*uses:[ \t]*([^\s#]+)(?:[ \t]+#[ \t]*(\S+))?",
-        workflow,
-        re.MULTILINE,
+    assert not _action_policy_errors(workflow)
+
+
+def test_action_policy_accepts_dependabot_sha_rotation() -> None:
+    rotated_workflow = "\n".join(
+        f"- uses: {action_name}@{'f' * 40} # v99.0.0"
+        for action_name in sorted(APPROVED_ACTIONS)
     )
-    references = {reference for reference, _comment in action_lines}
+    assert not _action_policy_errors(rotated_workflow)
 
-    unpinned = {
-        reference
-        for reference in references
-        if not re.fullmatch(r"[^@]+@[0-9a-f]{40}", reference)
-    }
-    assert not unpinned
 
-    for reference, version_comment in action_lines:
-        if re.fullmatch(r"[^@]+@[0-9a-f]{40}", reference):
-            assert re.fullmatch(r"v\d+\.\d+\.\d+", version_comment), (
-                f"Pinned action must retain its human-readable release comment: {reference}"
-            )
-
-    for reference, expected_version in PINNED_ACTIONS.items():
-        matches = [comment for candidate, comment in action_lines if candidate == reference]
-        assert matches, f"Pinned action is absent: {reference}"
-        assert all(comment == expected_version for comment in matches)
+def test_pre_push_hook_runs_the_shared_security_verification() -> None:
+    hook = PRE_PUSH_HOOK_PATH.read_text(encoding="utf-8")
+    assert 'scripts/verify_security_ci.py --all' in hook
 
 
 def test_shogun_server_failure_diagnostics_tolerate_an_early_build_failure() -> None:

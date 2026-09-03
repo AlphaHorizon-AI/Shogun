@@ -6,6 +6,7 @@ All paths, credentials, and feature flags are centralized here.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -14,6 +15,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SKIP_ENV_FILE = os.environ.get("SHOGUN_SKIP_ENV_FILE", "").casefold() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def normalize_database_url(value: str) -> str:
@@ -42,7 +49,7 @@ class Settings(BaseSettings):
     """Root configuration for the Shogun runtime."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=None if SKIP_ENV_FILE else ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",

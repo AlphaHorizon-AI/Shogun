@@ -1,8 +1,8 @@
 {
-  "version": "1.47.99",
+  "version": "1.47.100",
   "name": "Shogun AFM",
-  "build": 250,
+  "build": 251,
   "channel": "stable",
-  "released": "2026-09-02T13:44:39Z",
-  "changelog": "Prevent frontend/backend version skew during updates and make OpenClaw Dojo catalog synchronization resilient to transient upstream failures."
+  "released": "2026-09-03T03:10:00Z",
+  "changelog": "Make security CI deterministic, Dependabot-compatible, and easier to verify locally before Yellow Label releases."
 }

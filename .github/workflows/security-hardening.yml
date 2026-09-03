@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: security-hardening-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   python:
     runs-on: ubuntu-latest
@@ -20,124 +24,31 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Verify generated Guide catalogs
-        run: python scripts/sync_guide_translations.py --check
       - name: Install CPU runtime and development dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.4.0"
           python -m pip install -e ".[dev,office]"
-      - name: Import and lint
-        run: |
-          python -c "import shogun.app"
-          # Full-tree lint has substantial pre-existing debt. Gate the security
-          # boundary and deployment-path files introduced by this remediation.
-          python -m ruff check --select E,F,I,N,W,UP --ignore B008 \
-            shogun/api/a2a.py \
-            shogun/api/control_plane_auth.py \
-            shogun/api/infrastructure_auth.py \
-            shogun/api/email.py \
-            shogun/api/setup.py \
-            shogun/api/ronin.py \
-            shogun/api/security.py \
-            shogun/api/telemetry.py \
-            shogun/api/updates.py \
-            shogun/config.py \
-            shogun/edition.py \
-            shogun/integrations/a2a_client.py \
-            shogun/services/a2a_crypto.py \
-            shogun/services/calendar_service.py \
-            shogun/services/cascade_retrieval.py \
-            shogun/services/chat_sync_service.py \
-            shogun/services/comms_permissions.py \
-            shogun/services/email_service.py \
-            shogun/services/request_context.py \
-            shogun/services/startup_notices.py \
-            shogun/services/ssrf_guard.py \
-            shogun/services/telegram_poller.py \
-            shogun/services/provider_credentials.py \
-            shogun/services/release_metadata.py \
-            shogun/services/college_telemetry.py \
-            shogun/services/event_logger.py \
-            shogun/services/update_checker.py \
-            shogun/ronin/core/audit_logger.py \
-            shogun/ronin/core/approval_gate.py \
-            shogun/ronin/core/action_router.py \
-            shogun/ronin/core/capabilities_registry.py \
-            shogun/ronin/core/posture_guard.py \
-            shogun/ronin/core/ronin_controller.py \
-            shogun/ronin/policies/ronin_policy_schema.py \
-            shogun/schemas/ronin.py \
-            shogun/setup_link.py \
-            shogun/telemetry \
-            shogun/telemetry/payload.py \
-            telemetry_service \
-            tests/test_ssrf_guard.py \
-            tests/test_install_telemetry.py \
-            tests/test_telemetry_ingestion.py \
-            tests/test_red_team_hardening.py \
-            tests/test_calendar_permissions.py \
-            tests/test_security_punch_list.py \
-            tests/test_cli_environment.py \
-            tests/test_restart_service.py \
-            scripts/generate_release_evidence.py \
-            scripts/write_release_metadata_evidence.py \
-            tests/test_college_telemetry.py \
-            tests/test_cascade_retrieval.py \
-            tests/test_chat_sync.py \
-            tests/test_guide_incident_reporting.py \
-            tests/test_installer_release_provenance.py \
-            tests/test_release_evidence.py \
-            tests/test_release_metadata.py \
-            tests/test_ronin_desktop_control.py \
-            tests/test_ronin_runtime_security_gates.py \
-            tests/test_security_governance_language.py \
-            tests/test_security_parsing_regressions.py \
-            tests/test_security_posture.py \
-            tests/test_security_workflow_gate.py \
-            tests/test_server_mode.py \
-            tests/test_server_setup_url.py \
-            tests/test_setup_routing.py \
-            tests/test_setup_security_incident_acknowledgement.py \
-            tests/test_update_provenance.py \
-            tests/test_update_checker.py \
-            tests/test_updates.py \
-            tests/test_yellow_label_edition.py
-      - name: Security regression tests
-        # The repository-wide suite has unrelated pre-existing failures. Keep
-        # this required gate scoped to the remediation's security regressions.
-        run: |
-          python -m pytest -q \
-            tests/test_ssrf_guard.py \
-            tests/test_install_telemetry.py \
-            tests/test_telemetry_ingestion.py \
-            tests/test_red_team_hardening.py \
-            tests/test_calendar_permissions.py \
-            tests/test_security_punch_list.py \
-            tests/test_cli_environment.py \
-            tests/test_restart_service.py \
-            tests/test_college_telemetry.py \
-            tests/test_cascade_retrieval.py \
-            tests/test_chat_sync.py \
-            tests/test_guide_incident_reporting.py \
-            tests/test_installer_release_provenance.py \
-            tests/test_release_evidence.py \
-            tests/test_release_metadata.py \
-            tests/test_ronin_desktop_control.py \
-            tests/test_ronin_runtime_security_gates.py \
-            tests/test_security_governance_language.py \
-            tests/test_security_parsing_regressions.py \
-            tests/test_security_posture.py \
-            tests/test_security_workflow_gate.py \
-            tests/test_server_mode.py \
-            tests/test_server_setup_url.py \
-            tests/test_setup_routing.py \
-            tests/test_setup_security_incident_acknowledgement.py \
-            tests/test_update_provenance.py \
-            tests/test_update_checker.py \
-            tests/test_updates.py \
-            tests/test_yellow_label_edition.py
-          python scripts/check-telemetry-privacy.py
+      - name: Backend security verification
+        run: python scripts/verify_security_ci.py --backend
+
+  dependency-security:
+    runs-on: ubuntu-latest
+    name: Dependency security - Tenshu
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+          package-manager-cache: true
+      - run: npm ci --ignore-scripts
+      - name: High/Critical dependency gate
+        run: npm run audit:security
 
   frontends:
     runs-on: ubuntu-latest
@@ -153,15 +64,12 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
           package-manager-cache: true
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
       - run: npm ci
-      - name: High/Critical dependency gate
-        run: npm run audit:security
-      # The repository has pre-existing full-tree lint debt. Keep the complete
-      # lint command available while gating newly added security boundary code.
-      - run: npm run lint:security
-      - run: npm run build
-      - name: XSS regression tests
-        run: npm run test:security
+      - name: Frontend security verification
+        run: python ../scripts/verify_security_ci.py --frontend
 
   repository-security:
     runs-on: ubuntu-latest

@@ -276,9 +276,11 @@ cd Shogun
 python scripts/configure_git_hooks.py
 ```
 
-The repository hook performs the fast generated-catalog check before every
-push. If Guide text changes, follow its repair command and commit the updated
-catalogs before pushing.
+The repository hook runs the same deterministic backend, dependency-audit, and
+frontend verification used by the Security hardening workflow before every
+push. Run it directly at any time with
+`python scripts/verify_security_ci.py --all`. If Guide text changes, follow the
+reported repair command and commit the updated catalogs before pushing.
 
 | Platform | Command |
 |---|---|
