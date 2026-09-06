@@ -67,7 +67,8 @@ async def test_task_router_chat_exhaustion_uses_connected_provider_chain(monkeyp
         def __init__(self, _session):
             pass
 
-        async def route(self, _request):
+        async def route(self, _request, *, resolve_credentials=False):
+            assert resolve_credentials is True
             raise NoEligibleModelError(
                 "No eligible model found for this task. Required capabilities: chat.",
                 allow_connected_fallback=True,
@@ -99,7 +100,8 @@ async def test_task_router_policy_failure_does_not_use_compatibility_chain(monke
         def __init__(self, _session):
             pass
 
-        async def route(self, _request):
+        async def route(self, _request, *, resolve_credentials=False):
+            assert resolve_credentials is True
             raise NoEligibleModelError("Daily model budget reached.")
 
     async def forbidden_legacy_chain(*_args, **_kwargs):

@@ -41,10 +41,11 @@ from shogun.db.models.model_definition import ModelDefinition
 from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.model_router import ModelRegistryEntry
 from shogun.db.models.model_routing import ModelRoutingProfile
+from shogun.services.openai_oauth import subscription_headers
 from shogun.services.provider_credentials import provider_api_key
 from shogun.services.model_reasoning import apply_chat_reasoning
 from shogun.services.model_transport import model_chat_completion
-from shogun.services.provider_oauth import ensure_provider_access_token
+from shogun.services.provider_oauth import ProviderOAuthError, ensure_provider_access_token
 from shogun.services.structured_transformations import (
     deterministic_profile_source_units,
     expected_deterministic_matrix_rows,
@@ -5442,7 +5443,7 @@ def _provider_connection(
 
     # Build headers
     api_key = provider_api_key(provider.config)
-    headers: dict[str, str] = {"Content-Type": "application/json"}
+    headers: dict[str, str] = {"Content-Type": "application/json", **subscription_headers(provider)}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     if provider.provider_type == "openrouter":
@@ -5700,7 +5701,8 @@ async def _resolve_task_llm_chain(
                 escalation_level=escalation_level,
                 exclude_model_ids=exclude_model_ids or [],
                 local_only=local_only,
-            )
+            ),
+            resolve_credentials=True,
         )
         chain: list[tuple[ModelProvider, str, str, dict]] = []
         for entry in [result.selected, *result.fallbacks]:
@@ -5739,6 +5741,8 @@ async def _resolve_task_llm_chain(
                     "selected_max_output_tokens": None,
                     "fallback_reason": str(exc),
                 }
+        raise
+    except ProviderOAuthError:
         raise
     except Exception as exc:
         log.info("Task-aware routing unavailable; using legacy model chain: %s", exc)

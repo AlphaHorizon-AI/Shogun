@@ -21,6 +21,7 @@ from shogun.services.workflow_operator import (
     requires_workflow_tools,
     workflow_intent_keywords,
 )
+from shogun.services.openai_oauth import subscription_headers
 from shogun.services.provider_credentials import provider_api_key
 from shogun.services.model_reasoning import apply_chat_reasoning
 from shogun.services.model_transport import model_chat_stream
@@ -1232,7 +1233,7 @@ async def _shogun_fast_chat(
         return StreamingResponse(_no_model(), media_type="text/event-stream")
 
     api_key = provider_api_key(provider.config)
-    req_headers: dict[str, str] = {"Content-Type": "application/json"}
+    req_headers: dict[str, str] = {"Content-Type": "application/json", **subscription_headers(provider)}
     if api_key:
         req_headers["Authorization"] = f"Bearer {api_key}"
     if provider.provider_type == "openrouter":
@@ -1781,7 +1782,7 @@ async def _shogun_chat_internal(
             pass
 
         api_key = provider_api_key(provider.config)
-        req_headers: dict[str, str] = {"Content-Type": "application/json"}
+        req_headers: dict[str, str] = {"Content-Type": "application/json", **subscription_headers(provider)}
         if api_key:
             req_headers["Authorization"] = f"Bearer {api_key}"
         if provider.provider_type == "openrouter":

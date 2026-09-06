@@ -15,6 +15,9 @@ from fastapi.staticfiles import StaticFiles
 
 from shogun import __version__
 from shogun.config import settings
+from shogun.services.oauth_callback_relay import OAuthCallbackLogFilter
+
+logging.getLogger("uvicorn.access").addFilter(OAuthCallbackLogFilter())
 
 # Calculate project root (assuming this file is in shogun/app.py)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

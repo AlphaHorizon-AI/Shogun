@@ -1,8 +1,8 @@
 {
-  "version": "1.47.100",
+  "version": "1.47.101",
   "name": "Shogun AFM",
-  "build": 251,
+  "build": 252,
   "channel": "stable",
-  "released": "2026-09-03T03:10:00Z",
-  "changelog": "Make security CI deterministic, Dependabot-compatible, and easier to verify locally before Yellow Label releases."
+  "released": "2026-09-06T08:22:31Z",
+  "changelog": "Add direct ChatGPT OAuth with PKCE, browser callback recovery, encrypted credentials, coordinated token refresh, subscription transport, and connection testing."
 }

@@ -1,3 +1,4 @@
+import ChatGPTOAuthPanel, { type ChatGPTSignIn } from './katana/ChatGPTOAuthPanel';
 import { useState, useEffect, useMemo } from 'react';
 import { 
   Cpu,
@@ -468,6 +469,8 @@ export function Katana() {
   const [configuredReasoning, setConfiguredReasoning] = useState<Record<string, string>>({});
   const [reasoningCapabilities, setReasoningCapabilities] = useState<Record<string, ReasoningControl | null>>({});
   const [oauthClientSecret, setOauthClientSecret] = useState('');
+  const [chatGPTSignIn, setChatGPTSignIn] = useState<ChatGPTSignIn | null>(null);
+  const [testingOAuthProviderId, setTestingOAuthProviderId] = useState<string | null>(null);
   const [customModelInput, setCustomModelInput] = useState('');
   const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
   const [discoveringModels, setDiscoveringModels] = useState(false);
@@ -1142,6 +1145,11 @@ export function Katana() {
       return_origin: window.location.origin,
     });
     const result = response.data?.data || {};
+    if (result.manual_recovery === 'paste_callback_url') {
+      setChatGPTSignIn({ ...result, providerId });
+      if (!result.browser_opened) openBrowserFallback(result.authorization_url);
+      return;
+    }
     if (!result.browser_opened && !openBrowserFallback(result.authorization_url)) {
       throw new Error('The default browser could not be opened. Allow Shogun to open browser windows and try again.');
     }
@@ -1664,6 +1672,9 @@ export function Katana() {
       </div>
 
       {/* ── Status toast ───────────────────────────────────────── */}
+      {chatGPTSignIn && <ChatGPTOAuthPanel key={chatGPTSignIn.flow_id} flow={chatGPTSignIn}
+        onComplete={message => { setChatGPTSignIn(null); setStatusMessage({ type: 'success', text: message }); void fetchData(); }}
+        onCancel={() => { setChatGPTSignIn(null); void fetchData(); }} />}
       {statusMessage && (
         <div className={cn(
           "p-3 rounded-lg flex items-center gap-3 animate-in slide-in-from-top-2",
@@ -1997,6 +2008,7 @@ export function Katana() {
                           <option value="api_key">{t('katana.api_key_option')}</option>
                           {newProvider.provider_type === 'openai' && <option value="token">Workload identity bearer token</option>}
                           {newProvider.provider_type === 'openai' && <option value="chatgpt">ChatGPT/Codex subscription (browser sign-in)</option>}
+                          {newProvider.provider_type === 'openai' && <option value="oauth">Connect with ChatGPT (direct OAuth + PKCE)</option>}
                           {(newProvider.provider_type === 'google' || newProvider.provider_type === 'custom') && <option value="oauth">Connect account in browser (OAuth 2.0 + PKCE)</option>}
                         </select>
                         {newProvider.provider_type === 'openai' && (
@@ -2025,6 +2037,15 @@ export function Katana() {
                               Open ChatGPT sign-in
                             </button>
                           )}
+                        </div>
+                      ) : newProvider.auth_type === 'oauth' && newProvider.provider_type === 'openai' ? (
+                        <div className="space-y-3 rounded-lg border border-cyan-400/25 p-3">
+                          <p className="text-xs text-shogun-subdued">Connect your ChatGPT subscription directly in the browser. Shogun encrypts and refreshes the credentials. API keys and Codex app-server connections remain separate options.</p>
+                          <label className="block text-xs text-shogun-subdued">Public OAuth client ID (optional override)
+                            <input value={providerConfigBase.oauth_client_id || ''} onChange={event => setProviderConfigBase(current => ({ ...current, oauth_client_id: event.target.value }))}
+                              placeholder="Use installation default" className="mt-1 block w-full rounded border border-shogun-border bg-shogun-bg p-2" />
+                          </label>
+                          <p className="text-xs text-shogun-subdued">Save to connect or reconnect. Selected models and routing stay under your control. Subscription model access and limits depend on your account.</p>
                         </div>
                       ) : newProvider.auth_type !== 'oauth' ? <div className="space-y-1.5 mt-3">
                         <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">
@@ -2101,7 +2122,9 @@ export function Katana() {
                   )}
 
                   {/* Base URL — pre-filled, editable on override */}
-                  {newProvider.auth_type === 'chatgpt' ? (
+                  {newProvider.auth_type === 'oauth' && newProvider.provider_type === 'openai' ? (
+                    <p className="text-xs text-shogun-subdued">Model transport: ChatGPT subscription Responses. Add exact subscription model IDs below; Platform model discovery is unavailable.</p>
+                  ) : newProvider.auth_type === 'chatgpt' ? (
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-shogun-subdued uppercase tracking-widest">Model transport</label>
                       <div className="rounded-lg border border-green-400/20 bg-green-400/5 p-3 text-xs text-green-300">
@@ -2158,7 +2181,7 @@ export function Katana() {
                         <button
                           type="button"
                           onClick={handleDiscoverProviderModels}
-                          disabled={discoveringModels || (newProvider.auth_type === 'chatgpt' ? !editingProviderId : !newProvider.base_url)}
+                          disabled={discoveringModels || (newProvider.auth_type === 'oauth' && newProvider.provider_type === 'openai') || (newProvider.auth_type === 'chatgpt' ? !editingProviderId : !newProvider.base_url)}
                           className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-shogun-blue/30 bg-shogun-blue/10 hover:bg-shogun-blue/20 disabled:opacity-40 text-shogun-blue text-[9px] font-bold uppercase tracking-wider"
                         >
                           <RefreshCw className={cn("w-3 h-3", discoveringModels && "animate-spin")} />
@@ -2593,6 +2616,19 @@ export function Katana() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
+                            {p.auth_type === 'oauth' && p.provider_type === 'openai' && (
+                              <button type="button" disabled={testingOAuthProviderId !== null} onClick={async () => {
+                                setTestingOAuthProviderId(p.id);
+                                try {
+                                  const response = await axios.post(`/api/v1/model-providers/${p.id}/test`);
+                                  const result = response.data.data;
+                                  setStatusMessage({ type: result.status === 'ok' ? 'success' : 'error', text: result.note });
+                                } catch { setStatusMessage({ type: 'error', text: 'Connection check failed. Try again.' }); }
+                                finally { setTestingOAuthProviderId(null); }
+                              }} className="rounded-lg border border-shogun-border px-2 py-1.5 text-xs text-shogun-text disabled:opacity-50">
+                                {testingOAuthProviderId === p.id ? 'Checking…' : 'Test connection'}
+                              </button>
+                            )}
                             {p.auth_type === 'oauth' && (
                               <button
                                 onClick={() => isActive ? handleDisconnectOAuth(p.id) : handleConnectOAuth(p.id)}
