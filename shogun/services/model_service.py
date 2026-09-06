@@ -54,6 +54,11 @@ class ModelProviderService(BaseService[ModelProvider]):
             config["model_reasoning"] = validate_model_reasoning_config(current.provider_type, config)
             kwargs["config"] = config
             retained_config = dict(current.config or {})
+            if current.provider_type == "openai" and current_auth == "oauth" and requested_auth != current_auth:
+                from shogun.services.openai_oauth import GRANT_KEYS
+
+                config = {key: value for key, value in config.items() if key not in GRANT_KEYS}
+                retained_config = {key: value for key, value in retained_config.items() if key not in GRANT_KEYS}
             if requested_auth != current_auth:
                 disallowed = {
                     "api_key": {"token", "access_token", "refresh_token", "oauth_client_secret"},

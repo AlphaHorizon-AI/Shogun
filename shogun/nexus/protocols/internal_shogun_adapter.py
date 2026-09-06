@@ -10,6 +10,7 @@ from shogun.db.models.agent import Agent
 from shogun.db.models.model_provider import ModelProvider
 from shogun.db.models.nexus import NexusTaskModel
 from shogun.services.model_transport import model_chat_completion
+from shogun.services.openai_oauth import subscription_headers
 from shogun.services.provider_credentials import provider_api_key
 
 logger = logging.getLogger(__name__)
@@ -103,6 +104,10 @@ Please process the context and provide the output for capability '{task.requeste
 
     async def _call_llm(self, provider: ModelProvider, system_prompt: str, user_message: str) -> str:
         """Call the provider's /chat/completions endpoint."""
+        from shogun.services.openai_oauth import is_openai_oauth, resolve_credential
+
+        if is_openai_oauth(provider):
+            await resolve_credential(self.db, provider)
         PROVIDER_URLS = {
             "ollama":     "http://127.0.0.1:11434",
             "lmstudio":   "http://localhost:1234/v1",
@@ -124,7 +129,7 @@ Please process the context and provide the output for capability '{task.requeste
         )
 
         api_key = provider_api_key(provider.config)
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", **subscription_headers(provider)}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 

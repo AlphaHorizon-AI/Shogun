@@ -788,6 +788,10 @@ class ModelRegistryService:
         item: ModelRegistryEntry,
         provider: ModelProvider,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
+        from shogun.services.openai_oauth import is_openai_oauth, resolve_credential, subscription_headers
+
+        if is_openai_oauth(provider):
+            await resolve_credential(self.session, provider)
         defaults = {
             "ollama": "http://127.0.0.1:11434",
             "lmstudio": "http://127.0.0.1:1234/v1",
@@ -806,6 +810,7 @@ class ModelRegistryService:
             model_id=item.model_id,
             api_key=provider_api_key(provider.config),
             auth_type=provider.auth_type,
+            extra_headers=subscription_headers(provider),
         )
         persist_profile(item, profile)
         await self.session.flush()
@@ -948,9 +953,28 @@ class ModelRoutingService:
         request: ModelRouteRequest,
         *,
         persist: bool = True,
+        resolve_credentials: bool = False,
         registry_items: list[ModelRegistryEntry] | None = None,
         providers: dict[uuid.UUID, ModelProvider] | None = None,
     ) -> RoutingResult:
+        credential_errors = {}
+        if resolve_credentials:
+            from shogun.services.openai_oauth import is_openai_oauth, resolve_credential
+            from shogun.services.provider_oauth import ProviderOAuthError
+
+            # Registry synchronization below writes too. Renew connected grants
+            # before any routing writes acquire SQLite's writer lock; report an
+            # auth failure only if that provider is actually selected.
+            with self.session.no_autoflush:
+                providers = providers or {
+                    item.id: item for item in (await self.session.execute(select(ModelProvider))).scalars().all()
+                }
+            for provider in providers.values():
+                if provider.status == "connected" and is_openai_oauth(provider):
+                    try:
+                        await resolve_credential(self.session, provider)
+                    except ProviderOAuthError as exc:
+                        credential_errors[provider.id] = exc
         profile = await self.active_profile(request.profile_override)
         profile_key = _slug(profile.name)
         automatic_strategy = automatic_profile_key(profile.name)
@@ -1097,6 +1121,8 @@ class ModelRoutingService:
             reverse=True,
         )
         selected, fallbacks = ranked[0], ranked[1:3]
+        if selected.provider_id in credential_errors:
+            raise credential_errors[selected.provider_id]
         reason = self._reason(selected, profile.name, task_type, complexity, requirements, request.escalation_level)
         payload = {
             "run_id": request.run_id,

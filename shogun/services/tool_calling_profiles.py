@@ -374,6 +374,7 @@ async def probe_tool_calling_profile(
     model_id: str,
     api_key: str | None = None,
     auth_type: str = "",
+    extra_headers: dict[str, str] | None = None,
     timeout_seconds: float = 30.0,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Ask a model to format a harmless echo call without executing it."""
@@ -404,7 +405,7 @@ async def probe_tool_calling_profile(
         "tools": [tool],
         "tool_choice": {"type": "function", "function": {"name": "echo_tool"}},
     }
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", **(extra_headers or {})}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
