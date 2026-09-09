@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
+import platform
 import signal
 import socket
 import subprocess
@@ -66,10 +68,56 @@ def _wait_ready(client, process, timeout=180):
     pytest.fail("Shogun did not become ready within the startup timeout")
 
 
-def test_installed_launcher_setup_browsers_and_restart(tmp_path):
+async def _browser_action(operation, description, timeout=30):
+    print(description, flush=True)
+    try:
+        return await asyncio.wait_for(operation, timeout=timeout)
+    except asyncio.TimeoutError:
+        raise AssertionError(f"{description} timed out after {timeout} seconds") from None
+
+
+def _check_safari_setup(origin, token):
+    """Exercise Apple's installed Safari instead of the frozen Mac 14 WebKit bundle."""
+    from selenium import webdriver
+    from selenium.common.exceptions import WebDriverException
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.safari.service import Service
+    from selenium.webdriver.support import expected_conditions as ec
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    from shogun.environment_bootstrap import build_desktop_browser_url
+
+    print("Starting installed Safari via Apple's WebDriver", flush=True)
+    driver = webdriver.Safari(service=Service(executable_path="/usr/bin/safaridriver"))
+    try:
+        driver.set_page_load_timeout(30)
+        driver.set_script_timeout(30)
+        print("Navigating Safari to setup", flush=True)
+        driver.get(build_desktop_browser_url(f"{origin}/setup", token))
+        WebDriverWait(driver, 30).until(ec.visibility_of_element_located((By.CSS_SELECTOR, "input")))
+        fragment_removed = "#" not in driver.current_url
+        assert fragment_removed, "Safari did not remove the private setup fragment"
+        bootstrap_retained = driver.execute_script(
+            "return sessionStorage.getItem('shogun.infrastructureAdminToken') === arguments[0]", token,
+        )
+        assert bootstrap_retained, "Safari did not retain the setup credential in session storage"
+        status = driver.execute_async_script(
+            "const done = arguments[arguments.length - 1]; "
+            "fetch('/api/v1/setup/status').then(r => done(r.status), () => done(0));"
+        )
+        assert status == 200, "Safari could not make an authenticated setup request"
+        print("Installed Safari setup smoke test passed", flush=True)
+    except WebDriverException:
+        raise AssertionError("Safari setup failed; private bootstrap URL omitted") from None
+    finally:
+        driver.quit()
+
+
+@pytest.mark.asyncio
+async def test_installed_launcher_setup_browsers_and_restart(tmp_path):
     from dotenv import dotenv_values
-    from playwright.sync_api import Error as PlaywrightError
-    from playwright.sync_api import sync_playwright
+    from playwright.async_api import Error as PlaywrightError
+    from playwright.async_api import async_playwright
 
     from shogun.environment_bootstrap import build_desktop_browser_url
 
@@ -101,34 +149,59 @@ def test_installed_launcher_setup_browsers_and_restart(tmp_path):
                 assert status.status_code == 200
                 assert status.json()["data"]["setup_complete"] is False
                 print("Native launcher and authenticated setup API are ready", flush=True)
-                with sync_playwright() as playwright:
-                    for browser_type in (playwright.chromium, playwright.webkit):
-                        print(f"Launching {browser_type.name}", flush=True)
-                        browser = browser_type.launch(headless=True)
+                use_installed_safari = platform.mac_ver()[0].split(".")[0] == "14"
+                playwright = await _browser_action(async_playwright().start(), "Starting Playwright")
+                try:
+                    browser_types = (
+                        (playwright.chromium,) if use_installed_safari else (playwright.chromium, playwright.webkit)
+                    )
+                    for browser_type in browser_types:
+                        browser = await _browser_action(
+                            browser_type.launch(headless=True),
+                            f"Launching {browser_type.name}",
+                        )
                         try:
-                            context = browser.new_context()
-                            print(f"Opening {browser_type.name} setup page", flush=True)
-                            page = context.new_page()
+                            context = await _browser_action(
+                                browser.new_context(), f"Creating {browser_type.name} context",
+                            )
+                            page = await _browser_action(context.new_page(), f"Opening {browser_type.name} page")
                             errors = []
                             page.on("pageerror", lambda _error: errors.append("JavaScript error"))
                             # Do not include the private bootstrap URL in assertion output.
                             try:
-                                page.goto(build_desktop_browser_url(f"{origin}/setup", token))
+                                await _browser_action(
+                                    page.goto(build_desktop_browser_url(f"{origin}/setup", token)),
+                                    f"Navigating {browser_type.name} to setup",
+                                )
                             except PlaywrightError:
                                 raise AssertionError("Setup navigation failed; private bootstrap URL omitted") from None
-                            print(f"Waiting for {browser_type.name} setup form", flush=True)
                             # The telemetry invitation also has an h2 and can
                             # render before the lazy-loaded setup form.
-                            page.locator("input").first.wait_for(timeout=30_000)
+                            await _browser_action(
+                                page.locator("input").first.wait_for(timeout=30_000),
+                                f"Waiting for {browser_type.name} setup form",
+                            )
                             fragment_removed = "#" not in page.url
                             assert fragment_removed, "The setup bootstrap fragment was not removed"
+                            bootstrap_retained = await page.evaluate(
+                                "expected => sessionStorage.getItem('shogun.infrastructureAdminToken') === expected",
+                                token,
+                            )
+                            assert bootstrap_retained, "The browser did not retain the setup credential"
+                            auth_status = await _browser_action(
+                                page.evaluate("async () => (await fetch('/api/v1/setup/status')).status"),
+                                f"Checking {browser_type.name} authenticated setup request",
+                            )
+                            assert auth_status == 200
                             assert errors == []
-                            print(f"Closing {browser_type.name} setup context", flush=True)
-                            context.close()
+                            await _browser_action(context.close(), f"Closing {browser_type.name} context", timeout=10)
                         finally:
-                            print(f"Closing {browser_type.name} browser", flush=True)
-                            browser.close()
+                            await _browser_action(browser.close(), f"Closing {browser_type.name} browser", timeout=10)
                         print(f"{browser_type.name} setup smoke test passed", flush=True)
+                finally:
+                    await _browser_action(playwright.stop(), "Stopping Playwright", timeout=10)
+                if use_installed_safari:
+                    _check_safari_setup(origin, token)
                 print("Requesting a supervised application restart", flush=True)
                 restart = client.post("/api/v1/updates/restart", headers=headers)
                 if os.environ.get("SHOGUN_MACOS_EDITION") == "white-label":

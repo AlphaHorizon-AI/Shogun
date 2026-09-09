@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import yaml from 'js-yaml';
+import { load as loadYaml } from 'js-yaml';
 import axios from 'axios';
 import {
   Save,
@@ -80,7 +80,7 @@ export function Kaizen() {
   const yamlStatus = useMemo(() => {
     if (!constitution.trim()) return { valid: true, error: null };
     try {
-      yaml.load(constitution);
+      loadYaml(constitution);
       return { valid: true, error: null };
     } catch (e: any) {
       return { valid: false, error: e.message || 'Invalid YAML' };
@@ -90,7 +90,7 @@ export function Kaizen() {
   // ── Parse active directives from YAML ──────────────
   const directives: Directive[] = useMemo(() => {
     try {
-      const data = yaml.load(constitution) as any;
+      const data = loadYaml(constitution) as any;
       if (!data || !data.core_directives) return [];
       return (data.core_directives as any[])
         .filter((d: any) => d && typeof d === 'object')

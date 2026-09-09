@@ -15,7 +15,7 @@
     "test:i18n": "node scripts/check-setup-i18n.mjs",
     "test:template-i18n": "node scripts/check-template-i18n.mjs",
     "test:security": "vitest run src/lib/infrastructureAuth.test.ts src/lib/safeMarkdown.test.ts src/lib/safeObjectPath.test.ts",
-    "audit:security": "node ../scripts/check-npm-audit.mjs .",
+    "audit:security": "node --test ../scripts/check-npm-audit.test.mjs && node ../scripts/check-npm-audit.mjs .",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -23,7 +23,7 @@
     "@xyflow/react": "^12.10.2",
     "axios": "1.18.1",
     "clsx": "^2.1.1",
-    "js-yaml": "^4.3.2",
+    "js-yaml": "^5.4.1",
     "lucide-react": "^1.8.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -48,6 +48,6 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "8.59.2",
     "vite": "8.1.5",
-    "vitest": "4.1.10"
+    "vitest": "4.1.11"
   }
 }
