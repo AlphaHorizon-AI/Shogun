@@ -50,8 +50,8 @@ read back through the GitHub API after the security follow-up:
 - The npm audit gate rejects Moderate, High, and Critical findings and fails on
   unavailable or invalid audit results. No dependency exception is active.
 
-Release 1.47.104 adds required regression coverage for safe OAuth/backup errors,
-Ronin streaming diagnostics, and private transformation-profile logging. Check
+Releases 1.47.104 and 1.47.105 add required regression coverage for safe OAuth/backup
+errors, Ronin streaming diagnostics, and transformation-profile tool errors/logging. Check
 the exact release's CodeQL analysis and open alert state to confirm remediation;
 do not dismiss alerts merely to make the dashboard green. Old failed workflow
 runs and Dependabot's notifications about closed, superseded PRs remain history.
