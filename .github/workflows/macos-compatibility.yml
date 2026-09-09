@@ -61,9 +61,21 @@ jobs:
             tests/test_restart_service.py tests/test_updates.py tests/test_update_provenance.py \
             tests/test_ronin_desktop_control.py tests/test_ronin_runtime_security_gates.py \
             tests/test_yellow_label_edition.py tests/test_vector_store_embedding.py
-      - name: Native application, Chromium, WebKit, memory, and restart smoke tests
+      - name: Native embedding and persistent memory smoke tests
+        timeout-minutes: 5
         env:
           SHOGUN_MACOS_SMOKE: "1"
         run: |
           cd "$SHOGUN_MACOS_INSTALL"
-          venv/bin/python -m pytest -q -p no:cacheprovider --tb=short tests/test_macos_native.py
+          venv/bin/python -m pytest -v -p no:cacheprovider --tb=short \
+            -o faulthandler_timeout=120 tests/test_macos_native.py \
+            -k 'installed_source or real_embedding'
+      - name: Native launcher, Chromium, WebKit, and restart smoke tests
+        timeout-minutes: 5
+        env:
+          SHOGUN_MACOS_SMOKE: "1"
+        run: |
+          cd "$SHOGUN_MACOS_INSTALL"
+          venv/bin/python -m pytest -v -p no:cacheprovider --tb=short \
+            -o faulthandler_timeout=120 tests/test_macos_native.py \
+            -k installed_launcher
