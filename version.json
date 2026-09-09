@@ -1,8 +1,8 @@
 {
-  "version": "1.47.102",
+  "version": "1.47.103",
   "name": "Shogun AFM",
-  "build": 253,
+  "build": 254,
   "channel": "stable",
-  "released": "2026-09-09T10:57:04Z",
-  "changelog": "Harden Apple Silicon macOS installation, virtual environments, launch and restart supervision, desktop shortcuts, and uninstall targeting; prevent cross-edition installation overlays, add native macOS compatibility CI, and update js-yaml to its patched release."
+  "released": "2026-09-09T13:34:41Z",
+  "changelog": "Fix js-yaml 5 frontend compatibility, patch Vitest and humanfs advisories, fail closed on npm audit errors, and harden native macOS browser validation."
 }

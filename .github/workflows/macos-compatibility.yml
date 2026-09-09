@@ -22,6 +22,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
+      PYTHONUNBUFFERED: "1"
       SHOGUN_NO_BROWSER: "true"
       SHOGUN_TEST_BASH: /bin/bash
       SHOGUN_MACOS_EDITION: "yellow-label"
@@ -61,6 +62,14 @@ jobs:
             tests/test_restart_service.py tests/test_updates.py tests/test_update_provenance.py \
             tests/test_ronin_desktop_control.py tests/test_ronin_runtime_security_gates.py \
             tests/test_yellow_label_edition.py tests/test_vector_store_embedding.py
+      - name: Native Mado Chromium automation
+        timeout-minutes: 3
+        env:
+          SHOGUN_SKIP_ENV_FILE: "true"
+        run: |
+          cd "$SHOGUN_MACOS_INSTALL"
+          venv/bin/python -m pytest -v -s -p no:cacheprovider --tb=short \
+            -o faulthandler_timeout=60 tests/test_mado_hardening.py::test_canonical_demo_end_to_end
       - name: Native embedding and persistent memory smoke tests
         timeout-minutes: 5
         env:
@@ -76,6 +85,6 @@ jobs:
           SHOGUN_MACOS_SMOKE: "1"
         run: |
           cd "$SHOGUN_MACOS_INSTALL"
-          venv/bin/python -m pytest -v --capture=tee-sys -p no:cacheprovider --tb=short \
+          venv/bin/python -m pytest -v -s -p no:cacheprovider --tb=short \
             -o faulthandler_timeout=120 tests/test_macos_native.py \
             -k installed_launcher

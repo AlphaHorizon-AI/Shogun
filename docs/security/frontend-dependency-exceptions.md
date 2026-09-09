@@ -2,7 +2,7 @@
 
 ## GHSA-qwww-vcr4-c8h2 — React Router RSC Mode CSRF bypass
 
-- **Status:** Temporary approved exception
+- **Status:** Removed on 2026-09-09; no active exception
 - **Reviewed:** 2026-07-25
 - **Expires:** 2026-08-31
 - **Affected lockfile:** `frontend/package-lock.json`
@@ -19,9 +19,11 @@ It does not enable React Server Components, SSR, Framework Mode server actions,
 route actions, or RSC action endpoints. The vulnerable RSC request path is
 therefore not reachable in the shipped frontend.
 
-The CI audit gate permits only the exact advisory URL
-`https://github.com/advisories/GHSA-qwww-vcr4-c8h2`. Any other High or Critical
-finding fails the build. Remove this exception as soon as a compatible patched
-React Router release is available. Otherwise reassess migration from
-`react-router-dom` 7 to React Router 8 before the expiration date, then
-regenerate the lockfile.
+The current locked router no longer reports this advisory. The expired exception
+has been removed: every High or Critical finding fails the build. Audit API,
+process, or report-format failures also fail the gate. Lower-severity findings
+are reported explicitly and are never described as approved exceptions.
+
+The history above records the original exception rationale; it grants no current
+exception. Vitest and humanfs findings discovered on 2026-09-09 were patched in
+the lockfile rather than exempted.

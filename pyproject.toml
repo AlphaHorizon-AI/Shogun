@@ -1,7 +1,7 @@
 [project]
 name = "shogun"
-version = "1.47.102"
-description = "Shogun — A GUI-first AI agent framework with structured memory, governed autonomy, and OpenClaw compatibility"
+version = "1.47.103"
+description = "Shogun â€” A GUI-first AI agent framework with structured memory, governed autonomy, and OpenClaw compatibility"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary" }
