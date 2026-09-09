@@ -62,6 +62,7 @@ RUFF_PATHS = (
 )
 
 PYTEST_PATHS = (
+    "tests/test_transformation_tool_error_security.py",
     "tests/test_api_error_boundaries.py",
     "tests/test_flow_profile_logging_security.py",
     "tests/test_launcher_startup.py",

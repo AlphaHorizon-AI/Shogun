@@ -4863,10 +4863,18 @@ async def _execute_transformation_profile_tool(
         TransformationProfileValidationRequest,
     )
     from shogun.services.source_intelligence import (
+        SourceIntelligenceConfigurationError,
         SourceIntelligenceError,
+        SourceIntelligenceRegexTimeoutError,
         SourceIntelligenceService,
+        SourceProfileAmbiguousError,
+        SourceProfileUnknownError,
     )
     from shogun.services.transformation_profile_registry import (
+        ProtectedTransformationProfileError,
+        TransformationAdapterUnavailableError,
+        TransformationProfileLifecycleError,
+        TransformationProfileNotFoundError,
         TransformationProfileRegistryError,
         TransformationProfileRegistryService,
     )
@@ -5005,12 +5013,46 @@ async def _execute_transformation_profile_tool(
         if name not in {"transformation_profiles_list", "transformation_profiles_get"}:
             if name != "transformation_sources_inspect":
                 await db_session.rollback()
-        logger.warning("Transformation profile request rejected (%s): %s", name, exc)
+        # These errors can wrap private profile definitions, source metadata,
+        # credentials or filesystem paths. Publish only fixed category guidance.
+        error_type = "TransformationProfileRegistryError"
+        message = (
+            "The transformation profile request could not be completed. "
+            "Check the profile definition and requested operation."
+        )
+        if isinstance(exc, TransformationProfileNotFoundError):
+            error_type = "TransformationProfileNotFoundError"
+            message = "The requested profile or version was not found. List available profiles and try again."
+        elif isinstance(exc, ProtectedTransformationProfileError):
+            error_type = "ProtectedTransformationProfileError"
+            message = "This transformation profile is protected and cannot be modified by this operation."
+        elif isinstance(exc, TransformationAdapterUnavailableError):
+            error_type = "TransformationAdapterUnavailableError"
+            message = "The required transformation adapter is unavailable. Enable or install it before trying again."
+        elif isinstance(exc, TransformationProfileLifecycleError):
+            error_type = "TransformationProfileLifecycleError"
+            message = "The profile cannot perform this lifecycle transition. Check its state and validation evidence."
+        elif isinstance(exc, SourceIntelligenceRegexTimeoutError):
+            error_type = "SourceIntelligenceRegexTimeoutError"
+            message = "Source inspection exceeded the matching time limit. Simplify the profile matching rules."
+        elif isinstance(exc, SourceIntelligenceConfigurationError):
+            error_type = "SourceIntelligenceConfigurationError"
+            message = "Source inspection could not be completed. Review the installed profile configuration."
+        elif isinstance(exc, SourceProfileUnknownError):
+            error_type = "SourceProfileUnknownError"
+            message = "No installed transformation profile exactly matches the source. Choose or create a suitable profile."
+        elif isinstance(exc, SourceProfileAmbiguousError):
+            error_type = "SourceProfileAmbiguousError"
+            message = "Multiple transformation profiles match the source. Choose an unambiguous profile before execution."
+        elif isinstance(exc, SourceIntelligenceError):
+            error_type = "SourceIntelligenceError"
+            message = "Source inspection could not be completed. Check the supplied artifacts and profile configuration."
+        logger.warning("Transformation profile request rejected (%s): %s", name, error_type)
         return json.dumps(
             {
                 "status": "error",
-                "error_type": type(exc).__name__,
-                "message": str(exc),
+                "error_type": error_type,
+                "message": message,
             },
             ensure_ascii=False,
         )
@@ -5034,7 +5076,7 @@ async def _execute_transformation_profile_tool(
         )
     except (TypeError, ValueError) as exc:
         await db_session.rollback()
-        logger.warning("Invalid transformation profile request (%s): %s", name, exc)
+        logger.warning("Invalid transformation profile request (%s): %s", name, type(exc).__name__)
         return json.dumps(
             {
                 "status": "error",
@@ -5042,9 +5084,9 @@ async def _execute_transformation_profile_tool(
                 "message": "The transformation profile request is invalid.",
             }
         )
-    except Exception:
+    except Exception as exc:
         await db_session.rollback()
-        logger.exception("Transformation profile tool execution failed (%s)", name)
+        logger.error("Transformation profile tool execution failed (%s): %s", name, type(exc).__name__)
         return json.dumps(
             {
                 "status": "error",
