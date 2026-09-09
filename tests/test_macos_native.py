@@ -115,7 +115,11 @@ async def test_installed_launcher_setup_browsers_and_restart(tmp_path):
                 try:
                     for browser_type in (playwright.chromium, playwright.webkit):
                         browser = await _browser_action(
-                            browser_type.launch(headless=True), f"Launching {browser_type.name}",
+                            # The frozen macOS 14 WebKit build can stall before
+                            # creating even a blank page in headless mode. Use
+                            # a native window for this Safari-engine UI check.
+                            browser_type.launch(headless=browser_type.name != "webkit"),
+                            f"Launching {browser_type.name}",
                         )
                         try:
                             context = await _browser_action(
