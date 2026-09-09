@@ -25,9 +25,10 @@ export function evaluateAudit(audit) {
       || (audit.status === 1 && findings.length === 0)) {
     throw new Error('npm audit returned an inconsistent vulnerability report.');
   }
+  const blockedSeverities = new Set(['moderate', 'high', 'critical']);
   return {
-    blocked: findings.filter(([, finding]) => ['high', 'critical'].includes(finding.severity)).map(([name]) => name),
-    lowerSeverity: findings.filter(([, finding]) => !['high', 'critical'].includes(finding.severity)).map(([name]) => name),
+    blocked: findings.filter(([, finding]) => blockedSeverities.has(finding.severity)).map(([name]) => name),
+    lowerSeverity: findings.filter(([, finding]) => !blockedSeverities.has(finding.severity)).map(([name]) => name),
   };
 }
 
@@ -41,11 +42,11 @@ function main() {
   try {
     const { blocked, lowerSeverity } = evaluateAudit(audit);
     if (blocked.length) {
-      process.stderr.write(`High/Critical npm findings: ${blocked.join(', ')}\n`);
+      process.stderr.write(`Moderate/High/Critical npm findings: ${blocked.join(', ')}\n`);
       process.exitCode = 1;
       return;
     }
-    process.stdout.write('No High or Critical npm findings.\n');
+    process.stdout.write('No Moderate, High, or Critical npm findings.\n');
     if (lowerSeverity.length) {
       process.stdout.write(`Lower-severity npm findings: ${lowerSeverity.join(', ')}.\n`);
     }

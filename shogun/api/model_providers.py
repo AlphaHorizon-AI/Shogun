@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import html
 import json
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -51,6 +52,7 @@ from shogun.services.provider_oauth import (
 )
 
 router = APIRouter(tags=["Models"])
+logger = logging.getLogger(__name__)
 
 _codex_login_providers: dict[str, uuid.UUID] = {}
 
@@ -471,15 +473,17 @@ async def oauth_callback(
     db: AsyncSession = Depends(get_db),
 ):
     status = "error"
-    message = error or "OAuth provider did not return an authorization code"
+    # Provider query parameters and exception messages may contain credentials
+    # or markup. Keep the browser result independent of those diagnostics.
+    message = "OAuth connection could not be completed. Return to Shogun and try connecting again."
     provider_id = ""
     return_origin = ""
     if error or not code:
         try:
             pending_provider_id, return_origin = reject_provider_oauth(state, message)
             provider_id = str(pending_provider_id)
-        except ProviderOAuthError as exc:
-            message = str(exc)
+        except ProviderOAuthError:
+            logger.warning("OAuth callback rejected an invalid or expired authorization attempt")
     else:
         try:
             provider, return_origin = await complete_provider_oauth(db, state=state, code=code)
@@ -488,9 +492,9 @@ async def oauth_callback(
             status = "success"
             message = "OAuth connection completed"
             provider_id = str(provider.id)
-        except ProviderOAuthError as exc:
+        except ProviderOAuthError:
             await db.rollback()
-            message = str(exc)
+            logger.warning("OAuth callback could not complete provider authorization")
         except Exception:
             await db.rollback()
             try:
@@ -498,16 +502,19 @@ async def oauth_callback(
             except ProviderOAuthError:
                 pass
             message = "OAuth tokens could not be saved"
-    payload = json.dumps(
+    payload = html.escape(json.dumps(
         {"type": "shogun.provider-oauth", "status": status, "message": message, "providerId": provider_id}
-    ).replace("</", "<\\/")
-    target = json.dumps(return_origin or "*")
+    ), quote=True)
+    target = html.escape(return_origin or "*", quote=True)
     return HTMLResponse(
         "<!doctype html><meta charset='utf-8'><title>Shogun OAuth</title>"
         "<body style='font-family:system-ui;background:#080b14;color:#e5e7eb;padding:2rem'>"
         f"<h2>{'Connection complete' if status == 'success' else 'Connection failed'}</h2>"
-        f"<p>{html.escape(message)}</p><p>You can close this tab and return to Shogun.</p><script>"
-        f"if(window.opener){{window.opener.postMessage({payload},{target});setTimeout(()=>window.close(),500);}}"
+        f"<p>{html.escape(message)}</p><p>You can close this tab and return to Shogun.</p>"
+        f"<div id='oauth-result' data-payload='{payload}' data-target='{target}' hidden></div><script>"
+        "const result=document.getElementById('oauth-result');"
+        "if(window.opener){window.opener.postMessage(JSON.parse(result.dataset.payload),result.dataset.target);"
+        "setTimeout(()=>window.close(),500);}"
         "</script></body>"
     )
 

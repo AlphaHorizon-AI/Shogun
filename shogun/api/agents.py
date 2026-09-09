@@ -30,6 +30,28 @@ from shogun.config import settings
 
 logger = logging.getLogger(__name__)
 
+
+def _ronin_action_event(tool_name: str, arguments: dict, result: dict) -> dict | None:
+    """Keep tool diagnostics out of the browser's desktop action stream."""
+    if result.get("status") != "success":
+        return {
+            "type": "ronin_action",
+            "action": "error",
+            "detail": "The desktop action could not be completed. Check Shogun's desktop permissions and try again.",
+        }
+    if tool_name == "desktop_click":
+        return {
+            "type": "ronin_action", "action": "click",
+            "detail": f"Clicked at ({arguments.get('x')}, {arguments.get('y')})",
+        }
+    if tool_name == "desktop_type":
+        typed = arguments.get("text", "")
+        return {
+            "type": "ronin_action", "action": "type",
+            "detail": f"Typed: {typed[:80]}{'...' if len(typed) > 80 else ''}",
+        }
+    return None
+
 _CHAT_ATTACHMENT_TOTAL_CHARS = 60000
 _CHAT_ATTACHMENT_FILE_CHARS = 40000
 _CHAT_WORKSPACE_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".md", ".csv", ".json"}
@@ -2938,25 +2960,12 @@ BEHAVIOUR:
                                 logger.warning(f"[Ronin] Vision injection failed: {_vis_exc}")
 
                         # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Ronin Visual Events ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â stream action results to the frontend ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
-                        elif func_name == "desktop_click":
+                        elif func_name in {"desktop_click", "desktop_type"}:
                             try:
                                 _ronin_result = json.loads(res_str)
-                                if _ronin_result.get("status") == "success":
-                                    _click_msg = _ronin_result.get("message", f"Clicked at ({args.get('x')}, {args.get('y')})")
-                                    yield f"data: {json.dumps({'type': 'ronin_action', 'action': 'click', 'detail': _click_msg})}\n\n"
-                                else:
-                                    yield f"data: {json.dumps({'type': 'ronin_action', 'action': 'error', 'detail': _ronin_result.get('message', 'Click failed')})}\n\n"
-                            except Exception:
-                                pass
-                        elif func_name == "desktop_type":
-                            try:
-                                _ronin_result = json.loads(res_str)
-                                _typed = args.get("text", "")
-                                _type_detail = f"Typed: {_typed[:80]}{'...' if len(_typed) > 80 else ''}"
-                                if _ronin_result.get("status") == "success":
-                                    yield f"data: {json.dumps({'type': 'ronin_action', 'action': 'type', 'detail': _type_detail})}\n\n"
-                                else:
-                                    yield f"data: {json.dumps({'type': 'ronin_action', 'action': 'error', 'detail': _ronin_result.get('message', 'Type failed')})}\n\n"
+                                action_event = _ronin_action_event(func_name, args, _ronin_result)
+                                if action_event:
+                                    yield f"data: {json.dumps(action_event)}\n\n"
                             except Exception:
                                 pass
 
@@ -3331,13 +3340,10 @@ BEHAVIOUR:
                                                 ]
                                             })))
                                             yield f'data: {json.dumps({"type": "ronin_screenshot", "url": f"/ronin/screenshots/{_ss_fn}", "description": "Desktop screenshot captured"})}\n\n'
-                                    elif func_name == "desktop_click" and _ronin_res.get("status") == "success":
-                                        yield f'data: {json.dumps({"type": "ronin_action", "action": "click", "detail": _ronin_res.get("message", "Clicked")})}\n\n'
-                                    elif func_name == "desktop_type" and _ronin_res.get("status") == "success":
-                                        _t = args.get("text", "")
-                                        yield f'data: {json.dumps({"type": "ronin_action", "action": "type", "detail": f"Typed: {_t[:80]}"})}\n\n'
-                                    elif _ronin_res.get("status") == "error":
-                                        yield f'data: {json.dumps({"type": "ronin_action", "action": "error", "detail": _ronin_res.get("message", "Failed")})}\n\n'
+                                    else:
+                                        action_event = _ronin_action_event(func_name, args, _ronin_res)
+                                        if action_event:
+                                            yield f"data: {json.dumps(action_event)}\n\n"
                                 except Exception:
                                     pass
 
