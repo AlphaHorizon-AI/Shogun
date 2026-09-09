@@ -123,3 +123,19 @@ to resolve [GHSA-2883-xcg3-v3hh](https://github.com/advisories/GHSA-2883-xcg3-v3
 which blocked the repository's required pre-push security gate. Neither edition has been executed on a
 native Mac in this session; both workflows and the physical-Mac checklist remain
 release acceptance requirements.
+
+## First native CI run during release preparation
+
+The initial [native run](https://github.com/AlphaHorizon-AI/Shogun/actions/runs/34343868430)
+successfully installed the application, Office and Ronin dependencies, Chromium,
+and WebKit on macOS 14 and 26 arm64. Both systems passed all 27 shell tests;
+macOS 26 also passed the real embedding and persistent-memory roundtrip.
+
+It exposed an MPS model-allocation failure on macOS 14. The embedding loader now
+retries that specific failure on CPU while retaining GPU memory safety limits;
+unrelated model errors and failed CPU retries still propagate. Four regression
+tests cover the normal path, CPU recovery, and both failure cases.
+
+The browser smoke test also mistook the telemetry invitation's heading for a
+ready setup form. It now waits for the actual form input, retaining the private
+bootstrap URL and JavaScript-error checks. A new CI run must validate both fixes.

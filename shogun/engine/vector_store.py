@@ -107,7 +107,16 @@ class VectorStore:
             from sentence_transformers import SentenceTransformer
 
             logger.info("Loading embedding model: %s", EMBEDDING_MODEL)
-            self._embedder = SentenceTransformer(EMBEDDING_MODEL)
+            try:
+                self._embedder = SentenceTransformer(EMBEDDING_MODEL)
+            except RuntimeError as error:
+                if "mps backend out of memory" not in str(error).lower():
+                    raise
+                logger.warning("MPS could not allocate the embedding model; retrying on CPU")
+            # Leave the failed constructor's exception scope before allocating
+            # another model. Keep Apple's GPU memory safety limit intact.
+            if self._embedder is None:
+                self._embedder = SentenceTransformer(EMBEDDING_MODEL, device="cpu")
             logger.info("Embedding model loaded (dim=%d)", EMBEDDING_DIM)
         return self._embedder
 

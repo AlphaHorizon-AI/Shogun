@@ -66,4 +66,4 @@ jobs:
             tests/test_desktop_bootstrap_security.py tests/test_installer_release_provenance.py \
             tests/test_restart_service.py tests/test_updates.py tests/test_update_provenance.py \
             tests/test_ronin_desktop_control.py tests/test_ronin_runtime_security_gates.py \
-            tests/test_yellow_label_edition.py
+            tests/test_yellow_label_edition.py tests/test_vector_store_embedding.py

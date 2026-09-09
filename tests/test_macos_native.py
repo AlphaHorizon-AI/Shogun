@@ -111,10 +111,11 @@ def test_installed_launcher_setup_browsers_and_restart(tmp_path):
                                 page.goto(build_desktop_browser_url(f"{origin}/setup", token))
                             except PlaywrightError:
                                 raise AssertionError("Setup navigation failed; private bootstrap URL omitted") from None
-                            page.locator("h2").first.wait_for(timeout=30_000)
+                            # The telemetry invitation also has an h2 and can
+                            # render before the lazy-loaded setup form.
+                            page.locator("input").first.wait_for(timeout=30_000)
                             fragment_removed = "#" not in page.url
                             assert fragment_removed, "The setup bootstrap fragment was not removed"
-                            assert page.locator("input").count() > 0
                             assert errors == []
                         finally:
                             browser.close()

@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
 
 RUFF_PATHS = (
+    "shogun/engine/vector_store.py",
     "shogun/api/a2a.py",
     "shogun/api/control_plane_auth.py",
     "shogun/api/infrastructure_auth.py",
@@ -61,6 +62,7 @@ RUFF_PATHS = (
 )
 
 PYTEST_PATHS = (
+    "tests/test_vector_store_embedding.py",
     "tests/test_ssrf_guard.py",
     "tests/test_install_telemetry.py",
     "tests/test_telemetry_ingestion.py",
