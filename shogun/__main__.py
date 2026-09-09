@@ -104,6 +104,10 @@ def _port_in_use(host: str, port: int) -> bool:
 
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     with socket.socket(family, socket.SOCK_STREAM) as listener:
+        if sys.platform != "win32":
+            # Match Uvicorn's POSIX listener: old connections in TIME_WAIT
+            # must not make a supervised restart look like a port conflict.
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             listener.bind((host, port))
         except OSError:

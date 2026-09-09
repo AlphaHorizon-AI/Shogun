@@ -62,6 +62,7 @@ RUFF_PATHS = (
 )
 
 PYTEST_PATHS = (
+    "tests/test_launcher_startup.py",
     "tests/test_vector_store_embedding.py",
     "tests/test_ssrf_guard.py",
     "tests/test_install_telemetry.py",

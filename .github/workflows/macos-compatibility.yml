@@ -50,12 +50,6 @@ jobs:
         run: |
           cd "$SHOGUN_MACOS_INSTALL"
           venv/bin/python -m pytest --noconftest -q -p no:cacheprovider tests/test_macos_shell.py
-      - name: Native application, Chromium, WebKit, memory, and restart smoke tests
-        env:
-          SHOGUN_MACOS_SMOKE: "1"
-        run: |
-          cd "$SHOGUN_MACOS_INSTALL"
-          venv/bin/python -m pytest -q -p no:cacheprovider --tb=short tests/test_macos_native.py
       - name: Backend compatibility regressions
         env:
           SHOGUN_SKIP_ENV_FILE: "true"
@@ -67,3 +61,9 @@ jobs:
             tests/test_restart_service.py tests/test_updates.py tests/test_update_provenance.py \
             tests/test_ronin_desktop_control.py tests/test_ronin_runtime_security_gates.py \
             tests/test_yellow_label_edition.py tests/test_vector_store_embedding.py
+      - name: Native application, Chromium, WebKit, memory, and restart smoke tests
+        env:
+          SHOGUN_MACOS_SMOKE: "1"
+        run: |
+          cd "$SHOGUN_MACOS_INSTALL"
+          venv/bin/python -m pytest -q -p no:cacheprovider --tb=short tests/test_macos_native.py

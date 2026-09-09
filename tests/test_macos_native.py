@@ -86,6 +86,7 @@ def test_installed_launcher_setup_browsers_and_restart(tmp_path):
         "SHOGUN_SKIP_ENV_FILE": "false",
     }
     with (tmp_path / "server.log").open("w", encoding="utf-8") as log:
+        completed = False
         process = subprocess.Popen(
             ["/bin/bash", str(ROOT / "start.sh")], cwd=tmp_path, env=environment,
             stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
@@ -147,7 +148,16 @@ def test_installed_launcher_setup_browsers_and_restart(tmp_path):
                 else:
                     pytest.fail("The desktop launcher did not supervise the requested restart")
                 _wait_ready(client, process)
+                completed = True
         finally:
+            if not completed:
+                from urllib.parse import quote
+
+                log.flush()
+                output = (tmp_path / "server.log").read_text(encoding="utf-8", errors="replace")
+                for secret in (token, quote(token, safe="")):
+                    output = output.replace(secret, "[REDACTED]")
+                print("\n".join(output.splitlines()[-120:]))
             if process.poll() is None:
                 os.killpg(process.pid, signal.SIGTERM)
                 try:

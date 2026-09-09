@@ -27,6 +27,21 @@ def test_port_in_use_accepts_available_listener() -> None:
     assert _port_in_use("127.0.0.1", port) is False
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX address reuse after an active close")
+def test_port_in_use_accepts_restarting_after_a_connection() -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as client:
+            connection, _address = listener.accept()
+            connection.close()
+            assert client.recv(1) == b""
+
+    assert _port_in_use("127.0.0.1", port) is False
+
+
 @pytest.mark.parametrize("active_name", [".venv", "venv"])
 def test_launcher_keeps_active_project_venv_when_both_exist(tmp_path, monkeypatch, active_name):
     monkeypatch.setattr(launcher, "__file__", str(tmp_path / "shogun/__main__.py"))
