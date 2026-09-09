@@ -595,7 +595,11 @@ def _detect_os_info() -> dict:
     notes: list[str] = []
     if os_name == "macOS":
         notes.append("macOS requires Accessibility permissions for keyboard and mouse control.")
-        notes.append("Go to: System Preferences → Privacy & Security → Accessibility")
+        notes.append("Go to: System Settings → Privacy & Security → Accessibility")
+        notes.append("Enable Screen Recording for screenshots; macOS may also request Input Monitoring.")
+        notes.append(
+            "Ronin macOS window listing, focus, application launch, and UI control inspection are unavailable."
+        )
     elif os_name == "Linux" and display_server == "x11":
         notes.append("Linux X11 requires: xdotool, python3-tk, python3-dev")
     elif os_name == "Linux" and display_server == "wayland":

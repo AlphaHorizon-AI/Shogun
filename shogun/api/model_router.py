@@ -156,6 +156,11 @@ async def test_registry(model_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     provider = await db.get(ModelProvider, item.provider_id)
     if not provider or provider.status != "connected":
         raise HTTPException(409, "Model provider is not connected.")
+    from shogun.services.openai_oauth import is_openai_oauth, verify_connection
+
+    if is_openai_oauth(provider):
+        result = await verify_connection(db, provider)
+        return ApiResponse(data={**result, "model_id": item.model_id, "provider": item.provider})
     base = (provider.base_url or "").rstrip("/")
     api_key = provider_api_key(provider.config)
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}

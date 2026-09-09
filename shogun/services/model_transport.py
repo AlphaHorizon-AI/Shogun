@@ -45,6 +45,10 @@ async def model_chat_completion(
 ) -> httpx.Response | ModelTransportResponse:
     """Return one OpenAI-compatible response from HTTP or Codex app-server."""
 
+    if auth_type == "oauth" and ("ChatGPT-Account-ID" in headers or base_url.startswith("https://chatgpt.com/")):
+        from shogun.services.chatgpt_transport import subscription_completion
+
+        return await subscription_completion(headers, payload, timeout)
     if not is_chatgpt_subscription(auth_type):
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
@@ -154,6 +158,12 @@ async def model_chat_stream(
 ) -> AsyncIterator[Any]:
     """Yield an httpx-like SSE response for either supported transport."""
 
+    if auth_type == "oauth" and ("ChatGPT-Account-ID" in headers or base_url.startswith("https://chatgpt.com/")):
+        from shogun.services.chatgpt_transport import subscription_stream
+
+        async with subscription_stream(headers, payload, timeout) as response:
+            yield response
+        return
     if not is_chatgpt_subscription(auth_type):
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream(

@@ -18,15 +18,17 @@ from pathlib import Path
 def _reexec_in_project_venv() -> None:
     """Use the project's virtual environment when launched by global Python."""
     project_root = Path(__file__).resolve().parent.parent
-    candidates = [
-        project_root / ".venv" / "Scripts" / "python.exe",
-        project_root / "venv" / "Scripts" / "python.exe",
-        project_root / ".venv" / "bin" / "python",
-        project_root / "venv" / "bin" / "python",
-    ]
-    current = Path(sys.executable).resolve()
+    interpreter = Path("Scripts/python.exe") if sys.platform == "win32" else Path("bin/python")
+    candidates = [project_root / name / interpreter for name in (".venv", "venv")]
+    # POSIX venv executables usually symlink to the system Python. Comparing
+    # resolved executables cannot distinguish the global and venv environments.
+    if any(
+        candidate.exists() and Path(sys.prefix).resolve() == candidate.parent.parent.resolve()
+        for candidate in candidates
+    ):
+        return
     for candidate in candidates:
-        if candidate.exists() and candidate.resolve() != current:
+        if candidate.exists():
             env = os.environ.copy()
             env["SHOGUN_PROJECT_VENV"] = str(candidate)
             os.execve(
@@ -34,6 +36,7 @@ def _reexec_in_project_venv() -> None:
                 [str(candidate), "-m", "shogun", *sys.argv[1:]],
                 env,
             )
+            return
 
 
 def _secure_env_file(env_path: Path) -> None:
@@ -101,6 +104,10 @@ def _port_in_use(host: str, port: int) -> bool:
 
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     with socket.socket(family, socket.SOCK_STREAM) as listener:
+        if sys.platform != "win32":
+            # Match Uvicorn's POSIX listener: old connections in TIME_WAIT
+            # must not make a supervised restart look like a port conflict.
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             listener.bind((host, port))
         except OSError:

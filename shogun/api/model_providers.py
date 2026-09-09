@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shogun.api.chatgpt_oauth import router as chatgpt_oauth_router
 from shogun.api.deps import get_db, get_model_provider_service, get_model_routing_service
 from shogun.api.model_router import router as task_router
 from shogun.db.models.model_provider import ModelProvider
@@ -26,10 +27,12 @@ from shogun.schemas.models import (
     ModelRoutingProfileUpdate,
     ProviderOAuthStartRequest,
 )
+from shogun.services import openai_oauth
 from shogun.services.codex_app_server import CodexAppServerError, get_codex_app_server
 from shogun.services.model_discovery import ModelDiscoveryError, discover_provider_models
 from shogun.services.model_reasoning import reasoning_capability
 from shogun.services.model_service import ModelProviderService, ModelRoutingProfileService
+from shogun.services.oauth_coordination import serialized_provider_auth
 from shogun.services.provider_browser import (
     ProviderBrowserError,
     open_default_browser,
@@ -54,6 +57,7 @@ _codex_login_providers: dict[str, uuid.UUID] = {}
 # ── Providers ────────────────────────────────────────────────
 
 provider_router = APIRouter(prefix="/model-providers")
+provider_router.include_router(chatgpt_oauth_router)
 
 
 def _is_loopback_request(request: Request) -> bool:
@@ -116,7 +120,7 @@ async def create_provider(
     auth_type = body.auth_type.value if hasattr(body.auth_type, "value") else str(body.auth_type)
     if auth_type == "chatgpt" and provider_type != "openai":
         raise HTTPException(status_code=422, detail="ChatGPT/Codex subscription sign-in is available only for OpenAI.")
-    if auth_type == "oauth" and provider_type not in {"google", "custom"}:
+    if auth_type == "oauth" and provider_type not in {"openai", "google", "custom"}:
         raise HTTPException(
             status_code=422,
             detail=(
@@ -127,6 +131,11 @@ async def create_provider(
         )
     if auth_type == "oauth" and not reveal_provider_secret((body.config or {}).get("access_token")):
         data["status"] = "not_configured"
+    if auth_type == "oauth" and provider_type == "openai":
+        data["base_url"] = openai_oauth.RESPONSES_URL
+        data["status"] = "not_configured"
+        excluded = openai_oauth.GRANT_KEYS | {"api_key", "api-key", "token", "oauth_client_secret"}
+        data["config"] = {key: value for key, value in (body.config or {}).items() if key not in excluded}
     if auth_type == "chatgpt":
         data["status"] = "not_configured"
         data["base_url"] = None
@@ -165,6 +174,11 @@ async def discover_models(
         if provider.provider_type != provider_type:
             raise HTTPException(status_code=400, detail="Provider type does not match the saved provider")
         base_url = base_url or provider.base_url or ""
+        if openai_oauth.is_openai_oauth(provider):
+            raise HTTPException(
+                422, "Add exact ChatGPT subscription model IDs in Active Models. "
+                "Platform model discovery is unavailable for this connection.",
+            )
         if provider.auth_type == "chatgpt":
             try:
                 state = await get_codex_app_server().account(refresh=False)
@@ -214,6 +228,7 @@ async def reasoning_capabilities(body: ModelReasoningCapabilitiesRequest):
 
 
 @provider_router.patch("/{provider_id}", response_model=ApiResponse)
+@serialized_provider_auth
 async def update_provider(
     provider_id: uuid.UUID,
     body: ModelProviderUpdate,
@@ -226,7 +241,7 @@ async def update_provider(
     effective_auth = requested_auth or current.auth_type
     if effective_auth == "chatgpt" and current.provider_type != "openai":
         raise HTTPException(status_code=422, detail="ChatGPT/Codex subscription sign-in is available only for OpenAI.")
-    if effective_auth == "oauth" and current.provider_type not in {"google", "custom"}:
+    if effective_auth == "oauth" and current.provider_type not in {"openai", "google", "custom"}:
         raise HTTPException(
             status_code=422,
             detail=(
@@ -236,6 +251,20 @@ async def update_provider(
             ),
         )
     update_data = body.model_dump(exclude_unset=True)
+    if effective_auth != current.auth_type:
+        openai_oauth.retire_attempts(provider_id)
+        if openai_oauth.is_openai_oauth(current) and body.base_url in {None, "", openai_oauth.RESPONSES_URL}:
+            update_data["base_url"] = "https://api.openai.com/v1"
+    if effective_auth == "oauth" and current.provider_type == "openai":
+        update_data["base_url"] = openai_oauth.RESPONSES_URL
+        incoming = dict(update_data.get("config") or current.config or {})
+        for key in openai_oauth.GRANT_KEYS | {"api_key", "api-key", "token", "oauth_client_secret"}:
+            incoming.pop(key, None)
+        if openai_oauth.is_openai_oauth(current):
+            incoming.update({
+                key: value for key, value in (current.config or {}).items() if key in openai_oauth.GRANT_KEYS
+            })
+        update_data["config"] = incoming
     if current.auth_type == "chatgpt" and effective_auth != "chatgpt":
         try:
             await get_codex_app_server().logout()
@@ -280,6 +309,7 @@ async def update_provider(
 
 
 @provider_router.post("/{provider_id}/oauth/start", response_model=ApiResponse)
+@serialized_provider_auth
 async def start_oauth(
     provider_id: uuid.UUID,
     body: ProviderOAuthStartRequest,
@@ -290,7 +320,12 @@ async def start_oauth(
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
     try:
-        result = start_provider_oauth(provider, body.return_origin)
+        if openai_oauth.is_openai_oauth(provider):
+            if not _is_loopback_request(request):
+                raise ProviderOAuthError("Open Shogun on this computer's localhost address to connect ChatGPT.")
+            result = openai_oauth.start_sign_in(provider, body.return_origin)
+        else:
+            result = start_provider_oauth(provider, body.return_origin)
     except ProviderOAuthError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
@@ -406,8 +441,11 @@ async def oauth_status(
     flow_id: str = Query(..., min_length=16, max_length=500),
     db: AsyncSession = Depends(get_db),
 ):
-    if not await db.get(ModelProvider, provider_id):
+    provider = await db.get(ModelProvider, provider_id)
+    if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
+    if openai_oauth.is_openai_oauth(provider):
+        return ApiResponse(data=openai_oauth.sign_in_status(provider_id, flow_id))
     return ApiResponse(data=provider_oauth_status(provider_id, flow_id))
 
 
@@ -475,21 +513,30 @@ async def oauth_callback(
 
 
 @provider_router.post("/{provider_id}/oauth/disconnect", response_model=ApiResponse)
+@serialized_provider_auth
 async def disconnect_oauth(provider_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     provider = await db.get(ModelProvider, provider_id)
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
     disconnect_provider_oauth(provider)
+    openai_oauth.retire_attempts(provider_id)
+    provider.config = {key: value for key, value in provider.config.items() if key not in openai_oauth.GRANT_KEYS}
     await db.commit()
     return ApiResponse(data={"status": "not_configured", "provider_id": str(provider_id)})
 
 
 @provider_router.post("/{provider_id}/test", response_model=ApiResponse)
-async def test_provider(provider_id: uuid.UUID):
+async def test_provider(provider_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    provider = await db.get(ModelProvider, provider_id)
+    if not provider:
+        raise HTTPException(404, "Provider not found")
+    if openai_oauth.is_openai_oauth(provider):
+        return ApiResponse(data=await openai_oauth.verify_connection(db, provider))
     return ApiResponse(data={"status": "test_not_implemented", "provider_id": str(provider_id)})
 
 
 @provider_router.delete("/{provider_id}", response_model=ApiResponse)
+@serialized_provider_auth
 async def delete_provider(
     provider_id: uuid.UUID,
     svc: ModelProviderService = Depends(get_model_provider_service),
@@ -506,6 +553,7 @@ async def delete_provider(
                 detail=f"ChatGPT/Codex could not be disconnected before deletion: {exc}",
             ) from exc
     deleted = await svc.delete(provider_id)
+    openai_oauth.retire_attempts(provider_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Provider not found")
     try:

@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     ui_port: int = 7860
+    # Public PKCE application identifier (not a secret); override for your client registration.
+    openai_oauth_client_id: str = "app_EMoamEEZ73f0CkXaXp7hrann"
 
     # ── Database (SQLite by default) ────────────
     database_url: str = f"sqlite+aiosqlite:///{PROJECT_ROOT}/data/shogun.db"

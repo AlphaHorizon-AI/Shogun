@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import re
 import time
 from collections import deque
 
@@ -31,6 +32,17 @@ _request_windows: dict[tuple[str, str], deque[float]] = {}
 
 
 def _is_public_request(request: Request) -> bool:
+    # Only the loopback browser return uses its one-use OAuth state as authority.
+    # All management operations retain administrator authentication.
+    if (
+        request.method == "GET"
+        and request.client and request.client.host in {"127.0.0.1", "::1"}
+        and re.fullmatch(
+            r"/api/v1/model-providers/oauth/callback/chatgpt/(?:[0-9a-fA-F-]{36}|result/(?:success|error))",
+            request.url.path,
+        )
+    ):
+        return True
     return request.method in {"GET", "HEAD"} and request.url.path in _PUBLIC_PATHS
 
 

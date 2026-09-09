@@ -21,6 +21,7 @@ from shogun.db.engine import async_session_factory
 from shogun.db.models.bushido import BushidoJob, BushidoSchedule
 from shogun.db.models.tool_connector import ToolConnector
 from shogun.db.models.memory_record import MemoryRecord
+from shogun.services.openai_oauth import subscription_headers
 from shogun.services.provider_credentials import provider_api_key
 from shogun.services.model_reasoning import apply_chat_reasoning
 from shogun.services.model_transport import model_chat_completion
@@ -799,7 +800,7 @@ async def _run_persona_drift_check(
         or provider.name
     )
     api_key = provider_api_key(provider.config)
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", **subscription_headers(provider)}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     if provider.provider_type == "openrouter":

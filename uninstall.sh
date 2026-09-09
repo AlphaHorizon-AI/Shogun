@@ -5,6 +5,14 @@
 
 set -e
 
+# Never remove the caller's working directory when invoked from elsewhere.
+SELF_DIR="$(cd -P "$(dirname "$0")" && pwd)"
+if [ "$SELF_DIR" = / ] || [ "$SELF_DIR" = "$HOME" ] || \
+   [ ! -f "$SELF_DIR/pyproject.toml" ] || [ ! -f "$SELF_DIR/shogun/__main__.py" ]; then
+    echo "ERROR: Refusing to remove a directory that is not a Shogun installation." >&2
+    exit 1
+fi
+
 # Colors
 GOLD='\033[1;33m'
 RED='\033[1;31m'
@@ -33,20 +41,18 @@ fi
 echo ""
 echo "  [+] Removing desktop shortcut..."
 if [ "$(uname -s)" = "Darwin" ]; then
-    rm -rf "$HOME/Desktop/Shogun.app" 2>/dev/null || true
+    rm -rf -- "$HOME/Desktop/Shogun.app"
 else
-    rm -f "$HOME/Desktop/shogun.desktop" 2>/dev/null || true
+    rm -f -- "$HOME/Desktop/shogun.desktop"
 fi
 
 echo "  [+] Removing Shogun folder..."
-SELF_DIR=$(pwd)
 PARENT_DIR=$(dirname "$SELF_DIR")
-DIR_NAME=$(basename "$SELF_DIR")
 
 # We must CD out of the folder before we delete it
 cd "$PARENT_DIR"
 
-rm -rf "$DIR_NAME" 2>/dev/null || true
+rm -rf -- "$SELF_DIR"
 
 echo "  [OK] Shogun has been completely uninstalled."
 echo ""

@@ -1,0 +1,81 @@
+name: macOS compatibility
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-compatibility-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apple-silicon:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      SHOGUN_NO_BROWSER: "true"
+      SHOGUN_TEST_BASH: /bin/bash
+      SHOGUN_MACOS_EDITION: "yellow-label"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+      - name: Install from a path containing spaces using the shipped installer
+        run: |
+          test "$(uname -m)" = arm64
+          destination="$RUNNER_TEMP/Shogun native install"
+          mkdir -p "$destination"
+          rsync -a --exclude='.git/' "$GITHUB_WORKSPACE/" "$destination/"
+          cd "$destination"
+          export PYTHON_CMD="$(command -v python)"
+          /bin/bash install.sh --telemetry=off --ronin=on --no-start
+          venv/bin/python -m pip install 'pytest>=8.3' 'pytest-asyncio>=0.24'
+          venv/bin/python -m pip check
+          venv/bin/python -m playwright install webkit
+          echo "SHOGUN_MACOS_INSTALL=$destination" >> "$GITHUB_ENV"
+      - name: Shell regressions on the system Bash and BSD utilities
+        run: |
+          cd "$SHOGUN_MACOS_INSTALL"
+          venv/bin/python -m pytest --noconftest -q -p no:cacheprovider tests/test_macos_shell.py
+      - name: Backend compatibility regressions
+        env:
+          SHOGUN_SKIP_ENV_FILE: "true"
+        run: |
+          cd "$SHOGUN_MACOS_INSTALL"
+          venv/bin/python -m pytest -q -p no:cacheprovider \
+            tests/test_launcher_startup.py tests/test_cli_environment.py \
+            tests/test_desktop_bootstrap_security.py tests/test_installer_release_provenance.py \
+            tests/test_restart_service.py tests/test_updates.py tests/test_update_provenance.py \
+            tests/test_ronin_desktop_control.py tests/test_ronin_runtime_security_gates.py \
+            tests/test_yellow_label_edition.py tests/test_vector_store_embedding.py
+      - name: Native embedding and persistent memory smoke tests
+        timeout-minutes: 5
+        env:
+          SHOGUN_MACOS_SMOKE: "1"
+        run: |
+          cd "$SHOGUN_MACOS_INSTALL"
+          venv/bin/python -m pytest -v -p no:cacheprovider --tb=short \
+            -o faulthandler_timeout=120 tests/test_macos_native.py \
+            -k 'installed_source or real_embedding'
+      - name: Native launcher, Chromium, WebKit, and restart smoke tests
+        timeout-minutes: 5
+        env:
+          SHOGUN_MACOS_SMOKE: "1"
+        run: |
+          cd "$SHOGUN_MACOS_INSTALL"
+          venv/bin/python -m pytest -v --capture=tee-sys -p no:cacheprovider --tb=short \
+            -o faulthandler_timeout=120 tests/test_macos_native.py \
+            -k installed_launcher

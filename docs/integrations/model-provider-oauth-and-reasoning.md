@@ -4,7 +4,7 @@
 
 Shogun keeps authentication separate from model-generation settings.
 
-- OpenAI model API access uses an API key or an administrator-provisioned workload identity bearer token. OpenAI does not publish a browser-based, end-user “Sign in with OpenAI” flow for model API access.
+- OpenAI Platform model API access uses an API key or an administrator-provisioned workload identity bearer token. ChatGPT subscription connections use a separate transport: either the existing Codex app-server option or direct ChatGPT OAuth described below.
 - Google Gemini supports OAuth 2.0. Shogun implements Authorization Code with PKCE, state validation, encrypted token storage, refresh-token rotation, and explicit disconnect.
 - Custom OpenAI-compatible providers may use OAuth only when their authorization URL, token URL, scopes, and client registration are configured.
 - Anthropic and OpenRouter remain API-key connections until a provider-specific OAuth contract is added and tested.
@@ -53,3 +53,5 @@ For OpenAI-compatible Chat Completions, Shogun sends `reasoning_effort`. When a 
 ## Adding future models
 
 Update `shogun/resources/model_reasoning_capabilities.json`; do not hardcode model IDs in React components or runtime call sites. Each rule declares model patterns, supported effort values, and the provider default. Add validation and request-payload tests whenever the catalog changes.
+
+For direct ChatGPT subscription sign-in, recovery, and operations, see [Direct ChatGPT OAuth](chatgpt-direct-oauth.md).

@@ -208,7 +208,7 @@ def test_desktop_installers_bootstrap_privately_and_launch_via_python():
     assert "call install.bat" in windows_outer
     assert "bash install.sh" in unix_outer
     assert "python -m shogun.environment_bootstrap" in windows
-    assert "$PYTHON_CMD -m shogun.environment_bootstrap" in unix
+    assert '"$PYTHON_CMD" -m shogun.environment_bootstrap' in unix
     assert windows.index("python -m shogun.environment_bootstrap") < windows.index(
         "python -m shogun.telemetry.cli"
     )
@@ -224,8 +224,8 @@ def test_desktop_installers_bootstrap_privately_and_launch_via_python():
     assert "WindowsIdentity]::GetCurrent().User.Value" in bootstrap
 
     for launcher in (windows, unix, windows_start, unix_start):
-        assert "SHOGUN_BROWSER_URL=http://localhost:8000" in launcher
-        assert "python -m shogun" in launcher or "$PYTHON_CMD -m shogun" in launcher
+        assert "SHOGUN_BROWSER_URL" in launcher and "http://localhost:8000" in launcher
+        assert "python -m shogun" in launcher or '"$PYTHON_CMD" -m shogun' in launcher
     assert 'start "" "http://localhost:8000"' not in windows_start
     assert 'open "http://localhost:8000' not in unix
     assert 'xdg-open "http://localhost:8000' not in unix

@@ -1,8 +1,8 @@
 {
-  "version": "1.47.100",
+  "version": "1.47.102",
   "name": "Shogun AFM",
-  "build": 251,
+  "build": 253,
   "channel": "stable",
-  "released": "2026-09-03T03:10:00Z",
-  "changelog": "Make security CI deterministic, Dependabot-compatible, and easier to verify locally before Yellow Label releases."
+  "released": "2026-09-09T10:57:04Z",
+  "changelog": "Harden Apple Silicon macOS installation, virtual environments, launch and restart supervision, desktop shortcuts, and uninstall targeting; prevent cross-edition installation overlays, add native macOS compatibility CI, and update js-yaml to its patched release."
 }

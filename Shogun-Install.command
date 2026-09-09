@@ -4,7 +4,7 @@
 #
 #  This is a STANDALONE file. Download it, double-click it,
 #  and Shogun will be installed automatically. No git required.
-#  Prerequisites (Python, Node.js) will be installed for you.
+#  Install Python and Node.js first; the installer checks their versions.
 #
 #  macOS: Double-click this file, or: chmod +x Shogun-Install.command && ./Shogun-Install.command
 # ═══════════════════════════════════════════════════════════════
@@ -39,7 +39,7 @@ echo ""
 # ── Configuration ──────────────────────────────────────────────
 REPO="AlphaHorizon-AI/Shogun"
 BRANCH="main"
-INSTALL_DIR="$HOME/Shogun"
+INSTALL_DIR="${SHOGUN_INSTALL_DIR:-$HOME/Shogun}"
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/shogun-install.XXXXXXXX")"
 ZIP_FILE="$TEMP_ROOT/shogun-download.zip"
 EXTRACT_DIR="$TEMP_ROOT/extract"
@@ -58,6 +58,10 @@ case "$OS" in
     Linux*)   PLATFORM="Linux";;
     *)        PLATFORM="Unknown";;
 esac
+# Finder/Terminal may not inherit Homebrew's shell configuration.
+if [ "$PLATFORM" = "macOS" ]; then
+    export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:/opt/homebrew/opt/node@22/bin:/usr/local/opt/node@22/bin"
+fi
 echo -e "  ${BLUE}Platform: ${BOLD}${PLATFORM}${NC}"
 echo ""
 
@@ -70,11 +74,14 @@ echo ""
 
 
 # ── Check Python ───────────────────────────────────────────────
-PYTHON_CMD=""
-if command -v python3 &>/dev/null; then
-    PYTHON_CMD="python3"
-elif command -v python &>/dev/null; then
-    PYTHON_CMD="python"
+PYTHON_CMD="${PYTHON_CMD:-}"
+if [ -z "$PYTHON_CMD" ]; then
+    for candidate in python3.12 python3.13 python3.11 python3.10 python3 python; do
+        if command -v "$candidate" &>/dev/null && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+            PYTHON_CMD="$candidate"
+            break
+        fi
+    done
 fi
 
 if [ -z "$PYTHON_CMD" ]; then
@@ -90,7 +97,21 @@ if ! "$PYTHON_CMD" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3,
     exit 1
 fi
 
-PY_VER=$($PYTHON_CMD --version 2>&1)
+if [ "$PLATFORM" = "macOS" ]; then
+    if ! "$PYTHON_CMD" -c 'import platform; raise SystemExit(0 if platform.machine() == "arm64" else 1)'; then
+        echo "ERROR: Native macOS installation requires Apple Silicon and an arm64 Python."
+        echo "Intel Macs cannot install the required PyTorch wheels. Use Shogun Server with Docker."
+        echo "On Apple Silicon, reopen Terminal without Rosetta and install an arm64 Python."
+        exit 1
+    fi
+    MACOS_VERSION="$(sw_vers -productVersion)"
+    if [ "${MACOS_VERSION%%.*}" -lt 14 ]; then
+        echo "ERROR: macOS 14 (Sonoma) or later is required by the Mado browser engine."
+        exit 1
+    fi
+fi
+export PYTHON_CMD
+PY_VER=$("$PYTHON_CMD" --version 2>&1)
 echo -e "  ${GREEN}✅  $PY_VER${NC}"
 
 # ── Check Node.js ──────────────────────────────────────────────
@@ -163,6 +184,10 @@ if [ ! -f "$EXTRACTED/version.json" ]; then
 fi
 
 # Backup config if upgrading
+if [ -f "$INSTALL_DIR/shogun/productisation/distribution.py" ]; then
+    echo "ERROR: This directory contains a productised edition. Choose a separate SHOGUN_INSTALL_DIR for Yellow Label."
+    exit 1
+fi
 if [ -f "$INSTALL_DIR/configs/setup.json" ]; then
     cp "$INSTALL_DIR/configs/setup.json" "$SETUP_BACKUP"
     chmod 600 "$SETUP_BACKUP"
@@ -209,4 +234,4 @@ echo ""
 
 cd "$INSTALL_DIR"
 chmod +x install.sh start.sh scripts/*.sh 2>/dev/null || true
-bash install.sh
+bash install.sh "$@"

@@ -298,6 +298,10 @@ async def complete_provider_oauth(
 async def ensure_provider_access_token(session: AsyncSession, provider: ModelProvider) -> str | None:
     """Return an OAuth token, refreshing it shortly before expiry when possible."""
 
+    if provider.provider_type == "openai" and provider.auth_type == "oauth":
+        from shogun.services.openai_oauth import resolve_credential
+
+        return await resolve_credential(session, provider)
     config = provider.config or {}
     access_token = reveal_provider_secret(config.get("access_token"))
     if provider.auth_type != "oauth":
