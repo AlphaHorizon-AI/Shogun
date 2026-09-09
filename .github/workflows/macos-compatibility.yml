@@ -45,9 +45,15 @@ jobs:
           /bin/bash install.sh --telemetry=off --ronin=on --no-start
           venv/bin/python -m pip install 'pytest>=8.3' 'pytest-asyncio>=0.24' 'selenium>=4.35,<5'
           venv/bin/python -m pip check
-          venv/bin/python -m playwright install webkit
-          sudo /usr/bin/safaridriver --enable
           echo "SHOGUN_MACOS_INSTALL=$destination" >> "$GITHUB_ENV"
+      - name: Enable installed Safari for macOS 14 browser checks
+        if: matrix.os == 'macos-14'
+        run: sudo /usr/bin/safaridriver --enable
+      - name: Install supported WebKit for newer macOS browser checks
+        if: matrix.os != 'macos-14'
+        run: |
+          cd "$SHOGUN_MACOS_INSTALL"
+          venv/bin/python -m playwright install webkit
       - name: Shell regressions on the system Bash and BSD utilities
         run: |
           cd "$SHOGUN_MACOS_INSTALL"
