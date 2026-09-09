@@ -43,9 +43,10 @@ jobs:
           cd "$destination"
           export PYTHON_CMD="$(command -v python)"
           /bin/bash install.sh --telemetry=off --ronin=on --no-start
-          venv/bin/python -m pip install 'pytest>=8.3' 'pytest-asyncio>=0.24'
+          venv/bin/python -m pip install 'pytest>=8.3' 'pytest-asyncio>=0.24' 'selenium>=4.35,<5'
           venv/bin/python -m pip check
           venv/bin/python -m playwright install webkit
+          sudo /usr/bin/safaridriver --enable
           echo "SHOGUN_MACOS_INSTALL=$destination" >> "$GITHUB_ENV"
       - name: Shell regressions on the system Bash and BSD utilities
         run: |
@@ -79,7 +80,7 @@ jobs:
           venv/bin/python -m pytest -v -p no:cacheprovider --tb=short \
             -o faulthandler_timeout=120 tests/test_macos_native.py \
             -k 'installed_source or real_embedding'
-      - name: Native launcher, Chromium, WebKit, and restart smoke tests
+      - name: Native launcher, Chromium, Safari or WebKit, and restart smoke tests
         timeout-minutes: 5
         env:
           SHOGUN_MACOS_SMOKE: "1"

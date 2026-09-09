@@ -139,3 +139,22 @@ tests cover the normal path, CPU recovery, and both failure cases.
 The browser smoke test also mistook the telemetry invitation's heading for a
 ready setup form. It now waits for the actual form input, retaining the private
 bootstrap URL and JavaScript-error checks. A new CI run must validate both fixes.
+
+## Actions repair follow-up (1.47.103)
+
+Bounded async browser diagnostics identified the macOS 14 failure before any
+Shogun navigation: Playwright's frozen WebKit bundle cannot create a blank page,
+in either headless or windowed mode on the hosted runner. Chromium setup and the
+actual Mado runtime pass. The macOS 14 UI test now uses the installed Safari via
+Apple's WebDriver; macOS 26 retains Chromium and WebKit. The tests check visible
+setup, removal of the private URL fragment, retention in session storage,
+authenticated browser requests, and supervised restart. Safari automation is
+enabled only on disposable CI runners, never by the product installer.
+
+The repeated Dependabot failures shared that native-test problem. The separate
+js-yaml 5 build failure came from its removed default export; Kaizen now uses the
+supported named loader. Vitest and humanfs advisory patches clear the three npm
+findings. The npm gate also rejects unavailable/invalid audit reports and no
+longer grants the expired advisory exception. Fifteen regression cases cover the
+audit guard. The PR's final checks record native release acceptance; historical
+failed runs above remain historical evidence.
