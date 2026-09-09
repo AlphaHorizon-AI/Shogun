@@ -100,11 +100,15 @@ def test_installed_launcher_setup_browsers_and_restart(tmp_path):
                 status = client.get("/api/v1/setup/status", headers=headers)
                 assert status.status_code == 200
                 assert status.json()["data"]["setup_complete"] is False
+                print("Native launcher and authenticated setup API are ready", flush=True)
                 with sync_playwright() as playwright:
                     for browser_type in (playwright.chromium, playwright.webkit):
+                        print(f"Launching {browser_type.name}", flush=True)
                         browser = browser_type.launch(headless=True)
                         try:
-                            page = browser.new_page()
+                            context = browser.new_context()
+                            print(f"Opening {browser_type.name} setup page", flush=True)
+                            page = context.new_page()
                             errors = []
                             page.on("pageerror", lambda _error: errors.append("JavaScript error"))
                             # Do not include the private bootstrap URL in assertion output.
@@ -112,14 +116,20 @@ def test_installed_launcher_setup_browsers_and_restart(tmp_path):
                                 page.goto(build_desktop_browser_url(f"{origin}/setup", token))
                             except PlaywrightError:
                                 raise AssertionError("Setup navigation failed; private bootstrap URL omitted") from None
+                            print(f"Waiting for {browser_type.name} setup form", flush=True)
                             # The telemetry invitation also has an h2 and can
                             # render before the lazy-loaded setup form.
                             page.locator("input").first.wait_for(timeout=30_000)
                             fragment_removed = "#" not in page.url
                             assert fragment_removed, "The setup bootstrap fragment was not removed"
                             assert errors == []
+                            print(f"Closing {browser_type.name} setup context", flush=True)
+                            context.close()
                         finally:
+                            print(f"Closing {browser_type.name} browser", flush=True)
                             browser.close()
+                        print(f"{browser_type.name} setup smoke test passed", flush=True)
+                print("Requesting a supervised application restart", flush=True)
                 restart = client.post("/api/v1/updates/restart", headers=headers)
                 if os.environ.get("SHOGUN_MACOS_EDITION") == "white-label":
                     # White Label correctly blocks normal operations until its

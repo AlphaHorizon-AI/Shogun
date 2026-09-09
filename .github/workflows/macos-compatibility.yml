@@ -76,6 +76,6 @@ jobs:
           SHOGUN_MACOS_SMOKE: "1"
         run: |
           cd "$SHOGUN_MACOS_INSTALL"
-          venv/bin/python -m pytest -v -p no:cacheprovider --tb=short \
+          venv/bin/python -m pytest -v --capture=tee-sys -p no:cacheprovider --tb=short \
             -o faulthandler_timeout=120 tests/test_macos_native.py \
             -k installed_launcher
