@@ -10,17 +10,18 @@ test('accepts a completed clean audit', () => {
   assert.deepEqual(evaluateAudit(result()), { blocked: [], lowerSeverity: [] });
 });
 
-test('blocks all high and critical findings, including the expired exception', () => {
+test('blocks moderate, high and critical findings, including the expired exception', () => {
   const audit = result({
+    vitest: { severity: 'moderate' },
     router: { severity: 'high', via: [{ url: 'https://github.com/advisories/GHSA-qwww-vcr4-c8h2' }] },
     other: { severity: 'critical' },
   }, 1);
-  assert.deepEqual(evaluateAudit(audit).blocked, ['router', 'other']);
+  assert.deepEqual(evaluateAudit(audit).blocked, ['vitest', 'router', 'other']);
 });
 
-test('reports moderate findings separately from security exceptions', () => {
-  assert.deepEqual(evaluateAudit(result({ tool: { severity: 'moderate' } }, 1)), {
-    blocked: [], lowerSeverity: ['tool'],
+test('reports low and informational findings separately from security exceptions', () => {
+  assert.deepEqual(evaluateAudit(result({ tool: { severity: 'low' }, notice: { severity: 'info' } }, 1)), {
+    blocked: [], lowerSeverity: ['tool', 'notice'],
   });
 });
 

@@ -145,7 +145,12 @@ async def stage_complete_restore(
             filename=file.filename or "backup.zip",
         )
     except (ValueError, OSError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.warning("Complete restore could not be staged (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=400,
+            detail=("The backup could not be validated or staged. "
+                    "Check the archive and available storage, then try again."),
+        ) from exc
 
     if restart_now:
         from shogun.services.restart_service import request_restart
@@ -153,7 +158,12 @@ async def stage_complete_restore(
         try:
             result["restart"] = request_restart(delay_seconds=2.0)
         except RuntimeError as exc:
-            result["restart"] = {"accepted": False, "message": str(exc)}
+            logger.warning("Complete restore was staged, but automatic restart failed (%s)", type(exc).__name__)
+            result["restart"] = {
+                "accepted": False,
+                "message": ("Automatic restart could not be requested. "
+                            "Restart Shogun manually to apply the staged restore."),
+            }
     return result
 
 

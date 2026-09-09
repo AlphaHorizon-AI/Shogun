@@ -20,8 +20,8 @@ route actions, or RSC action endpoints. The vulnerable RSC request path is
 therefore not reachable in the shipped frontend.
 
 The current locked router no longer reports this advisory. The expired exception
-has been removed: every High or Critical finding fails the build. Audit API,
-process, or report-format failures also fail the gate. Lower-severity findings
+has been removed: every Moderate, High, or Critical finding fails the build. Audit API,
+process, or report-format failures also fail the gate. Low and informational findings
 are reported explicitly and are never described as approved exceptions.
 
 The history above records the original exception rationale; it grants no current

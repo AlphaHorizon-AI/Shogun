@@ -2041,10 +2041,11 @@ async def _exec_samurai(
         except Exception as deterministic_error:
             if not transformation_profile.get("model_fallback", False):
                 raise
+            # Private profile fields and validation errors can contain operator data.
+            # Keep only the failure category in the operational log.
             log.warning(
-                "Transformation profile %s failed closed validation; explicit model fallback is enabled "
+                "Transformation profile failed closed validation; explicit model fallback is enabled "
                 "(error_type=%s)",
-                transformation_profile.get("id"),
                 type(deterministic_error).__name__,
             )
             # Once the operator opts into a model fallback, use the completely

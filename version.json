@@ -1,8 +1,8 @@
 {
-  "version": "1.47.103",
+  "version": "1.47.104",
   "name": "Shogun AFM",
-  "build": 254,
+  "build": 255,
   "channel": "stable",
-  "released": "2026-09-09T13:34:41Z",
-  "changelog": "Fix js-yaml 5 frontend compatibility, patch Vitest and humanfs advisories, fail closed on npm audit errors, and harden native macOS browser validation."
+  "released": "2026-09-09T15:21:10Z",
+  "changelog": "Protect API errors and private profile diagnostics, block moderate dependency vulnerabilities, and remove obsolete WebKit preparation from macOS 14 CI."
 }

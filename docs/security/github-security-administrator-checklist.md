@@ -34,13 +34,35 @@ the regex parsing with bounded string scanning and remove raw exception/provider
 response details from logs, audit events, and client errors. GitHub—not this
 document—is authoritative for whether a later analysis has closed each alert.
 
+## Safeguards verified on 9 September 2026
+
+The earlier snapshot above is historical. The current repository settings were
+read back through the GitHub API after the security follow-up:
+
+- Secret scanning and secret-scanning push protection are enabled.
+- Main requires all eight backend, frontend, dependency, repository, container,
+  and macOS 14/26 status checks, with up-to-date branches and administrator
+  enforcement. Force pushes and branch deletion remain blocked.
+- The active `Require CodeQL security results on main` ruleset requires CodeQL
+  results and blocks new Medium-or-higher security alerts and ordinary
+  errors/warnings. It has no bypass actors. A successful analysis job alone is
+  not evidence that its results contain no alerts.
+- The npm audit gate rejects Moderate, High, and Critical findings and fails on
+  unavailable or invalid audit results. No dependency exception is active.
+
+Release 1.47.104 adds required regression coverage for safe OAuth/backup errors,
+Ronin streaming diagnostics, and private transformation-profile logging. Check
+the exact release's CodeQL analysis and open alert state to confirm remediation;
+do not dismiss alerts merely to make the dashboard green. Old failed workflow
+runs and Dependabot's notifications about closed, superseded PRs remain history.
+
 ## Administrator actions
 
 In **Repository settings → Code security and analysis** (wording may change in
 GitHub), an authorised administrator should:
 
-1. Enable secret scanning for the repository.
-2. Enable push protection for detected secrets.
+1. Keep secret scanning enabled for the repository.
+2. Keep push protection enabled for detected secrets.
 3. Decide whether non-provider patterns and validity checks are appropriate for
    the organisation's false-positive and data-handling policies.
 4. Confirm dependency graph, Dependabot alerts, Dependabot security updates,
