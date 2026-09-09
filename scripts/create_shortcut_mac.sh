@@ -4,6 +4,8 @@
 #  or a .desktop file on Linux
 # ═══════════════════════════════════════════════════════════════
 
+set -euo pipefail
+
 SHOGUN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 OS="$(uname -s)"
 
@@ -19,12 +21,12 @@ case "$OS" in
             cp "$SHOGUN_DIR/frontend/public/shogun-logo.png" "$APP_PATH/Contents/Resources/shogun-logo.png"
         fi
 
-        # Create executable launcher
-        cat > "$APP_PATH/Contents/MacOS/Shogun" << LAUNCHER
-#!/usr/bin/env bash
-# Shogun Tenshu Launcher
-open -a Terminal "$SHOGUN_DIR/start.sh"
-LAUNCHER
+        # Terminal executes .command files. Quote paths as shell literals so
+        # spaces, quotes, dollar signs, and backticks in a home folder are safe.
+        COMMAND_PATH="$APP_PATH/Contents/Resources/Shogun.command"
+        printf '#!/bin/bash\nexec /bin/bash %q\n' "$SHOGUN_DIR/start.sh" > "$COMMAND_PATH"
+        chmod +x "$COMMAND_PATH"
+        printf '#!/bin/bash\nexec /usr/bin/open -a Terminal %q\n' "$COMMAND_PATH" > "$APP_PATH/Contents/MacOS/Shogun"
         chmod +x "$APP_PATH/Contents/MacOS/Shogun"
 
         # Create Info.plist
@@ -58,6 +60,7 @@ PLIST
     Linux*)
         # ── Linux: Create a .desktop file ────────────────────
         DESKTOP_FILE="$HOME/Desktop/shogun.desktop"
+        mkdir -p "$HOME/Desktop"
         ICON_PATH="$SHOGUN_DIR/frontend/public/shogun-logo.png"
 
         cat > "$DESKTOP_FILE" << DESKTOP

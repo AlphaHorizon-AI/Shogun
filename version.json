@@ -1,8 +1,8 @@
 {
-  "version": "1.47.101",
+  "version": "1.47.102",
   "name": "Shogun AFM",
-  "build": 252,
+  "build": 253,
   "channel": "stable",
-  "released": "2026-09-06T08:22:31Z",
-  "changelog": "Add direct ChatGPT OAuth with PKCE, browser callback recovery, encrypted credentials, coordinated token refresh, subscription transport, and connection testing."
+  "released": "2026-09-09T10:57:04Z",
+  "changelog": "Harden Apple Silicon macOS installation, virtual environments, launch and restart supervision, desktop shortcuts, and uninstall targeting; prevent cross-edition installation overlays, add native macOS compatibility CI, and update js-yaml to its patched release."
 }

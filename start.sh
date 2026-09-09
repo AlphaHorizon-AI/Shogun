@@ -5,8 +5,22 @@
 
 set -e
 
-# Navigate to script directory (handles shortcut/symlink launches)
-cd "$(dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")")"
+# Resolve relative symlinks with BSD readlink (macOS has no readlink -f).
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_PATH" ]; do
+    SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+    case "$SCRIPT_PATH" in
+        /*) ;;
+        *) SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_PATH" ;;
+    esac
+done
+cd -P "$(dirname "$SCRIPT_PATH")"
+
+# Finder launches also need Node/npm for frontend repair and in-app updates.
+if [ "$(uname -s)" = Darwin ]; then
+    export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:/opt/homebrew/opt/node@22/bin:/usr/local/opt/node@22/bin"
+fi
 
 # Colors
 GOLD='\033[1;33m'
@@ -34,16 +48,20 @@ fi
 # Activate venv
 source "$VENV_DIR/bin/activate"
 
-# Detect Python
-PYTHON_CMD="python3"
-if ! command -v python3 &>/dev/null; then
-    PYTHON_CMD="python"
+PYTHON_CMD="$(pwd)/$VENV_DIR/bin/python"
+if [ ! -x "$PYTHON_CMD" ]; then
+    echo "ERROR: Virtual environment Python is missing. Run install.sh again."
+    exit 1
 fi
 
 # Check if frontend is built
 if [ ! -f "frontend/dist/index.html" ]; then
     echo "  ⚠️  Frontend not built. Building now..."
-    cd frontend && npm run build --silent 2>/dev/null && cd ..
+    (
+        cd frontend
+        npm ci --no-audit --no-fund
+        npm run build
+    )
     echo -e "  ${GREEN}✅  Frontend built.${NC}"
 fi
 
@@ -55,11 +73,11 @@ echo ""
 
 # Start the server (blocking). A UI restart request leaves a marker that makes
 # this launcher supervise a clean stop/start cycle.
-export SHOGUN_BROWSER_URL=http://localhost:8000
+export SHOGUN_BROWSER_URL=${SHOGUN_BROWSER_URL:-http://localhost:8000}
 export SHOGUN_LAUNCHER_MANAGED=true
 while true; do
     set +e
-    $PYTHON_CMD -m shogun
+    "$PYTHON_CMD" -m shogun
     SHOGUN_EXIT_CODE=$?
     set -e
     if [ -f ".states/restart-requested" ]; then

@@ -39,7 +39,7 @@ Download one installer from the [latest GitHub release](https://github.com/Alpha
 | Platform | Installer | Run it |
 |---|---|---|
 | **Windows** | [⬇️ Shogun-Install.bat](https://github.com/AlphaHorizon-AI/Shogun/releases/latest/download/Shogun-Install.bat) | Double-click the downloaded file |
-| **macOS** | [⬇️ Shogun-Install.command](https://github.com/AlphaHorizon-AI/Shogun/releases/latest/download/Shogun-Install.command) | Double-click the downloaded file |
+| **macOS (Apple Silicon)** | [⬇️ Shogun-Install.command](https://github.com/AlphaHorizon-AI/Shogun/releases/latest/download/Shogun-Install.command) | Run `bash ~/Downloads/Shogun-Install.command` in Terminal |
 
 The installer downloads Shogun, creates the Python environment, installs dependencies, builds The Tenshu, creates a desktop shortcut, and opens the Setup Wizard.
 
@@ -54,6 +54,14 @@ installer.
 
 Shogun requires **Python 3.10+**. Frontend builds and CI use **Node.js 22.12+**;
 `.nvmrc` and `.node-version` pin the supported major.
+
+Native macOS installations require **Apple Silicon (including M3–M5), macOS 14+,
+and an arm64 Python**. Python 3.12 and Node.js 22 are the reference configuration;
+install these prerequisites before running the installer. Intel/Rosetta Python
+cannot install the required PyTorch wheels. A browser download may lack the
+executable permission needed for double-clicking; the Terminal command above
+works without changing it. See the [macOS requirements and verification guide](docs/deployment/macos.md)
+for setup, feature limitations, and native test coverage.
 
 ### Complete the Setup Wizard
 

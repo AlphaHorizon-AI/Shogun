@@ -49,6 +49,14 @@ def test_yellow_label_capability_boundary_is_fixed() -> None:
     assert set(REMOVED_FEATURES) == EXPECTED_REMOVED_FEATURES
 
 
+def test_macos_release_uses_yellow_label_source_and_boundary_tests() -> None:
+    installer = (PROJECT_ROOT / "Shogun-Install.command").read_text(encoding="utf-8")
+    workflow = (PROJECT_ROOT / ".github/workflows/macos-compatibility.yml").read_text(encoding="utf-8")
+    assert 'REPO="AlphaHorizon-AI/Shogun"' in installer
+    assert 'SHOGUN_MACOS_EDITION: "yellow-label"' in workflow
+    assert "tests/test_yellow_label_edition.py" in workflow
+
+
 def test_removed_features_are_not_registered_as_public_routes() -> None:
     paths = {
         path
