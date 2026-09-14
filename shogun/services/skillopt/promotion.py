@@ -24,13 +24,15 @@ class SkillPromotionService(BaseService):
         if not candidate:
             return False
 
-        if candidate.status != "validated" or not candidate.validation_score:
+        if candidate.status not in ("validated", "approved") or not candidate.validation_score:
             raise ValueError("Candidate must be successfully validated before promotion")
 
         skill = await self.db.get(Skill, candidate.skill_id)
         if skill is None:
             return False
         assert_skill_mutable(skill, "promote a SkillOpt candidate into")
+        if skill.status == "quarantined":
+            raise ValueError(f"Cannot promote candidate because skill {skill.name} is quarantined. Unquarantine first.")
 
         # Read the candidate content
         try:
@@ -46,7 +48,7 @@ class SkillPromotionService(BaseService):
             content_path=candidate.candidate_content_path,
             content=content,
             status="active",
-            created_by=created_by
+            created_by=created_by,
         )
 
         # Update the active version on the skill

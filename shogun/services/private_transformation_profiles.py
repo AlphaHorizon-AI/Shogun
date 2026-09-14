@@ -85,6 +85,10 @@ def _validate_sectioned_matrix_profile(definition: dict[str, Any]) -> None:
         row_rules = _row_rules(parameters)
         if not row_rules:
             raise ValueError("Transformation profile requires at least one row rule.")
+        if "workbook_update" in parameters:
+            from shogun.services.sectioned_workbook_updater import validate_workbook_update_profile
+
+            validate_workbook_update_profile(definition)
     except (TypeError, ValueError) as exc:
         raise PrivateTransformationProfileError(
             f"Sectioned-matrix profile schema validation failed: {exc}"

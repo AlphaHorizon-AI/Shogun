@@ -1,8 +1,8 @@
 {
-  "version": "1.47.105",
+  "version": "1.47.106",
   "name": "Shogun AFM",
-  "build": 256,
+  "build": 257,
   "channel": "stable",
-  "released": "2026-09-09T15:36:44Z",
-  "changelog": "Sanitize transformation profile and source-inspection tool errors and logs to prevent diagnostic details from reaching chat responses."
+  "released": "2026-09-14T14:44:07Z",
+  "changelog": "Add generic private-profile PDF-to-Excel workbook updates and the Yellow Label SkillOpt Lab preview with local skill management. Unfinished optimization, regression execution and benchmarking are explicitly unavailable."
 }

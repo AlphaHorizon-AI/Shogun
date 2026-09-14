@@ -2026,34 +2026,34 @@ export function Guide() {
                  </div>
               </section>
 
-              {/* ─── SKILLOPT ─── */}
-              <section id="ref-skillopt" className="space-y-6 scroll-mt-6">
-                 <div className="flex items-center gap-3 border-b-2 border-fuchsia-400/40 pb-3">
-                    <BrainCircuit className="w-6 h-6 text-fuchsia-400" />
-                    <div>
-                       <h4 className="text-xl font-bold uppercase tracking-widest">SkillOpt — Automated Skill Optimization</h4>
-                       <p className="text-xs text-shogun-subdued">Data-driven skill improvement pipeline — version management, training runs, candidate generation, validation, and promotion.</p>
-                    </div>
-                 </div>
-
-                 <div className="shogun-card space-y-3">
-                    <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-fuchsia-400" /> The Optimization Pipeline</div>
-                    <p className="text-xs text-shogun-subdued leading-relaxed"><strong>Usage Events</strong> are captured from Active Skill runs. A <strong>Training Run</strong> uses these to generate optimized <strong>Candidates</strong>. Each candidate is <strong>Validated</strong> against held-out tasks with safety checks and scoring. Successful candidates are <strong>Promoted</strong> to become the new active version; failing ones are <strong>Rejected</strong> with a reason.</p>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="shogun-card space-y-2 border-l-2 border-fuchsia-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-fuchsia-400" /> Version Management</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">Every skill change creates a versioned snapshot with a version number, content hash, validation score, and status (<code className="text-fuchsia-400">candidate</code> → <code className="text-fuchsia-400">active</code> → <code className="text-fuchsia-400">retired</code>). Browse retained versions for any skill from the SkillOpt tab in <strong>Katana</strong>. Compare candidate versus baseline content with the interactive diff viewer.</p>
-                    </div>
-                    <div className="shogun-card space-y-2 border-l-2 border-fuchsia-400/40">
-                       <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-fuchsia-400" /> Katana Dashboard</div>
-                       <p className="text-xs text-shogun-subdued leading-relaxed">The SkillOpt tab in <strong>Katana</strong> provides real-time tracking of optimization runs, interactive diff viewer for candidates vs baseline, one-click promote/reject controls, and metrics for average improvement scores. Start training runs, view all skill versions, and monitor usage events.</p>
-                    </div>
-                 </div>
-              </section>
-
-             {/* 10. TORII (SECURITY) */}
+               {/* ─── SKILLOPT ─── */}
+               <section id="ref-skillopt" className="space-y-6 scroll-mt-6">
+                  <div className="flex items-center gap-3 border-b-2 border-fuchsia-400/40 pb-3">
+                     <BrainCircuit className="w-6 h-6 text-fuchsia-400" />
+                     <div>
+                        <h4 className="text-xl font-bold uppercase tracking-widest">SkillOpt — Skill Improvement &amp; Local Versions</h4>
+                        <p className="text-xs text-shogun-subdued">Runtime learning, local version controls, and the SkillOpt Lab preview.</p>
+                     </div>
+                  </div>
+                  <div className="shogun-card space-y-3">
+                     <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-fuchsia-400" /> Runtime Learning</div>
+                     <p className="text-xs text-shogun-subdued leading-relaxed">Existing SkillOpt training uses skill usage events to generate and validate candidate instructions. Review validated candidates before promoting them. The existing training and promotion services remain available alongside the new Lab preview.</p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="shogun-card space-y-3 border-l-2 border-fuchsia-400/40">
+                        <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-fuchsia-400" /> Local Skill Management</div>
+                        <p className="text-xs text-shogun-subdued leading-relaxed">Browse retained versions or roll back to a retained version of the same skill. Quarantine blocks new activations of that skill; clearing quarantine restores its previous availability. Protected built-in skills cannot be changed through these controls.</p>
+                        <p className="text-xs text-shogun-subdued leading-relaxed">Version changes stay on this installation. Quarantine does not cancel work that is already running.</p>
+                     </div>
+                     <div className="shogun-card space-y-3 border-l-2 border-amber-400/60">
+                        <div className="font-bold text-amber-400">SkillOpt Lab Preview</div>
+                        <p className="text-xs text-shogun-subdued leading-relaxed">You can create regression suites and test cases, record Lab run configuration, and inspect local version information. Automated Lab optimization, regression execution, and model benchmarking are not available in this release.</p>
+                        <p className="text-xs text-shogun-subdued leading-relaxed">Execution requests report that they are unavailable. They do not produce pass rates, model competence scores, or simulated usage totals. The optional regression sweep is disabled by default and skips unavailable evaluations.</p>
+                        <p className="text-xs text-shogun-subdued leading-relaxed">Only explicitly labeled mock responses are supported by the preview executor. Fixture, replay, sandbox, tenant, and live execution are unavailable.</p>
+                     </div>
+                  </div>
+               </section>
+{/* 10. TORII (SECURITY) */}
              {/* ═══════════════════════════════════════════════════════════════ */}
              <section id="ref-torii" className="space-y-6 scroll-mt-6">
                 <div className="flex items-center gap-3 border-b-2 border-red-400/40 pb-3">

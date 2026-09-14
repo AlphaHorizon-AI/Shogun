@@ -5121,7 +5121,114 @@ async def _exec_office(
         elif action == "excel_create":
             abs_out = _resolve_output(output_path, ".xlsx", "output.xlsx")
             template = _create_template("xlsx")
-            if template and mapping_payload:
+            transform_cfg = config.get("workbook_transform")
+            if transform_cfg is not None:
+                if not isinstance(transform_cfg, dict):
+                    raise ValueError("Workbook transformation configuration must be an object.")
+                supported = {
+                    "profile_path", "template_path", "pdf_paths", "sheet_name",
+                    "reference_workbook_path", "options",
+                }
+                if set(transform_cfg) - supported:
+                    raise ValueError("Workbook transformation configuration contains unsupported fields.")
+                if mapping_payload:
+                    raise ValueError("Select either a workbook transformation or mapped cell/row output.")
+                from threading import Event
+
+                from shogun.services.file_template import resolve_workspace_template
+                from shogun.services.private_transformation_profiles import PrivateTransformationProfileService
+                from shogun.services.sectioned_workbook_pipeline import run_sectioned_workbook_pipeline
+
+                profile_raw = transform_cfg.get("profile_path")
+                if not isinstance(profile_raw, str) or not profile_raw.strip():
+                    raise ValueError("Workbook transformation requires a private profile file path.")
+                profile_path = Path(_resolve(profile_raw))
+                if profile_path.suffix.lower() != ".json":
+                    raise ValueError("Workbook transformation profile must be a JSON file.")
+                with profile_path.open("rb") as profile_file:
+                    encoded_profile = profile_file.read(2_000_001)
+                if len(encoded_profile) > 2_000_000:
+                    raise ValueError("Workbook transformation profile exceeds the 2 MB safety limit.")
+                try:
+                    document = json.loads(encoded_profile)
+                except (UnicodeError, ValueError) as exc:
+                    raise ValueError("Workbook transformation profile is not valid JSON.") from exc
+                imported = PrivateTransformationProfileService().import_document(document)
+                profile = imported["document"]["profile"]
+                if not isinstance(profile.get("parameters", {}).get("workbook_update"), dict):
+                    raise ValueError("The selected profile does not declare workbook updates.")
+
+                tmpl_raw = (
+                    (template.get("template_path") if template else None)
+                    or transform_cfg.get("template_path")
+                    or config.get("template_path")
+                )
+                if not isinstance(tmpl_raw, str) or not tmpl_raw.strip():
+                    raise ValueError("Workbook transformation requires an Excel template path.")
+                template_file = resolve_workspace_template(tmpl_raw, root)
+
+                raw_pdfs = transform_cfg.get("pdf_paths")
+                if isinstance(raw_pdfs, str):
+                    raw_pdf_list = [raw_pdfs] if raw_pdfs.strip() else []
+                elif isinstance(raw_pdfs, list):
+                    raw_pdf_list = raw_pdfs
+                else:
+                    raw_pdf_list = []
+
+                if not 1 <= len(raw_pdf_list) <= 10 or any(
+                    not isinstance(path, str) or not path.strip() for path in raw_pdf_list
+                ):
+                    raise ValueError("Workbook transformation requires between one and ten PDF paths.")
+
+                resolved_pdfs = [_resolve(p) for p in raw_pdf_list]
+                pipeline_sheet = (
+                    transform_cfg.get("sheet_name")
+                    or config.get("sheet_name")
+                    or (template.get("sheet_name") if template else None)
+                )
+                if pipeline_sheet is not None and not isinstance(pipeline_sheet, str):
+                    raise ValueError("Workbook transformation sheet name must be a string.")
+                pipeline_options = transform_cfg.get("options", {})
+                if not isinstance(pipeline_options, dict):
+                    raise ValueError("Workbook transformation options must be an object.")
+                pipeline_options = dict(pipeline_options)
+                requested_chars = pipeline_options.get("max_total_chars", settings.agent_flow_document_max_chars)
+                if isinstance(requested_chars, bool) or not isinstance(requested_chars, int) or requested_chars < 1:
+                    raise ValueError("Workbook transformation text limit must be a positive integer.")
+                pipeline_options["max_total_chars"] = min(requested_chars, settings.agent_flow_document_max_chars)
+
+                reference_raw = transform_cfg.get("reference_workbook_path")
+                if reference_raw is not None and not isinstance(reference_raw, str):
+                    raise ValueError("Reference workbook path must be a string.")
+                pipeline_ref = _resolve(reference_raw) if reference_raw else None
+                cancellation = Event()
+                try:
+                    pipeline_result = await asyncio.to_thread(
+                        run_sectioned_workbook_pipeline,
+                        profile=profile,
+                        pdf_paths=resolved_pdfs,
+                        template_workbook_path=template_file,
+                        output_workbook_path=abs_out,
+                        reference_workbook_path=pipeline_ref,
+                        sheet_name=pipeline_sheet,
+                        options=pipeline_options,
+                        cancel_event=cancellation,
+                        profile_source_path=profile_path,
+                    )
+                except asyncio.CancelledError:
+                    cancellation.set()
+                    raise
+                saved_path = await _record_output(abs_out)
+                for rep_path in pipeline_result.get("report_paths", {}).values():
+                    await _record_output(str(rep_path))
+                val_sum = pipeline_result.get("validation_summary", {})
+                row_summary = (
+                    f"{val_sum.get('total_rows_inserted', 0)} rows inserted; "
+                    f"review required: {pipeline_result['comparison_report']['review_required']}"
+                )
+                log.info("[Flow/Office] excel_create (workbook transformation): %s (%s)", saved_path, row_summary)
+                return f"Excel workbook created: {saved_path} ({row_summary})"
+            elif template and mapping_payload:
                 import shutil
 
                 import openpyxl

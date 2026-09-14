@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from shogun.api import setup as setup_api
@@ -27,6 +29,11 @@ EXPECTED_REMOVED_FEATURES = {
     "logs_ui",
     "nexus",
     "gensui",
+    "gensui_skill_repository",
+    "gensui_skill_publication",
+    "gensui_skill_distribution",
+    "gensui_competence_registry",
+    "enterprise_skill_sync",
 }
 
 REMOVED_ROUTE_PREFIXES = {
@@ -43,6 +50,16 @@ REMOVED_ROUTE_PREFIXES = {
     "/api/v1/models/usage/by-stack",
 }
 
+DENY_ONLY_GENSUI_ROUTES = frozenset(
+    {
+        ("POST", "/api/v1/gensui/skills/publish"),
+        ("GET", "/api/v1/gensui/skills/manifest"),
+        ("POST", "/api/v1/gensui/skills/{skill_id}/approve"),
+        ("POST", "/api/v1/gensui/skills/{skill_id}/distribute"),
+        ("GET", "/api/v1/gensui/competence"),
+    }
+)
+
 
 def test_yellow_label_capability_boundary_is_fixed() -> None:
     assert EDITION_NAME == "yellow-label"
@@ -58,14 +75,61 @@ def test_macos_release_uses_yellow_label_source_and_boundary_tests() -> None:
 
 
 def test_removed_features_are_not_registered_as_public_routes() -> None:
-    paths = {
-        path
-        for route in create_app().routes
-        if (path := getattr(route, "path", None)) is not None
-    }
-    for path in paths:
-        assert not any(path.startswith(prefix) for prefix in REMOVED_ROUTE_PREFIXES), path
+    app = create_app()
+    found_deny_stubs: set[tuple[str, str]] = set()
+
+    for route in app.routes:
+        path = getattr(route, "path", None)
+        if path is None:
+            continue
+        methods = getattr(route, "methods", set()) or set()
+
+        for prefix in REMOVED_ROUTE_PREFIXES:
+            if path.startswith(prefix):
+                for method in methods:
+                    if (method, path) in DENY_ONLY_GENSUI_ROUTES:
+                        found_deny_stubs.add((method, path))
+                    else:
+                        pytest.fail(f"Unauthorized enterprise route registered: {method} {path}")
+
         assert "/attach-to-stack/" not in path
+
+    # Exactly the five deny-only Gensui stub routes must be present
+    assert found_deny_stubs == DENY_ONLY_GENSUI_ROUTES
+
+
+def test_gensui_deny_stubs_always_return_403_even_with_flags_enabled(monkeypatch) -> None:
+    """The 5 Gensui stub routes must always deny with 403 CAPABILITY_UNAVAILABLE."""
+    app = create_app()
+    client = TestClient(app, raise_server_exceptions=False)
+    dummy_skill_id = uuid.uuid4()
+
+    endpoints = [
+        ("POST", "/api/v1/gensui/skills/publish"),
+        ("GET", "/api/v1/gensui/skills/manifest"),
+        ("POST", f"/api/v1/gensui/skills/{dummy_skill_id}/approve"),
+        ("POST", f"/api/v1/gensui/skills/{dummy_skill_id}/distribute"),
+        ("GET", "/api/v1/gensui/competence"),
+    ]
+
+    for method, path in endpoints:
+        resp = client.request(method, path)
+        assert resp.status_code == 403, f"{method} {path} returned {resp.status_code}"
+        assert resp.json().get("detail", {}).get("error") == "CAPABILITY_UNAVAILABLE"
+
+    # Even if someone attempts to mock or enable all capabilities, denial is unconditional
+    from shogun.services.capability_service import CapabilityService
+
+    monkeypatch.setattr(CapabilityService, "enabled", lambda self, cap: True)
+
+    for method, path in endpoints:
+        resp = client.request(method, path)
+        assert resp.status_code == 403, f"{method} {path} returned {resp.status_code} after flags enabled"
+        assert resp.json().get("detail", {}).get("error") == "CAPABILITY_UNAVAILABLE"
+
+    # The route inventory test above rejects all other enterprise handlers.
+    # Unknown URLs may reach the existing HTML fallback for the frontend.
+    client.close()
 
 
 def test_flow_stack_native_tools_are_not_advertised() -> None:

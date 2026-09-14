@@ -64,6 +64,10 @@ class SkillRollbackService:
 
         if not target:
             return {"status": "error", "message": "Target version not found."}
+        if target.skill_id != skill.id:
+            return {"status": "error", "message": "Target version does not belong to skill."}
+        if target.quarantine_status == "quarantined" or target.status == "quarantined":
+            return {"status": "error", "message": "Unquarantine the target version before rollback."}
 
         # Deactivate current version
         if skill.active_version_id:
