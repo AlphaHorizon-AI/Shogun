@@ -7,13 +7,16 @@ declared by an explicit Mapping/RPA transformation profile.
 
 from __future__ import annotations
 
+import datetime
 import json
+import math
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from importlib.resources import files
+from pathlib import Path
 from time import monotonic
 from typing import Any
 
@@ -22,6 +25,7 @@ import regex
 SUPPORTED_ADAPTER = "sectioned_record_matrix_v1"
 PROFILE_REGEX_OPERATION_TIMEOUT_SECONDS = 1.0
 PROFILE_TRANSFORMATION_TIMEOUT_SECONDS = 20.0
+
 
 
 @dataclass(slots=True)
@@ -41,6 +45,10 @@ class _RecordSection:
     selector_outcomes: dict[str, str] = field(default_factory=dict)
     resolution_states: list[dict[str, Any]] = field(default_factory=list)
     skip_output: bool = False
+    source_file: str = ""
+    source_pages: list[int] = field(default_factory=list)
+    exceptions: list[dict[str, Any]] = field(default_factory=list)
+    all_records: list[Any] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -92,29 +100,64 @@ class _BoundedPattern:
         self._budget = budget
 
     @property
+    def _current_budget(self) -> _RegexExecutionBudget:
+        active = _ACTIVE_REGEX_BUDGET.get()
+        if active is not None:
+            return active
+        if monotonic() - self._budget.started_at > PROFILE_TRANSFORMATION_TIMEOUT_SECONDS:
+            self._budget = _RegexExecutionBudget(profile_id=self._budget.profile_id)
+        return self._budget
+
+    @property
+    def pattern(self) -> str:
+        return self._compiled.pattern
+
+    @property
     def groupindex(self) -> dict[str, int]:
         return self._compiled.groupindex
 
     def finditer(self, text: str) -> Iterator[regex.Match]:
-        timeout = self._budget.operation_timeout(self._label)
+        budget = self._current_budget
+        timeout = budget.operation_timeout(self._label)
 
         def iterate() -> Iterator[regex.Match]:
             try:
                 for match in self._compiled.finditer(text, timeout=timeout):
-                    self._budget.check_total(self._label)
+                    budget.check_total(self._label)
                     yield match
             except TimeoutError as exc:
-                raise self._budget.timeout_error(self._label) from exc
+                raise budget.timeout_error(self._label) from exc
 
         return iterate()
 
-    def search(self, text: str) -> regex.Match | None:
-        timeout = self._budget.operation_timeout(self._label)
+    def search(self, text: str, *args: Any, **kwargs: Any) -> regex.Match | None:
+        budget = self._current_budget
+        timeout = budget.operation_timeout(self._label)
         try:
-            result = self._compiled.search(text, timeout=timeout)
+            result = self._compiled.search(text, *args, timeout=timeout, **kwargs)
         except TimeoutError as exc:
-            raise self._budget.timeout_error(self._label) from exc
-        self._budget.check_total(self._label)
+            raise budget.timeout_error(self._label) from exc
+        budget.check_total(self._label)
+        return result
+
+    def match(self, text: str, *args: Any, **kwargs: Any) -> regex.Match | None:
+        budget = self._current_budget
+        timeout = budget.operation_timeout(self._label)
+        try:
+            result = self._compiled.match(text, *args, timeout=timeout, **kwargs)
+        except TimeoutError as exc:
+            raise budget.timeout_error(self._label) from exc
+        budget.check_total(self._label)
+        return result
+
+    def fullmatch(self, text: str, *args: Any, **kwargs: Any) -> regex.Match | None:
+        budget = self._current_budget
+        timeout = budget.operation_timeout(self._label)
+        try:
+            result = self._compiled.fullmatch(text, *args, timeout=timeout, **kwargs)
+        except TimeoutError as exc:
+            raise budget.timeout_error(self._label) from exc
+        budget.check_total(self._label)
         return result
 
 
@@ -1311,6 +1354,100 @@ def _month_key(month: str) -> tuple[int, int] | None:
     return (year, number) if 1 <= number <= 12 else None
 
 
+def parse_localized_number(value: Any, *, as_float: bool = False) -> float | int | None:
+    """Parse localized decimal numbers (e.g. '1 442,0', '1.234,50', '25,0').
+
+    Returns None if value is missing/blank or malformed (e.g. '1.2.3').
+    Returns int or float depending on integer value and as_float flag.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        if isinstance(value, bool) or not math.isfinite(value):
+            return None
+        val = float(value)
+        return val if as_float else (int(val) if val.is_integer() else val)
+    text = str(value).strip()
+    if not text:
+        return None
+    cleaned = text.replace("\u00a0", " ").replace("\u202f", " ").strip()
+    m = re.fullmatch(r"^[+-]?(?:\d{1,3}(?:[ .]\d{3})*|\d+)(?:,\d+)?$", cleaned)
+    if not m:
+        return None
+    cleaned = cleaned.replace(" ", "").replace(".", "").replace(",", ".")
+    try:
+        number = float(cleaned)
+        if not math.isfinite(number):
+            return None
+        return number if as_float else (int(number) if number.is_integer() else number)
+    except (ValueError, TypeError):
+        return None
+
+
+def iso_monday_from_calendar_week(year_ww: str) -> datetime.date | None:
+    """Convert 'YYYY/WW' to typed datetime.date of the Monday in that ISO week."""
+    match = re.match(r"^(\d{4})/(\d{1,2})$", str(year_ww or "").strip())
+    if not match:
+        return None
+    year, week = int(match.group(1)), int(match.group(2))
+    try:
+        return datetime.date.fromisocalendar(year, week, 1)
+    except (ValueError, OverflowError):
+        return None
+
+
+def extract_pdf_layout_pages(
+    pdf_path: Path | str,
+    *,
+    max_pages: int = 2000,
+    max_chars: int = 20_000_000,
+    cancel_event: Any = None,
+) -> list[tuple[int, str]]:
+    """Extract pages directly from supplied PDF using pypdf layout mode.
+
+    Rejects blank pages, corrupt files, and unknown formats with provenance.
+    """
+    import pypdf
+
+    path = Path(pdf_path)
+    if not path.exists():
+        raise FileNotFoundError(f"PDF file not found: {path}")
+    if path.stat().st_size == 0:
+        raise ValueError(f"PDF file '{path.name}' is empty (0 bytes).")
+
+    try:
+        reader = pypdf.PdfReader(str(path))
+    except Exception as exc:
+        raise ValueError(f"Failed to read PDF '{path.name}': {exc}") from exc
+
+    if len(reader.pages) == 0:
+        raise ValueError(f"PDF '{path.name}' contains zero pages.")
+    if len(reader.pages) > max_pages:
+        raise ValueError(f"PDF '{path.name}' exceeds the configured page limit ({max_pages}).")
+
+    pages: list[tuple[int, str]] = []
+    total_chars = 0
+    for page_idx, page in enumerate(reader.pages, 1):
+        if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
+            raise RuntimeError("Extraction was cancelled.")
+        try:
+            text = page.extract_text(extraction_mode="layout") or ""
+        except Exception as exc:
+            raise ValueError(f"Extraction failure on '{path.name}' page {page_idx}: {exc}") from exc
+
+        if not text.strip():
+            raise ValueError(
+                f"Blank/image-only PDF page: '{path.name}', page {page_idx}; text extraction required."
+            )
+        total_chars += len(text)
+        if total_chars > max_chars:
+            raise ValueError(f"PDF '{path.name}' exceeds the configured extracted-text limit.")
+
+        pages.append((page_idx, text))
+
+    return pages
+
+
 def _convert_value(value: Any, value_type: Any) -> Any:
     normalized_type = str(value_type or "string").strip().lower()
     if normalized_type in {"", "string"}:
@@ -1319,10 +1456,24 @@ def _convert_value(value: Any, value_type: Any) -> Any:
         normalized = re.sub(r"[\s.\u00a0\u202f]", "", str(value).strip()).replace(",", ".")
         number = float(normalized)
         return int(number) if number.is_integer() else number
+    if normalized_type == "calendar_week_monday":
+        date = iso_monday_from_calendar_week(value)
+        if date is None:
+            raise ValueError("Invalid ISO calendar week.")
+        return date
+    if normalized_type == "iso_date":
+        return datetime.date.fromisoformat(str(value))
     if normalized_type == "number":
         number = float(value)
         return int(number) if number.is_integer() else number
+    if normalized_type in {"strict_localized_number", "strict_localized_float"}:
+        as_float = normalized_type == "strict_localized_float"
+        parsed = parse_localized_number(value, as_float=as_float)
+        if parsed is None:
+            raise ValueError(f"Value '{value}' is not a valid strict localized number.")
+        return parsed
     raise ValueError(f"Unsupported transformation profile value type '{normalized_type}'.")
+
 
 
 def _compile_pattern(

@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
 
 RUFF_PATHS = (
+    "shogun/services/sectioned_workbook_pipeline.py",
+    "shogun/services/sectioned_workbook_updater.py",
     "shogun/engine/vector_store.py",
     "shogun/api/a2a.py",
     "shogun/api/control_plane_auth.py",
@@ -62,6 +64,14 @@ RUFF_PATHS = (
 )
 
 PYTEST_PATHS = (
+    "tests/test_files_workbook_transform.py",
+    "tests/test_sectioned_workbook_pipeline.py",
+    "tests/test_workbook_profile_review.py",
+    "tests/test_yellow_label_skillopt_lab.py",
+    "tests/test_skillopt_local_lifecycle.py",
+    "tests/test_skillopt_migration.py",
+    "tests/test_skillopt_execution_boundary.py",
+    "tests/test_skillopt_versioning_governance.py",
     "tests/test_transformation_tool_error_security.py",
     "tests/test_api_error_boundaries.py",
     "tests/test_flow_profile_logging_security.py",

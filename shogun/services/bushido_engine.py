@@ -69,11 +69,21 @@ PRESET_SCHEDULES = [
         "is_enabled": True,
         "scope": {"agent_ids": [], "memory_types": []},
     },
+    {
+        "name": "SkillOpt Regression Sweep",
+        "job_type": "skillopt_regression_sweep",
+        "frequency": "weekly",
+        "schedule_time": "03:30",
+        "schedule_days": ["wed"],
+        "is_preset": True,
+        "is_enabled": False,
+        "scope": {"agent_ids": [], "memory_types": []},
+    },
 ]
 
 
 async def ensure_preset_schedules() -> None:
-    """Idempotently seed the 4 preset BushidoSchedule rows."""
+    """Idempotently seed the 5 preset BushidoSchedule rows."""
     from sqlalchemy import select
 
     # Ensure the table exists first (SQLite auto-create via metadata)
@@ -191,6 +201,7 @@ async def _dispatch(
         "performance_audit": _run_performance_audit,
         "skill_health_check": _run_skill_health_check,
         "persona_drift_check": _run_persona_drift_check,
+        "skillopt_regression_sweep": _run_skillopt_regression_sweep,
         "custom_task": _run_custom_task,
     }
     handler = handlers.get(job_type)
@@ -962,6 +973,193 @@ Analyze the Shogun's responses for governance compliance. Return JSON only."""
         "dry_run": dry_run,
         "completed_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+async def _run_skillopt_regression_sweep(
+    session: AsyncSession,
+    scope: dict[str, Any],
+    job_id: uuid.UUID,
+    task_instruction: str | None,
+    dry_run: bool,
+) -> dict[str, Any]:
+    """Execute local regression suites across active skills and verify tool freshness.
+
+    Operational cadence preset (§25, §33):
+    1. Finds all active regression suites for local skills.
+    2. Runs each regression suite.
+    3. If pass rate drops below minimum threshold, quarantines the active skill version.
+    4. Checks tool schema freshness for drift.
+    5. Creates Bushido recommendations for any failures or drift.
+    6. Logs event to immutable audit.
+    """
+    from sqlalchemy import select
+
+    from shogun.db.models.bushido import BushidoRecommendation
+    from shogun.db.models.skill import Skill
+    from shogun.db.models.skillopt import SkillOptRegressionSuite
+    from shogun.services.skillopt.regression import RegressionService
+    from shogun.services.skillopt.versioning import SkillVersionService
+
+    regression_svc = RegressionService(session)
+    version_svc = SkillVersionService(session)
+
+    # 1. Active regression suites
+    stmt = select(SkillOptRegressionSuite).where(SkillOptRegressionSuite.status == "active")
+    result = await session.execute(stmt)
+    suites = list(result.scalars().all())
+
+    suites_run = 0
+    passed_suites = 0
+    failed_suites = 0
+    quarantines_applied = 0
+    stale_tools_found = 0
+    recommendations_created = 0
+    suite_summaries: list[dict] = []
+
+    for suite in suites:
+        suites_run += 1
+        skill = await session.get(Skill, suite.skill_id)
+        skill_name = skill.name if skill else str(suite.skill_id)
+
+        if dry_run:
+            suite_summaries.append({
+                "suite_id": str(suite.id),
+                "skill_name": skill_name,
+                "status": "skipped (dry run)",
+            })
+            continue
+
+        # Execute regression suite
+        run_record = await regression_svc.run_suite(suite.id)
+        if run_record.status == "unavailable":
+            suite_summaries.append({
+                "suite_id": str(suite.id),
+                "suite_name": suite.name,
+                "skill_name": skill_name,
+                "status": "unavailable",
+                "message": "Automated regression suite execution is unavailable in this build",
+                "passed": None,
+                "pass_rate": None,
+                "total_cases": run_record.total_cases,
+                "passed_cases": 0,
+                "failed_cases": 0,
+                "schema_warnings": 0,
+            })
+            continue
+
+        pass_rate = run_record.pass_rate or 0.0
+        min_pass_rate = suite.minimum_pass_rate or 0.95
+
+        passed = pass_rate >= min_pass_rate
+        if passed:
+            passed_suites += 1
+        else:
+            failed_suites += 1
+            # Quarantine active version
+            try:
+                active_ver = await version_svc.get_active_version(suite.skill_id)
+                if active_ver and active_ver.quarantine_status != "quarantined":
+                    quarantine_reason = (
+                        f"Regression suite '{suite.name}' failed pass rate check: "
+                        f"{pass_rate:.1%} < {min_pass_rate:.1%}"
+                    )
+                    await version_svc.quarantine_version(
+                        suite.skill_id,
+                        reason=quarantine_reason,
+                        version_id=active_ver.id,
+                    )
+                    quarantines_applied += 1
+
+                    rec = BushidoRecommendation(
+                        job_id=job_id,
+                        target_type="skill",
+                        target_id=suite.skill_id,
+                        recommendation_type="skill_regression_quarantine",
+                        title=f"Skill '{skill_name}' Quarantined by Regression Sweep",
+                        description=quarantine_reason,
+                        confidence=0.95,
+                        risk_level="high",
+                        approval_required=True,
+                        status="pending",
+                    )
+                    session.add(rec)
+                    recommendations_created += 1
+            except Exception as exc:
+                log.warning("Failed to quarantine skill %s (%s)", suite.skill_id, type(exc).__name__)
+
+        # Staleness check
+        _, warnings = await version_svc.get_active_with_staleness_check(suite.skill_id)
+        if warnings:
+            stale_tools_found += len(warnings)
+            rec = BushidoRecommendation(
+                job_id=job_id,
+                target_type="skill",
+                target_id=suite.skill_id,
+                recommendation_type="skill_tool_schema_drift",
+                title=f"Tool Schema Drift for Skill '{skill_name}'",
+                description="; ".join(w.get("warning", "") for w in warnings),
+                confidence=0.9,
+                risk_level="medium",
+                approval_required=False,
+                status="pending",
+            )
+            session.add(rec)
+            recommendations_created += 1
+
+        suite_summaries.append({
+            "suite_id": str(suite.id),
+            "suite_name": suite.name,
+            "skill_name": skill_name,
+            "pass_rate": pass_rate,
+            "minimum_pass_rate": min_pass_rate,
+            "passed": passed,
+            "total_cases": run_record.total_cases,
+            "passed_cases": run_record.passed_cases,
+            "failed_cases": run_record.failed_cases,
+            "schema_warnings": len(warnings),
+        })
+
+    if not dry_run and recommendations_created > 0:
+        await session.flush()
+
+    summary = {
+        "status": "completed",
+        "suites_run": suites_run,
+        "passed_suites": passed_suites,
+        "failed_suites": failed_suites,
+        "quarantines_applied": quarantines_applied,
+        "stale_tools_found": stale_tools_found,
+        "recommendations_created": recommendations_created,
+        "suite_summaries": suite_summaries,
+        "dry_run": dry_run,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Immutable audit
+    try:
+        from shogun.services.immutable_audit import append
+        append(
+            event_id=str(uuid.uuid4()),
+            event_category="skillopt",
+            event_type="skillopt.regression.sweep",
+            action=(
+                f"SkillOpt regression sweep completed: {suites_run} suites run, "
+                f"{passed_suites} passed, {failed_suites} failed, "
+                f"{quarantines_applied} quarantined."
+            ),
+            severity="warning" if failed_suites > 0 else "info",
+            detail={
+                "job_id": str(job_id),
+                "suites_run": suites_run,
+                "passed_suites": passed_suites,
+                "failed_suites": failed_suites,
+                "quarantines_applied": quarantines_applied,
+            },
+        )
+    except Exception as exc:
+        log.warning("Failed to record SkillOpt regression sweep audit (%s)", type(exc).__name__)
+
+    return summary
 
 
 async def _run_custom_task(

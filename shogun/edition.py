@@ -18,6 +18,12 @@ REMOVED_FEATURES = frozenset(
         "logs_ui",
         "nexus",
         "gensui",
+        # Enterprise / Gensui sub-capabilities (SkillOpt Lab §12)
+        "gensui_skill_repository",
+        "gensui_skill_publication",
+        "gensui_skill_distribution",
+        "gensui_competence_registry",
+        "enterprise_skill_sync",
     }
 )
 

@@ -1625,6 +1625,7 @@ delegation_rules:
                   { jobType: 'performance_audit',      label: t('profile.cron_weekly_audit','Weekly Performance Audit'), desc: t('profile.cron_weekly_desc','Review agent fit metrics and behavioral drift.'),     icon: Shield,    cronLabel: t('profile.cron_every_mon_03','Every Monday at 03:00') },
                   { jobType: 'skill_health_check',     label: t('profile.cron_skill_check','Skill Health Check'),       desc: t('profile.cron_skill_desc','Verify third-party tool connectivity and versions.'),  icon: Settings,  cronLabel: t('profile.cron_every_night_04','Every night at 04:00') },
                   { jobType: 'persona_drift_check',    label: t('profile.cron_drift','Persona Drift Monitor'),          desc: t('profile.cron_drift_desc','Detect deviations from core identity blueprints.'),    icon: User,      cronLabel: t('profile.cron_every_sun_05','Every Sunday at 05:00') },
+                  { jobType: 'skillopt_regression_sweep', label: t('profile.cron_skillopt','SkillOpt Regression Sweep'), desc: t('profile.cron_skillopt_desc','Run all local regression suites and check tool schema freshness.'), icon: Cpu, cronLabel: t('profile.cron_every_wed_0330','Every Wednesday at 03:30') },
                 ].map((job) => {
                   const schedule = getPresetSchedule(job.jobType);
                   const isEnabled = schedule ? schedule.is_enabled : (shogunData.bushido_settings?.[job.jobType] ?? false);

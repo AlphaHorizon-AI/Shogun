@@ -699,6 +699,7 @@ def create_app() -> FastAPI:
     from shogun.api.kaizen import router as kaizen_router
     from shogun.api.i18n import router as i18n_router
     from shogun.api.setup import router as setup_router
+    from shogun.api.setup import router as setup_router
     from shogun.api.updates import router as updates_router
     from shogun.api.backups import router as backups_router
     from shogun.api.email import router as email_router
@@ -710,6 +711,7 @@ def create_app() -> FastAPI:
     from shogun.api.ronin import router as ronin_router
     from shogun.api.ide import router as ide_router
     from shogun.api.skillopt import router as skillopt_router
+    from shogun.api.gensui_guards import router as gensui_guards_router
     from shogun.api.skill_lifecycle import router as skill_lifecycle_router
     from shogun.api.files import router as files_router
     from shogun.api.telemetry import router as telemetry_router
@@ -725,6 +727,7 @@ def create_app() -> FastAPI:
     app.include_router(security_router, prefix=prefix)
     app.include_router(skills_router, prefix=prefix)
     app.include_router(skillopt_router, prefix=prefix)
+    app.include_router(gensui_guards_router, prefix=prefix)
     app.include_router(skill_lifecycle_router, prefix=prefix)
     app.include_router(missions_router, prefix=prefix)
     app.include_router(bushido_router, prefix=prefix)
