@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -61,6 +62,28 @@ DENY_ONLY_GENSUI_ROUTES = frozenset(
 )
 
 
+def get_effective_routes(app: Any) -> list[tuple[str, set[str]]]:
+    """Return all effective (path, methods) pairs for the application.
+
+    Uses `fastapi.routing.iter_route_contexts(app.routes)` when available
+    (FastAPI >= 0.141.1, where `app.include_router` stores lazy `_IncludedRouter`
+    trees), expanding effective prefixed paths and methods for all registered
+    routes including hidden endpoints (`include_in_schema=False`).
+    Falls back to direct route traversal on older framework versions.
+    """
+    try:
+        from fastapi.routing import iter_route_contexts
+    except ImportError:
+        iter_route_contexts = None
+
+    contexts = iter_route_contexts(app.routes) if iter_route_contexts is not None else app.routes
+    return [
+        (route.path, {method.upper() for method in (getattr(route, "methods", None) or set())})
+        for route in contexts
+        if getattr(route, "path", None) is not None
+    ]
+
+
 def test_yellow_label_capability_boundary_is_fixed() -> None:
     assert EDITION_NAME == "yellow-label"
     assert set(REMOVED_FEATURES) == EXPECTED_REMOVED_FEATURES
@@ -78,15 +101,12 @@ def test_removed_features_are_not_registered_as_public_routes() -> None:
     app = create_app()
     found_deny_stubs: set[tuple[str, str]] = set()
 
-    for route in app.routes:
-        path = getattr(route, "path", None)
-        if path is None:
-            continue
-        methods = getattr(route, "methods", set()) or set()
-
+    for path, methods in get_effective_routes(app):
         for prefix in REMOVED_ROUTE_PREFIXES:
             if path.startswith(prefix):
-                for method in methods:
+                if not methods:
+                    pytest.fail(f"Unauthorized enterprise route registered without methods: {path}")
+                for method in sorted(methods):
                     if (method, path) in DENY_ONLY_GENSUI_ROUTES:
                         found_deny_stubs.add((method, path))
                     else:
@@ -96,6 +116,66 @@ def test_removed_features_are_not_registered_as_public_routes() -> None:
 
     # Exactly the five deny-only Gensui stub routes must be present
     assert found_deny_stubs == DENY_ONLY_GENSUI_ROUTES
+
+
+def test_route_inventory_detects_hidden_and_nested_enterprise_routes(monkeypatch) -> None:
+    """Proves that hidden (include_in_schema=False), nested, and alternate-method enterprise routes
+
+    cannot evade get_effective_routes inventory traversal and are strictly rejected.
+    """
+    from fastapi import APIRouter, FastAPI
+
+    test_app = FastAPI()
+
+    # 1. Hidden route (include_in_schema=False) under a removed enterprise prefix
+    hidden_router = APIRouter(prefix="/api/v1/team")
+
+    @hidden_router.get("/unlisted-endpoint", include_in_schema=False)
+    def _hidden_endpoint():
+        return {"status": "hidden"}
+
+    test_app.include_router(hidden_router)
+
+    # 2. Deeply nested router hierarchy and alternate methods (HEAD / OPTIONS)
+    parent_router = APIRouter(prefix="/api/v1/gensui")
+    nested_router = APIRouter(prefix="/subfleet")
+
+    @nested_router.post("/distribute-all")
+    def _nested_post():
+        return {"status": "nested"}
+
+    @nested_router.api_route("/probe", methods=["HEAD", "OPTIONS"], include_in_schema=False)
+    def _nested_head():
+        return None
+
+    parent_router.include_router(nested_router)
+    test_app.include_router(parent_router)
+
+    # A weak OpenAPI check would miss the hidden endpoint entirely
+    openapi_paths = test_app.openapi().get("paths", {})
+    assert "/api/v1/team/unlisted-endpoint" not in openapi_paths
+
+    # Our route inventory discovers all effective paths and methods
+    inventory = get_effective_routes(test_app)
+    inventory_map = {p: m for p, m in inventory}
+
+    assert "/api/v1/team/unlisted-endpoint" in inventory_map
+    assert "GET" in inventory_map["/api/v1/team/unlisted-endpoint"]
+
+    assert "/api/v1/gensui/subfleet/distribute-all" in inventory_map
+    assert "POST" in inventory_map["/api/v1/gensui/subfleet/distribute-all"]
+
+    assert "/api/v1/gensui/subfleet/probe" in inventory_map
+    assert "HEAD" in inventory_map["/api/v1/gensui/subfleet/probe"]
+    assert "OPTIONS" in inventory_map["/api/v1/gensui/subfleet/probe"]
+
+    # Exercise the actual boundary assertion rather than duplicate its logic.
+    monkeypatch.setattr(f"{__name__}.create_app", lambda: test_app)
+    with pytest.raises(
+        pytest.fail.Exception,
+        match="Unauthorized enterprise route registered: GET /api/v1/team/unlisted-endpoint",
+    ):
+        test_removed_features_are_not_registered_as_public_routes()
 
 
 def test_gensui_deny_stubs_always_return_403_even_with_flags_enabled(monkeypatch) -> None:
