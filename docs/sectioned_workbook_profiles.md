@@ -42,6 +42,38 @@ Conversions use `value_type`, including `number`, `strict_localized_number`,
 `strict_localized_float`, `iso_date` and `calendar_week_monday`. Strict localized numbers
 interpret comma decimals and grouped thousands; use `number` for dot decimals.
 
+### Populate an empty template
+
+Set `workbook_update.mode` to `populate_template` when the input workbook contains
+headers and formatting only. The default, `update_existing`, continues to require
+existing section groups and preserves planner-maintained values.
+
+Template population reads the section identifiers from the current PDFs and creates
+their rows at `data_start_row`. No list of known identifiers or populated reference
+workbook is required. It rejects any existing value below the headers, so it cannot
+silently duplicate or replace a populated plan. Use the original empty template for
+each fresh run and choose a separate output file.
+
+`template_section_values` maps section-level fields into a heading row for each
+section. The engine always writes its identifier in `section_key_column`. Existing
+section and record rules then create stock/task/order/detail rows. Even sections
+whose records need review retain their heading row. `template_section_sort` accepts
+up to eight value specifications, compared in order, for configured group ranks,
+numeric sizes and identifiers. Missing sort values follow known values. Sorting is
+applied only during empty-template population, not to an existing plan.
+
+Generated rows use the formatting and row height at `data_start_row`; the original
+headers, blank formatted rows and all other sheets remain preserved.
+
+### Planning columns
+
+The month headings define the current dates; the rules need not contain fixed months.
+Optional `backlog_headers` declares exact labels for dates before the first visible
+month. Optional `future_header_patterns` identifies headers such as `>= Sep 2028`;
+the date in that header defines the threshold. These use the existing monthly bucket
+resolver. Each record still receives its own row, including when several records
+map to the same bucket. Unsupported labels and duplicate buckets remain errors.
+
 Keep workflow policy explicit:
 
 - `source_identity_fields` identifies a source record independently of PDF page/order.
@@ -62,7 +94,8 @@ compatible layout can supply row comparison metrics; a prose reference cannot.
 
 New rows retain source identities and written values in a hidden provenance worksheet,
 bound to the profile hash. Reordered source records and planner edits do not create duplicate
-rows on rerun. Corrupt metadata or a changed profile is rejected before writing.
+rows on rerun in update-existing mode. Empty-template mode instead produces a fresh
+workbook each time. Corrupt metadata or a changed profile is rejected before writing.
 
 This updater supports text-native PDFs and `.xlsx` templates without active formulas, tables,
 merges, drawings or other structures needing a structure-aware row insertion implementation.

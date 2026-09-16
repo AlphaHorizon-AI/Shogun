@@ -65,6 +65,7 @@ RUFF_PATHS = (
 )
 
 PYTEST_PATHS = (
+    "tests/test_workbook_template_population.py",
     "tests/test_structured_transformations.py",
     "tests/test_files_workbook_transform.py",
     "tests/test_sectioned_workbook_pipeline.py",
