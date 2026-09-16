@@ -44,6 +44,25 @@ const registryReference = {
 };
 
 describe('Samurai transformation configuration', () => {
+  it('directs workbook-update rules to Files for both import and saved configurations', () => {
+    const workbookProfile = {
+      id: 'equipment_update_v1',
+      adapter: 'sectioned_record_matrix_v1',
+      private_file: {
+        content_hash: 'c'.repeat(64),
+        definition: { parameters: { workbook_update: { section_key_column: 2 } } },
+      },
+    };
+    expect(() => configureSamuraiForPrivateProfile({}, workbookProfile)).toThrow('Update existing workbook from PDFs');
+    expect(() => appendSamuraiAutoCandidate({}, workbookProfile)).toThrow('Update existing workbook from PDFs');
+    expect(samuraiTransformationConfigurationError({
+      transformation_mode: 'profile', transformation_profile: workbookProfile,
+    })).toContain('Update existing workbook from PDFs');
+    expect(samuraiTransformationConfigurationError({
+      transformation_mode: 'auto', transformation_candidates: [workbookProfile],
+    })).toContain('Update existing workbook from PDFs');
+  });
+
   it('keeps existing Samurai nodes on general LLM by default', () => {
     expect(samuraiTransformationChoice({ task_description: 'Summarize this.' })).toBe('general');
     expect(samuraiTransformationBadge({ task_description: 'Summarize this.' })).toBe('General LLM');

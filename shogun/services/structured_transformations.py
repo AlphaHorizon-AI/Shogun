@@ -239,6 +239,16 @@ def load_bundled_transformation_profile(profile_id: str) -> dict[str, Any]:
     return profile
 
 
+def validate_matrix_profile_execution(profile: dict[str, Any]) -> None:
+    """Keep workbook preservation rules out of the row-matrix execution path."""
+    if "workbook_update" in (profile.get("parameters") or {}):
+        raise ValueError(
+            "This rules file updates an existing Excel workbook. Use Files > Excel - Create > "
+            "Update existing workbook from PDFs, and select the rules file, original workbook "
+            "and source PDFs there. Remove the Samurai extraction step from this path."
+        )
+
+
 def try_deterministic_matrix_transform(
     *,
     profile: dict[str, Any],
@@ -252,6 +262,7 @@ def try_deterministic_matrix_transform(
     """
 
     profile_id, parameters = _profile_parameters(profile)
+    validate_matrix_profile_execution(profile)
     with _profile_regex_budget(profile_id) as budget:
         _validate_required_source_patterns(source_context, parameters, profile_id)
         headers, logical_width = _excel_template_contract(fixed_context, parameters, profile_id)

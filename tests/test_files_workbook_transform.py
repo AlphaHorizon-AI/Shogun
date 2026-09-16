@@ -87,6 +87,25 @@ async def test_dispatch_loads_pinned_profile_and_records_all_artifacts(workbook_
 
 
 @pytest.mark.anyio
+async def test_workbook_update_uses_explicit_workbook_over_upstream_template(workbook_boundary):
+    config, calls, _document = workbook_boundary
+    config['sheet_name'] = 'Old worksheet'
+    config['workbook_transform']['sheet_name'] = ''
+    result = await flow_engine._exec_office(
+        config, '',
+        template_inputs=[{
+            '__shogun_file_template__': True,
+            'format': 'xlsx',
+            'template_path': 'old-upstream.xlsx',
+            'sheet_name': 'Upstream worksheet',
+        }],
+    )
+    assert result.startswith('Excel workbook created:')
+    assert Path(calls[0]['template_workbook_path']).name == 'base.xlsx'
+    assert calls[0]['sheet_name'] is None
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     "field", ["profile_path", "template_path", "pdf_paths", "reference_workbook_path", "output_path"],
 )

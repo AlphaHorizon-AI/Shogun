@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
 
 RUFF_PATHS = (
+    "shogun/services/structured_transformations.py",
     "shogun/services/sectioned_workbook_pipeline.py",
     "shogun/services/sectioned_workbook_updater.py",
     "shogun/engine/vector_store.py",
@@ -64,6 +65,7 @@ RUFF_PATHS = (
 )
 
 PYTEST_PATHS = (
+    "tests/test_structured_transformations.py",
     "tests/test_files_workbook_transform.py",
     "tests/test_sectioned_workbook_pipeline.py",
     "tests/test_workbook_profile_review.py",

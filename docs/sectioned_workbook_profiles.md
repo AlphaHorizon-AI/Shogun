@@ -6,6 +6,25 @@ The Files node's `excel_create` action accepts `workbook_transform`: a portable 
 The existing Office mode gate applies. Import verifies the profile's schema and content hash;
 importing a file does not publish it or activate a saved flow.
 
+## Configure an AgentFlow
+
+In a Files node, select **Excel — Create**, then choose **Update existing workbook
+from PDFs** under **Excel operation**. Select the rules file, the existing Excel
+workbook, one to ten original PDFs, and optionally a reference workbook. All these
+files must be inside the Shogun workspace; the browse buttons select workspace files.
+Set a new destination folder and filename. The sheet name may be left empty to use
+the profile's worksheet. An explicitly selected workbook takes priority over an
+upstream File Template.
+
+Connect **Input → Files → Output** for this operation. The Files node reads the
+configured PDFs directly. Do not attach a `workbook_update` profile to a Samurai
+extraction node: its row-matrix path does not implement workbook preservation or
+the page-aware parser. Such profiles now receive a setup error rather than an
+empty-number error or a model fallback. Existing document-extraction profiles
+continue to use the Samurai path.
+
+## Profile rules
+
 Profiles use the existing `sectioned_record_matrix_v1` adapter and its parsing/value primitives.
 `parameters.workbook_update` adds preservation-oriented updates to an existing workbook.
 It uses **one-based** Excel row and column numbers. This differs from the existing matrix

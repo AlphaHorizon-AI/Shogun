@@ -24,6 +24,15 @@ export const MAX_SAMURAI_PRIVATE_CANDIDATES = 32;
 const isObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
+const workbookProfileError = (profile: ProfileReference): string | null => {
+  const privateFile = isObject(profile.private_file) ? profile.private_file : null;
+  const definition = privateFile && isObject(privateFile.definition) ? privateFile.definition : profile;
+  if (isObject(definition.parameters) && 'workbook_update' in definition.parameters) {
+    return 'This rules file belongs in Files → Excel — Create → Update existing workbook from PDFs. Select it there with the original workbook and PDFs; remove the Samurai extraction step from that path.';
+  }
+  return null;
+};
+
 export const samuraiTransformationChoice = (
   config: Record<string, unknown>,
 ): SamuraiTransformationChoice => {
@@ -99,6 +108,8 @@ export const configureSamuraiForPrivateProfile = (
   currentConfig: Record<string, unknown>,
   profileReference: ProfileReference,
 ): Record<string, unknown> => {
+  const workbookError = workbookProfileError(profileReference);
+  if (workbookError) throw new Error(workbookError);
   if (
     !profileReference.id
     || !profileReference.adapter
@@ -120,6 +131,8 @@ export const appendSamuraiAutoCandidate = (
   currentConfig: Record<string, unknown>,
   profileReference: ProfileReference,
 ): Record<string, unknown> => {
+  const workbookError = workbookProfileError(profileReference);
+  if (workbookError) throw new Error(workbookError);
   if (
     !profileReference.id
     || !profileReference.adapter
@@ -214,6 +227,8 @@ export const samuraiTransformationConfigurationError = (
         if (!isObject(candidate) || !isObject(candidate.private_file)) {
           return 'auto-detect candidates must be imported private profile files';
         }
+        const workbookError = workbookProfileError(candidate);
+        if (workbookError) return workbookError;
       }
     }
     return null;
@@ -227,6 +242,8 @@ export const samuraiTransformationConfigurationError = (
   if (typeof profile.adapter !== 'string' || !profile.adapter.trim()) {
     return 'the selected document profile is missing its adapter';
   }
+  const workbookError = workbookProfileError(profile);
+  if (workbookError) return workbookError;
   const hasPrivateFile = isObject(profile.private_file);
   const hasRegistryVersion = Number.isInteger(profile.registry_version);
   const hasRegistryHash = typeof profile.content_hash === 'string'

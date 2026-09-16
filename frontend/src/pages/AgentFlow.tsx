@@ -108,6 +108,7 @@ import {
   type SamuraiTransformationChoice,
 } from '../lib/samuraiTransformation';
 import { useTemplateCatalog } from '../i18n/templateCatalog';
+import { WorkbookUpdateFields, type WorkbookPickerTarget } from './WorkbookUpdateFields';
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -2443,9 +2444,12 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
   const [treeData, setTreeData] = useState<any[]>([]);
   const [loadingTree, setLoadingTree] = useState(false);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const [workbookPickerTarget, setWorkbookPickerTarget] = useState<WorkbookPickerTarget | null>(null);
 
   const action = config.action || 'word_read';
   const isReadAction = READ_ACTIONS.includes(action);
+  const workbookUpdate = action === 'excel_create' && config.workbook_transform != null;
+  const pickerReadsFile = isReadAction || workbookPickerTarget !== null;
   const pathKey = isReadAction ? 'input_path' : 'output_path';
   const pickerLabel = isReadAction ? 'Source File' : 'Destination Folder';
   const fieldHint = isReadAction
@@ -2455,14 +2459,18 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
 
   // File extensions relevant to the current action
   const relevantExtensions = useMemo(() => {
+    if (workbookPickerTarget?.key === 'profile_path') return ['json'];
+    if (workbookPickerTarget?.key === 'pdf_paths') return ['pdf'];
+    if (workbookPickerTarget) return ['xlsx'];
     if (action.startsWith('pdf')) return ['pdf'];
     if (action.startsWith('excel')) return ['xlsx', 'xls', 'csv'];
     if (action.startsWith('word')) return ['docx', 'doc'];
     if (action.startsWith('pptx')) return ['pptx', 'ppt'];
     return [];
-  }, [action]);
+  }, [action, workbookPickerTarget]);
 
-  const openPicker = async () => {
+  const openPicker = async (target: WorkbookPickerTarget | null = null) => {
+    setWorkbookPickerTarget(target);
     setShowPicker(true);
     setLoadingTree(true);
     try {
@@ -2476,7 +2484,18 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
   };
 
   const selectFile = (filePath: string) => {
-    updateConfig(pathKey, filePath);
+    if (workbookPickerTarget) {
+      const transform = config.workbook_transform || {};
+      if (workbookPickerTarget.key === 'pdf_paths') {
+        const pdfs = Array.isArray(transform.pdf_paths) ? [...transform.pdf_paths] : transform.pdf_paths ? [transform.pdf_paths] : [];
+        pdfs[workbookPickerTarget.index] = filePath;
+        updateConfig('workbook_transform', { ...transform, pdf_paths: pdfs });
+      } else {
+        updateConfig('workbook_transform', { ...transform, [workbookPickerTarget.key]: filePath });
+      }
+    } else {
+      updateConfig(pathKey, filePath);
+    }
     setShowPicker(false);
   };
 
@@ -2506,22 +2525,22 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
       const isExpanded = expandedDirs.has(node.path);
       const children = node.children || [];
       // Check if this directory contains any relevant files (recursively)
-      const hasRelevantFiles = isReadAction ? _hasMatchingFiles(children, relevantExtensions) : true;
+      const hasRelevantFiles = pickerReadsFile ? _hasMatchingFiles(children, relevantExtensions) : true;
 
       return (
         <div key={node.path}>
           <button
-            onClick={() => isReadAction ? toggleDir(node.path) : selectFolder(node.path)}
+            onClick={() => pickerReadsFile ? toggleDir(node.path) : selectFolder(node.path)}
             className={cn(
               'w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left transition-colors group',
               'hover:bg-[#10b981]/10',
-              !hasRelevantFiles && isReadAction && 'opacity-40'
+              !hasRelevantFiles && pickerReadsFile && 'opacity-40'
             )}
             style={{ paddingLeft: `${12 + depth * 16}px` }}
           >
             <FolderOpen className={cn('w-3.5 h-3.5', isExpanded ? 'text-[#10b981]' : 'text-[#f59e0b]/70')} />
             <span className="text-xs text-[#c8d0d8] flex-1 truncate">{node.name}</span>
-            {isReadAction ? (
+            {pickerReadsFile ? (
               <span className="text-[8px] text-[#7a8899] opacity-0 group-hover:opacity-100 transition-opacity">
                 {isExpanded ? '▼' : '▶'}
               </span>
@@ -2529,13 +2548,13 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
               <span className="ml-auto text-[9px] text-[#10b981] opacity-0 group-hover:opacity-100 transition-opacity">Select</span>
             )}
           </button>
-          {isReadAction && isExpanded && children.map((child: any) => renderTreeNode(child, depth + 1))}
+          {pickerReadsFile && isExpanded && children.map((child: any) => renderTreeNode(child, depth + 1))}
         </div>
       );
     }
 
     // File node — only show in read mode
-    if (!isReadAction) return null;
+    if (!pickerReadsFile) return null;
 
     const ext = node.extension || '';
     const isRelevant = relevantExtensions.includes(ext.toLowerCase());
@@ -2594,6 +2613,31 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
         </select>
       </div>
 
+      {action === 'excel_create' && (
+        <div className="space-y-1.5">
+          <label className="block text-[9px] font-bold uppercase tracking-widest text-[#7a8899]">
+            Excel operation
+            <select
+              value={workbookUpdate ? 'workbook_update' : 'create'}
+              onChange={(event) => updateConfig('workbook_transform', event.target.value === 'workbook_update'
+                ? { profile_path: '', template_path: '', pdf_paths: [''], sheet_name: '' }
+                : null)}
+              className="mt-1.5 w-full rounded-lg border border-[#1a2040] bg-[#0a0e1a] p-2 text-xs text-[#c8d0d8] outline-none focus:border-[#10b981]"
+            >
+              <option value="create">Create from previous step</option>
+              <option value="workbook_update">Update existing workbook from PDFs</option>
+            </select>
+          </label>
+        </div>
+      )}
+      {workbookUpdate && (
+        <WorkbookUpdateFields
+          value={config.workbook_transform}
+          onChange={(value) => updateConfig('workbook_transform', value)}
+          onBrowse={(target) => void openPicker(target)}
+        />
+      )}
+
       {/* Smart path field with picker */}
       <div className="space-y-1.5">
         <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest flex items-center gap-1">
@@ -2609,7 +2653,7 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
             placeholder={fieldPlaceholder}
           />
           <button
-            onClick={openPicker}
+            onClick={() => void openPicker()}
             className="px-2.5 bg-[#10b981]/10 border border-[#10b981]/30 rounded-lg text-[#10b981] hover:bg-[#10b981]/20 transition-colors"
             title={isReadAction ? 'Browse workspace files' : 'Browse workspace folders'}
           >
@@ -2639,10 +2683,12 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
           <label className="text-[9px] font-bold text-[#7a8899] uppercase tracking-widest">Sheet Name</label>
           <input
             type="text"
-            value={config.sheet_name || ''}
-            onChange={(e) => updateConfig('sheet_name', e.target.value)}
+            value={(workbookUpdate ? config.workbook_transform.sheet_name ?? config.sheet_name : config.sheet_name) || ''}
+            onChange={(e) => workbookUpdate
+              ? updateConfig('workbook_transform', { ...config.workbook_transform, sheet_name: e.target.value })
+              : updateConfig('sheet_name', e.target.value)}
             className="w-full bg-[#0a0e1a] border border-[#1a2040] rounded-lg p-2 text-xs text-[#c8d0d8] focus:border-[#10b981] transition-colors outline-none"
-            placeholder="Sheet1"
+            placeholder={workbookUpdate ? 'Use worksheet named in the rules file' : 'Sheet1'}
           />
         </div>
       )}
@@ -2703,7 +2749,7 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
         </div>
       )}
 
-      {['word_create', 'excel_create'].includes(action) && (
+      {['word_create', 'excel_create'].includes(action) && !workbookUpdate && (
         <div className="p-2.5 bg-[#60a5fa]/5 border border-[#60a5fa]/20 rounded-lg">
           <p className="text-[8px] leading-relaxed text-[#60a5fa]/85">
             Optional: connect a <strong>File Template</strong> node upstream of the Samurai. This create action will automatically render the new file from that template.
@@ -2724,8 +2770,8 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
           <div className="bg-[#0a0e1a] border border-[#1a2040] rounded-xl p-5 w-[28rem] max-h-[70vh] shadow-2xl flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-[#c8d0d8] flex items-center gap-2">
-                {isReadAction ? <FileText className="w-4 h-4 text-[#10b981]" /> : <FolderOpen className="w-4 h-4 text-[#10b981]" />}
-                {isReadAction ? 'Select Source File' : 'Select Destination Folder'}
+                {pickerReadsFile ? <FileText className="w-4 h-4 text-[#10b981]" /> : <FolderOpen className="w-4 h-4 text-[#10b981]" />}
+                {pickerReadsFile ? 'Select Source File' : 'Select Destination Folder'}
               </h3>
               <button
                 onClick={() => setShowPicker(false)}
@@ -2735,7 +2781,7 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
               </button>
             </div>
 
-            {isReadAction && (
+            {pickerReadsFile && (
               <p className="text-[9px] text-[#7a8899] mb-3">
                 Expand folders to find your file. Only <strong className="text-[#10b981]">{relevantExtensions.join(', ')}</strong> files are selectable.
               </p>
@@ -2750,7 +2796,7 @@ function FilesNodeFields({ config, updateConfig }: { config: Record<string, any>
                 <p className="text-xs text-[#7a8899] text-center py-8">No files found in workspace</p>
               ) : (
                 <>
-                  {!isReadAction && (
+                  {!pickerReadsFile && (
                     <button
                       onClick={() => selectFolder('')}
                       className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-[#10b981]/10 transition-colors group"

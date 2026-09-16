@@ -1,8 +1,8 @@
 {
-  "version": "1.47.108",
+  "version": "1.47.109",
   "name": "Shogun AFM",
-  "build": 259,
+  "build": 260,
   "channel": "stable",
-  "released": "2026-09-16T10:31:39Z",
-  "changelog": "Expand the Yellow Label Grand Reference Guide with the White Label-style SkillOpt and ToolGrad workflow, evidence guidance, and execution boundaries."
+  "released": "2026-09-16T10:16:48Z",
+  "changelog": "Add Files controls for updating an existing Excel workbook from original PDFs and a private rules file. Direct misplaced workbook-update profiles away from Samurai extraction with a clear setup message, and honor the workbook and worksheet selected for the update."
 }
