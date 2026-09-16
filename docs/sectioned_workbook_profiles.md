@@ -17,11 +17,25 @@ the profile's worksheet. An explicitly selected workbook takes priority over an
 upstream File Template.
 
 Connect **Input → Files → Output** for this operation. The Files node reads the
-configured PDFs directly. Do not attach a `workbook_update` profile to a Samurai
-extraction node: its row-matrix path does not implement workbook preservation or
-the page-aware parser. Such profiles now receive a setup error rather than an
-empty-number error or a model fallback. Existing document-extraction profiles
-continue to use the Samurai path.
+configured PDFs directly.
+
+Alternatively, attach the private workbook profile to a **Samurai** node. Connect
+exactly one Excel **File Template** and one to ten **Files — PDF Read** nodes
+directly to that Samurai, then connect it directly to one **Files — Excel Create**
+writer and an Output node. Use full-document PDF reads, without a page range.
+The writer uses **Create from previous step** with a new destination filename;
+leave its separate PDF workbook controls unconfigured. The private rules select
+the worksheet. Use an empty File Template for `populate_template` and a filled
+planning workbook for `update_existing`.
+
+The Samurai validates the pinned private rules and connected files. Its Files
+writer then runs the same page-aware parser and workbook checks as the direct
+operation. The job belongs to that run and writer, and refuses changed inputs.
+Model responses, document text and saved run summaries cannot create executable
+workbook jobs. Workbook profiles never fall back to model-generated row matrices.
+The private profile supplies the executable mapping; changing free-text task
+instructions alone does not change those rules. Existing document-extraction
+profiles continue to use their normal Samurai path.
 
 ## Profile rules
 
@@ -62,6 +76,12 @@ up to eight value specifications, compared in order, for configured group ranks,
 numeric sizes and identifiers. Missing sort values follow known values. Sorting is
 applied only during empty-template population, not to an existing plan.
 
+The existing `parameters.section_order` rules can additionally place referenced
+sections before their parents, using `dependencies_before.fields`. This is applied
+after the numeric/text sort and only to selected sections. Excluded dependencies
+remain excluded and accounted for in the audit. Duplicate selected keys, cycles,
+or an ordering rule that drops a selected section fail before publication.
+
 Generated rows use the formatting and row height at `data_start_row`; the original
 headers, blank formatted rows and all other sheets remain preserved.
 
@@ -91,6 +111,8 @@ The engine preserves baseline cells and formatting, rejects ambiguous record pla
 and retains one disposition per source record. Reports include normalized source records,
 the audit, permitted changes, and a preservation comparison. A reference workbook with a
 compatible layout can supply row comparison metrics; a prose reference cannot.
+Ambiguous selectors and unresolved configured `resolution_groups` on selected sections
+flag the output for review, while still allowing source-backed records to be written.
 
 New rows retain source identities and written values in a hidden provenance worksheet,
 bound to the profile hash. Reordered source records and planner edits do not create duplicate

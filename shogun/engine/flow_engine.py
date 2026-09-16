@@ -1137,6 +1137,24 @@ async def _execute_single_node(
             )
             if (
                 active_samurai_profile
+                and isinstance(active_samurai_profile.get("parameters", {}).get("workbook_update"), dict)
+            ):
+                from shogun.config import settings
+                from shogun.services.samurai_workbook_job import create_workbook_job
+
+                result = create_workbook_job(
+                    profile=active_samurai_profile,
+                    evidence=transformation_profile_evidence[0],
+                    predecessor_outputs=predecessor_outputs,
+                    node_map=node_map,
+                    downstream_contracts=list(downstream_contracts or []),
+                    root=settings.workspace_path,
+                    run_id=str(run_id),
+                    source_node_id=node_id,
+                    governance=governance_context,
+                )
+            elif (
+                active_samurai_profile
                 and active_samurai_profile.get("adapter") == "canonical_entity_map_v1"
             ):
                 result = await _exec_samurai_enterprise_profile(
@@ -1218,6 +1236,7 @@ async def _execute_single_node(
                 trigger_type,
                 template_inputs=template_inputs,
                 predecessor_outputs=predecessor_outputs,
+                governance_context=governance_context,
             )
         elif node_type == "subflow":
             result = await _exec_subflow(
@@ -4990,6 +5009,7 @@ async def _exec_office(
     trigger_type: str = "manual",
     template_inputs: list[dict[str, Any]] | None = None,
     predecessor_outputs: dict[str, Any] | None = None,
+    governance_context: dict[str, Any] | None = None,
 ) -> str:
     """Files node — reads PDFs and performs Office document operations.
 
@@ -5048,6 +5068,9 @@ async def _exec_office(
                 filename = f"{filename}{suffix}"
             target = target / filename
         target = _scheduled_output_path(target, trigger_type, run_id)
+        target = target.resolve()
+        if not target.is_relative_to(root):
+            raise ValueError("Output path escape blocked: the destination must remain inside the workspace.")
         return str(target)
 
     async def _record_output(abs_path: str) -> str:
@@ -5124,9 +5147,28 @@ async def _exec_office(
                 close_workbook(handle)
 
         elif action == "excel_create":
+            from shogun.services.samurai_workbook_job import (
+                connected_workbook_job,
+                validate_workbook_permissions,
+            )
+
             abs_out = _resolve_output(output_path, ".xlsx", "output.xlsx")
             template = _create_template("xlsx")
             transform_cfg = config.get("workbook_transform")
+            workbook_job = connected_workbook_job(predecessor_outputs)
+            if workbook_job and transform_cfg is not None:
+                raise ValueError("Use either the connected Samurai workbook rules or Files workbook rules.")
+            job_profile = None
+            expected_input_hashes = None
+            if workbook_job:
+                validate_workbook_permissions(governance_context)
+                if not getattr(getattr(office_cfg, "excel", None), "enabled", True):
+                    raise ValueError("Excel is disabled in Office App Mode.")
+                source_node_id, job = workbook_job
+                job_profile, transform_cfg, expected_input_hashes = job.resolve(
+                    root=root, run_id=str(run_id), source_node_id=str(source_node_id),
+                    target_node_id=str(node_id),
+                )
             if transform_cfg is not None:
                 if not isinstance(transform_cfg, dict):
                     raise ValueError("Workbook transformation configuration must be an object.")
@@ -5144,22 +5186,26 @@ async def _exec_office(
                 from shogun.services.private_transformation_profiles import PrivateTransformationProfileService
                 from shogun.services.sectioned_workbook_pipeline import run_sectioned_workbook_pipeline
 
-                profile_raw = transform_cfg.get("profile_path")
-                if not isinstance(profile_raw, str) or not profile_raw.strip():
-                    raise ValueError("Workbook transformation requires a private profile file path.")
-                profile_path = Path(_resolve(profile_raw))
-                if profile_path.suffix.lower() != ".json":
-                    raise ValueError("Workbook transformation profile must be a JSON file.")
-                with profile_path.open("rb") as profile_file:
-                    encoded_profile = profile_file.read(2_000_001)
-                if len(encoded_profile) > 2_000_000:
-                    raise ValueError("Workbook transformation profile exceeds the 2 MB safety limit.")
-                try:
-                    document = json.loads(encoded_profile)
-                except (UnicodeError, ValueError) as exc:
-                    raise ValueError("Workbook transformation profile is not valid JSON.") from exc
-                imported = PrivateTransformationProfileService().import_document(document)
-                profile = imported["document"]["profile"]
+                profile_path = None
+                if job_profile is not None:
+                    profile = job_profile
+                else:
+                    profile_raw = transform_cfg.get("profile_path")
+                    if not isinstance(profile_raw, str) or not profile_raw.strip():
+                        raise ValueError("Workbook transformation requires a private profile file path.")
+                    profile_path = Path(_resolve(profile_raw))
+                    if profile_path.suffix.lower() != ".json":
+                        raise ValueError("Workbook transformation profile must be a JSON file.")
+                    with profile_path.open("rb") as profile_file:
+                        encoded_profile = profile_file.read(2_000_001)
+                    if len(encoded_profile) > 2_000_000:
+                        raise ValueError("Workbook transformation profile exceeds the 2 MB safety limit.")
+                    try:
+                        document = json.loads(encoded_profile)
+                    except (UnicodeError, ValueError) as exc:
+                        raise ValueError("Workbook transformation profile is not valid JSON.") from exc
+                    imported = PrivateTransformationProfileService().import_document(document)
+                    profile = imported["document"]["profile"]
                 if not isinstance(profile.get("parameters", {}).get("workbook_update"), dict):
                     raise ValueError("The selected profile does not declare workbook updates.")
 
@@ -5221,6 +5267,7 @@ async def _exec_office(
                         options=pipeline_options,
                         cancel_event=cancellation,
                         profile_source_path=profile_path,
+                        expected_input_hashes=expected_input_hashes,
                     )
                 except asyncio.CancelledError:
                     cancellation.set()

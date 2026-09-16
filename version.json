@@ -1,8 +1,8 @@
 {
-  "version": "1.47.110",
+  "version": "1.47.111",
   "name": "Shogun AFM",
-  "build": 261,
+  "build": 262,
   "channel": "stable",
-  "released": "2026-09-16T12:04:09Z",
-  "changelog": "Allow private PDF-to-workbook rules to fill an empty Excel template using the current source identifiers, configurable section ordering, and separate detail rows. Support configured backlog and future-period headings while preserving the template and existing-plan update behavior."
+  "released": "2026-09-16T13:44:41Z",
+  "changelog": "Run pinned private workbook rules through Samurai and a connected Files Excel writer, using the original PDFs and File Template with input-integrity checks and governed output. Support selected-section dependency ordering and verify fresh runs with changed quantities, new materials and removed materials."
 }
