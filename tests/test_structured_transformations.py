@@ -631,6 +631,32 @@ async def test_samurai_executes_generic_adapter_without_model_routing(monkeypatc
     assert progress[-1][0] == progress[-1][1]
 
 
+def test_matrix_execution_rejects_workbook_update_before_parsing_rows():
+    profile = deepcopy(PROFILE)
+    profile['parameters']['workbook_update'] = {'section_key_column': 2}
+    with pytest.raises(ValueError, match='Update existing workbook from PDFs'):
+        try_deterministic_matrix_transform(profile=profile, source_context='', fixed_context='')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('model_fallback', [False, True])
+async def test_samurai_never_falls_back_to_model_for_workbook_update(monkeypatch, model_fallback):
+    profile = deepcopy(PROFILE)
+    profile['parameters']['workbook_update'] = {'section_key_column': 2}
+    profile['model_fallback'] = model_fallback
+
+    async def unexpected_route(*_args, **_kwargs):
+        raise AssertionError('Workbook updates must not reach model routing')
+
+    monkeypatch.setattr(flow_engine, '_resolve_task_llm_chain', unexpected_route)
+    with pytest.raises(ValueError, match='Update existing workbook from PDFs'):
+        await flow_engine._exec_samurai(
+            {'task_description': TASK, '_transformation_profiles': [profile]},
+            SOURCE,
+            fixed_context_str=FIXED_CONTEXT,
+        )
+
+
 def test_bundled_profile_loader_rejects_missing_and_traversal_ids():
     with pytest.raises(ValueError, match="does not exist"):
         load_bundled_transformation_profile("synthetic_private_profile_v1")

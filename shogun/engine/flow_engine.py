@@ -50,6 +50,7 @@ from shogun.services.structured_transformations import (
     deterministic_profile_source_units,
     expected_deterministic_matrix_rows,
     try_deterministic_matrix_transform,
+    validate_matrix_profile_execution,
 )
 from shogun.services.tool_calling_profiles import (
     infer_tool_calling_profile,
@@ -2003,6 +2004,10 @@ async def _exec_samurai(
         config,
         transformation_profile,
     )
+    if transformation_profile:
+        # A workbook update must retain its preservation/audit contract even
+        # when this profile allows a model fallback for matrix extraction.
+        validate_matrix_profile_execution(transformation_profile)
     if transformation_profile and not requires_matrix_output:
         raise ValueError("A document transformation profile requires a matrix output contract.")
     if transformation_profile:
@@ -5159,8 +5164,8 @@ async def _exec_office(
                     raise ValueError("The selected profile does not declare workbook updates.")
 
                 tmpl_raw = (
-                    (template.get("template_path") if template else None)
-                    or transform_cfg.get("template_path")
+                    transform_cfg.get("template_path")
+                    or (template.get("template_path") if template else None)
                     or config.get("template_path")
                 )
                 if not isinstance(tmpl_raw, str) or not tmpl_raw.strip():
@@ -5181,13 +5186,15 @@ async def _exec_office(
                     raise ValueError("Workbook transformation requires between one and ten PDF paths.")
 
                 resolved_pdfs = [_resolve(p) for p in raw_pdf_list]
-                pipeline_sheet = (
-                    transform_cfg.get("sheet_name")
-                    or config.get("sheet_name")
-                    or (template.get("sheet_name") if template else None)
-                )
+                pipeline_sheet = transform_cfg.get("sheet_name")
+                if "sheet_name" not in transform_cfg:
+                    pipeline_sheet = (
+                        config.get("sheet_name")
+                        or (template.get("sheet_name") if template else None)
+                    )
                 if pipeline_sheet is not None and not isinstance(pipeline_sheet, str):
                     raise ValueError("Workbook transformation sheet name must be a string.")
+                pipeline_sheet = pipeline_sheet or None
                 pipeline_options = transform_cfg.get("options", {})
                 if not isinstance(pipeline_options, dict):
                     raise ValueError("Workbook transformation options must be an object.")
