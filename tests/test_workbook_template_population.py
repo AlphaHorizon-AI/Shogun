@@ -3,6 +3,7 @@
 import copy
 import datetime
 import hashlib
+import json
 from types import SimpleNamespace
 from xml.etree import ElementTree
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -205,6 +206,214 @@ def test_populates_current_sections_and_separate_records_preserving_template(pop
     assert sheet["F1"].value == "Overdue" and sheet["I1"].value == ">= Sep 2026"
     book.close()
     assert hashlib.sha256(template.read_bytes()).hexdigest() == before
+
+
+@pytest.mark.parametrize("horizon_key", [
+    "require_date_in_planning_horizon", "require_planning_horizon",
+])
+def test_explicit_horizon_excludes_catch_all_buckets(population, tmp_path, horizon_key):
+    _, profile = population
+    profile["parameters"]["workbook_update"]["record_rules"][0][horizon_key] = True
+    path, summary = execute(population, tmp_path, (
+        "Equipment: UNIT-100 Size: 100\n"
+        "JOB-1 2 2026-06-08\n"
+        "JOB-2 3 2026-07-13\n"
+        "JOB-3 4 2026-10-05\n"
+    ))
+
+    assert schedule_rows(path) == [
+        ("100", "UNIT-100", None, None, None, None, None, None, None),
+        (None, "UNIT-100", "JOB-2", None, datetime.datetime(2026, 7, 13), None, 3, None, None),
+    ]
+    assert summary["normalized_record_count"] == summary["accounted_record_count"] == 3
+    assert summary["out_of_horizon_records_count"] == 2
+    outside = [event for event in summary["events"] if event["status"] == "OUTSIDE_PLANNING_HORIZON"]
+    assert [(event["planning_month"], event["horizon_start"], event["horizon_end"]) for event in outside] == [
+        ("2026/06", "2026/07", "2026/08"),
+        ("2026/10", "2026/07", "2026/08"),
+    ]
+
+
+def test_explicit_horizon_excludes_missing_month_inside_date_range(population, tmp_path):
+    template, profile = population
+    book = openpyxl.load_workbook(template)
+    book["Schedule"]["H1"] = datetime.date(2026, 9, 1)
+    book.save(template)
+    book.close()
+    profile["parameters"]["workbook_update"]["record_rules"][0][
+        "require_date_in_planning_horizon"
+    ] = True
+
+    path, summary = execute(
+        population,
+        tmp_path,
+        "Equipment: UNIT-100 Size: 100\nJOB-1 7 2026-08-03\n",
+    )
+
+    assert schedule_rows(path) == [
+        ("100", "UNIT-100", None, None, None, None, None, None, None),
+    ]
+    outside = next(event for event in summary["events"] if event["status"] == "OUTSIDE_PLANNING_HORIZON")
+    assert outside["planning_month"] == "2026/08"
+    assert outside["horizon_start"] == "2026/07"
+    assert outside["horizon_end"] == "2026/09"
+
+
+@pytest.mark.parametrize(("planning_month", "planning_month_spec"), [
+    ("2026/08", {"group": "planning_month"}),
+    ("2026-08", {"group": "planning_month"}),
+    ("2026/08/31", {"group": "planning_month"}),
+    ("2026-08-31", {"group": "planning_month", "value_type": "iso_date"}),
+])
+def test_planning_month_spec_selects_bucket_without_changing_exact_date(
+    population, tmp_path, planning_month, planning_month_spec,
+):
+    _, profile = population
+    profile["parameters"]["record_pattern"] = (
+        r"(?m)^(?P<job>JOB-\d+) (?P<hours>\d+) (?P<date>\d{4}-\d{2}-\d{2}) "
+        r"(?P<planning_month>\S+)$"
+    )
+    rule = profile["parameters"]["workbook_update"]["record_rules"][0]
+    rule["planning_month_spec"] = planning_month_spec
+
+    path, summary = execute(
+        population,
+        tmp_path,
+        f"Equipment: UNIT-100 Size: 100\nJOB-1 7 2026-07-06 {planning_month}\n",
+    )
+
+    detail = schedule_rows(path)[1]
+    assert detail[4] == datetime.datetime(2026, 7, 6)
+    assert detail[6] is None
+    assert detail[7] == 7
+    assert summary["normalized_record_count"] == summary["accounted_record_count"] == 1
+
+
+def test_planning_month_spec_controls_exact_horizon_filter(population, tmp_path):
+    _, profile = population
+    profile["parameters"]["record_pattern"] = (
+        r"(?m)^(?P<job>JOB-\d+) (?P<hours>\d+) (?P<date>\d{4}-\d{2}-\d{2}) "
+        r"(?P<planning_month>\S+)$"
+    )
+    rule = profile["parameters"]["workbook_update"]["record_rules"][0]
+    rule["planning_month_spec"] = {"group": "planning_month"}
+    rule["require_date_in_planning_horizon"] = True
+
+    path, summary = execute(
+        population,
+        tmp_path,
+        "Equipment: UNIT-100 Size: 100\nJOB-1 7 2026-07-06 2026/10\n",
+    )
+
+    assert schedule_rows(path) == [
+        ("100", "UNIT-100", None, None, None, None, None, None, None),
+    ]
+    outside = next(event for event in summary["events"] if event["status"] == "OUTSIDE_PLANNING_HORIZON")
+    assert outside["planning_month"] == "2026/10"
+
+
+@pytest.mark.parametrize("planning_month_spec", [
+    {"group": "planning_month"},
+    {"group": "missing"},
+])
+def test_invalid_or_missing_planning_month_is_ambiguous(population, tmp_path, planning_month_spec):
+    _, profile = population
+    profile["parameters"]["record_pattern"] = (
+        r"(?m)^(?P<job>JOB-\d+) (?P<hours>\d+) (?P<date>\d{4}-\d{2}-\d{2}) "
+        r"(?P<planning_month>\S+)$"
+    )
+    rule = profile["parameters"]["workbook_update"]["record_rules"][0]
+    rule["planning_month_spec"] = planning_month_spec
+
+    path, summary = execute(
+        population,
+        tmp_path,
+        "Equipment: UNIT-100 Size: 100\nJOB-1 7 2026-07-06 2026/13\n",
+    )
+
+    assert schedule_rows(path) == [
+        ("100", "UNIT-100", None, None, None, None, None, None, None),
+    ]
+    assert summary["status_counts"]["AMBIGUOUS_DATE_MAPPING"] == 1
+    assert summary["normalized_record_count"] == summary["accounted_record_count"] == 1
+
+
+def test_merge_first_detail_reuses_section_row_without_losing_values(population, tmp_path):
+    _, profile = population
+    profile["parameters"]["workbook_update"]["template_section_row_policy"] = "merge_first_detail"
+    profile["parameters"]["workbook_update"]["template_section_values"]["4"] = {
+        "literal": "Section note",
+    }
+    path, summary = execute(
+        population,
+        tmp_path,
+        "Equipment: UNIT-100 Size: 100\nJOB-1 7 2026-07-06\n",
+    )
+
+    assert schedule_rows(path) == [
+        (
+            "100", "UNIT-100", "JOB-1", "Section note",
+            datetime.datetime(2026, 7, 6), None, 7, None, None,
+        ),
+    ]
+    assert summary["total_rows_inserted"] == 1
+    created = next(event for event in summary["events"] if event["status"] == "CREATED_SECTION")
+    inserted = next(event for event in summary["events"] if event["status"] == "INSERTED_RECORD_ROW")
+    assert created["row"] == inserted["row"] == 3
+    assert "SECTION_ROW_MERGE_CONFLICT" not in summary["status_counts"]
+    book = openpyxl.load_workbook(path)
+    try:
+        metadata_values = json.loads(book["_shogun_workflow_provenance"].cell(2, 5).value)
+        assert metadata_values == {
+            "2": "UNIT-100",
+            "3": "JOB-1",
+            "5": "2026-07-06",
+            "7": 7.0,
+        }
+    finally:
+        book.close()
+
+
+def test_merge_first_detail_keeps_section_row_when_values_conflict(population, tmp_path):
+    _, profile = population
+    policy = profile["parameters"]["workbook_update"]
+    policy["template_section_row_policy"] = "merge_first_detail"
+    policy["template_section_values"]["3"] = {"literal": "Section note"}
+    path, summary = execute(
+        population,
+        tmp_path,
+        "Equipment: UNIT-100 Size: 100\nJOB-1 7 2026-07-06\n",
+    )
+
+    assert schedule_rows(path) == [
+        ("100", "UNIT-100", "Section note", None, None, None, None, None, None),
+        (None, "UNIT-100", "JOB-1", None, datetime.datetime(2026, 7, 6), None, 7, None, None),
+    ]
+    assert summary["total_rows_inserted"] == 2
+    conflict = next(event for event in summary["events"] if event["status"] == "SECTION_ROW_MERGE_CONFLICT")
+    assert conflict["conflicting_columns"] == [3]
+    assert conflict["detail_status"] == "INSERTED_RECORD_ROW"
+    assert conflict["confidence"] == "REVIEW"
+    assert conflict["row"] == 3
+
+
+def test_merge_first_detail_keeps_section_row_when_no_detail_is_written(population, tmp_path):
+    _, profile = population
+    policy = profile["parameters"]["workbook_update"]
+    policy["template_section_row_policy"] = "merge_first_detail"
+    policy["record_rules"][0]["require_date_in_planning_horizon"] = True
+    path, summary = execute(
+        population,
+        tmp_path,
+        "Equipment: UNIT-100 Size: 100\nJOB-1 7 2026-10-05\n",
+    )
+
+    assert schedule_rows(path) == [
+        ("100", "UNIT-100", None, None, None, None, None, None, None),
+    ]
+    assert summary["total_rows_inserted"] == 1
+    assert summary["status_counts"]["OUTSIDE_PLANNING_HORIZON"] == 1
+    assert summary["normalized_record_count"] == summary["accounted_record_count"] == 1
 
 
 def test_fresh_run_rebuilds_changed_and_removed_jobs_from_current_sources(population, tmp_path):
@@ -544,6 +753,7 @@ def test_equivalent_style_table_entries_and_blank_values_round_trip(population, 
 @pytest.mark.parametrize("change", [
     {"mode": []}, {"backlog_headers": "Overdue"}, {"future_header_patterns": [False]},
     {"template_section_values": {"0": {"literal": "bad"}}}, {"template_section_sort": [{}] * 9},
+    {"template_section_row_policy": []}, {"template_section_row_policy": "sometimes"},
 ])
 def test_population_configuration_is_validated(population, change):
     _, profile = population
@@ -551,3 +761,18 @@ def test_population_configuration_is_validated(population, change):
     modified["parameters"]["workbook_update"].update(change)
     with pytest.raises(ValueError):
         validate_workbook_update_profile(modified)
+
+
+def test_merge_first_detail_requires_template_population_mode(population):
+    _, profile = population
+    profile["parameters"]["workbook_update"]["mode"] = "update_existing"
+    profile["parameters"]["workbook_update"]["template_section_row_policy"] = "merge_first_detail"
+    with pytest.raises(ValueError, match="requires populate_template mode"):
+        validate_workbook_update_profile(profile)
+
+
+def test_planning_month_spec_uses_value_spec_schema(population):
+    _, profile = population
+    profile["parameters"]["workbook_update"]["record_rules"][0]["planning_month_spec"] = "month"
+    with pytest.raises(ValueError, match=r"planning_month_spec must be a dictionary"):
+        validate_workbook_update_profile(profile)
