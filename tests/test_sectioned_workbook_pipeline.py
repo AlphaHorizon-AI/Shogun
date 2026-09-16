@@ -132,6 +132,28 @@ def test_validate_workbook_update_profile_bounds_and_unknown_keys():
         )
 
 
+@pytest.mark.parametrize(
+    ("dependency_spec", "message"),
+    [
+        ([], "must be an object"),
+        ({"fields": []}, "one to 32 non-empty strings"),
+        ({"fields": ["component", "component"]}, "must not contain duplicates"),
+        ({"fields": ["component"], "transitive": "yes"}, "must be a boolean"),
+        ({"fields": ["component"], "missing": "warn"}, "must be 'ignore' or 'error'"),
+        ({"fields": ["component"], "unexpected": True}, "Unsupported key"),
+    ],
+)
+def test_validate_section_selection_dependencies(dependency_spec, message):
+    profile = {
+        "parameters": {
+            "section_selection_dependencies": dependency_spec,
+            "workbook_update": {"section_key_column": 2},
+        }
+    }
+    with pytest.raises(ValueError, match=message):
+        validate_workbook_update_profile(profile)
+
+
 def test_converter_semantics():
     # Preexisting localized_number raises ValueError on non-numbers
     with pytest.raises(ValueError):

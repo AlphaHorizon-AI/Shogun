@@ -3,6 +3,7 @@
 import copy
 import datetime
 import hashlib
+from types import SimpleNamespace
 from xml.etree import ElementTree
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -14,6 +15,7 @@ from shogun.services.sectioned_workbook_pipeline import SectionedLayoutParser
 from shogun.services.sectioned_workbook_updater import (
     SafeWorkbookUpdater,
     WorkbookPreservationComparator,
+    _expand_section_selection,
     validate_workbook_update_profile,
 )
 
@@ -291,6 +293,132 @@ def test_dependency_order_does_not_reintroduce_excluded_sections(dependency_popu
     assert summary["status_counts"]["EXCLUDED_SECTION"] == 1
     assert summary["status_counts"]["EXCLUDED_RECORD"] == 2
     assert summary["normalized_record_count"] == summary["accounted_record_count"] == 3
+
+
+@pytest.mark.parametrize(
+    ("transitive", "expected_sections", "expected_dependencies", "expected_excluded"),
+    [
+        (False, {"ASSEMBLY-100", "COMPONENT-200"}, 1, 1),
+        (True, {"ASSEMBLY-100", "COMPONENT-200", "RAW-300"}, 2, 0),
+    ],
+)
+def test_section_selection_can_include_configured_dependencies(
+    dependency_population,
+    tmp_path,
+    transitive,
+    expected_sections,
+    expected_dependencies,
+    expected_excluded,
+):
+    _, profile = dependency_population
+    parameters = profile["parameters"]
+    parameters["section_selection"] = {
+        "field": "id", "operator": "equals", "value": "ASSEMBLY-100",
+    }
+    parameters["section_selection_dependencies"] = {
+        "fields": ["dependency"], "transitive": transitive, "missing": "ignore",
+    }
+    parameters["section_order"]["dependencies_before"]["missing"] = "ignore"
+    path, summary = execute(dependency_population, tmp_path, (
+        "Equipment: ASSEMBLY-100 Size: 100 Dependency: COMPONENT-200\nJOB-1 4 2026-07-06\n\f"
+        "Equipment: COMPONENT-200 Size: 200 Dependency: RAW-300\nJOB-2 7 2026-08-03\n\f"
+        "Equipment: RAW-300 Size: 300\nJOB-3 2 2026-07-13\n"
+    ))
+    headings = [row[1] for row in schedule_rows(path) if row[2] is None]
+    assert set(headings) == expected_sections
+    assert headings[-1] == "ASSEMBLY-100"
+    assert summary["selection_root_sections_count"] == 1
+    assert summary["selection_dependency_sections_count"] == expected_dependencies
+    assert summary["excluded_sections_count"] == expected_excluded
+    assert summary["status_counts"]["INCLUDED_DEPENDENCY_SECTION"] == expected_dependencies
+    assert summary["normalized_record_count"] == summary["accounted_record_count"] == 3
+
+
+@pytest.mark.parametrize("missing_mode", ["ignore", "error"])
+def test_section_selection_dependency_missing_mode(dependency_population, tmp_path, missing_mode):
+    template, profile = dependency_population
+    parameters = profile["parameters"]
+    parameters["section_selection"] = {
+        "field": "id", "operator": "equals", "value": "ASSEMBLY-100",
+    }
+    parameters["section_selection_dependencies"] = {
+        "fields": ["dependency"], "transitive": True, "missing": missing_mode,
+    }
+    parameters["section_order"]["dependencies_before"]["missing"] = "ignore"
+    text = "Equipment: ASSEMBLY-100 Size: 100 Dependency: ABSENT-900\nJOB-1 4 2026-07-06\n"
+    if missing_mode == "error":
+        before = template.read_bytes()
+        with pytest.raises(ValueError, match="references missing dependency ABSENT-900"):
+            execute(dependency_population, tmp_path, text)
+        assert not (tmp_path / "result.xlsx").exists()
+        assert template.read_bytes() == before
+        return
+
+    path, summary = execute(dependency_population, tmp_path, text)
+    assert {row[1] for row in schedule_rows(path)} == {"ASSEMBLY-100"}
+    assert summary["status_counts"]["IGNORED_MISSING_SELECTION_DEPENDENCY"] == 1
+    assert summary["selection_missing_dependencies"] == [{
+        "parent_section_id": "ASSEMBLY-100",
+        "field": "dependency",
+        "dependency_section_id": "ABSENT-900",
+    }]
+    assert not any(event.get("confidence") == "REVIEW" for event in summary["events"])
+
+
+def test_section_selection_dependency_cycle_fails_before_publication(dependency_population, tmp_path):
+    template, profile = dependency_population
+    parameters = profile["parameters"]
+    parameters["section_selection"] = {"field": "id", "operator": "equals", "value": "A-100"}
+    parameters["section_selection_dependencies"] = {
+        "fields": ["dependency"], "transitive": True, "missing": "error",
+    }
+    before = template.read_bytes()
+    with pytest.raises(ValueError, match="dependency cycle"):
+        execute(dependency_population, tmp_path, (
+            "Equipment: A-100 Size: 100 Dependency: B-200\nJOB-1 4 2026-07-06\n\f"
+            "Equipment: B-200 Size: 200 Dependency: A-100\nJOB-2 7 2026-08-03\n"
+        ))
+    assert not (tmp_path / "result.xlsx").exists()
+    assert template.read_bytes() == before
+
+
+def test_section_selection_refuses_ambiguous_dependency_key(dependency_population, tmp_path):
+    template, profile = dependency_population
+    parameters = profile["parameters"]
+    parameters["section_selection"] = {
+        "field": "id", "operator": "equals", "value": "ASSEMBLY-100",
+    }
+    parameters["section_selection_dependencies"] = {
+        "fields": ["dependency"], "transitive": True, "missing": "error",
+    }
+    before = template.read_bytes()
+    with pytest.raises(ValueError, match="references ambiguous dependency COMPONENT-200"):
+        execute(dependency_population, tmp_path, (
+            "Equipment: ASSEMBLY-100 Size: 100 Dependency: COMPONENT-200\nJOB-1 4 2026-07-06\n\f"
+            "Equipment: COMPONENT-200 Size: 200\nJOB-2 7 2026-08-03\n\f"
+            "Equipment: COMPONENT-200 Size: 300\nJOB-3 2 2026-07-13\n"
+        ))
+    assert not (tmp_path / "result.xlsx").exists()
+    assert template.read_bytes() == before
+
+
+def test_transitive_section_selection_handles_long_acyclic_chains_without_recursion():
+    sections = [
+        SimpleNamespace(
+            key=f"SECTION-{index}",
+            fields={"dependency": f"SECTION-{index + 1}" if index < 1499 else ""},
+        )
+        for index in range(1500)
+    ]
+    selected, included, missing = _expand_section_selection(
+        sections,
+        sections[:1],
+        {"fields": ["dependency"], "transitive": True, "missing": "error"},
+        "long_chain",
+    )
+    assert selected == sections
+    assert len(included) == 1499
+    assert missing == []
 
 
 def test_dependency_order_refuses_duplicate_selected_section_keys(dependency_population, tmp_path):
