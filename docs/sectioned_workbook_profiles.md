@@ -76,6 +76,15 @@ up to eight value specifications, compared in order, for configured group ranks,
 numeric sizes and identifiers. Missing sort values follow known values. Sorting is
 applied only during empty-template population, not to an existing plan.
 
+By default, `template_section_row_policy` is `always`, so that heading remains a
+separate row. Set it to `merge_first_detail` to fold the section values into the
+first generated stock, order or record row when every overlapping nonblank value is
+equal. The `CREATED_SECTION` audit event then points to that shared physical row.
+Sections without a generated detail still retain their heading. If a section value
+would overwrite a different nonblank detail value, the engine keeps both rows and
+emits `SECTION_ROW_MERGE_CONFLICT` for review. This mode is available only with
+`populate_template`.
+
 The existing `parameters.section_order` rules can additionally place referenced
 sections before their parents, using `dependencies_before.fields`. This is applied
 after the numeric/text sort and only to selected sections. Excluded dependencies
@@ -112,6 +121,22 @@ the date in that header defines the threshold. These use the existing monthly bu
 resolver. Each record still receives its own row, including when several records
 map to the same bucket. Unsupported labels and duplicate buckets remain errors.
 
+`require_date_in_planning_horizon` (and its legacy alias
+`require_planning_horizon`) uses only the exact dated month headers to define the
+allowed range. A record before, after or in a missing month inside that range is
+reported as `OUTSIDE_PLANNING_HORIZON`, even when a backlog or future catch-all
+could accept it. A rule that enables `planning_month_quantity` without either
+explicit horizon flag retains the catch-all behavior.
+
+By default, the engine derives that planning month from `date_spec`. Set
+`planning_month_spec` when the source has a separate bucket month. It may resolve to
+`YYYY/MM`, `YYYY-MM`, `YYYY/MM/DD`, or a date/datetime value (for example through
+`value_type: "iso_date"`). The resolved month drives both `planning_month_quantity`
+and exact-horizon filtering, while `date_spec` still supplies the record's exact
+date. A missing, malformed or impossible planning month produces
+`AMBIGUOUS_DATE_MAPPING`; the engine does not fall back to `date_spec` when an
+explicit `planning_month_spec` is present.
+
 Keep workflow policy explicit:
 
 - `source_identity_fields` identifies a source record independently of PDF page/order.
@@ -120,8 +145,10 @@ Keep workflow policy explicit:
   remain under planner control.
 - A section rule's `policy` defaults to `fill_blank`; `replace` explicitly permits replacement.
 - `alternative_quantity_spec` holds disagreement for review instead of choosing a value.
-- `require_date_in_planning_horizon` filters against configured month headers.
+- `require_date_in_planning_horizon` filters against exact dated month headers.
   `planning_month_quantity` additionally writes the quantity into that month's cell.
+- `planning_month_spec` optionally selects that month from a source value separate
+  from the exact `date_spec` value.
 - `when` uses the existing section conditions, for example
   `{"field": "zone", "operator": "equals", "value": "A"}`.
 

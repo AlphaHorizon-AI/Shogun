@@ -56,10 +56,35 @@ def _same_style(original: Any, actual: Any, allowed_change: dict[str, Any] | Non
         for name in STYLE_PROPERTIES
     )
 
+
+def _planning_month_key_from_value(value: Any) -> str | None:
+    """Return a canonical planning month only for explicit, unambiguous values."""
+    if isinstance(value, datetime.date):
+        return f"{value.year:04d}/{value.month:02d}"
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    month_match = re.fullmatch(r"([0-9]{4})[/-]([0-9]{2})", text)
+    date_match = re.fullmatch(r"([0-9]{4})/([0-9]{2})/([0-9]{2})", text)
+    try:
+        if month_match:
+            year, month = (int(part) for part in month_match.groups())
+            datetime.date(year, month, 1)
+            return f"{year:04d}/{month:02d}"
+        if date_match:
+            year, month, day = (int(part) for part in date_match.groups())
+            datetime.date(year, month, day)
+            return f"{year:04d}/{month:02d}"
+    except ValueError:
+        return None
+    return None
+
 ALLOWED_WORKBOOK_UPDATE_KEYS = {
     "mode",
     "template_section_values",
     "template_section_sort",
+    "template_section_row_policy",
     "sheet_name",
     "header_row",
     "data_start_row",
@@ -110,6 +135,7 @@ ALLOWED_RECORD_RULE_KEYS = {
     "alternative_quantity_spec",
     "fill_blank_quantity_column",
     "date_spec",
+    "planning_month_spec",
     "fill_blank_date_column",
     "date_number_format",
     "planning_month_quantity",
@@ -311,6 +337,15 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
     mode = policy.get("mode", "update_existing")
     if not isinstance(mode, str) or mode not in {"update_existing", "populate_template"}:
         raise ValueError("Workbook mode must be 'update_existing' or 'populate_template'.")
+    section_row_policy = policy.get("template_section_row_policy", "always")
+    if not isinstance(section_row_policy, str) or section_row_policy not in {"always", "merge_first_detail"}:
+        raise ValueError(
+            "workbook_update.template_section_row_policy must be 'always' or 'merge_first_detail'."
+        )
+    if section_row_policy == "merge_first_detail" and mode != "populate_template":
+        raise ValueError(
+            "workbook_update.template_section_row_policy 'merge_first_detail' requires populate_template mode."
+        )
     for key in ("backlog_headers", "future_header_patterns"):
         if key in policy:
             values = policy[key]
@@ -448,7 +483,13 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
             for col_name in ("reference_column", "fill_blank_quantity_column", "fill_blank_date_column"):
                 if col_name in r:
                     _validate_column_index(r[col_name], f"record_rules[{idx}].{col_name}")
-            for spec_name in ("reference_spec", "quantity_spec", "alternative_quantity_spec", "date_spec"):
+            for spec_name in (
+                "reference_spec",
+                "quantity_spec",
+                "alternative_quantity_spec",
+                "date_spec",
+                "planning_month_spec",
+            ):
                 if spec_name in r:
                     _validate_value_spec(r[spec_name], f"record_rules[{idx}].{spec_name}")
             if "legacy_demand_check" in r:
@@ -908,7 +949,15 @@ class SafeWorkbookUpdater:
                 # Excel reads an explicitly written empty string back as a blank.
                 # New rows already start blank; retain only values that round-trip.
                 values = {column: value for column, value in values.items() if value not in (None, "")}
-                insertions[anchor].append({"values": values, "event": item, "date_format": date_format})
+                insertion = {
+                    "values": values,
+                    "metadata_values": dict(values),
+                    "event": item,
+                    "row_events": [item],
+                    "date_format": date_format,
+                }
+                insertions[anchor].append(insertion)
+                return insertion
 
             # Evaluate updates within independent profile regex budget
             with _profile_regex_budget(self.profile_id):
@@ -979,7 +1028,7 @@ class SafeWorkbookUpdater:
                         # Keep each source section visible, including sections whose
                         # records need review or which have no stock or orders.
                         section_values[sec_col] = s_key
-                        schedule_insert(s, anchor, section_values, "CREATED_SECTION")
+                        section_insertion = schedule_insert(s, anchor, section_values, "CREATED_SECTION")
                     else:
                         rows = groups[0]
                         anchor = rows[-1]
@@ -1155,11 +1204,21 @@ class SafeWorkbookUpdater:
                                 event(s, "AMBIGUOUS_DATE_MAPPING", r, confidence="REVIEW")
                                 continue
 
-                        month_key = (
-                            rec_date.strftime("%Y/%m")
-                            if isinstance(rec_date, (datetime.date, datetime.datetime))
-                            else ""
-                        )
+                        if "planning_month_spec" in matched_rule:
+                            try:
+                                planning_month_value = self._eval_spec(matched_rule["planning_month_spec"], s, r)
+                            except (ValueError, TypeError):
+                                planning_month_value = None
+                            month_key = _planning_month_key_from_value(planning_month_value)
+                            if month_key is None:
+                                event(s, "AMBIGUOUS_DATE_MAPPING", r, confidence="REVIEW")
+                                continue
+                        else:
+                            month_key = (
+                                rec_date.strftime("%Y/%m")
+                                if isinstance(rec_date, (datetime.date, datetime.datetime))
+                                else ""
+                            )
                         planning_column = _planning_column_for_month(contract.month_to_col, month_key)
 
                         # Evaluate quantity and alternative quantity at the writer boundary from raw record
@@ -1199,9 +1258,9 @@ class SafeWorkbookUpdater:
                             event(s, "AMBIGUOUS_QUANTITY_MAPPING", r, confidence="REVIEW")
                             continue
 
-                        # If planning_month_quantity is required, ensure date and finite quantity
+                        # If planning_month_quantity is required, ensure month and finite quantity
                         if matched_rule.get("planning_month_quantity"):
-                            if rec_date is None:
+                            if not month_key:
                                 event(s, "AMBIGUOUS_DATE_MAPPING", r, confidence="REVIEW")
                                 continue
                             if qty is None or not math.isfinite(qty):
@@ -1209,20 +1268,40 @@ class SafeWorkbookUpdater:
                                 continue
 
                         # Planning horizon filtering (separate from month-cell writing)
-                        require_horizon = (
+                        require_exact_horizon = (
                             matched_rule.get("require_date_in_planning_horizon")
                             or matched_rule.get("require_planning_horizon")
-                            or matched_rule.get("planning_month_quantity")
                         )
-                        if require_horizon and not contract.month_to_col:
+                        require_planning_headers = (
+                            require_exact_horizon or matched_rule.get("planning_month_quantity")
+                        )
+                        if require_planning_headers and not contract.month_to_col:
                             raise ValueError("Record rule requires planning month headers.")
-                        if (
-                            require_horizon
-                            and contract.month_to_col
+                        if require_exact_horizon:
+                            if not contract.horizon_start or not contract.horizon_end:
+                                raise ValueError("Record rule requires exact dated planning month headers.")
+                            if not month_key:
+                                event(s, "AMBIGUOUS_DATE_MAPPING", r, confidence="REVIEW")
+                                continue
+                            if (
+                                not contract.horizon_start <= month_key <= contract.horizon_end
+                                or month_key not in contract.month_to_col
+                            ):
+                                event(
+                                    s,
+                                    "OUTSIDE_PLANNING_HORIZON",
+                                    r,
+                                    planning_month=month_key,
+                                    horizon_start=contract.horizon_start,
+                                    horizon_end=contract.horizon_end,
+                                )
+                                continue
+                        elif (
+                            matched_rule.get("planning_month_quantity")
                             and month_key
                             and planning_column is None
                         ):
-                            event(s, "OUTSIDE_PLANNING_HORIZON", r)
+                            event(s, "OUTSIDE_PLANNING_HORIZON", r, planning_month=month_key)
                             continue
 
                         # Build row values for insertion
@@ -1343,10 +1422,47 @@ class SafeWorkbookUpdater:
                             "insert_status",
                             "INSERTED_RECORD_ROW",
                         )
-                        schedule_insert(
+                        record_insertion = schedule_insert(
                             s, anchor, row_values, ins_status, r, matched_rule.get("date_number_format", "dd.mm.yyyy")
                         )
-                        insertions[anchor][-1]["event"]["chosen_quantity"] = qty
+                        record_insertion["event"]["chosen_quantity"] = qty
+
+                    if (
+                        populate_template
+                        and self.policy.get("template_section_row_policy", "always") == "merge_first_detail"
+                    ):
+                        section_items = insertions[anchor]
+                        section_index = next(
+                            index for index, item in enumerate(section_items) if item is section_insertion
+                        )
+                        first_detail = (
+                            section_items[section_index + 1]
+                            if section_index + 1 < len(section_items)
+                            else None
+                        )
+                        if first_detail is not None:
+                            conflicting_columns = [
+                                column
+                                for column, section_value in section_insertion["values"].items()
+                                if column in first_detail["values"]
+                                and _plain(first_detail["values"][column]) != _plain(section_value)
+                            ]
+                            if conflicting_columns:
+                                conflict_event = event(
+                                    s,
+                                    "SECTION_ROW_MERGE_CONFLICT",
+                                    confidence="REVIEW",
+                                    conflicting_columns=conflicting_columns,
+                                    detail_status=first_detail["event"]["status"],
+                                )
+                                section_insertion["row_events"].append(conflict_event)
+                            else:
+                                first_detail["values"] = {
+                                    **section_insertion["values"],
+                                    **first_detail["values"],
+                                }
+                                first_detail["row_events"].extend(section_insertion["row_events"])
+                                del section_items[section_index]
 
             def moved(row_idx: int) -> int:
                 return row_idx + sum(len(items) for anch, items in insertions.items() if anch < row_idx)
@@ -1366,13 +1482,14 @@ class SafeWorkbookUpdater:
                         if isinstance(val, (datetime.date, datetime.datetime)):
                             ws.cell(new_r, col_idx).number_format = item["date_format"]
                     final_r = moved(anchor) + offset
-                    item["event"]["row"] = final_r
+                    for row_event in item["row_events"]:
+                        row_event["row"] = final_r
                     item["row"] = final_r
                     if "record_id" in item["event"]:
                         metadata[item["event"]["record_id"]] = {
                             "row": final_r,
                             "final": True,
-                            "values": {str(c): _plain(v) for c, v in item["values"].items()},
+                            "values": {str(c): _plain(v) for c, v in item["metadata_values"].items()},
                         }
 
             ws.row_dimensions.clear()
