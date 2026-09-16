@@ -144,6 +144,12 @@ ALLOWED_VALUE_SPEC_KEYS = {
     "value_type",
 }
 
+ALLOWED_SECTION_SELECTION_DEPENDENCY_KEYS = {
+    "fields",
+    "transitive",
+    "missing",
+}
+
 
 def _plain(value: Any) -> Any:
     if isinstance(value, datetime.datetime):
@@ -258,7 +264,35 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
     """
     if not isinstance(profile, dict):
         raise ValueError("Profile must be a dictionary.")
-    _validate_condition_spec((profile.get("parameters") or {}).get("section_selection"))
+    parameters = profile.get("parameters") or {}
+    _validate_condition_spec(parameters.get("section_selection"))
+    dependency_spec = parameters.get("section_selection_dependencies")
+    if dependency_spec is not None:
+        if not isinstance(dependency_spec, dict):
+            raise ValueError("parameters.section_selection_dependencies must be an object.")
+        unknown = set(dependency_spec) - ALLOWED_SECTION_SELECTION_DEPENDENCY_KEYS
+        if unknown:
+            raise ValueError(
+                "Unsupported key(s) in section_selection_dependencies: "
+                + ", ".join(sorted(unknown))
+            )
+        fields = dependency_spec.get("fields")
+        if (
+            not isinstance(fields, list)
+            or not 1 <= len(fields) <= 32
+            or any(not isinstance(field, str) or not field.strip() for field in fields)
+        ):
+            raise ValueError(
+                "section_selection_dependencies.fields must contain one to 32 non-empty strings."
+            )
+        if len({field.strip() for field in fields}) != len(fields):
+            raise ValueError("section_selection_dependencies.fields must not contain duplicates.")
+        transitive = dependency_spec.get("transitive", True)
+        if not isinstance(transitive, bool):
+            raise ValueError("section_selection_dependencies.transitive must be a boolean.")
+        missing = dependency_spec.get("missing", "ignore")
+        if not isinstance(missing, str) or missing.strip().lower() not in {"ignore", "error"}:
+            raise ValueError("section_selection_dependencies.missing must be 'ignore' or 'error'.")
 
     if "workbook_update" in profile:
         policy = profile["workbook_update"]
@@ -441,6 +475,116 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
                         raise ValueError(f"Invalid column in record_rules[{idx}].insert_row_values: {col_k!r}")
                     _validate_column_index(col_int, f"record_rules[{idx}].insert_row_values[{col_k}]")
                     _validate_value_spec(col_spec, f"record_rules[{idx}].insert_row_values[{col_k}]")
+
+
+def _expand_section_selection(
+    sections: list[Any],
+    roots: list[Any],
+    dependency_spec: dict[str, Any] | None,
+    profile_id: str,
+) -> tuple[list[Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Include exact referenced sections while retaining source order."""
+    if not dependency_spec:
+        return roots, [], []
+
+    fields = [field.strip() for field in dependency_spec["fields"]]
+    transitive = dependency_spec.get("transitive", True)
+    missing_mode = str(dependency_spec.get("missing", "ignore")).strip().lower()
+
+    by_key: dict[str, list[Any]] = defaultdict(list)
+    for section in sections:
+        by_key[str(section.key).strip()].append(section)
+
+    selected_ids = {id(section) for section in roots}
+    included: list[dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
+    dependency_cache: dict[int, list[tuple[str, str, Any]]] = {}
+
+    def dependencies(section: Any) -> list[tuple[str, str, Any]]:
+        section_id = id(section)
+        if section_id in dependency_cache:
+            return dependency_cache[section_id]
+        section_key = str(section.key).strip()
+        resolved: list[tuple[str, str, Any]] = []
+        for field_name in fields:
+            dependency_key = str(section.fields.get(field_name) or "").strip()
+            if not dependency_key:
+                continue
+            candidates = by_key.get(dependency_key, [])
+            if not candidates:
+                evidence = {
+                    "section": section,
+                    "parent_section_id": section_key,
+                    "field": field_name,
+                    "dependency_section_id": dependency_key,
+                }
+                if missing_mode == "error":
+                    raise ValueError(
+                        f"Transformation profile '{profile_id}' section {section_key} references "
+                        f"missing dependency {dependency_key} through {field_name}."
+                    )
+                missing.append(evidence)
+                continue
+            if len(candidates) > 1:
+                raise ValueError(
+                    f"Transformation profile '{profile_id}' section {section_key} references "
+                    f"ambiguous dependency {dependency_key}; the source contains multiple sections "
+                    "with that key."
+                )
+            dependency = candidates[0]
+            resolved.append((field_name, dependency_key, dependency))
+        dependency_cache[section_id] = resolved
+        return resolved
+
+    def include(parent: Any, field_name: str, dependency_key: str, dependency: Any) -> None:
+        if id(dependency) in selected_ids:
+            return
+        selected_ids.add(id(dependency))
+        included.append(
+            {
+                "section": dependency,
+                "parent_section_id": str(parent.key).strip(),
+                "field": field_name,
+                "dependency_section_id": dependency_key,
+            }
+        )
+
+    if not transitive:
+        for root in roots:
+            for field_name, dependency_key, dependency in dependencies(root):
+                include(root, field_name, dependency_key, dependency)
+    else:
+        # Iterative depth-first traversal avoids call-stack limits for long but
+        # valid chains while retaining explicit gray/black cycle detection.
+        state: dict[int, int] = {}
+        for root in roots:
+            if state.get(id(root)) == 2:
+                continue
+            stack: list[tuple[Any, int]] = [(root, 0)]
+            while stack:
+                section, edge_index = stack[-1]
+                section_id = id(section)
+                if state.get(section_id, 0) == 0:
+                    state[section_id] = 1
+                edges = dependencies(section)
+                if edge_index >= len(edges):
+                    state[section_id] = 2
+                    stack.pop()
+                    continue
+                stack[-1] = (section, edge_index + 1)
+                field_name, dependency_key, dependency = edges[edge_index]
+                include(section, field_name, dependency_key, dependency)
+                dependency_state = state.get(id(dependency), 0)
+                if dependency_state == 1:
+                    raise ValueError(
+                        f"Transformation profile '{profile_id}' found a section dependency cycle "
+                        f"at {dependency_key}."
+                    )
+                if dependency_state == 0:
+                    stack.append((dependency, 0))
+
+    selected = [section for section in sections if id(section) in selected_ids]
+    return selected, included, missing
 
 
 class WorkbookLayoutContract:
@@ -681,13 +825,20 @@ class SafeWorkbookUpdater:
             allowed_style_changes: dict[tuple[int, int], dict[str, Any]] = {}
 
             selection_cond = self.parameters.get("section_selection")
-            relevant = []
+            selection_roots = []
             for s in sections:
                 if selection_cond:
                     if _section_condition_matches(s, selection_cond):
-                        relevant.append(s)
+                        selection_roots.append(s)
                 else:
-                    relevant.append(s)
+                    selection_roots.append(s)
+
+            relevant, dependency_inclusions, missing_selection_dependencies = _expand_section_selection(
+                sections,
+                selection_roots,
+                self.parameters.get("section_selection_dependencies"),
+                self.profile_id,
+            )
 
             relevant_ids = {id(s) for s in relevant}
 
@@ -713,6 +864,21 @@ class SafeWorkbookUpdater:
                 }
                 events.append(item)
                 return item
+
+            for inclusion in dependency_inclusions:
+                event(
+                    inclusion["section"],
+                    "INCLUDED_DEPENDENCY_SECTION",
+                    parent_section_id=inclusion["parent_section_id"],
+                    dependency_field=inclusion["field"],
+                )
+            for missing_dependency in missing_selection_dependencies:
+                event(
+                    missing_dependency["section"],
+                    "IGNORED_MISSING_SELECTION_DEPENDENCY",
+                    dependency_section_id=missing_dependency["dependency_section_id"],
+                    dependency_field=missing_dependency["field"],
+                )
 
             def update_cell(row, col, value, style_prop=None, style_val=None):
                 old = ws.cell(row, col).value
@@ -1262,6 +1428,16 @@ class SafeWorkbookUpdater:
                 "excluded_sections_count": len(sections) - len(relevant),
                 "relevant_materials_count": len(relevant),
                 "excluded_materials_count": len(sections) - len(relevant),
+                "selection_root_sections_count": len(selection_roots),
+                "selection_dependency_sections_count": len(dependency_inclusions),
+                "selection_missing_dependencies": [
+                    {
+                        "parent_section_id": item["parent_section_id"],
+                        "field": item["field"],
+                        "dependency_section_id": item["dependency_section_id"],
+                    }
+                    for item in missing_selection_dependencies
+                ],
                 "total_rows_inserted": sum(map(len, insertions.values())),
                 "out_of_horizon_records_count": sum(e["status"] == "OUTSIDE_PLANNING_HORIZON" for e in events),
                 "status_counts": dict(Counter(e["status"] for e in events)),

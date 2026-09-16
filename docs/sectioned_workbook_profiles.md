@@ -82,6 +82,24 @@ after the numeric/text sort and only to selected sections. Excluded dependencies
 remain excluded and accounted for in the audit. Duplicate selected keys, cycles,
 or an ordering rule that drops a selected section fail before publication.
 
+When the selected business scope also includes referenced sections, configure
+`parameters.section_selection_dependencies` separately. Its `fields` list names
+section fields containing exact section identifiers. `transitive` controls whether
+the engine follows only references from the original selection or the complete
+reachable chain. `missing` is `ignore` or `error`; ignored references remain visible
+as `IGNORED_MISSING_SELECTION_DEPENDENCY` audit events. Included sections produce
+`INCLUDED_DEPENDENCY_SECTION` events and retain all of their source records. Matching
+is exact and source-driven, so profiles do not need fixed material or asset lists.
+Referenced duplicate keys and reachable cycles fail before publication.
+
+```json
+"section_selection_dependencies": {
+  "fields": ["component", "subcomponent"],
+  "transitive": true,
+  "missing": "ignore"
+}
+```
+
 Generated rows use the formatting and row height at `data_start_row`; the original
 headers, blank formatted rows and all other sheets remain preserved.
 
