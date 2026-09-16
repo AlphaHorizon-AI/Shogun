@@ -13,6 +13,7 @@ from openpyxl.styles import PatternFill
 from shogun.services.sectioned_workbook_pipeline import SectionedLayoutParser
 from shogun.services.sectioned_workbook_updater import (
     SafeWorkbookUpdater,
+    WorkbookPreservationComparator,
     validate_workbook_update_profile,
 )
 
@@ -105,6 +106,77 @@ def dependency_population(population):
         "dependencies_before": {"fields": ["dependency"], "missing": "error"},
     }
     return population
+
+
+@pytest.fixture
+def component_population(population):
+    _, profile = population
+    profile["parameters"]["selector_fields"] = [{
+        "target": "component",
+        "scope_pattern": r"(?s)\A(?P<body>.*)\Z",
+        "line_pattern": r"(?m)^Component: (?P<value>\S+) (?P<text>.+)$",
+        "minimum_matches": 1, "maximum_matches": 1,
+        "distinct": True, "on_cardinality_mismatch": "preserve",
+    }]
+    profile["parameters"]["resolution_groups"] = [{
+        "name": "equipment_component", "targets": ["component"],
+        "status_target": "component_status", "requires_review_target": "component_review",
+    }]
+    return population
+
+
+@pytest.mark.parametrize("components,use_resolution,review_required", [
+    ("", True, True),
+    ("Component: PART-A lower\nComponent: PART-B lower\n", True, True),
+    ("Component: PART-A lower\nComponent: PART-B lower\n", False, True),
+    ("Component: PART-A lower\n", True, False),
+])
+def test_selected_source_field_uncertainty_requires_review_without_losing_records(
+    component_population, tmp_path, components, use_resolution, review_required,
+):
+    template, profile = component_population
+    if not use_resolution:
+        del profile["parameters"]["resolution_groups"]
+    before = template.read_bytes()
+    path, summary = execute(component_population, tmp_path, (
+        f"Equipment: UNIT-100 Size: 100\n{components}JOB-1 7 2026-07-06\n"
+    ))
+    comparison = WorkbookPreservationComparator().compare_workbooks(template, path, summary)
+    assert comparison["status"] == "PASS"
+    assert comparison["review_required"] is review_required
+    assert any(event["status"] == "SOURCE_FIELD_REVIEW" for event in summary["events"]) is review_required
+    assert summary["normalized_record_count"] == summary["accounted_record_count"] == 1
+    assert schedule_rows(path) == [
+        ("100", "UNIT-100", None, None, None, None, None, None, None),
+        (None, "UNIT-100", "JOB-1", None, datetime.datetime(2026, 7, 6), None, 7, None, None),
+    ]
+    assert template.read_bytes() == before
+
+
+@pytest.mark.parametrize("components,use_resolution", [
+    ("", True),
+    ("Component: PART-A lower\nComponent: PART-B lower\n", True),
+    ("Component: PART-A lower\nComponent: PART-B lower\n", False),
+])
+def test_excluded_source_field_uncertainty_does_not_flag_selected_output(
+    component_population, tmp_path, components, use_resolution,
+):
+    template, profile = component_population
+    if not use_resolution:
+        del profile["parameters"]["resolution_groups"]
+    profile["parameters"]["section_selection"] = {"field": "id", "operator": "equals", "value": "KEEP-100"}
+    path, summary = execute(component_population, tmp_path, (
+        "Equipment: KEEP-100 Size: 100\nComponent: PART-A lower\nJOB-1 7 2026-07-06\n\f"
+        f"Equipment: EXCLUDED-200 Size: 200\n{components}JOB-2 9 2026-07-13\n"
+    ))
+    comparison = WorkbookPreservationComparator().compare_workbooks(template, path, summary)
+    assert comparison["status"] == "PASS"
+    assert comparison["review_required"] is False
+    assert "SOURCE_FIELD_REVIEW" not in summary["status_counts"]
+    assert summary["status_counts"]["EXCLUDED_RECORD"] == 1
+    assert summary["normalized_record_count"] == summary["accounted_record_count"] == 2
+    assert len(schedule_rows(path)) == 2
+    assert {row[1] for row in schedule_rows(path)} == {"KEEP-100"}
 
 
 def test_populates_current_sections_and_separate_records_preserving_template(population, tmp_path):

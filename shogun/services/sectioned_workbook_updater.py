@@ -783,6 +783,18 @@ class SafeWorkbookUpdater:
                             event(s, "EXCLUDED_RECORD", rec)
                         continue
 
+                    unresolved_fields = [
+                        state for state in getattr(s, "resolution_states", [])
+                        if state.get("requires_manual_validation")
+                    ]
+                    ambiguous_fields = [
+                        target for target, outcome in getattr(s, "selector_outcomes", {}).items()
+                        if outcome == "ambiguous"
+                    ]
+                    if unresolved_fields or ambiguous_fields:
+                        event(s, "SOURCE_FIELD_REVIEW", confidence="REVIEW",
+                              resolution_states=unresolved_fields, ambiguous_fields=ambiguous_fields)
+
                     groups = blocks.get(s_key, [])
                     if counts[s_key] != 1 or (len(groups) != 1 and not populate_template):
                         status = sec_not_found_status if not groups and not populate_template else ambig_sec_status

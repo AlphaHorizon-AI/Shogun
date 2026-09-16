@@ -111,6 +111,8 @@ The engine preserves baseline cells and formatting, rejects ambiguous record pla
 and retains one disposition per source record. Reports include normalized source records,
 the audit, permitted changes, and a preservation comparison. A reference workbook with a
 compatible layout can supply row comparison metrics; a prose reference cannot.
+Ambiguous selectors and unresolved configured `resolution_groups` on selected sections
+flag the output for review, while still allowing source-backed records to be written.
 
 New rows retain source identities and written values in a hidden provenance worksheet,
 bound to the profile hash. Reordered source records and planner edits do not create duplicate
