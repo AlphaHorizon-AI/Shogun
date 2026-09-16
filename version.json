@@ -1,8 +1,8 @@
 {
-  "version": "1.47.106",
+  "version": "1.47.107",
   "name": "Shogun AFM",
-  "build": 257,
+  "build": 258,
   "channel": "stable",
-  "released": "2026-09-14T14:44:07Z",
-  "changelog": "Add generic private-profile PDF-to-Excel workbook updates and the Yellow Label SkillOpt Lab preview with local skill management. Unfinished optimization, regression execution and benchmarking are explicitly unavailable."
+  "released": "2026-09-16T07:32:13Z",
+  "changelog": "Document ToolGrad textual gradient diagnostics and Yellow Label SkillOpt Lab execution boundaries in the Grand Reference Guide."
 }

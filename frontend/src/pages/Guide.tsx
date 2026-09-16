@@ -2039,6 +2039,11 @@ export function Guide() {
                      <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-fuchsia-400" /> Runtime Learning</div>
                      <p className="text-xs text-shogun-subdued leading-relaxed">Existing SkillOpt training uses skill usage events to generate and validate candidate instructions. Review validated candidates before promoting them. The existing training and promotion services remain available alongside the new Lab preview.</p>
                   </div>
+                  <div className="shogun-card space-y-3 border-l-2 border-cyan-400/50">
+                     <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-cyan-400" /> ToolGrad — Textual Gradient Diagnostics</div>
+                     <p className="text-xs text-shogun-subdued leading-relaxed">ToolGrad turns a failed or weak evaluation result into structured diagnostic feedback: a failure summary, likely root causes, recommended changes, per-dimension feedback, and constraints to preserve. Hard failures receive targeted remediation guidance; dimensions below the evaluation threshold receive feedback on task success, correctness, policy compliance, tool efficiency, robustness, latency, and cost.</p>
+                     <p className="text-xs text-shogun-subdued leading-relaxed">ToolGrad helps an operator review a candidate and plan a safe revision. It does not edit an active skill version, invoke tools, or run the optimization loop by itself. In this Yellow Label preview, the diagnostic schema and inspection surface are available, while automated optimization, real tool execution, regression execution, and model benchmarking remain unavailable.</p>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      <div className="shogun-card space-y-3 border-l-2 border-fuchsia-400/40">
                         <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-fuchsia-400" /> Local Skill Management</div>
