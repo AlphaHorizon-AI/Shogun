@@ -243,9 +243,10 @@ def validate_matrix_profile_execution(profile: dict[str, Any]) -> None:
     """Keep workbook preservation rules out of the row-matrix execution path."""
     if "workbook_update" in (profile.get("parameters") or {}):
         raise ValueError(
-            "This rules file updates an existing Excel workbook. Use Files > Excel - Create > "
+            "This rules file requires the workbook pipeline. Use Files > Excel - Create > "
             "Update existing workbook from PDFs, and select the rules file, original workbook "
-            "and source PDFs there. Remove the Samurai extraction step from this path."
+            "and source PDFs there. Alternatively, connect an Excel File Template and full PDF Read "
+            "nodes to the Samurai, then connect it directly to a Files > Excel - Create writer."
         )
 
 

@@ -25,6 +25,7 @@ from openpyxl.utils.cell import coordinate_from_string
 from shogun.services.structured_transformations import (
     _canonical_header,
     _compile_pattern,
+    _order_sections,
     _planning_column_for_month,
     _planning_header_month,
     _profile_regex_budget,
@@ -747,6 +748,16 @@ class SafeWorkbookUpdater:
             with _profile_regex_budget(self.profile_id):
                 if populate_template and self.policy.get("template_section_sort"):
                     sections = sorted(sections, key=self._template_section_sort_key)
+                if populate_template and self.parameters.get("section_order"):
+                    selected = [section for section in sections if id(section) in relevant_ids]
+                    if any(count != 1 for count in counts.values()):
+                        raise ValueError("Template section ordering requires unique selected section keys.")
+                    ordered = _order_sections(selected, self.parameters, self.profile_id)
+                    if Counter(map(id, ordered)) != Counter(map(id, selected)):
+                        raise ValueError("Template section ordering must retain every selected section.")
+                    # Selection still controls inclusion. Keep excluded sections so
+                    # their source records receive an explicit audit disposition.
+                    sections = ordered + [section for section in sections if id(section) not in relevant_ids]
                 for s in sections:
                     s_key = section_key_fn(s)
                     for exc in getattr(s, "exceptions", []):

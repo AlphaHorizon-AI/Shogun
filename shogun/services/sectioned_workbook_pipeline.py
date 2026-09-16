@@ -556,6 +556,7 @@ def run_sectioned_workbook_pipeline(
     options: dict[str, Any] | None = None,
     cancel_event: Event | None = None,
     profile_source_path: Path | str | None = None,
+    expected_input_hashes: dict[Path | str, str] | None = None,
 ) -> dict[str, Any]:
     from shogun.services.private_transformation_profiles import (
         PrivateTransformationProfileService,
@@ -638,6 +639,20 @@ def run_sectioned_workbook_pipeline(
 
     # Compute upfront SHA-256 hashes
     hashes = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
+    if expected_input_hashes is not None:
+        if not isinstance(expected_input_hashes, dict):
+            raise ValueError("Expected input hashes must be a dictionary.")
+        expected = {}
+        for raw_path, digest in expected_input_hashes.items():
+            path = Path(raw_path)
+            # Keep the originally resolved path itself pinned. Resolving it
+            # again could accept a symlink redirected after job preparation.
+            if (not path.is_absolute() or ".." in path.parts
+                    or not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)):
+                raise ValueError("Expected input hashes require absolute paths and SHA-256 digests.")
+            expected[path] = digest
+        if expected != hashes:
+            raise ValueError("Workbook inputs changed after the Samurai step; run the flow again.")
     if len({hashes[p] for p in pdfs}) != len(pdfs):
         raise ValueError("Duplicate input PDF content.")
 

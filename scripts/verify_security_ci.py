@@ -19,6 +19,7 @@ RUFF_PATHS = (
     "shogun/services/structured_transformations.py",
     "shogun/services/sectioned_workbook_pipeline.py",
     "shogun/services/sectioned_workbook_updater.py",
+    "shogun/services/samurai_workbook_job.py",
     "shogun/engine/vector_store.py",
     "shogun/api/a2a.py",
     "shogun/api/control_plane_auth.py",
@@ -65,6 +66,8 @@ RUFF_PATHS = (
 )
 
 PYTEST_PATHS = (
+    "tests/test_samurai_workbook_dag.py",
+    "tests/test_samurai_workbook_jobs.py",
     "tests/test_workbook_template_population.py",
     "tests/test_structured_transformations.py",
     "tests/test_files_workbook_transform.py",

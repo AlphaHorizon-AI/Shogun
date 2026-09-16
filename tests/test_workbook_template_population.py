@@ -83,6 +83,30 @@ def execute(population, tmp_path, text, filename="result.xlsx"):
     return path, summary
 
 
+def schedule_rows(path):
+    book = openpyxl.load_workbook(path)
+    try:
+        return [
+            row for row in book["Schedule"].iter_rows(min_row=3, max_col=9, values_only=True)
+            if any(value is not None for value in row)
+        ]
+    finally:
+        book.close()
+
+
+@pytest.fixture
+def dependency_population(population):
+    _, profile = population
+    profile["parameters"]["section_pattern"] = (
+        r"(?m)^Equipment: (?P<id>\S+) Size: (?P<size>\d+)"
+        r"(?: Dependency: (?P<dependency>\S+))?$"
+    )
+    profile["parameters"]["section_order"] = {
+        "dependencies_before": {"fields": ["dependency"], "missing": "error"},
+    }
+    return population
+
+
 def test_populates_current_sections_and_separate_records_preserving_template(population, tmp_path):
     template, _ = population
     before = hashlib.sha256(template.read_bytes()).hexdigest()
@@ -107,6 +131,118 @@ def test_populates_current_sections_and_separate_records_preserving_template(pop
     assert sheet["F1"].value == "Overdue" and sheet["I1"].value == ">= Sep 2026"
     book.close()
     assert hashlib.sha256(template.read_bytes()).hexdigest() == before
+
+
+def test_fresh_run_rebuilds_changed_and_removed_jobs_from_current_sources(population, tmp_path):
+    template, _ = population
+    before = template.read_bytes()
+    first_path, first_summary = execute(population, tmp_path, (
+        "Equipment: KEEP-100 Size: 100\nJOB-1 4 2026-07-06\nJOB-2 7 2026-07-13\n\f"
+        "Equipment: RETIRED-200 Size: 200\nJOB-3 12 2026-08-10\n"
+    ), "first.xlsx")
+    first_bytes = first_path.read_bytes()
+    first_rows = schedule_rows(first_path)
+    second_path, second_summary = execute(population, tmp_path, (
+        "Equipment: KEEP-100 Size: 100\nJOB-1 9 2026-08-03\n\f"
+        "Equipment: ADDED-300 Size: 300\nJOB-4 6 2026-10-05\n"
+    ), "second.xlsx")
+    second_rows = schedule_rows(second_path)
+
+    assert first_summary["normalized_record_count"] == first_summary["accounted_record_count"] == 3
+    assert second_summary["normalized_record_count"] == second_summary["accounted_record_count"] == 2
+    assert len(first_rows) == 5
+    assert len(second_rows) == 4
+    assert {row[1] for row in first_rows} == {"KEEP-100", "RETIRED-200"}
+    assert {row[1] for row in second_rows} == {"KEEP-100", "ADDED-300"}
+    first_jobs = {row[2]: row for row in first_rows if row[2]}
+    second_jobs = {row[2]: row for row in second_rows if row[2]}
+    assert set(first_jobs) == {"JOB-1", "JOB-2", "JOB-3"}
+    assert set(second_jobs) == {"JOB-1", "JOB-4"}
+    assert first_jobs["JOB-1"][4:] == (datetime.datetime(2026, 7, 6), None, 4, None, None)
+    assert second_jobs["JOB-1"][4:] == (datetime.datetime(2026, 8, 3), None, None, 9, None)
+    assert second_jobs["JOB-4"][4:] == (datetime.datetime(2026, 10, 5), None, None, None, 6)
+    assert template.read_bytes() == before
+    assert first_path.read_bytes() == first_bytes
+
+
+def test_source_reordering_and_continuation_pages_keep_the_same_workbook_records(population, tmp_path):
+    template, _ = population
+    before = template.read_bytes()
+    first_path, first_summary = execute(population, tmp_path, (
+        "Equipment: UNIT-400 Size: 400\nJOB-3 4 2026-10-05\n\f"
+        "Equipment: UNIT-200 Size: 200\nJOB-1 2 2026-06-08\nJOB-2 3 2026-07-13\n"
+    ), "original_order.xlsx")
+    reordered_path, reordered_summary = execute(population, tmp_path, (
+        "Equipment: UNIT-200 Size: 200\nJOB-2 3 2026-07-13\n\f"
+        "JOB-1 2 2026-06-08\n\f"
+        "Equipment: UNIT-400 Size: 400\nJOB-3 4 2026-10-05\n"
+    ), "different_pages.xlsx")
+    original = schedule_rows(first_path)
+    reordered = schedule_rows(reordered_path)
+    assert [row[1] for row in original if row[2] is None] == ["UNIT-200", "UNIT-400"]
+    assert [row[1] for row in reordered if row[2] is None] == ["UNIT-200", "UNIT-400"]
+    assert sorted(original, key=lambda row: (row[1], row[2] or "")) == sorted(
+        reordered, key=lambda row: (row[1], row[2] or ""),
+    )
+    for summary in (first_summary, reordered_summary):
+        assert summary["normalized_record_count"] == summary["accounted_record_count"] == 3
+        assert summary["total_rows_inserted"] == 5
+    assert template.read_bytes() == before
+
+
+def test_configured_dependencies_appear_before_parent_even_when_size_sorts_later(dependency_population, tmp_path):
+    path, summary = execute(dependency_population, tmp_path, (
+        "Equipment: ASSEMBLY-100 Size: 100 Dependency: COMPONENT-900\nJOB-1 4 2026-07-06\n\f"
+        "Equipment: INDEPENDENT-200 Size: 200\nJOB-2 7 2026-08-03\n\f"
+        "Equipment: COMPONENT-900 Size: 900\nJOB-3 2 2026-07-13\n"
+    ))
+    rows = schedule_rows(path)
+    assert [row[1] for row in rows if row[2] is None] == [
+        "COMPONENT-900", "ASSEMBLY-100", "INDEPENDENT-200",
+    ]
+    assert summary["total_rows_inserted"] == 6
+    assert summary["normalized_record_count"] == summary["accounted_record_count"] == 3
+
+
+def test_dependency_order_does_not_reintroduce_excluded_sections(dependency_population, tmp_path):
+    _, profile = dependency_population
+    parameters = profile["parameters"]
+    parameters["section_selection"] = {"field": "id", "operator": "equals", "value": "ASSEMBLY-100"}
+    parameters["section_order"]["dependencies_before"]["missing"] = "ignore"
+    path, summary = execute(dependency_population, tmp_path, (
+        "Equipment: ASSEMBLY-100 Size: 100 Dependency: EXCLUDED-900\nJOB-1 4 2026-07-06\n\f"
+        "Equipment: EXCLUDED-900 Size: 900\nJOB-2 7 2026-08-03\nJOB-3 2 2026-07-13\n"
+    ))
+    rows = schedule_rows(path)
+    assert {row[1] for row in rows} == {"ASSEMBLY-100"}
+    assert summary["total_rows_inserted"] == 2
+    assert summary["status_counts"]["EXCLUDED_SECTION"] == 1
+    assert summary["status_counts"]["EXCLUDED_RECORD"] == 2
+    assert summary["normalized_record_count"] == summary["accounted_record_count"] == 3
+
+
+def test_dependency_order_refuses_duplicate_selected_section_keys(dependency_population, tmp_path):
+    template, _ = dependency_population
+    before = template.read_bytes()
+    with pytest.raises(ValueError, match="unique selected section keys"):
+        execute(dependency_population, tmp_path, (
+            "Equipment: DUPLICATE-100 Size: 100\nJOB-1 4 2026-07-06\n\f"
+            "Equipment: DUPLICATE-100 Size: 100\nJOB-2 7 2026-08-03\n"
+        ))
+    assert not (tmp_path / "result.xlsx").exists()
+    assert template.read_bytes() == before
+
+
+def test_dependency_order_refuses_cycles_without_publishing_workbook(dependency_population, tmp_path):
+    template, _ = dependency_population
+    before = template.read_bytes()
+    with pytest.raises(ValueError, match="dependency cycle"):
+        execute(dependency_population, tmp_path, (
+            "Equipment: ASSEMBLY-100 Size: 100 Dependency: COMPONENT-200\nJOB-1 4 2026-07-06\n\f"
+            "Equipment: COMPONENT-200 Size: 200 Dependency: ASSEMBLY-100\nJOB-2 7 2026-08-03\n"
+        ))
+    assert not (tmp_path / "result.xlsx").exists()
+    assert template.read_bytes() == before
 
 
 def test_new_materials_and_new_months_do_not_require_profile_changes(population, tmp_path):
