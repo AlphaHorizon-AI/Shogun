@@ -2031,30 +2031,55 @@ export function Guide() {
                   <div className="flex items-center gap-3 border-b-2 border-fuchsia-400/40 pb-3">
                      <BrainCircuit className="w-6 h-6 text-fuchsia-400" />
                      <div>
-                        <h4 className="text-xl font-bold uppercase tracking-widest">SkillOpt — Skill Improvement &amp; Local Versions</h4>
-                        <p className="text-xs text-shogun-subdued">Runtime learning, local version controls, and the SkillOpt Lab preview.</p>
+                        <h4 className="text-xl font-bold uppercase tracking-widest">SkillOpt — Skill Improvement, ToolGrad &amp; Local Versions</h4>
+                        <p className="text-xs text-shogun-subdued">Inspect how a skill uses tools, review ToolGrad diagnostics, and manage local versions. Yellow Label Lab execution remains unavailable.</p>
                      </div>
                   </div>
+
                   <div className="shogun-card space-y-3">
-                     <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-fuchsia-400" /> Runtime Learning</div>
-                     <p className="text-xs text-shogun-subdued leading-relaxed">Existing SkillOpt training uses skill usage events to generate and validate candidate instructions. Review validated candidates before promoting them. The existing training and promotion services remain available alongside the new Lab preview.</p>
+                     <div className="font-bold text-shogun-text flex items-center gap-2"><GitMerge className="w-4 h-4 text-fuchsia-400" /> What SkillOpt and ToolGrad do</div>
+                     <p className="text-sm text-shogun-subdued leading-relaxed">SkillOpt Lab lives in <strong>Katana → SkillOpt</strong>. It connects a skill, approved tools, test cases with known answers, model settings, and budgets. In the full workflow, a model proposes a better sequence of tool calls; Shogun executes it, evaluates the result, and saves a candidate. ToolGrad then turns hard failures or weak dimensions into a failure summary, root causes, recommended adjustments, per-dimension feedback, and constraints to preserve.</p>
+                     <p className="text-sm text-shogun-subdued leading-relaxed">“Training” here means improving the skill instructions. It does not change model weights, and the active skill stays in place until an operator reviews and approves a replacement. The Yellow Label preview stores Lab configuration and run records and exposes the diagnostic inspection surface; it does not run the Lab optimization loop.</p>
+                     <p className="text-sm text-shogun-subdued leading-relaxed">If the Lab is disabled, an administrator must set <code>SKILLOPT_LAB_ENABLED=true</code> in the server configuration and restart Shogun. Choose an eligible connected model. “Local only” requires a local model; cloud runs need the relevant data-sharing approval.</p>
                   </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="shogun-card space-y-2 border-l-2 border-fuchsia-400/40">
+                        <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-fuchsia-400" /> From an idea to a reviewed skill</div>
+                        <ol className="list-decimal pl-5 space-y-2 text-sm text-shogun-subdued leading-relaxed">
+                           <li><strong>Prepare the test.</strong> Select a skill, approved tools, test cases, expected answers, and limits for time, calls, and spending. Saving this configuration is available locally.</li>
+                           <li><strong>Run optimization.</strong> The full workflow would compare current instructions with a proposed candidate and inspect failures, tool calls, costs, and changes. Yellow Label marks Lab execution unavailable and produces no simulated scores or usage totals.</li>
+                           <li><strong>Read ToolGrad.</strong> When evaluation evidence is present, inspect the failure summary, root causes, recommended adjustments, dimension feedback, and constraints before changing the skill.</li>
+                           <li><strong>Review activation.</strong> Use local version management to inspect, quarantine, promote, or roll back a candidate. The preview does not create an automatically generated Lab candidate to activate.</li>
+                           <li><strong>Repeat and compare.</strong> Regression execution, model benchmarking, and automatic qualification remain unavailable in this Yellow Label release.</li>
+                        </ol>
+                     </div>
+                     <div className="shogun-card space-y-2 border-l-2 border-fuchsia-400/40">
+                        <div className="font-bold text-shogun-text flex items-center gap-2"><Activity className="w-4 h-4 text-fuchsia-400" /> What happens automatically?</div>
+                        <p className="text-sm text-shogun-subdued leading-relaxed">Existing runtime learning can use skill usage events to generate and validate candidate instructions. Review validated candidates before promoting them.</p>
+                        <p className="text-sm text-shogun-subdued leading-relaxed">Yellow Label does not run scheduled or reactive Lab optimization. Creating a Lab run records its configuration; executing it reports <code>EXECUTION_UNAVAILABLE</code>. No external calls, candidate activation, regression execution, or benchmark is triggered.</p>
+                        <p className="text-sm text-shogun-subdued leading-relaxed">Local version, quarantine, and rollback actions remain manual and auditable. They do not cancel work that is already running.</p>
+                     </div>
+                  </div>
+
                   <div className="shogun-card space-y-3 border-l-2 border-cyan-400/50">
-                     <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-cyan-400" /> ToolGrad — Textual Gradient Diagnostics</div>
-                     <p className="text-xs text-shogun-subdued leading-relaxed">ToolGrad turns a failed or weak evaluation result into structured diagnostic feedback: a failure summary, likely root causes, recommended changes, per-dimension feedback, and constraints to preserve. Hard failures receive targeted remediation guidance; dimensions below the evaluation threshold receive feedback on task success, correctness, policy compliance, tool efficiency, robustness, latency, and cost.</p>
-                     <p className="text-xs text-shogun-subdued leading-relaxed">ToolGrad helps an operator review a candidate and plan a safe revision. It does not edit an active skill version, invoke tools, or run the optimization loop by itself. In this Yellow Label preview, the diagnostic schema and inspection surface are available, while automated optimization, real tool execution, regression execution, and model benchmarking remain unavailable.</p>
+                     <div className="font-bold text-shogun-text flex items-center gap-2"><Sparkles className="w-4 h-4 text-cyan-400" /> ToolGrad — understand the evidence before trusting the result</div>
+                     <p className="text-sm text-shogun-subdued leading-relaxed"><strong>ToolGrad</strong> is textual diagnostic feedback, not model training. It explains what failed or weakened, why it likely happened, what to adjust, and which constraints to preserve. Its evaluator dimensions are task success, correctness, policy compliance, tool efficiency, robustness, latency, and cost.</p>
+                     <p className="text-sm text-shogun-subdued leading-relaxed">A green result proves only that the recorded cases passed in that environment. It does not prove every task or model will work. Costs and usage must be known; missing values are not treated as free evidence. Tool permissions and the emergency stop remain authoritative throughout.</p>
+                     <p className="text-sm text-shogun-subdued leading-relaxed">The Yellow Label preview accepts only explicitly labeled <strong>mock</strong> responses. Fixture, replay, sandbox, test-tenant, approved-live, and other real tool execution are unavailable, so those environments cannot supply activation evidence in this release.</p>
                   </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      <div className="shogun-card space-y-3 border-l-2 border-fuchsia-400/40">
                         <div className="font-bold text-shogun-text flex items-center gap-2"><Layers className="w-4 h-4 text-fuchsia-400" /> Local Skill Management</div>
-                        <p className="text-xs text-shogun-subdued leading-relaxed">Browse retained versions or roll back to a retained version of the same skill. Quarantine blocks new activations of that skill; clearing quarantine restores its previous availability. Protected built-in skills cannot be changed through these controls.</p>
-                        <p className="text-xs text-shogun-subdued leading-relaxed">Version changes stay on this installation. Quarantine does not cancel work that is already running.</p>
+                        <p className="text-sm text-shogun-subdued leading-relaxed">Browse retained versions or roll back to a retained version of the same skill. Quarantine blocks new activations of that skill; clearing quarantine restores its previous availability. Protected built-in skills cannot be changed through these controls.</p>
+                        <p className="text-sm text-shogun-subdued leading-relaxed">Version changes stay on this installation. Review the complete instructions and evidence before promoting a candidate.</p>
                      </div>
                      <div className="shogun-card space-y-3 border-l-2 border-amber-400/60">
                         <div className="font-bold text-amber-400">SkillOpt Lab Preview</div>
-                        <p className="text-xs text-shogun-subdued leading-relaxed">You can create regression suites and test cases, record Lab run configuration, and inspect local version information. Automated Lab optimization, regression execution, and model benchmarking are not available in this release.</p>
-                        <p className="text-xs text-shogun-subdued leading-relaxed">Execution requests report that they are unavailable. They do not produce pass rates, model competence scores, or simulated usage totals. The optional regression sweep is disabled by default and skips unavailable evaluations.</p>
-                        <p className="text-xs text-shogun-subdued leading-relaxed">Only explicitly labeled mock responses are supported by the preview executor. Fixture, replay, sandbox, tenant, and live execution are unavailable.</p>
+                        <p className="text-sm text-shogun-subdued leading-relaxed">You can create regression suites and test cases, record Lab run configuration, and inspect local version information. Automated Lab optimization, regression execution, and model benchmarking are not available in this release.</p>
+                        <p className="text-sm text-shogun-subdued leading-relaxed">Execution requests report that they are unavailable. They do not produce pass rates, model competence scores, or simulated usage totals. The optional regression sweep is disabled by default and skips unavailable evaluations.</p>
+                        <p className="text-sm text-shogun-subdued leading-relaxed">Enterprise publication is unavailable in Yellow Label; changes remain on this Shogun installation.</p>
                      </div>
                   </div>
                </section>

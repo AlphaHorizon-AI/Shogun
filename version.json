@@ -1,8 +1,8 @@
 {
-  "version": "1.47.107",
+  "version": "1.47.108",
   "name": "Shogun AFM",
-  "build": 258,
+  "build": 259,
   "channel": "stable",
-  "released": "2026-09-16T07:32:13Z",
-  "changelog": "Document ToolGrad textual gradient diagnostics and Yellow Label SkillOpt Lab execution boundaries in the Grand Reference Guide."
+  "released": "2026-09-16T10:31:39Z",
+  "changelog": "Expand the Yellow Label Grand Reference Guide with the White Label-style SkillOpt and ToolGrad workflow, evidence guidance, and execution boundaries."
 }
