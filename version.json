@@ -1,8 +1,8 @@
 {
-  "version": "1.47.109",
+  "version": "1.47.110",
   "name": "Shogun AFM",
-  "build": 260,
+  "build": 261,
   "channel": "stable",
-  "released": "2026-09-16T10:16:48Z",
-  "changelog": "Add Files controls for updating an existing Excel workbook from original PDFs and a private rules file. Direct misplaced workbook-update profiles away from Samurai extraction with a clear setup message, and honor the workbook and worksheet selected for the update."
+  "released": "2026-09-16T12:04:09Z",
+  "changelog": "Allow private PDF-to-workbook rules to fill an empty Excel template using the current source identifiers, configurable section ordering, and separate detail rows. Support configured backlog and future-period headings while preserving the template and existing-plan update behavior."
 }

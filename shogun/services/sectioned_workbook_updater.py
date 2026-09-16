@@ -24,6 +24,8 @@ from openpyxl.utils.cell import coordinate_from_string
 
 from shogun.services.structured_transformations import (
     _canonical_header,
+    _compile_pattern,
+    _planning_column_for_month,
     _planning_header_month,
     _profile_regex_budget,
     _record_matches,
@@ -36,13 +38,34 @@ DEFAULT_METADATA_SHEET = "_shogun_workflow_provenance"
 DEFAULT_METADATA_HEADER = ("schema_v1", "sheet", "row", "source_identity", "written_values", "profile_hash")
 MAX_EXCEL_COLUMNS = 16384
 MAX_EXCEL_ROWS = 1048576
+STYLE_PROPERTIES = (
+    "font", "fill", "border", "alignment", "number_format", "protection", "quotePrefix", "pivotButton",
+)
+
+
+def _same_style(original: Any, actual: Any, allowed_change: dict[str, Any] | None = None) -> bool:
+    # Saving can deduplicate identical style-table entries. Compare their values,
+    # not workbook-local style indexes, while still checking every style property.
+    changed_property = allowed_change.get("property") if allowed_change else None
+    if allowed_change and changed_property not in STYLE_PROPERTIES:
+        return False
+    return all(
+        copy.copy(getattr(actual, name))
+        == (allowed_change["new_value"] if name == changed_property else copy.copy(getattr(original, name)))
+        for name in STYLE_PROPERTIES
+    )
 
 ALLOWED_WORKBOOK_UPDATE_KEYS = {
+    "mode",
+    "template_section_values",
+    "template_section_sort",
     "sheet_name",
     "header_row",
     "data_start_row",
     "section_key_column",
     "planning_start_column",
+    "backlog_headers",
+    "future_header_patterns",
     "require_planning_months",
     "metadata_sheet_name",
     "expected_headers",
@@ -250,6 +273,35 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
     if unknown_keys:
         raise ValueError(f"Unsupported key(s) in workbook_update policy: {', '.join(sorted(unknown_keys))}")
 
+    mode = policy.get("mode", "update_existing")
+    if not isinstance(mode, str) or mode not in {"update_existing", "populate_template"}:
+        raise ValueError("Workbook mode must be 'update_existing' or 'populate_template'.")
+    for key in ("backlog_headers", "future_header_patterns"):
+        if key in policy:
+            values = policy[key]
+            if not isinstance(values, list) or any(not isinstance(v, str) or not v.strip() for v in values):
+                raise ValueError(f"workbook_update.{key} must be a list of non-empty strings.")
+            if key == "future_header_patterns":
+                for pattern in values:
+                    _compile_pattern(pattern, "future planning header")
+    if "template_section_values" in policy:
+        values = policy["template_section_values"]
+        if not isinstance(values, dict) or not values:
+            raise ValueError("template_section_values must be a non-empty column mapping.")
+        for column, spec in values.items():
+            try:
+                column_index = int(column)
+            except (ValueError, TypeError):
+                raise ValueError("Invalid template section column.")
+            _validate_column_index(column_index, "template_section_values")
+            _validate_value_spec(spec, "template_section_values")
+    if "template_section_sort" in policy:
+        specs = policy["template_section_sort"]
+        if not isinstance(specs, list) or not 1 <= len(specs) <= 8:
+            raise ValueError("template_section_sort requires one to eight value specifications.")
+        for spec in specs:
+            _validate_value_spec(spec, "template_section_sort")
+
     header_row = policy.get("header_row", 1)
     header_row = _validate_row_index(header_row, "workbook_update.header_row")
 
@@ -420,12 +472,19 @@ class WorkbookLayoutContract:
                 )
 
         self.month_to_col: dict[str, int] = {}
+        backlog_headers = {str(header).strip().casefold() for header in policy.get("backlog_headers", [])}
+        future_patterns = [
+            _compile_pattern(pattern, "future planning header")
+            for pattern in policy.get("future_header_patterns", [])
+        ]
         if self.planning_start_column is not None:
             for col in range(self.planning_start_column, ws.max_column + 1):
                 val = ws.cell(self.header_row, col).value
                 if val is None:
                     continue
-                if isinstance(val, (datetime.date, datetime.datetime)):
+                if str(val).strip().casefold() in backlog_headers:
+                    key = "backlog"
+                elif isinstance(val, (datetime.date, datetime.datetime)):
                     key = val.strftime("%Y/%m")
                 else:
                     text = str(val).strip()
@@ -443,6 +502,8 @@ class WorkbookLayoutContract:
                                 key = f"{parsed.year:04}/{parsed.month:02}"
                             except ValueError as exc:
                                 raise ValueError(f"Unsupported planning header at column {col}: {val!r}") from exc
+                    if any(pattern.search(text) for pattern in future_patterns):
+                        key = f">={key}"
                 if key in self.month_to_col:
                     raise ValueError(f"Duplicate planning month header: {key}")
                 self.month_to_col[key] = col
@@ -450,8 +511,9 @@ class WorkbookLayoutContract:
         if not self.month_to_col and policy.get("require_planning_months", False):
             raise ValueError("No planning month headers found in workbook.")
         self.col_to_month = {col: key for key, col in self.month_to_col.items()}
-        self.horizon_start = min(self.month_to_col) if self.month_to_col else None
-        self.horizon_end = max(self.month_to_col) if self.month_to_col else None
+        exact_months = [key for key in self.month_to_col if re.fullmatch(r"\d{4}/\d{2}", key)]
+        self.horizon_start = min(exact_months) if exact_months else None
+        self.horizon_end = max(exact_months) if exact_months else None
 
 
 def preflight_workbook(book: Any, sheet: Any) -> None:
@@ -583,6 +645,19 @@ class SafeWorkbookUpdater:
 
             original_rows = ws.max_row
             original_columns = ws.max_column
+            populate_template = self.policy.get("mode", "update_existing") == "populate_template"
+            if populate_template:
+                if any(
+                    cell.value is not None
+                    for row in ws.iter_rows(min_row=contract.data_start_row)
+                    for cell in row
+                ):
+                    raise ValueError(
+                        "Template population requires an empty data area below the headers. "
+                        "Select the empty template, or use an update-existing profile for a populated workbook."
+                    )
+                if metadata_sheet_name in book:
+                    raise ValueError("Template population requires a fresh template without generated provenance.")
             original_dimensions = {row: copy.copy(dim) for row, dim in ws.row_dimensions.items()}
             freeze = ws.freeze_panes
             metadata = self._read_metadata(book, ws, metadata_sheet_name, contract)
@@ -663,10 +738,15 @@ class SafeWorkbookUpdater:
 
             def schedule_insert(sec, anchor, values, status, rec=None, date_format="dd.mm.yyyy"):
                 item = event(sec, status, rec)
+                # Excel reads an explicitly written empty string back as a blank.
+                # New rows already start blank; retain only values that round-trip.
+                values = {column: value for column, value in values.items() if value not in (None, "")}
                 insertions[anchor].append({"values": values, "event": item, "date_format": date_format})
 
             # Evaluate updates within independent profile regex budget
             with _profile_regex_budget(self.profile_id):
+                if populate_template and self.policy.get("template_section_sort"):
+                    sections = sorted(sections, key=self._template_section_sort_key)
                 for s in sections:
                     s_key = section_key_fn(s)
                     for exc in getattr(s, "exceptions", []):
@@ -693,16 +773,28 @@ class SafeWorkbookUpdater:
                         continue
 
                     groups = blocks.get(s_key, [])
-                    if counts[s_key] != 1 or len(groups) != 1:
-                        status = sec_not_found_status if not groups else ambig_sec_status
+                    if counts[s_key] != 1 or (len(groups) != 1 and not populate_template):
+                        status = sec_not_found_status if not groups and not populate_template else ambig_sec_status
                         event(s, status, confidence="REVIEW")
                         for rec in all_recs:
                             event(s, status, rec, confidence="REVIEW")
                         continue
 
-                    rows = groups[0]
-                    anchor = rows[-1]
-                    event(s, sec_matched_status, original_row=rows[0])
+                    if populate_template:
+                        rows = []
+                        anchor = contract.data_start_row - 1
+                        section_values = {
+                            int(column): self._eval_spec(spec, s, None)
+                            for column, spec in self.policy.get("template_section_values", {}).items()
+                        }
+                        # Keep each source section visible, including sections whose
+                        # records need review or which have no stock or orders.
+                        section_values[sec_col] = s_key
+                        schedule_insert(s, anchor, section_values, "CREATED_SECTION")
+                    else:
+                        rows = groups[0]
+                        anchor = rows[-1]
+                        event(s, sec_matched_status, original_row=rows[0])
 
                     # ── In-place section rules evaluation ───────────────────────
                     sec_rules = self.policy.get("section_rules") or []
@@ -745,8 +837,6 @@ class SafeWorkbookUpdater:
 
                         # Replace named fields while preserving regex quantifiers such as {3}.
                         match_pat = re.sub(r"\{([A-Za-z_]\w*)\}", substitute_field, raw_pat)
-
-                        from shogun.services.structured_transformations import _compile_pattern
 
                         compiled_match = _compile_pattern(match_pat, f"section_rule_{sec_rule.get('name', 'match')}")
                         matched_rows = [
@@ -881,6 +971,7 @@ class SafeWorkbookUpdater:
                             if isinstance(rec_date, (datetime.date, datetime.datetime))
                             else ""
                         )
+                        planning_column = _planning_column_for_month(contract.month_to_col, month_key)
 
                         # Evaluate quantity and alternative quantity at the writer boundary from raw record
                         qty = None
@@ -940,7 +1031,7 @@ class SafeWorkbookUpdater:
                             require_horizon
                             and contract.month_to_col
                             and month_key
-                            and month_key not in contract.month_to_col
+                            and planning_column is None
                         ):
                             event(s, "OUTSIDE_PLANNING_HORIZON", r)
                             continue
@@ -951,8 +1042,8 @@ class SafeWorkbookUpdater:
                         for c_str, spec in insert_specs.items():
                             row_values[int(c_str)] = self._eval_spec(spec, s, r)
 
-                        if matched_rule.get("planning_month_quantity") and month_key in contract.month_to_col:
-                            row_values[contract.month_to_col[month_key]] = qty
+                        if matched_rule.get("planning_month_quantity") and planning_column is not None:
+                            row_values[planning_column] = qty
 
                         # Check metadata sheet for rerun idempotency
                         if identity in metadata:
@@ -1072,7 +1163,8 @@ class SafeWorkbookUpdater:
                 return row_idx + sum(len(items) for anch, items in insertions.items() if anch < row_idx)
 
             for anchor, items in sorted(insertions.items(), reverse=True):
-                styles = [copy.copy(ws.cell(anchor, col)._style) for col in range(1, ws.max_column + 1)]
+                style_row = contract.data_start_row if populate_template else anchor
+                styles = [copy.copy(ws.cell(style_row, col)._style) for col in range(1, ws.max_column + 1)]
                 ws.insert_rows(anchor + 1, len(items))
                 for offset, item in enumerate(items, 1):
                     new_r = anchor + offset
@@ -1100,8 +1192,9 @@ class SafeWorkbookUpdater:
                 ws.row_dimensions[moved(r_idx)] = dim
             for anchor, items in insertions.items():
                 for item in items:
-                    if anchor in original_dimensions:
-                        dim = copy.copy(original_dimensions[anchor])
+                    style_row = contract.data_start_row if populate_template else anchor
+                    if style_row in original_dimensions:
+                        dim = copy.copy(original_dimensions[style_row])
                         dim.index = item["row"]
                         ws.row_dimensions[item["row"]] = dim
 
@@ -1128,6 +1221,7 @@ class SafeWorkbookUpdater:
             meta.sheet_state = "hidden"
 
             summary = {
+                "mode": "populate_template" if populate_template else "update_existing",
                 "sheet_name": ws.title,
                 "baseline_rows": original_rows,
                 "row_mapping": {str(r): moved(r) for r in range(1, original_rows + 1)},
@@ -1180,6 +1274,20 @@ class SafeWorkbookUpdater:
     def _eval_spec(self, spec: Any, section: Any, record: Any) -> Any:
         raw = record if isinstance(record, dict) else getattr(record, "raw", None)
         return _resolve_value_spec(spec, section, raw)
+
+    def _template_section_sort_key(self, section: Any) -> tuple:
+        values = []
+        for spec in self.policy["template_section_sort"]:
+            value = self._eval_spec(spec, section, None)
+            if value in (None, ""):
+                values.append((2, ""))
+            elif isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+                values.append((0, value))
+            elif isinstance(value, str):
+                values.append((1, value.casefold()))
+            else:
+                raise ValueError("Template section sort values must be finite numbers or text.")
+        return tuple(values)
 
     def _read_metadata(
         self, book: Any, ws: Any, metadata_sheet_name: str, contract: WorkbookLayoutContract
@@ -1286,16 +1394,7 @@ class WorkbookPreservationComparator:
                             style_change = (
                                 allowed_styles.get((cell.row, cell.column)) if original.title == title else None
                             )
-                            is_allowed = False
-                            if style_change:
-                                prop = style_change.get("property")
-                                properties = ("font", "fill", "border", "alignment", "number_format", "protection")
-                                is_allowed = prop in properties and all(
-                                    copy.copy(getattr(actual, name))
-                                    == (style_change["new_value"] if name == prop else copy.copy(getattr(cell, name)))
-                                    for name in properties
-                                )
-                            if not is_allowed:
+                            if not _same_style(cell, actual, style_change):
                                 issues.append({"type": "cell_style", "original": cell.coordinate})
                         if cell.comment != actual.comment or cell.hyperlink != actual.hyperlink:
                             issues.append({"type": "comment_or_link", "original": cell.coordinate})
@@ -1312,7 +1411,7 @@ class WorkbookPreservationComparator:
                     actual = dict(final.row_dimensions[target])
                     actual.pop("r", None)
                     actual.pop("s", None)
-                    if expected != actual or dimension._style != final.row_dimensions[target]._style:
+                    if expected != actual or not _same_style(dimension, final.row_dimensions[target]):
                         issues.append({"type": "row_dimension", "row": key, "expected": expected, "actual": actual})
 
                 expected_freeze = original.freeze_panes
@@ -1339,7 +1438,12 @@ class WorkbookPreservationComparator:
                     if _plain(ws.cell(item["row"], int(col)).value) != expected:
                         issues.append({"type": "inserted_record_value", "row": item["row"], "column": col})
 
-            expected_rows = base[title].max_row + validation_summary["total_rows_inserted"]
+            # A header-only template may end before data_start_row. Its first
+            # generated rows also establish the previously unused data area.
+            expected_rows = max(
+                base[title].max_row + validation_summary["total_rows_inserted"],
+                max((row["row"] for row in validation_summary["inserted_rows"]), default=0),
+            )
             if ws.max_row != expected_rows:
                 issues.append({"type": "row_count", "expected": expected_rows, "actual": ws.max_row})
 

@@ -32,7 +32,7 @@ export function WorkbookUpdateFields({ value, onChange, onBrowse }: Props) {
   return (
     <div className="space-y-3 rounded-lg border border-[#10b981]/25 bg-[#10b981]/5 p-3">
       <p className="text-[10px] leading-relaxed text-[#a7cbbd]">
-        Connect Input → this Files step → Output. This step reads the original PDFs and updates a copy of the Excel workbook using your rules file. Place the files in the Shogun workspace first. A Samurai extraction step is not needed on this path.
+        Connect Input → this Files step → Output. This step reads the original PDFs and creates a copy of the Excel workbook. Your rules file determines whether to update an existing plan or fill an empty template. Place the files in the Shogun workspace first. A Samurai extraction step is not needed on this path.
       </p>
       {pathFields.map(({ key, label, placeholder }) => (
         <div key={key} className="space-y-1.5">
