@@ -1,8 +1,8 @@
 {
-  "version": "1.47.113",
+  "version": "1.47.114",
   "name": "Shogun AFM",
-  "build": 264,
+  "build": 265,
   "channel": "stable",
-  "released": "2026-09-16T17:17:58Z",
-  "changelog": "Keep requirement writes within exact dated workbook months, support a separate source month for planning-column placement, and safely fold redundant section headings into generated template rows. Existing profiles retain their prior behavior unless they opt in."
+  "released": "2026-09-20T19:56:58Z",
+  "changelog": "Repair source-level Unicode encoding corruption in chat messages and rebuild the frontend with regression coverage."
 }
