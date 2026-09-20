@@ -115,7 +115,7 @@ function archiveSession(msgs: Message[], t: any) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
 }
 
-// â”€â”€ ToolGate Confirmation Card (extracted to avoid hooks-in-map) â”€â”€
+// ── ToolGate Confirmation Card (extracted to avoid hooks-in-map) ──
 
 const RISK_COLORS: Record<string, string> = {
   low: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
@@ -176,8 +176,8 @@ const ToolGateCard = ({ att, idx, setMessages }: {
         <ShieldAlert className={cn('w-4 h-4', isResolved ? att.resolved === 'approved' ? 'text-emerald-400' : 'text-red-400' : 'text-amber-400')} />
         <span className={cn('text-xs font-bold uppercase tracking-widest', isResolved ? att.resolved === 'approved' ? 'text-emerald-300' : 'text-red-300' : 'text-amber-300')}>
           {isResolved
-            ? att.resolved === 'approved' ? 'âœ… APPROVED' : 'âŒ DENIED'
-            : 'âš ï¸ CONFIRMATION REQUIRED'
+            ? att.resolved === 'approved' ? '✅ APPROVED' : '❌ DENIED'
+            : '⚠️ CONFIRMATION REQUIRED'
           }
         </span>
       </div>
@@ -527,7 +527,7 @@ export const ChatConsole = () => {
                 return copy;
               });
             } else if (evt.type === 'toolgate_confirm') {
-              // ToolGate confirmation request â€” show inline card
+              // ToolGate confirmation request — show inline card
               setMessages(prev => {
                 const copy = [...prev];
                 const last = copy[copy.length - 1];
@@ -548,7 +548,7 @@ export const ChatConsole = () => {
               setIsThinking(false);
               setStatusText('Awaiting confirmation...');
             } else if (evt.type === 'toolgate_resolved') {
-              // ToolGate resolution from backend â€” update the card
+              // ToolGate resolution from backend — update the card
               setMessages(prev => {
                 const copy = [...prev];
                 for (let mi = copy.length - 1; mi >= 0; mi--) {
@@ -577,14 +577,14 @@ export const ChatConsole = () => {
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') {
-        // User cancelled â€” mark the message as cancelled
+        // User cancelled — mark the message as cancelled
         setMessages(prev => {
           const copy = [...prev];
           const last = copy[copy.length - 1];
           if (last.content === '') {
-            copy[copy.length - 1] = { ...last, content: 'â›” Cancelled by operator.' };
+            copy[copy.length - 1] = { ...last, content: '⛔ Cancelled by operator.' };
           } else {
-            copy[copy.length - 1] = { ...last, content: last.content + '\n\nâ›” *Cancelled by operator.*' };
+            copy[copy.length - 1] = { ...last, content: last.content + '\n\n⛔ *Cancelled by operator.*' };
           }
           return copy;
         });
@@ -594,7 +594,7 @@ export const ChatConsole = () => {
           const copy = [...prev];
           copy[copy.length - 1] = {
             ...copy[copy.length - 1],
-            content: 'âš ï¸ ' + t('chat.bridge_interrupted', 'Neural bridge interrupted. Check logs.'),
+            content: '⚠️ ' + t('chat.bridge_interrupted', 'Neural bridge interrupted. Check logs.'),
           };
           return copy;
         });
@@ -755,7 +755,7 @@ export const ChatConsole = () => {
                           </div>
                         </div>
                       ) : msg.content}
-                      {/* â”€â”€ Ronin Visual Feed â”€â”€ */}
+                      {/* ── Ronin Visual Feed ── */}
                       {msg.attachments && msg.attachments.length > 0 && (
                         <div className={cn("space-y-2", msg.content ? "mt-3 border-t border-shogun-border/30 pt-3" : "")}>
                           {msg.attachments.map((att, idx) => {
@@ -913,7 +913,7 @@ export const ChatConsole = () => {
           <div className="flex items-center gap-1 mb-3">
             {([
               { id: 'auto' as ChatMode, label: 'Auto', icon: Sparkles, color: 'cyan', desc: 'Automatically selects the best mode' },
-              { id: 'fast' as ChatMode, label: 'Fast Chat', icon: Zap, color: 'emerald', desc: 'Conversation only â€” no tools or memory' },
+              { id: 'fast' as ChatMode, label: 'Fast Chat', icon: Zap, color: 'emerald', desc: 'Conversation only — no tools or memory' },
               { id: 'governed' as ChatMode, label: 'Governed', icon: Shield, color: 'amber', desc: 'Context-aware with memory (coming soon)' },
               { id: 'supermode' as ChatMode, label: 'Supermode', icon: Target, color: 'purple', desc: 'Durable multi-agent problem solving with governed tools and automatic learning' },
             ]).map(({ id, label, icon: Icon, color, desc }) => (
@@ -962,7 +962,7 @@ export const ChatConsole = () => {
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
               disabled={isThinking}
-              placeholder={isThinking ? t('chat.placeholder_thinking', 'Shogun is thinking...') : chatMode === 'auto' ? 'Ask anything â€” Shogun routes automatically...' : chatMode === 'fast' ? 'Ask anything...' : chatMode === 'supermode' ? 'Describe the outcome Shogun should accomplish…' : 'Ask with context...'}
+              placeholder={isThinking ? t('chat.placeholder_thinking', 'Shogun is thinking...') : chatMode === 'auto' ? 'Ask anything — Shogun routes automatically...' : chatMode === 'fast' ? 'Ask anything...' : chatMode === 'supermode' ? 'Describe the outcome Shogun should accomplish…' : 'Ask with context...'}
               className="w-full bg-shogun-card border border-shogun-border rounded-xl py-4 pl-14 pr-14 text-shogun-text placeholder:text-shogun-subdued focus:outline-none focus:border-shogun-blue focus:ring-1 focus:ring-shogun-blue/20 transition-all font-mono text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             />
             {isThinking ? (
@@ -1021,7 +1021,7 @@ export const ChatConsole = () => {
         </div>
       </div>
 
-      {/* â”€â”€ History Drawer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── History Drawer ─────────────────────────────────────── */}
       {imageViewer && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-6" onClick={() => setImageViewer(null)}>
           <div className="relative max-w-[95vw] max-h-[95vh]" onClick={event => event.stopPropagation()}>
@@ -1084,7 +1084,7 @@ export const ChatConsole = () => {
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-mono text-shogun-text truncate">{preview}</p>
                           <p className="text-[10px] text-shogun-subdued mt-0.5">
-                            {session.startedAt} Â· {msgCount} {t('chat.messages', 'messages')}
+                            {session.startedAt} · {msgCount} {t('chat.messages', 'messages')}
                           </p>
                         </div>
                         <button
@@ -1105,7 +1105,7 @@ export const ChatConsole = () => {
                                   ? 'bg-shogun-blue/10 text-shogun-text border border-shogun-blue/20'
                                   : 'bg-shogun-gold/5 text-shogun-gold border border-shogun-gold/10 font-mono'
                               )}>
-                                {m.content.length > 120 ? m.content.slice(0, 120) + 'â€¦' : m.content}
+                                {m.content.length > 120 ? m.content.slice(0, 120) + '…' : m.content}
                               </span>
                               <div className="text-[9px] text-shogun-subdued mt-0.5 px-1">{m.timestamp}</div>
                             </div>
