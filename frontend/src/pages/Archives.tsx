@@ -36,6 +36,7 @@ import {
 import axios from 'axios';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
+import { downloadAuthenticatedFile, extractBlobErrorMessage } from '../lib/fileDownload';
 
 const API = '/api/v1/memory';
 const AGENTS_API = '/api/v1/agents';
@@ -197,6 +198,8 @@ export function Archives() {
     include_secrets: false, package_as_zip: true, min_importance: 0,
   });
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [downloadingExportId, setDownloadingExportId] = useState<string | null>(null);
+  const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
 
   // ── Manual Memory Form State ─────────────────────────────
   const [newMemory, setNewMemory] = useState({
@@ -428,6 +431,32 @@ export function Archives() {
       setStatusMsg({ type: 'error', text: error?.response?.data?.detail || 'Memory export failed.' });
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleDownloadExport = async (exportId: string, downloadUrl?: string | null) => {
+    const url = downloadUrl || `${API}/export/${exportId}/download`;
+    setDownloadingExportId(exportId);
+    try {
+      await downloadAuthenticatedFile(url, `shogun_memory_export_${exportId}.zip`, 'application/zip');
+    } catch (error: any) {
+      const message = await extractBlobErrorMessage(error, 'Failed to download memory export ZIP.');
+      setStatusMsg({ type: 'error', text: message });
+    } finally {
+      setDownloadingExportId(null);
+    }
+  };
+
+  const handleDownloadImportReport = async (batchId: string) => {
+    const url = `${API}/import/batches/${batchId}/report`;
+    setDownloadingReportId(batchId);
+    try {
+      await downloadAuthenticatedFile(url, `memory_import_${batchId}.json`, 'application/json');
+    } catch (error: any) {
+      const message = await extractBlobErrorMessage(error, 'Failed to download import report.');
+      setStatusMsg({ type: 'error', text: message });
+    } finally {
+      setDownloadingReportId(null);
     }
   };
 
@@ -1039,7 +1068,7 @@ export function Archives() {
                   </>}
                 </div>
 
-                {importPreview && <div className="shogun-card flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-mono">{importPreview.batch_id}</p><p className="text-[9px] text-shogun-subdued uppercase">{importPreview.status.replaceAll('_', ' ')}</p></div><div className="flex gap-2"><a href={`${API}/import/batches/${importPreview.batch_id}/report`} className="px-3 py-2 border border-shogun-border rounded-lg text-[9px] font-bold uppercase"><Download className="w-3 h-3 inline mr-1" /> Report</a>{importPreview.failed_count > 0 && importPreview.imported_count > 0 && <button onClick={() => retryImportEmbeddings(importPreview.batch_id)} disabled={importing} className="px-3 py-2 border border-amber-500/30 text-amber-300 rounded-lg text-[9px] font-bold uppercase">Retry embeddings</button>}{['completed','completed_with_warnings'].includes(importPreview.status) && <button onClick={() => rollbackImport(importPreview.batch_id)} disabled={importing} className="px-3 py-2 border border-red-500/30 text-red-400 rounded-lg text-[9px] font-bold uppercase"><RotateCcw className="w-3 h-3 inline mr-1" /> Rollback</button>}</div></div>}
+                {importPreview && <div className="shogun-card flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-mono">{importPreview.batch_id}</p><p className="text-[9px] text-shogun-subdued uppercase">{importPreview.status.replaceAll('_', ' ')}</p></div><div className="flex gap-2"><button type="button" disabled={downloadingReportId === importPreview.batch_id} onClick={() => handleDownloadImportReport(importPreview.batch_id)} className="px-3 py-2 border border-shogun-border rounded-lg text-[9px] font-bold uppercase hover:bg-shogun-border/30 disabled:opacity-50 cursor-pointer flex items-center"><Download className={cn("w-3 h-3 inline mr-1", downloadingReportId === importPreview.batch_id && "animate-spin")} /> {downloadingReportId === importPreview.batch_id ? 'Downloading…' : 'Report'}</button>{importPreview.failed_count > 0 && importPreview.imported_count > 0 && <button onClick={() => retryImportEmbeddings(importPreview.batch_id)} disabled={importing} className="px-3 py-2 border border-amber-500/30 text-amber-300 rounded-lg text-[9px] font-bold uppercase">Retry embeddings</button>}{['completed','completed_with_warnings'].includes(importPreview.status) && <button onClick={() => rollbackImport(importPreview.batch_id)} disabled={importing} className="px-3 py-2 border border-red-500/30 text-red-400 rounded-lg text-[9px] font-bold uppercase"><RotateCcw className="w-3 h-3 inline mr-1" /> Rollback</button>}</div></div>}
               </div>
             </div>
 
@@ -1098,11 +1127,11 @@ export function Archives() {
                   {exportPreview ? <><div className="grid grid-cols-3 gap-2">{['memories', 'archives', 'sticky', 'analysis', 'private', 'total'].map(key => <div key={key} className="bg-shogun-bg border border-shogun-border rounded-lg p-3"><p className="text-[8px] uppercase text-shogun-subdued">{key}</p><p className="text-lg font-bold">{exportPreview.estimated_counts[key] || 0}</p></div>)}</div><div>{exportPreview.warnings.map(warning => <p key={warning} className="text-[10px] text-amber-300">• {warning}</p>)}</div></> : <p className="text-xs text-shogun-subdued">Preview the selected filters before generating the bundle.</p>}
                 </div>
 
-                {activeExport && <div className="shogun-card border-shogun-blue/30 space-y-3"><div className="flex items-center justify-between"><h4 className="text-[10px] font-bold uppercase text-shogun-blue">Current Export</h4><span className="text-[9px] uppercase font-bold">{activeExport.status.replaceAll('_', ' ')}</span></div><p className="text-[10px] font-mono text-shogun-subdued">{activeExport.export_id}</p><p className="text-xs">{activeExport.records_exported} Markdown files generated</p>{activeExport.download_url && <a href={activeExport.download_url} className="flex items-center justify-center gap-2 w-full py-2.5 bg-shogun-blue text-white rounded-lg text-xs font-bold uppercase"><Download className="w-4 h-4" /> Download ZIP</a>}</div>}
+                {activeExport && <div className="shogun-card border-shogun-blue/30 space-y-3"><div className="flex items-center justify-between"><h4 className="text-[10px] font-bold uppercase text-shogun-blue">Current Export</h4><span className="text-[9px] uppercase font-bold">{activeExport.status.replaceAll('_', ' ')}</span></div><p className="text-[10px] font-mono text-shogun-subdued">{activeExport.export_id}</p><p className="text-xs">{activeExport.records_exported} Markdown files generated</p>{activeExport.download_url && <button type="button" disabled={downloadingExportId === activeExport.export_id} onClick={() => handleDownloadExport(activeExport.export_id, activeExport.download_url)} className="flex items-center justify-center gap-2 w-full py-2.5 bg-shogun-blue text-white rounded-lg text-xs font-bold uppercase hover:brightness-110 disabled:opacity-50 cursor-pointer"><Download className={cn("w-4 h-4", downloadingExportId === activeExport.export_id && "animate-spin")} /> {downloadingExportId === activeExport.export_id ? 'Downloading…' : 'Download ZIP'}</button>}</div>}
 
                 <div className="shogun-card space-y-3">
                   <div className="flex items-center justify-between"><h4 className="text-[10px] font-bold uppercase text-shogun-subdued">Export History</h4><button onClick={loadExportHistory}><RefreshCw className="w-3 h-3 text-shogun-subdued" /></button></div>
-                  <div className="space-y-2 max-h-52 overflow-y-auto">{exportHistory.length === 0 ? <p className="text-xs text-shogun-subdued">No exports yet.</p> : exportHistory.map(job => <div key={job.export_id} className="p-3 bg-shogun-bg border border-shogun-border rounded-lg flex items-center justify-between gap-2"><div className="min-w-0"><p className="text-[10px] font-mono truncate">{job.export_id}</p><p className="text-[9px] text-shogun-subdued">{new Date(job.requested_at).toLocaleString()} · {job.records_exported} files</p></div>{job.download_url ? <a title="Download export" href={job.download_url}><Download className="w-4 h-4 text-shogun-blue" /></a> : <span className="text-[8px] uppercase text-shogun-subdued">{job.status}</span>}</div>)}</div>
+                  <div className="space-y-2 max-h-52 overflow-y-auto">{exportHistory.length === 0 ? <p className="text-xs text-shogun-subdued">No exports yet.</p> : exportHistory.map(job => <div key={job.export_id} className="p-3 bg-shogun-bg border border-shogun-border rounded-lg flex items-center justify-between gap-2"><div className="min-w-0"><p className="text-[10px] font-mono truncate">{job.export_id}</p><p className="text-[9px] text-shogun-subdued">{new Date(job.requested_at).toLocaleString()} · {job.records_exported} files</p></div>{job.download_url ? <button type="button" title="Download export" disabled={downloadingExportId === job.export_id} onClick={() => handleDownloadExport(job.export_id, job.download_url)} className="p-1 hover:bg-shogun-blue/10 rounded transition-colors disabled:opacity-50 cursor-pointer text-shogun-blue"><Download className={cn("w-4 h-4", downloadingExportId === job.export_id && "animate-spin")} /></button> : <span className="text-[8px] uppercase text-shogun-subdued">{job.status}</span>}</div>)}</div>
                 </div>
               </div>
             </div>

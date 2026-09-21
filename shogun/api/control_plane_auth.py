@@ -61,6 +61,12 @@ async def enforce_control_plane_access(request: Request, call_next):
 
     expected = str(settings.infrastructure_admin_token or "").strip()
     supplied = request.headers.get(INFRASTRUCTURE_TOKEN_HEADER, "")
+    if not supplied and request.method in {"GET", "HEAD"}:
+        supplied = (
+            request.query_params.get("infrastructure_token")
+            or request.query_params.get("token")
+            or ""
+        )
     if expected and supplied and hmac.compare_digest(supplied, expected):
         return await call_next(request)
 
