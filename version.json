@@ -1,8 +1,8 @@
 {
-  "version": "1.47.114",
+  "version": "1.47.115",
   "name": "Shogun AFM",
-  "build": 265,
+  "build": 266,
   "channel": "stable",
-  "released": "2026-09-20T19:56:58Z",
-  "changelog": "Repair source-level Unicode encoding corruption in chat messages and rebuild the frontend with regression coverage."
+  "released": "2026-09-21T07:05:00Z",
+  "changelog": "Fix 401 Unauthorized on memory export ZIP download in Archives and file downloads in File Explorer, add authenticated download client utility, and support query-token fallback authentication."
 }
