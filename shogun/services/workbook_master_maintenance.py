@@ -235,6 +235,11 @@ def _desired_rows(updater: Any, sections: list, candidate: Any, summary: dict, i
                 values[str(rule["value_column"])] = value
             values[str(updater.policy["section_key_column"])] = section.key
             desired[identity] = {**previous, "values": values, "event": None, "candidate_row": None}
+    # Excel round-trips an explicit empty string as a blank cell. Synthetic
+    # section/zero-stock rows must use the same canonical blank representation
+    # as rows read back from the ordinary population candidate.
+    for entry in desired.values():
+        entry["values"] = {column: None if value == "" else value for column, value in entry["values"].items()}
     return desired
 
 

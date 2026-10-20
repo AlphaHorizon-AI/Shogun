@@ -315,6 +315,35 @@ def test_hyperlinks_follow_month_and_row_insertion(master_setup, tmp_path):
         book.close()
 
 
+@pytest.mark.parametrize("initial_component", ["A", ""])
+def test_zero_stock_optional_component_blanks_round_trip_when_new_material_shifts_rows(
+    master_setup, tmp_path, initial_component,
+):
+    seed, profile = master_setup
+    first, second = tmp_path / "first.xlsx", tmp_path / "second.xlsx"
+    original_sections = SectionedLayoutParser(profile).parse_pages([(1, section(records=""))], "august.pdf")
+    original_sections[0].fields["family"] = initial_component
+    SafeWorkbookUpdater(seed, profile).execute(original_sections, first)
+    current_sections = SectionedLayoutParser(profile).parse_pages([
+        (1, section(stock=0, records="")), (2, section("B", size=90, records="")),
+    ], "october.pdf")
+    current_sections[0].fields["family"] = ""
+    summary = SafeWorkbookUpdater(first, profile).execute(current_sections, second)
+    comparison = WorkbookPreservationComparator().compare_workbooks(first, second, summary)
+    assert comparison["status"] == "PASS"
+    assert summary["total_rows_inserted"] == 1
+    assert all(change["new_value"] != "" for change in summary["allowed_changes"])
+    book = openpyxl.load_workbook(second)
+    try:
+        sheet = book["Plan"]
+        old_article_row = next(row for row in range(3, sheet.max_row + 1) if sheet.cell(row, 2).value == "A")
+        assert old_article_row == 4
+        assert sheet.cell(old_article_row, 3).value is None
+        assert sheet.cell(old_article_row, 6).value == 0
+    finally:
+        book.close()
+
+
 def test_failed_preservation_check_does_not_publish_or_modify_master(master_setup, tmp_path, monkeypatch):
     seed, profile = master_setup
     master, output = tmp_path / "master.xlsx", tmp_path / "existing-output.xlsx"
