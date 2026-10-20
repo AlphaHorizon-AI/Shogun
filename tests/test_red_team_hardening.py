@@ -25,6 +25,7 @@ def _request(
     host: str,
     headers: list[tuple[bytes, bytes]] | None = None,
     method: str = "GET",
+    query_string: bytes = b"",
 ) -> Request:
     return Request({
         "type": "http",
@@ -33,7 +34,7 @@ def _request(
         "scheme": "http",
         "path": path,
         "raw_path": path.encode(),
-        "query_string": b"",
+        "query_string": query_string,
         "headers": headers or [],
         "client": (host, 1234),
         "server": ("shogun", 8000),
@@ -101,6 +102,57 @@ async def test_server_control_plane_requires_configured_admin_token(monkeypatch)
     )
     assert denied.status_code == 401
     assert accepted.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_control_plane_accepts_query_token_for_get_requests(monkeypatch):
+    monkeypatch.setattr(settings, "deployment_mode", "server")
+    monkeypatch.setattr(settings, "infrastructure_admin_token", "correct-secret")
+
+    async def allowed(_request):
+        return Response(status_code=204)
+
+    # Valid token via infrastructure_token query parameter on GET
+    query_accepted = await enforce_control_plane_access(
+        _request(
+            "/api/v1/memory/export/exp_123/download",
+            "192.168.1.20",
+            query_string=b"infrastructure_token=correct-secret",
+        ),
+        allowed,
+    )
+    # Valid token via token query parameter on GET
+    token_accepted = await enforce_control_plane_access(
+        _request(
+            "/api/v1/memory/export/exp_123/download",
+            "192.168.1.20",
+            query_string=b"token=correct-secret",
+        ),
+        allowed,
+    )
+    # Invalid token in query parameter
+    query_denied = await enforce_control_plane_access(
+        _request(
+            "/api/v1/memory/export/exp_123/download",
+            "192.168.1.20",
+            query_string=b"infrastructure_token=wrong-secret",
+        ),
+        allowed,
+    )
+    # Query token rejected on non-GET/HEAD methods (e.g. POST)
+    post_denied = await enforce_control_plane_access(
+        _request(
+            "/api/v1/memory/export",
+            "192.168.1.20",
+            method="POST",
+            query_string=b"infrastructure_token=correct-secret",
+        ),
+        allowed,
+    )
+    assert query_accepted.status_code == 204
+    assert token_accepted.status_code == 204
+    assert query_denied.status_code == 401
+    assert post_denied.status_code == 401
 
 
 @pytest.mark.asyncio

@@ -1,8 +1,8 @@
 {
-  "version": "1.47.114",
+  "version": "1.47.116",
   "name": "Shogun AFM",
-  "build": 265,
+  "build": 267,
   "channel": "stable",
-  "released": "2026-09-20T19:56:58Z",
-  "changelog": "Repair source-level Unicode encoding corruption in chat messages and rebuild the frontend with regression coverage."
+  "released": "2026-10-20T07:55:54Z",
+  "changelog": "Allow governed workbook-update profiles on Samurai so valid Excel template and PDF workflows can be saved and run, and update audited frontend dependencies."
 }

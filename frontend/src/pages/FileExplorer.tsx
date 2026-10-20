@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from '../lib/utils';
+import { downloadAuthenticatedFile, extractBlobErrorMessage } from '../lib/fileDownload';
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -164,6 +165,7 @@ export const FileExplorer = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -172,6 +174,19 @@ export const FileExplorer = () => {
     setStatusMsg({ type, text });
     setTimeout(() => setStatusMsg(null), 3000);
   }, []);
+
+  const handleDownloadFile = async (node: TreeNode) => {
+    setDownloading(true);
+    try {
+      const url = `/api/v1/workspace/download?path=${encodeURIComponent(node.path)}`;
+      await downloadAuthenticatedFile(url, node.name);
+    } catch (err: any) {
+      const message = await extractBlobErrorMessage(err, 'Failed to download workspace file.');
+      flash('error', message);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   // ── Fetch tree & info ─────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -586,11 +601,13 @@ export const FileExplorer = () => {
                       )
                     )}
                     {isBinary && (
-                      <a href={`/api/v1/workspace/download?path=${encodeURIComponent(selectedNode.path)}`}
-                        download
-                        className="px-3 py-1 bg-shogun-blue/10 text-shogun-blue rounded text-xs font-medium hover:bg-shogun-blue/20 transition-colors flex items-center gap-1">
-                        <Download className="w-3 h-3" /> Download
-                      </a>
+                      <button
+                        type="button"
+                        disabled={downloading}
+                        onClick={() => handleDownloadFile(selectedNode)}
+                        className="px-3 py-1 bg-shogun-blue/10 text-shogun-blue rounded text-xs font-medium hover:bg-shogun-blue/20 transition-colors flex items-center gap-1 disabled:opacity-50 cursor-pointer">
+                        <Download className={cn("w-3 h-3", downloading && "animate-spin")} /> {downloading ? 'Downloading…' : 'Download'}
+                      </button>
                     )}
                   </>
                 ) : (
@@ -618,11 +635,13 @@ export const FileExplorer = () => {
                           </div>
                           <p className="text-xs text-shogun-subdued/60">Binary file — cannot be displayed as text.</p>
                         </div>
-                        <a href={`/api/v1/workspace/download?path=${encodeURIComponent(selectedNode.path)}`}
-                          download
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-shogun-blue/15 text-shogun-blue rounded-lg text-sm font-medium hover:bg-shogun-blue/25 transition-colors">
-                          <Download className="w-4 h-4" /> Download File
-                        </a>
+                        <button
+                          type="button"
+                          disabled={downloading}
+                          onClick={() => handleDownloadFile(selectedNode)}
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-shogun-blue/15 text-shogun-blue rounded-lg text-sm font-medium hover:bg-shogun-blue/25 transition-colors disabled:opacity-50 cursor-pointer">
+                          <Download className={cn("w-4 h-4", downloading && "animate-spin")} /> {downloading ? 'Downloading…' : 'Download File'}
+                        </button>
                       </div>
                     </div>
                   ) : isEditing ? (

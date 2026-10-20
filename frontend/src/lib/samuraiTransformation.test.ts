@@ -44,7 +44,7 @@ const registryReference = {
 };
 
 describe('Samurai transformation configuration', () => {
-  it('directs workbook-update rules to Files for both import and saved configurations', () => {
+  it('allows workbook-update rules on Samurai for the governed workbook DAG', () => {
     const workbookProfile = {
       id: 'equipment_update_v1',
       adapter: 'sectioned_record_matrix_v1',
@@ -53,14 +53,18 @@ describe('Samurai transformation configuration', () => {
         definition: { parameters: { workbook_update: { section_key_column: 2 } } },
       },
     };
-    expect(() => configureSamuraiForPrivateProfile({}, workbookProfile)).toThrow('Update existing workbook from PDFs');
-    expect(() => appendSamuraiAutoCandidate({}, workbookProfile)).toThrow('Update existing workbook from PDFs');
+    expect(configureSamuraiForPrivateProfile({}, workbookProfile)).toMatchObject({
+      transformation_mode: 'profile', transformation_profile: workbookProfile,
+    });
+    expect(appendSamuraiAutoCandidate({}, workbookProfile)).toMatchObject({
+      transformation_mode: 'auto', transformation_candidates: [workbookProfile],
+    });
     expect(samuraiTransformationConfigurationError({
       transformation_mode: 'profile', transformation_profile: workbookProfile,
-    })).toContain('Update existing workbook from PDFs');
+    })).toBeNull();
     expect(samuraiTransformationConfigurationError({
       transformation_mode: 'auto', transformation_candidates: [workbookProfile],
-    })).toContain('Update existing workbook from PDFs');
+    })).toBeNull();
   });
 
   it('keeps existing Samurai nodes on general LLM by default', () => {

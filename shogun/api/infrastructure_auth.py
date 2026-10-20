@@ -16,6 +16,12 @@ async def require_infrastructure_admin(request: Request) -> str:
 
     expected = str(settings.infrastructure_admin_token or "").strip()
     supplied = request.headers.get(INFRASTRUCTURE_TOKEN_HEADER, "")
+    if not supplied and request.method in {"GET", "HEAD"}:
+        supplied = (
+            request.query_params.get("infrastructure_token")
+            or request.query_params.get("token")
+            or ""
+        )
     if expected:
         if not supplied or not hmac.compare_digest(supplied, expected):
             raise HTTPException(
