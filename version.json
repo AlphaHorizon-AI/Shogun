@@ -3,6 +3,6 @@
   "name": "Shogun AFM",
   "build": 268,
   "channel": "stable",
-  "released": "2026-10-20T18:42:00Z",
-  "changelog": "Generate rolling planning calendars from PDF source months using one reusable empty layout, reject mixed or missing report months, and keep template header panes fixed during fresh population."
+  "released": "2026-10-20T19:07:00Z",
+  "changelog": "Create a persistent planning master from PDFs, preserve planner entries across source refreshes, roll planning months with history, flag missing source rows, and validate and back up the master before atomic updates."
 }

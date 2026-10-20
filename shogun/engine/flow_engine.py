@@ -5172,9 +5172,12 @@ async def _exec_office(
             if transform_cfg is not None:
                 if not isinstance(transform_cfg, dict):
                     raise ValueError("Workbook transformation configuration must be an object.")
+                validate_workbook_permissions(governance_context)
+                if not getattr(getattr(office_cfg, "excel", None), "enabled", True):
+                    raise ValueError("Excel is disabled in Office App Mode.")
                 supported = {
                     "profile_path", "template_path", "pdf_paths", "sheet_name",
-                    "reference_workbook_path", "options",
+                    "reference_workbook_path", "master_path", "options",
                 }
                 if set(transform_cfg) - supported:
                     raise ValueError("Workbook transformation configuration contains unsupported fields.")
@@ -5254,10 +5257,22 @@ async def _exec_office(
                 if reference_raw is not None and not isinstance(reference_raw, str):
                     raise ValueError("Reference workbook path must be a string.")
                 pipeline_ref = _resolve(reference_raw) if reference_raw else None
+                master_raw = transform_cfg.get("master_path")
+                if master_raw is not None and not isinstance(master_raw, str):
+                    raise ValueError("Persistent master workbook path must be a string.")
+                pipeline_runner = run_sectioned_workbook_pipeline
+                master_options = {}
+                if master_raw and master_raw.strip():
+                    from shogun.services.workbook_master import run_workbook_master_pipeline
+
+                    if workbook_job:
+                        raise ValueError("Configure persistent master updates directly on the Files step.")
+                    pipeline_runner = run_workbook_master_pipeline
+                    master_options["master_workbook_path"] = _resolve(master_raw)
                 cancellation = Event()
                 try:
                     pipeline_result = await asyncio.to_thread(
-                        run_sectioned_workbook_pipeline,
+                        pipeline_runner,
                         profile=profile,
                         pdf_paths=resolved_pdfs,
                         template_workbook_path=template_file,
@@ -5268,6 +5283,7 @@ async def _exec_office(
                         cancel_event=cancellation,
                         profile_source_path=profile_path,
                         expected_input_hashes=expected_input_hashes,
+                        **master_options,
                     )
                 except asyncio.CancelledError:
                     cancellation.set()
@@ -5280,6 +5296,8 @@ async def _exec_office(
                     f"{val_sum.get('total_rows_inserted', 0)} rows inserted; "
                     f"review required: {pipeline_result['comparison_report']['review_required']}"
                 )
+                if pipeline_result.get("master_lifecycle"):
+                    row_summary += "; persistent master updated"
                 log.info("[Flow/Office] excel_create (workbook transformation): %s (%s)", saved_path, row_summary)
                 return f"Excel workbook created: {saved_path} ({row_summary})"
             elif template and mapping_payload:

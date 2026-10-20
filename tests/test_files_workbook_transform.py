@@ -107,7 +107,7 @@ async def test_workbook_update_uses_explicit_workbook_over_upstream_template(wor
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "field", ["profile_path", "template_path", "pdf_paths", "reference_workbook_path", "output_path"],
+    "field", ["profile_path", "template_path", "pdf_paths", "reference_workbook_path", "master_path", "output_path"],
 )
 async def test_every_path_is_confined_to_workspace(workbook_boundary, field):
     config, calls, _ = workbook_boundary
@@ -168,6 +168,81 @@ async def test_text_budget_is_capped_by_server_policy(workbook_boundary, monkeyp
     config["workbook_transform"]["options"] = {"max_total_chars": 99999999}
     await flow_engine._exec_office(config, "")
     assert calls[0]["options"]["max_total_chars"] == 12345
+
+
+@pytest.mark.anyio
+async def test_persistent_master_dispatch_preserves_workspace_boundary(workbook_boundary, tmp_path, monkeypatch):
+    from shogun.services import workbook_master
+
+    config, calls, _ = workbook_boundary
+    master_calls = []
+
+    def run_master(**kwargs):
+        master_calls.append(kwargs)
+        output = Path(kwargs["output_workbook_path"])
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"snapshot")
+        return {
+            "validation_summary": {"total_rows_inserted": 2},
+            "comparison_report": {"review_required": True},
+            "report_paths": {},
+            "master_lifecycle": {"master_workbook": str(kwargs["master_workbook_path"])},
+        }
+
+    monkeypatch.setattr(workbook_master, "run_workbook_master_pipeline", run_master)
+    config["workbook_transform"]["master_path"] = "Input/master.xlsx"
+    result = await flow_engine._exec_office(config, "")
+    assert "persistent master updated" in result
+    assert Path(master_calls[0]["master_workbook_path"]) == tmp_path / "Input/master.xlsx"
+    assert master_calls[0]["template_workbook_path"] == tmp_path / "base.xlsx"
+    assert not calls
+
+
+@pytest.mark.anyio
+async def test_non_string_master_path_is_rejected_before_dispatch(workbook_boundary):
+    config, calls, _ = workbook_boundary
+    config["workbook_transform"]["master_path"] = True
+    assert (await flow_engine._exec_office(config, "")).startswith("[ERROR]")
+    assert not calls
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("persistent_master", [False, True])
+@pytest.mark.parametrize("governance,error", [
+    ({"permissions": {"workspace_enabled": False}}, "requires workspace and Excel permissions"),
+    ({"permissions": {"office_enabled": False}}, "requires workspace and Excel permissions"),
+    ({"permissions": {"office_excel_enabled": False}}, "requires workspace and Excel permissions"),
+    ({"allowed_tools": ["workspace"]}, "requires the Office tool permission"),
+    ({"permissions": {"kill_switch_active": True}}, "blocked by the emergency stop"),
+])
+async def test_direct_workbook_permissions_block_before_profile_read(
+    workbook_boundary, persistent_master, governance, error,
+):
+    config, calls, _ = workbook_boundary
+    config["workbook_transform"]["profile_path"] = "missing.json"
+    if persistent_master:
+        config["workbook_transform"]["master_path"] = "Input/master.xlsx"
+    result = await flow_engine._exec_office(config, "", governance_context=governance)
+    assert result.startswith("[ERROR]") and error in result
+    assert not calls
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("persistent_master", [False, True])
+async def test_excel_subfeature_gate_precedes_direct_workbook_profile_read(
+    workbook_boundary, monkeypatch, persistent_master,
+):
+    config, calls, _ = workbook_boundary
+    config["workbook_transform"]["profile_path"] = "missing.json"
+    if persistent_master:
+        config["workbook_transform"]["master_path"] = "Input/master.xlsx"
+    monkeypatch.setattr(
+        office_config, "load_office_config",
+        lambda: SimpleNamespace(enabled=True, excel=SimpleNamespace(enabled=False)),
+    )
+    result = await flow_engine._exec_office(config, "")
+    assert result.startswith("[ERROR]") and "Excel is disabled in Office App Mode" in result
+    assert not calls
 
 
 @pytest.mark.anyio

@@ -336,14 +336,14 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
         raise ValueError(f"Unsupported key(s) in workbook_update policy: {', '.join(sorted(unknown_keys))}")
 
     mode = policy.get("mode", "update_existing")
-    if not isinstance(mode, str) or mode not in {"update_existing", "populate_template"}:
-        raise ValueError("Workbook mode must be 'update_existing' or 'populate_template'.")
+    if not isinstance(mode, str) or mode not in {"update_existing", "populate_template", "maintain_master"}:
+        raise ValueError("Workbook mode must be 'update_existing', 'populate_template' or 'maintain_master'.")
     section_row_policy = policy.get("template_section_row_policy", "always")
     if not isinstance(section_row_policy, str) or section_row_policy not in {"always", "merge_first_detail"}:
         raise ValueError(
             "workbook_update.template_section_row_policy must be 'always' or 'merge_first_detail'."
         )
-    if section_row_policy == "merge_first_detail" and mode != "populate_template":
+    if section_row_policy == "merge_first_detail" and mode not in {"populate_template", "maintain_master"}:
         raise ValueError(
             "workbook_update.template_section_row_policy 'merge_first_detail' requires populate_template mode."
         )
@@ -394,7 +394,7 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
         calendar = policy["template_planning_months"]
         if not isinstance(calendar, dict) or set(calendar) != {"start_month_spec", "count"}:
             raise ValueError("template_planning_months requires only start_month_spec and count.")
-        if mode != "populate_template":
+        if mode not in {"populate_template", "maintain_master"}:
             raise ValueError("template_planning_months requires populate_template mode.")
         if plan_col is None:
             raise ValueError("template_planning_months requires planning_start_column.")
@@ -788,6 +788,7 @@ def _build_provenance_record(
         res.update(
             {
                 "record_id": rec_id,
+                "rule_id": rule_id,
                 "category": getattr(rec, "category", ""),
                 "reference": getattr(rec, "reference", ""),
                 "source_file": getattr(rec, "source_file", ""),
@@ -821,6 +822,10 @@ class SafeWorkbookUpdater:
         sheet_name: str | None = None,
         options: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if self.policy.get("mode") == "maintain_master":
+            from shogun.services.workbook_master_maintenance import maintain_workbook_master
+
+            return maintain_workbook_master(self, sections, output_path, sheet_name, options)
         output_path = Path(output_path)
         if self.template_path.resolve() == output_path.resolve() or (
             output_path.exists() and os.path.samefile(self.template_path, output_path)
@@ -1141,7 +1146,11 @@ class SafeWorkbookUpdater:
                             insert_vals = {}
                             for c_str, spec in sec_rule.get("insert_row_values", {}).items():
                                 insert_vals[int(c_str)] = self._eval_spec(spec, s, None)
-                            schedule_insert(s, anchor, insert_vals, ins_status)
+                            insertion = schedule_insert(s, anchor, insert_vals, ins_status)
+                            section_rule_id = sec_rule.get("id") or sec_rule.get("name")
+                            insertion["event"]["source_rule_id"] = (
+                                section_rule_id or f"section_rule_{sec_rules.index(sec_rule)}"
+                            )
                         else:
                             event(s, "AMBIGUOUS_SECTION_ROWS", confidence="REVIEW")
 
@@ -1748,23 +1757,53 @@ class WorkbookPreservationComparator:
                 for item in validation_summary.get("allowed_style_changes", [])
             }
             meta_sheet = validation_summary.get("metadata_sheet_name", DEFAULT_METADATA_SHEET)
+            controlled_sheets = validation_summary.get("controlled_sheets", {})
+            managed_sheets = {meta_sheet, *controlled_sheets}
+            column_mapping = validation_summary.get("calendar_column_mapping", {})
+            comment_changes = {
+                (item["original_row"], item["column"]): item
+                for item in validation_summary.get("allowed_comment_changes", [])
+            }
 
             if base.defined_names != generated.defined_names:
                 issues.append({"type": "defined_names"})
-            if [n for n in generated.sheetnames if n != meta_sheet] != [n for n in base.sheetnames if n != meta_sheet]:
+            if ([n for n in generated.sheetnames if n not in managed_sheets]
+                    != [n for n in base.sheetnames if n not in managed_sheets]):
                 issues.append({"type": "sheet_names"})
 
+            for name, expected_sheet in controlled_sheets.items():
+                if name not in generated:
+                    issues.append({"type": "missing_controlled_sheet", "sheet": name})
+                    continue
+                actual_sheet = generated[name]
+                actual_rows = [list(row) for row in actual_sheet.iter_rows(values_only=True)]
+                if actual_rows != expected_sheet["rows"] or actual_sheet.sheet_state != expected_sheet["state"]:
+                    issues.append({"type": "controlled_sheet_contents", "sheet": name})
+
             for original in base:
-                if original.title == meta_sheet:
+                if original.title in managed_sheets:
                     continue
                 final = generated[original.title]
                 for row in original:
                     for cell in row:
                         target_row = mapping[str(cell.row)] if original.title == title else cell.row
                         actual = final.cell(target_row, cell.column)
+                        source_cell = cell
+                        cleared_calendar_cell = False
+                        if (original.title == title and cell.row >= validation_summary.get("data_start_row", 2)
+                                and str(cell.column) in column_mapping):
+                            old_column = column_mapping[str(cell.column)]
+                            if old_column is None:
+                                cleared_calendar_cell = True
+                            else:
+                                source_cell = original.cell(cell.row, old_column)
                         change = changes.get((cell.row, cell.column)) if original.title == title else None
-                        expected = change["new_value"] if change else _plain(cell.value)
-                        value_matches = (_plain(actual.value) == expected) if change else (actual.value == cell.value)
+                        expected = change["new_value"] if change else (
+                            None if cleared_calendar_cell else _plain(source_cell.value)
+                        )
+                        value_matches = (_plain(actual.value) == expected) if change or cleared_calendar_cell else (
+                            actual.value == source_cell.value
+                        )
                         if not value_matches:
                             issues.append(
                                 {
@@ -1774,13 +1813,35 @@ class WorkbookPreservationComparator:
                                     "generated": actual.coordinate,
                                 }
                             )
-                        if (cell.has_style or actual.has_style) and cell._style != actual._style:
+                        if (source_cell.has_style or actual.has_style) and source_cell._style != actual._style:
                             style_change = (
                                 allowed_styles.get((cell.row, cell.column)) if original.title == title else None
                             )
-                            if not _same_style(cell, actual, style_change):
+                            if not _same_style(source_cell, actual, style_change):
                                 issues.append({"type": "cell_style", "original": cell.coordinate})
-                        if cell.comment != actual.comment or cell.hyperlink != actual.hyperlink:
+                        comment_change = (
+                            comment_changes.get((cell.row, cell.column)) if original.title == title else None
+                        )
+                        expected_comment = source_cell.comment if not cleared_calendar_cell else None
+                        comment_matches = (
+                            actual.comment is expected_comment if actual.comment is None or expected_comment is None
+                            else actual.comment == expected_comment
+                        )
+                        if comment_change:
+                            comment_matches = (
+                                actual.comment is None if comment_change["text"] is None else (
+                                    actual.comment is not None
+                                    and actual.comment.text == comment_change["text"]
+                                    and actual.comment.author == comment_change["author"]
+                                )
+                            )
+                        expected_link = source_cell.hyperlink if not cleared_calendar_cell else None
+                        if expected_link and validation_summary.get("mode") == "maintain_master":
+                            expected_link = copy.copy(expected_link)
+                            expected_link.ref = actual.coordinate
+                            if actual.hyperlink:
+                                expected_link.id = actual.hyperlink.id
+                        if not comment_matches or expected_link != actual.hyperlink:
                             issues.append({"type": "comment_or_link", "original": cell.coordinate})
                         checked += 1
 
@@ -1800,7 +1861,7 @@ class WorkbookPreservationComparator:
 
                 expected_freeze = original.freeze_panes
                 if (expected_freeze and original.title == title
-                        and validation_summary.get("mode") != "populate_template"):
+                        and validation_summary.get("mode") not in {"populate_template", "maintain_master"}):
                     freeze_col, freeze_row = coordinate_from_string(expected_freeze)
                     expected_freeze = f"{freeze_col}{mapping.get(str(freeze_row), freeze_row)}"
                 if final.freeze_panes != expected_freeze:

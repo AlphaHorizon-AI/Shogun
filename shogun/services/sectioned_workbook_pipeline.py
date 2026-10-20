@@ -801,10 +801,12 @@ def run_sectioned_workbook_pipeline(
 
             # Commit marker: atomically publish workbook last
             _check_cancelled(cancel_event)
+            output_sha256 = hashlib.sha256(staged_workbook.read_bytes()).hexdigest()
             os.replace(staged_workbook, output)
 
         return {
             "output_workbook": str(output),
+            "output_sha256": output_sha256,
             "validation_summary": summary,
             "comparison_report": comparison,
             "audit_report": audit,

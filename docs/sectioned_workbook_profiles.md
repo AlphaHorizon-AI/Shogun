@@ -2,8 +2,9 @@
 
 The Files node's `excel_create` action accepts `workbook_transform`: a portable private
 `profile_path`, an existing `template_path`, one to ten `pdf_paths`, and optional `sheet_name`,
-`reference_workbook_path` and extraction `options`. Paths stay inside the Shogun workspace.
-The existing Office mode gate applies. Import verifies the profile's schema and content hash;
+`reference_workbook_path`, `master_path` and extraction `options`. Paths stay inside the Shogun workspace.
+Office and Excel enablement, workbook permissions and the kill switch apply.
+Import verifies the profile's schema and content hash;
 importing a file does not publish it or activate a saved flow.
 
 ## Configure an AgentFlow
@@ -18,6 +19,43 @@ upstream File Template.
 
 Connect **Input → Files → Output** for this operation. The Files node reads the
 configured PDFs directly.
+
+### Maintain one planning master
+
+For repeat updates, use a private profile with `workbook_update.mode` set to
+`maintain_master` and enter a **Persistent master workbook** path on the Files step.
+Keep `template_path` pointing to a pristine, empty layout. The first successful run
+creates the master from that layout and the PDFs. Fill the missing planner details
+in the master once, save it and close Excel before the next run. Replace the current
+PDF files at their configured paths to refresh it; the layout, profile and master
+paths do not change between runs. Use a separate output path for the run snapshot.
+Do not use an expected-result workbook as the master or a runtime reference.
+
+Later runs match generated rows by their source identities. They refresh a
+source-owned cell only if it still equals the last value Shogun wrote. A planner
+override is preserved and reported for review. Cells outside the generated mapping
+remain unchanged. Keep section identifiers, row structure and the hidden Shogun
+worksheets intact; editing cell values is supported, but manually inserting,
+deleting or sorting generated rows can invalidate ownership and stop the update.
+Choose stable `source_identity_fields`: a mutable quantity, date or PDF page number
+must not be part of the identity if the same record should update in place.
+
+Existing material order is retained. New sections use the profile's section sort
+keys; missing source rows are retained with a review annotation, not silently
+treated as current demand. Review missing-source and manual-override events in the
+reports. A rolling `template_planning_months` calendar moves existing monthly cells
+by their actual month, not their old column position. Departing populated months
+and month-cell notes are retained in the hidden `_shogun_master_history` worksheet. The calendar cannot
+move backwards.
+
+The wrapper locks the master for the complete operation, verifies source accounting
+and preservation, pins the validated output digest, and checks that the inputs did
+not change. Before an existing master is atomically replaced, it saves a sibling
+`*_previous_v<timestamp>_<id>.xlsx` backup. A failed or cancelled run leaves the
+master unchanged. Keep the backup files according to your retention policy. Review
+flags do not prevent a verified update, but failed preservation or incomplete source
+accounting does. Master maintenance is configured directly on Files, not through a
+Samurai workbook job, and cannot use `reference_workbook_path`.
 
 Alternatively, attach the private workbook profile to a **Samurai** node. Connect
 exactly one Excel **File Template** and one to ten **Files — PDF Read** nodes
@@ -82,8 +120,8 @@ first generated stock, order or record row when every overlapping nonblank value
 equal. The `CREATED_SECTION` audit event then points to that shared physical row.
 Sections without a generated detail still retain their heading. If a section value
 would overwrite a different nonblank detail value, the engine keeps both rows and
-emits `SECTION_ROW_MERGE_CONFLICT` for review. This mode is available only with
-`populate_template`.
+emits `SECTION_ROW_MERGE_CONFLICT` for review. This mode is available with
+`populate_template` and `maintain_master`.
 
 The existing `parameters.section_order` rules can additionally place referenced
 sections before their parents, using `dependencies_before.fields`. This is applied
@@ -118,7 +156,7 @@ move its freeze boundary with the preserved rows.
 ### Planning columns
 
 The month headings define the current dates; the rules need not contain fixed months.
-For a rolling calendar in `populate_template`, configure `template_planning_months`:
+For a rolling calendar in `populate_template` or `maintain_master`, configure `template_planning_months`:
 
 ```json
 "template_planning_months": {
