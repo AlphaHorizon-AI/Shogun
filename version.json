@@ -1,8 +1,8 @@
 {
-  "version": "1.47.116",
+  "version": "1.47.117",
   "name": "Shogun AFM",
-  "build": 267,
+  "build": 268,
   "channel": "stable",
-  "released": "2026-10-20T07:55:54Z",
-  "changelog": "Allow governed workbook-update profiles on Samurai so valid Excel template and PDF workflows can be saved and run, and update audited frontend dependencies."
+  "released": "2026-10-20T18:42:00Z",
+  "changelog": "Generate rolling planning calendars from PDF source months using one reusable empty layout, reject mixed or missing report months, and keep template header panes fixed during fresh population."
 }

@@ -85,6 +85,7 @@ ALLOWED_WORKBOOK_UPDATE_KEYS = {
     "template_section_values",
     "template_section_sort",
     "template_section_row_policy",
+    "template_planning_months",
     "sheet_name",
     "header_row",
     "data_start_row",
@@ -388,6 +389,21 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
     plan_col = policy.get("planning_start_column")
     if plan_col is not None:
         _validate_column_index(plan_col, "workbook_update.planning_start_column")
+
+    if "template_planning_months" in policy:
+        calendar = policy["template_planning_months"]
+        if not isinstance(calendar, dict) or set(calendar) != {"start_month_spec", "count"}:
+            raise ValueError("template_planning_months requires only start_month_spec and count.")
+        if mode != "populate_template":
+            raise ValueError("template_planning_months requires populate_template mode.")
+        if plan_col is None:
+            raise ValueError("template_planning_months requires planning_start_column.")
+        _validate_value_spec(calendar["start_month_spec"], "template_planning_months.start_month_spec")
+        count = calendar["count"]
+        if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= 120:
+            raise ValueError("template_planning_months.count must be an integer from one to 120.")
+        if plan_col + count - 1 > MAX_EXCEL_COLUMNS:
+            raise ValueError("template_planning_months exceeds the Excel column limit.")
 
     if "require_planning_months" in policy and not isinstance(policy["require_planning_months"], bool):
         raise ValueError("workbook_update.require_planning_months must be a boolean.")
@@ -961,6 +977,10 @@ class SafeWorkbookUpdater:
 
             # Evaluate updates within independent profile regex budget
             with _profile_regex_budget(self.profile_id):
+                if self.policy.get("template_planning_months"):
+                    for column, month in self._template_planning_headers(sections, ws, contract):
+                        update_cell(contract.header_row, column, month)
+                    contract = WorkbookLayoutContract(ws, self.policy)
                 if populate_template and self.policy.get("template_section_sort"):
                     sections = sorted(sections, key=self._template_section_sort_key)
                 if populate_template and self.parameters.get("section_order"):
@@ -1504,7 +1524,7 @@ class SafeWorkbookUpdater:
                         dim.index = item["row"]
                         ws.row_dimensions[item["row"]] = dim
 
-            if freeze:
+            if freeze and not populate_template:
                 freeze_col, freeze_row = coordinate_from_string(freeze)
                 ws.freeze_panes = f"{freeze_col}{moved(freeze_row)}"
 
@@ -1590,6 +1610,54 @@ class SafeWorkbookUpdater:
     def _eval_spec(self, spec: Any, section: Any, record: Any) -> Any:
         raw = record if isinstance(record, dict) else getattr(record, "raw", None)
         return _resolve_value_spec(spec, section, raw)
+
+    def _template_planning_headers(
+        self, sections: list[Any], sheet: Any, contract: WorkbookLayoutContract,
+    ) -> list[tuple[int, datetime.datetime]]:
+        calendar = self.policy["template_planning_months"]
+        count = calendar["count"]
+        start_column = contract.planning_start_column
+        columns = list(range(start_column, start_column + count))
+        dated_columns = sorted(
+            column for month, column in contract.month_to_col.items()
+            if re.fullmatch(r"\d{4}/\d{2}", month)
+        )
+        if dated_columns != columns or any(
+            not isinstance(sheet.cell(contract.header_row, column).value, datetime.date)
+            for column in columns
+        ):
+            raise ValueError(
+                "template_planning_months requires exactly count contiguous dated header cells "
+                "at planning_start_column; other headers cannot be replaced."
+            )
+
+        if not sections:
+            raise ValueError("template_planning_months requires a source month from every section.")
+        source_months = set()
+        for section in sections:
+            try:
+                value = self._eval_spec(calendar["start_month_spec"], section, None)
+                month = _planning_month_key_from_value(value)
+            except (ValueError, TypeError, OverflowError) as exc:
+                raise ValueError(
+                    "template_planning_months requires a valid source month from every section."
+                ) from exc
+            if month is None:
+                raise ValueError(
+                    "template_planning_months requires a valid source month from every section."
+                )
+            source_months.add(month)
+        if len(source_months) != 1:
+            raise ValueError("template_planning_months found conflicting source months across sections.")
+
+        year, month = map(int, next(iter(source_months)).split("/"))
+        first_month = (year - 1) * 12 + month - 1
+        if first_month + count > 9999 * 12:
+            raise ValueError("template_planning_months exceeds the supported calendar year range.")
+        return [
+            (column, datetime.datetime((first_month + offset) // 12 + 1, (first_month + offset) % 12 + 1, 1))
+            for offset, column in enumerate(columns)
+        ]
 
     def _template_section_sort_key(self, section: Any) -> tuple:
         values = []
@@ -1731,7 +1799,8 @@ class WorkbookPreservationComparator:
                         issues.append({"type": "row_dimension", "row": key, "expected": expected, "actual": actual})
 
                 expected_freeze = original.freeze_panes
-                if expected_freeze and original.title == title:
+                if (expected_freeze and original.title == title
+                        and validation_summary.get("mode") != "populate_template"):
                     freeze_col, freeze_row = coordinate_from_string(expected_freeze)
                     expected_freeze = f"{freeze_col}{mapping.get(str(freeze_row), freeze_row)}"
                 if final.freeze_panes != expected_freeze:

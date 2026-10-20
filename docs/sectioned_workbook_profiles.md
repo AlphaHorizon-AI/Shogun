@@ -111,10 +111,40 @@ Referenced duplicate keys and reachable cycles fail before publication.
 
 Generated rows use the formatting and row height at `data_start_row`; the original
 headers, blank formatted rows and all other sheets remain preserved.
+Template population keeps the original freeze boundary (for example `A3` for two
+header rows) while adding data below it. Updating an existing plan continues to
+move its freeze boundary with the preserved rows.
 
 ### Planning columns
 
 The month headings define the current dates; the rules need not contain fixed months.
+For a rolling calendar in `populate_template`, configure `template_planning_months`:
+
+```json
+"template_planning_months": {
+  "start_month_spec": {
+    "join": {
+      "values": [{"field": "source_report_year"}, {"field": "source_report_month"}],
+      "separator": "/",
+      "require_all": true
+    }
+  },
+  "count": 12
+}
+```
+
+The start uses the existing value specifications and must resolve to the same valid
+month in every parsed source section, including excluded sections and sections with
+no records. Missing, invalid or conflicting source months stop the run. A value can
+be `YYYY/MM`, `YYYY-MM`, `YYYY/MM/DD`, or a date/datetime value. The original empty
+template must already have exactly `count` contiguous typed date headings beginning
+at `planning_start_column`; text headings, missing dates and extra dated columns
+are rejected rather than overwritten or removed. `count` is from one to 120 and
+must fit inside Excel's column limit. The output replaces only those date values
+with consecutive months, preserving their formatting and the source template.
+Records use the resulting calendar. Omitting this option preserves static headings;
+it is unavailable in `update_existing` mode.
+
 Optional `backlog_headers` declares exact labels for dates before the first visible
 month. Optional `future_header_patterns` identifies headers such as `>= Sep 2028`;
 the date in that header defines the threshold. These use the existing monthly bucket
