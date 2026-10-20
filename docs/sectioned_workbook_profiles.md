@@ -41,8 +41,11 @@ Choose stable `source_identity_fields`: a mutable quantity, date or PDF page num
 must not be part of the identity if the same record should update in place.
 
 Existing material order is retained. New sections use the profile's section sort
-keys; missing source rows are retained with a review annotation, not silently
-treated as current demand. Review missing-source and manual-override events in the
+keys; previously generated rows no longer mapped in the current run are retained
+with a review annotation, not silently treated as current demand. This includes
+missing sources and records now outside the selected scope or planning horizon.
+Retained-row audit events distinguish whether their source record/section is still
+present. Review unmapped-row and manual-override events in the
 reports. A rolling `template_planning_months` calendar moves existing monthly cells
 by their actual month, not their old column position. Departing populated months
 and month-cell notes are retained in the hidden `_shogun_master_history` worksheet. The calendar cannot

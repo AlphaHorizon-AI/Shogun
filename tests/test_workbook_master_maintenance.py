@@ -64,6 +64,7 @@ def master_setup(tmp_path):
                 "section_rules": [{
                     "id": "stock", "value_spec": {"field": "stock"}, "value_column": 6,
                     "match_column": 5, "match_pattern": "Stock", "zero_value_skip_insert": True,
+                    "insert_status": "ADDED_STOCK_ROW",
                     "insert_row_values": {
                         "2": {"section_key": True}, "5": {"literal": "Stock"}, "6": {"field": "stock"},
                     },
@@ -118,8 +119,14 @@ def test_seed_and_idempotent_rerun(master_setup, tmp_path):
     first, second = tmp_path / "first.xlsx", tmp_path / "second.xlsx"
     initial = run_master(seed, profile, section(), first)
     assert initial["total_rows_inserted"] == 3
+    assert initial["status_counts"]["CREATED_SECTION"] == 1
+    assert initial["status_counts"]["ADDED_STOCK_ROW"] == 1
     repeated = run_master(first, profile, section(), second)
     assert repeated["total_rows_inserted"] == 0
+    assert "CREATED_SECTION" not in repeated["status_counts"]
+    assert "ADDED_STOCK_ROW" not in repeated["status_counts"]
+    assert repeated["status_counts"]["MATCHED_EXISTING_SECTION"] == 1
+    assert repeated["status_counts"]["MATCHED_SOURCE_ROW"] == 1
     assert repeated["record_disposition_counts"] == {"MATCHED_SOURCE_RECORD": 2}
     assert seed.read_bytes() == before
     book = openpyxl.load_workbook(second)
@@ -154,6 +161,12 @@ def test_august_to_october_updates_owned_values_preserves_planner_cells_and_arch
     )), second)
     assert updated["total_rows_inserted"] == 0
     assert updated["status_counts"]["PRESERVED_MANUAL_SOURCE_VALUE"] == 1
+    assert updated["status_counts"]["UPDATED_SOURCE_ROW"] == 1
+    assert "ADDED_STOCK_ROW" not in updated["status_counts"]
+    assert "CREATED_SECTION" not in updated["status_counts"]
+    stock_event = next(event for event in updated["events"] if event["status"] == "UPDATED_SOURCE_ROW")
+    assert "record_id" not in stock_event
+    assert stock_event["source_rule_id"] == "stock"
     book = openpyxl.load_workbook(second)
     try:
         sheet = book["Plan"]
@@ -194,6 +207,9 @@ def test_new_material_inserts_without_reordering_existing_groups_and_missing_ord
         + "\f" + section("C", size=300, records="")
     ), second)
     assert result["status_counts"]["MISSING_SOURCE_RECORD_RETAINED"] == 1
+    retained = next(event for event in result["events"] if event["status"] == "MISSING_SOURCE_RECORD_RETAINED")
+    assert retained["current_source_section_present"] is True
+    assert retained["current_source_record_present"] is False
     book = openpyxl.load_workbook(second)
     try:
         sheet = book["Plan"]
@@ -240,6 +256,8 @@ def test_blank_departing_month_comments_are_archived_and_absent_material_remains
     book.close()
     summary = run_master(first, profile, section("B", report="2026/10", records=""), second)
     assert summary["status_counts"]["MISSING_SOURCE_SECTION_RETAINED"] == 1
+    retained = next(event for event in summary["events"] if event["status"] == "MISSING_SOURCE_SECTION_RETAINED")
+    assert retained["current_source_section_present"] is False
     book = openpyxl.load_workbook(second)
     try:
         assert book["Plan"].cell(article, 2).value == "A"
@@ -340,6 +358,44 @@ def test_zero_stock_optional_component_blanks_round_trip_when_new_material_shift
         assert old_article_row == 4
         assert sheet.cell(old_article_row, 3).value is None
         assert sheet.cell(old_article_row, 6).value == 0
+    finally:
+        book.close()
+
+
+def test_present_demand_outside_horizon_is_marked_unmapped_without_changing_planner_values(master_setup, tmp_path):
+    seed, profile = master_setup
+    first, second = tmp_path / "first.xlsx", tmp_path / "second.xlsx"
+    run_master(seed, profile, section(records="DEM D1 12 2026/10 2026-10-05\n"), first)
+    book = openpyxl.load_workbook(first)
+    sheet = book["Plan"]
+    demand = row_for(sheet, "D1")
+    sheet.cell(demand, 8, "Preserve the planner detail")
+    sheet.cell(demand, 2).comment = Comment(
+        "Planner article note\n[Shogun] Source record is absent from the current PDFs; retained for planner review.",
+        "Planner",
+    )
+    sheet.cell(demand, 10, datetime.datetime(2026, 10, 10))
+    sheet.cell(demand, 13, 99)
+    book.save(first)
+    book.close()
+    summary = run_master(first, profile, section(
+        report="2026/10", records="DEM D1 6 2027/02 2027-02-01\n",
+    ), second)
+    assert summary["record_disposition_counts"] == {"OUTSIDE_PLANNING_HORIZON": 1}
+    assert summary["status_counts"]["MISSING_SOURCE_RECORD_RETAINED"] == 1
+    retained = next(event for event in summary["events"] if event["status"] == "MISSING_SOURCE_RECORD_RETAINED")
+    assert retained["current_source_section_present"] is True
+    assert retained["current_source_record_present"] is True
+    assert "record_id" not in retained
+    book = openpyxl.load_workbook(second)
+    try:
+        sheet = book["Plan"]
+        assert sheet.cell(demand, 8).value == "Preserve the planner detail"
+        assert sheet.cell(demand, 10).value == datetime.datetime(2026, 10, 10)
+        assert sheet.cell(demand, 11).value == 99
+        assert sheet.cell(demand, 2).comment.text == "Planner article note\n" + MISSING_COMMENT
+        assert "not mapped in this run" in MISSING_COMMENT
+        assert "absent" not in MISSING_COMMENT
     finally:
         book.close()
 

@@ -42,7 +42,11 @@ STATE_HEADER = (
 HISTORY_HEADER = (
     "schema_v1", "profile_hash", "sheet", "section_id", "source_identity", "source_row", "month", "cell_payload",
 )
-MISSING_COMMENT = "[Shogun] Source record is absent from the current PDFs; retained for planner review."
+MISSING_COMMENT = (
+    "[Shogun] Previously generated row is not mapped in this run; retained for planner review. "
+    "See the current-source audit for scope and date decisions."
+)
+_LEGACY_MISSING_COMMENT = "[Shogun] Source record is absent from the current PDFs; retained for planner review."
 
 
 def _json(value: Any) -> str:
@@ -369,6 +373,10 @@ def maintain_workbook_master(
                 events = fresh["events"]
                 insertions = defaultdict(list)
                 existing_groups = {group["section"]: group for group in groups}
+                for event in events:
+                    if event["status"] == "CREATED_SECTION" and event["section_id"] in existing_groups:
+                        event["status"] = "MATCHED_EXISTING_SECTION"
+                        event["original_row"] = existing_groups[event["section_id"]]["start"]
                 section_sorts = {}
                 for entry in state.values():
                     section_sorts.setdefault(entry["section"], entry["sort"])
@@ -381,7 +389,9 @@ def maintain_workbook_master(
                     cell = sheet.cell(row, column)
                     old_comment = cell.comment
                     original = old_comment.text if old_comment else ""
-                    text = original.replace("\n" + MISSING_COMMENT, "").replace(MISSING_COMMENT, "")
+                    text = original
+                    for marker in (MISSING_COMMENT, _LEGACY_MISSING_COMMENT):
+                        text = text.replace("\n" + marker, "").replace(marker, "")
                     if missing:
                         text = text + ("\n" if text else "") + MISSING_COMMENT
                     if text != original:
@@ -437,6 +447,24 @@ def maintain_workbook_master(
                             "confidence": "REVIEW" if manual else "DETERMINISTIC",
                             "original_row": row, "row": row, "preserved_columns": manual,
                         })
+                    elif entry["kind"] == "section_rule":
+                        status = "PRESERVED_MANUAL_SOURCE_VALUE" if manual else (
+                            "UPDATED_SOURCE_ROW" if changed else "MATCHED_SOURCE_ROW"
+                        )
+                        row_event = entry["event"]
+                        if row_event is not None:
+                            row_event.update({
+                                "status": status, "original_row": row,
+                                "confidence": "REVIEW" if manual else "DETERMINISTIC",
+                                "preserved_columns": manual,
+                            })
+                        elif changed or manual:
+                            events.append({
+                                "status": status, "section_id": section, "source_identity": identity,
+                                "source_rule_id": entry["rule"], "original_row": row,
+                                "confidence": "REVIEW" if manual else "DETERMINISTIC",
+                                "preserved_columns": manual,
+                            })
                     elif manual:
                         events.append({
                             "status": "PRESERVED_MANUAL_SOURCE_VALUE", "section_id": section,
@@ -444,6 +472,8 @@ def maintain_workbook_master(
                             "preserved_columns": manual, "confidence": "REVIEW",
                         })
                 selected_sections = {entry["section"] for entry in desired.values()}
+                source_sections = {section.key for section in sections}
+                source_record_ids = {event["record_id"] for event in events if "record_id" in event}
                 for identity, entry in state.items():
                     if identity in desired or entry["kind"] == "section" and entry["section"] in selected_sections:
                         continue
@@ -454,6 +484,9 @@ def maintain_workbook_master(
                         ),
                         "section_id": entry["section"],
                         "source_identity": identity, "original_row": entry["row"], "confidence": "REVIEW",
+                        "current_source_section_present": entry["section"] in source_sections,
+                        **({"current_source_record_present": identity in source_record_ids}
+                           if entry["kind"] == "record" else {}),
                     })
 
                 def moved(row):
