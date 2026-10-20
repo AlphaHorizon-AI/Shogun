@@ -2,8 +2,9 @@
 
 The Files node's `excel_create` action accepts `workbook_transform`: a portable private
 `profile_path`, an existing `template_path`, one to ten `pdf_paths`, and optional `sheet_name`,
-`reference_workbook_path` and extraction `options`. Paths stay inside the Shogun workspace.
-The existing Office mode gate applies. Import verifies the profile's schema and content hash;
+`reference_workbook_path`, `master_path` and extraction `options`. Paths stay inside the Shogun workspace.
+Office and Excel enablement, workbook permissions and the kill switch apply.
+Import verifies the profile's schema and content hash;
 importing a file does not publish it or activate a saved flow.
 
 ## Configure an AgentFlow
@@ -18,6 +19,46 @@ upstream File Template.
 
 Connect **Input → Files → Output** for this operation. The Files node reads the
 configured PDFs directly.
+
+### Maintain one planning master
+
+For repeat updates, use a private profile with `workbook_update.mode` set to
+`maintain_master` and enter a **Persistent master workbook** path on the Files step.
+Keep `template_path` pointing to a pristine, empty layout. The first successful run
+creates the master from that layout and the PDFs. Fill the missing planner details
+in the master once, save it and close Excel before the next run. Replace the current
+PDF files at their configured paths to refresh it; the layout, profile and master
+paths do not change between runs. Use a separate output path for the run snapshot.
+Do not use an expected-result workbook as the master or a runtime reference.
+
+Later runs match generated rows by their source identities. They refresh a
+source-owned cell only if it still equals the last value Shogun wrote. A planner
+override is preserved and reported for review. Cells outside the generated mapping
+remain unchanged. Keep section identifiers, row structure and the hidden Shogun
+worksheets intact; editing cell values is supported, but manually inserting,
+deleting or sorting generated rows can invalidate ownership and stop the update.
+Choose stable `source_identity_fields`: a mutable quantity, date or PDF page number
+must not be part of the identity if the same record should update in place.
+
+Existing material order is retained. New sections use the profile's section sort
+keys; previously generated rows no longer mapped in the current run are retained
+with a review annotation, not silently treated as current demand. This includes
+missing sources and records now outside the selected scope or planning horizon.
+Retained-row audit events distinguish whether their source record/section is still
+present. Review unmapped-row and manual-override events in the
+reports. A rolling `template_planning_months` calendar moves existing monthly cells
+by their actual month, not their old column position. Departing populated months
+and month-cell notes are retained in the hidden `_shogun_master_history` worksheet. The calendar cannot
+move backwards.
+
+The wrapper locks the master for the complete operation, verifies source accounting
+and preservation, pins the validated output digest, and checks that the inputs did
+not change. Before an existing master is atomically replaced, it saves a sibling
+`*_previous_v<timestamp>_<id>.xlsx` backup. A failed or cancelled run leaves the
+master unchanged. Keep the backup files according to your retention policy. Review
+flags do not prevent a verified update, but failed preservation or incomplete source
+accounting does. Master maintenance is configured directly on Files, not through a
+Samurai workbook job, and cannot use `reference_workbook_path`.
 
 Alternatively, attach the private workbook profile to a **Samurai** node. Connect
 exactly one Excel **File Template** and one to ten **Files — PDF Read** nodes
@@ -82,8 +123,8 @@ first generated stock, order or record row when every overlapping nonblank value
 equal. The `CREATED_SECTION` audit event then points to that shared physical row.
 Sections without a generated detail still retain their heading. If a section value
 would overwrite a different nonblank detail value, the engine keeps both rows and
-emits `SECTION_ROW_MERGE_CONFLICT` for review. This mode is available only with
-`populate_template`.
+emits `SECTION_ROW_MERGE_CONFLICT` for review. This mode is available with
+`populate_template` and `maintain_master`.
 
 The existing `parameters.section_order` rules can additionally place referenced
 sections before their parents, using `dependencies_before.fields`. This is applied
@@ -111,10 +152,40 @@ Referenced duplicate keys and reachable cycles fail before publication.
 
 Generated rows use the formatting and row height at `data_start_row`; the original
 headers, blank formatted rows and all other sheets remain preserved.
+Template population keeps the original freeze boundary (for example `A3` for two
+header rows) while adding data below it. Updating an existing plan continues to
+move its freeze boundary with the preserved rows.
 
 ### Planning columns
 
 The month headings define the current dates; the rules need not contain fixed months.
+For a rolling calendar in `populate_template` or `maintain_master`, configure `template_planning_months`:
+
+```json
+"template_planning_months": {
+  "start_month_spec": {
+    "join": {
+      "values": [{"field": "source_report_year"}, {"field": "source_report_month"}],
+      "separator": "/",
+      "require_all": true
+    }
+  },
+  "count": 12
+}
+```
+
+The start uses the existing value specifications and must resolve to the same valid
+month in every parsed source section, including excluded sections and sections with
+no records. Missing, invalid or conflicting source months stop the run. A value can
+be `YYYY/MM`, `YYYY-MM`, `YYYY/MM/DD`, or a date/datetime value. The original empty
+template must already have exactly `count` contiguous typed date headings beginning
+at `planning_start_column`; text headings, missing dates and extra dated columns
+are rejected rather than overwritten or removed. `count` is from one to 120 and
+must fit inside Excel's column limit. The output replaces only those date values
+with consecutive months, preserving their formatting and the source template.
+Records use the resulting calendar. Omitting this option preserves static headings;
+it is unavailable in `update_existing` mode.
+
 Optional `backlog_headers` declares exact labels for dates before the first visible
 month. Optional `future_header_patterns` identifies headers such as `>= Sep 2028`;
 the date in that header defines the threshold. These use the existing monthly bucket

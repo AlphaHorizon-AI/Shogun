@@ -7,6 +7,7 @@ export type WorkbookPickerTarget =
 export interface WorkbookUpdateConfig {
   profile_path?: string;
   template_path?: string;
+  master_path?: string;
   reference_workbook_path?: string;
   pdf_paths?: string[] | string;
   sheet_name?: string;
@@ -45,14 +46,30 @@ export function WorkbookUpdateFields({ value, onChange, onBrowse }: Props) {
                 onChange={(event) => onChange({ ...value, [key]: event.target.value })}
                 placeholder={placeholder}
                 spellCheck={false}
+                disabled={key === 'reference_workbook_path' && Boolean(value.master_path?.trim())}
               />
-              <button type="button" className={browseStyle} aria-label={`Browse ${label.toLowerCase()}`} onClick={() => onBrowse({ key })}>
+              <button type="button" disabled={key === 'reference_workbook_path' && Boolean(value.master_path?.trim())} className={browseStyle} aria-label={`Browse ${label.toLowerCase()}`} onClick={() => onBrowse({ key })}>
                 <FolderOpen className="h-3.5 w-3.5" />
               </button>
             </span>
           </label>
         </div>
       ))}
+      <div className="space-y-1.5">
+        <label className="block text-[9px] font-bold uppercase tracking-widest text-[#7a8899]">
+          Persistent master workbook (optional)
+          <input
+            className={`${inputStyle} mt-1.5 w-full`}
+            value={value.master_path || ''}
+            onChange={(event) => onChange({ ...value, master_path: event.target.value, ...(event.target.value.trim() ? { reference_workbook_path: undefined } : {}) })}
+            placeholder="Input/planning-master.xlsx"
+            spellCheck={false}
+          />
+        </label>
+        <p className="text-[9px] leading-relaxed text-[#7a8899]">
+          With master-maintenance rules, enter one workspace path to keep across runs. The first run creates it from the empty layout and PDFs. Later runs preserve planner entries and update that master, keeping a backup. Leave blank for separate workbook copies.
+        </p>
+      </div>
       <div className="space-y-2">
         <p className="text-[9px] font-bold uppercase tracking-widest text-[#7a8899]">Source PDFs (1–10)</p>
         {pdfs.map((path, index) => (
