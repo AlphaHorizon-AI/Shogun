@@ -59,11 +59,12 @@ def run_workbook_master_pipeline(
     profile_source_path: Path | str | None = None,
     expected_input_hashes: dict[Path | str, str] | None = None,
 ) -> dict[str, Any]:
-    """Build the first master from a seed, then maintain it on subsequent runs.
+    """Build a selected-PDF snapshot, preserving planner details independently.
 
     The caller confines paths to its workspace. An exclusive master lock spans
     baseline selection, pipeline execution, backup and atomic promotion. The
     existing pipeline continues to publish the output and its diagnostic reports.
+    Explicit master_refresh_mode='rolling' retains the legacy forward-only mode.
     """
     definition = profile.get("profile", profile) if isinstance(profile, dict) else {}
     parameters = definition.get("parameters") if isinstance(definition, dict) else None
@@ -122,7 +123,7 @@ def run_workbook_master_pipeline(
             template_workbook_path=baseline,
             output_workbook_path=output,
             sheet_name=sheet_name,
-            options=options,
+            options={"master_refresh_mode": "selected_pdfs", **(options or {})},
             cancel_event=cancel_event,
             profile_source_path=profile_source,
             expected_input_hashes=hashes,

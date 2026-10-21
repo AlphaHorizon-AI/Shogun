@@ -65,6 +65,7 @@ def test_initial_run_uses_seed_and_creates_separate_master(master_job):
     result = workbook_master.run_workbook_master_pipeline(**job)
     master = job["master_workbook_path"]
     assert calls[0]["template_workbook_path"] == job["template_workbook_path"]
+    assert calls[0]["options"]["master_refresh_mode"] == "selected_pdfs"
     assert calls[0]["expected_input_hashes"] == {
         path: digest(path)
         for path in [job["template_workbook_path"], *job["pdf_paths"], job["profile_source_path"]]

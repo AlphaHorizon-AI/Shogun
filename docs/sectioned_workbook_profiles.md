@@ -31,25 +31,41 @@ PDF files at their configured paths to refresh it; the layout, profile and maste
 paths do not change between runs. Use a separate output path for the run snapshot.
 Do not use an expected-result workbook as the master or a runtime reference.
 
-Later runs match generated rows by their source identities. They refresh a
-source-owned cell only if it still equals the last value Shogun wrote. A planner
-override is preserved and reported for review. Cells outside the generated mapping
-remain unchanged. Keep section identifiers, row structure and the hidden Shogun
-worksheets intact; editing cell values is supported, but manually inserting,
+Each successful Files master run rebuilds the main planning sheet from **only the
+selected PDFs**, using the profile's mapping, scope and planning horizon. Older and
+newer source sets are both supported. Previous source-only rows, stock, quantities,
+dates and month buckets are not carried into the new snapshot. Existing profiles
+and flow paths do not need to change to enable this behavior.
+
+Planner details are stored independently in the visible **Planner details** sheet.
+For an exact matching source identity, manual values can return to blank,
+non-source planning fields (for example customer, notes and work status). Details
+for records absent from the selected snapshot stay in that archive; they are not
+attached to a different order or added as stale demand. If the same identity returns
+in a later run, its matching planner details can return too. Manual changes to PDF
+quantities, dates, references or month buckets are retained in the archive for
+review, but never override the selected PDF data. Comments and hyperlinks remain
+attached to their matching identity and actual month, not an old row/column position.
+Unrelated worksheets and existing legacy calendar history are preserved.
+
+Keep section identifiers, row structure, archive ownership columns and the hidden Shogun
+worksheets intact; editing planner cell values is supported, but manually inserting,
 deleting or sorting generated rows can invalidate ownership and stop the update.
 Choose stable `source_identity_fields`: a mutable quantity, date or PDF page number
 must not be part of the identity if the same record should update in place.
 
-Existing material order is retained. New sections use the profile's section sort
-keys; previously generated rows no longer mapped in the current run are retained
-with a review annotation, not silently treated as current demand. This includes
-missing sources and records now outside the selected scope or planning horizon.
-Retained-row audit events distinguish whether their source record/section is still
-present. Review unmapped-row and manual-override events in the
-reports. A rolling `template_planning_months` calendar moves existing monthly cells
-by their actual month, not their old column position. Departing populated months
-and month-cell notes are retained in the hidden `_shogun_master_history` worksheet. The calendar cannot
-move backwards.
+The generated snapshot uses the profile's section sort keys and derives its
+`template_planning_months` calendar anew from the selected source set. Review
+mapping warnings and `PLANNER_VALUE_ARCHIVED` events in the reports. A successful
+run verifies preservation and source accounting; it is not a guarantee that every
+mapping rule resolves every business interpretation in the PDFs.
+
+Compatibility: callers explicitly passing `options.master_refresh_mode="rolling"`
+to the master wrapper retain the legacy forward-only calendar and missing-row/manual
+override retention behavior. Direct `SafeWorkbookUpdater` maintenance calls retain
+their legacy behavior unless `master_refresh_mode="selected_pdfs"` is requested.
+The Files persistent-master lifecycle defaults to `selected_pdfs`; ordinary
+`update_existing` and `populate_template` operations are unchanged.
 
 The wrapper locks the master for the complete operation, verifies source accounting
 and preservation, pins the validated output digest, and checks that the inputs did

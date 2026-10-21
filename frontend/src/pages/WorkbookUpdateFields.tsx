@@ -67,7 +67,7 @@ export function WorkbookUpdateFields({ value, onChange, onBrowse }: Props) {
           />
         </label>
         <p className="text-[9px] leading-relaxed text-[#7a8899]">
-          With master-maintenance rules, enter one workspace path to keep across runs. The first run creates it from the empty layout and PDFs. Later runs preserve planner entries and update that master, keeping a backup. Leave blank for separate workbook copies.
+          Enter one workspace path to keep across runs. The plan is rebuilt from the selected PDFs, older or newer, with a backup before replacement. Matching planner details are restored; other details and PDF-value overrides remain on the separate Planner details sheet. Leave blank for separate workbook copies.
         </p>
       </div>
       <div className="space-y-2">
