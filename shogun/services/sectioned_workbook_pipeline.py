@@ -581,9 +581,15 @@ def run_sectioned_workbook_pipeline(
     parameters = profile.get("parameters") or {}
 
     options = dict(options or {})
-    supported_opts = {"max_pdf_bytes", "max_pdf_pages", "max_total_chars"}
+    supported_opts = {"max_pdf_bytes", "max_pdf_pages", "max_total_chars", "master_refresh_mode"}
     if set(options) - supported_opts:
         raise ValueError(f"Unsupported options: {sorted(set(options) - supported_opts)}")
+    refresh_mode = options.get("master_refresh_mode")
+    if "master_refresh_mode" in options and (
+        refresh_mode not in ("selected_pdfs", "rolling")
+        or parameters.get("workbook_update", {}).get("mode") != "maintain_master"
+    ):
+        raise ValueError("master_refresh_mode requires a master profile and selected_pdfs or rolling.")
 
     extraction_config = parameters.get("extraction") or {}
     limits = {

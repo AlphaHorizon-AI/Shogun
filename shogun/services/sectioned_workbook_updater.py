@@ -823,6 +823,10 @@ class SafeWorkbookUpdater:
         options: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if self.policy.get("mode") == "maintain_master":
+            if (options or {}).get("master_refresh_mode") == "selected_pdfs":
+                from shogun.services.workbook_master_refresh import refresh_selected_pdf_master
+
+                return refresh_selected_pdf_master(self, sections, output_path, sheet_name)
             from shogun.services.workbook_master_maintenance import maintain_workbook_master
 
             return maintain_workbook_master(self, sections, output_path, sheet_name, options)
@@ -1744,6 +1748,10 @@ class WorkbookPreservationComparator:
     def compare_workbooks(
         self, baseline_path: Path, generated_path: Path, validation_summary: dict[str, Any]
     ) -> dict[str, Any]:
+        if validation_summary.get("master_refresh_mode") == "selected_pdfs":
+            from shogun.services.workbook_master_refresh import compare_selected_pdf_master
+
+            return compare_selected_pdf_master(baseline_path, generated_path, validation_summary)
         base = openpyxl.load_workbook(baseline_path, data_only=False)
         generated = openpyxl.load_workbook(generated_path, data_only=False)
         issues = []

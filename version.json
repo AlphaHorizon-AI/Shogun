@@ -1,8 +1,8 @@
 {
-  "version": "1.47.117",
+  "version": "1.47.118",
   "name": "Shogun AFM",
-  "build": 268,
+  "build": 269,
   "channel": "stable",
-  "released": "2026-10-20T19:07:00Z",
-  "changelog": "Create a persistent planning master from PDFs, preserve planner entries across source refreshes, roll planning months with history, flag missing source rows, and validate and back up the master before atomic updates. Update follow-redirects to address credential-header advisories."
+  "released": "2026-10-21T11:21:49Z",
+  "changelog": "Rebuild persistent planning masters from the selected PDFs in either time direction without carrying forward stale source rows or quantities. Preserve matching planner details and archive absent-record notes and PDF-value overrides separately, with verified backups and atomic promotion."
 }
