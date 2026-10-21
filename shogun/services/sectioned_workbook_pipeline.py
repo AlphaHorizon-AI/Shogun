@@ -585,7 +585,7 @@ def run_sectioned_workbook_pipeline(
     if set(options) - supported_opts:
         raise ValueError(f"Unsupported options: {sorted(set(options) - supported_opts)}")
     refresh_mode = options.get("master_refresh_mode")
-    if refresh_mode is not None and (
+    if "master_refresh_mode" in options and (
         refresh_mode not in ("selected_pdfs", "rolling")
         or parameters.get("workbook_update", {}).get("mode") != "maintain_master"
     ):

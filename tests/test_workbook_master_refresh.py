@@ -7,7 +7,7 @@ import openpyxl
 import pytest
 from openpyxl.comments import Comment
 
-from shogun.services.sectioned_workbook_pipeline import SectionedLayoutParser
+from shogun.services.sectioned_workbook_pipeline import SectionedLayoutParser, run_sectioned_workbook_pipeline
 from shogun.services.sectioned_workbook_updater import SafeWorkbookUpdater, WorkbookPreservationComparator
 from shogun.services.workbook_master_refresh import PLANNER_SHEET
 from tests.test_workbook_master_maintenance import master_setup as master_fixture
@@ -189,3 +189,23 @@ def test_changed_row_structure_fails_without_publication(master_setup, tmp_path)
         generate(first, profile, section(report="2026/10"), output)
     assert first.read_bytes() == before
     assert not output.exists()
+
+
+@pytest.mark.parametrize("refresh_mode", [None, "", False, {}])
+def test_invalid_refresh_mode_never_falls_back_to_rolling(master_setup, tmp_path, refresh_mode):
+    seed, profile = master_setup
+    with pytest.raises(ValueError, match="master_refresh_mode"):
+        run_sectioned_workbook_pipeline(
+            profile=profile, pdf_paths=[tmp_path / "unused.pdf"], template_workbook_path=seed,
+            output_workbook_path=tmp_path / "output.xlsx", options={"master_refresh_mode": refresh_mode},
+        )
+
+
+def test_explicit_rolling_compatibility_mode_is_preserved(master_setup, tmp_path):
+    seed, profile = master_setup
+    parsed = SectionedLayoutParser(profile).parse_pages([(1, section())], "selected.pdf")
+    summary = SafeWorkbookUpdater(seed, profile).execute(
+        parsed, tmp_path / "rolling.xlsx", options={"master_refresh_mode": "rolling"},
+    )
+    assert "master_refresh_mode" not in summary
+    assert summary["mode"] == "maintain_master"
