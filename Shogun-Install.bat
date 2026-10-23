@@ -51,19 +51,21 @@ if errorlevel 1 (
 for /f "tokens=2 delims= " %%v in ('python --version 2^>^&1') do echo   [OK] Python %%v
 
 :: -- Node.js ----------------------------------------------------
+if exist "%INSTALL_DIR%\venv\node-runtime\node.exe" set "PATH=%INSTALL_DIR%\venv\node-runtime;%PATH%"
+if exist "%INSTALL_DIR%\.venv\node-runtime\node.exe" set "PATH=%INSTALL_DIR%\.venv\node-runtime;%PATH%"
 node --version >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo   [!] Node.js is not installed.
     echo.
-    echo   Shogun requires Node.js 22.12+ ^(but lower than 25^) to build the interface.
+    echo   Shogun requires Node.js 22.23.4+ ^(22.x^) or 24.22.1+ ^(24.x^) to build the interface.
     echo   Please download and install it from: https://nodejs.org/
     echo.
     pause
     exit /b 1
 )
-node -e "const [major,minor]=process.versions.node.split('.').map(Number); process.exit((major>22||major===22&&minor>=12)&&major<25?0:1)" >nul 2>&1
+node -e "const v=process.versions.node; const [major,minor,patch]=v.split('.').map(Number); process.exit(/^\d+\.\d+\.\d+$/.test(v)&&((major===22&&(minor>23||minor===23&&patch>=4))||(major===24&&(minor>22||minor===22&&patch>=1)))?0:1)" >nul 2>&1
 if errorlevel 1 (
-    echo   [!] Node.js 22.12 or newer, but lower than 25, is required.
+    echo   [!] Node.js 22.23.4+ ^(22.x^) or 24.22.1+ ^(24.x^), is required.
     pause
     exit /b 1
 )

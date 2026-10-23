@@ -33,6 +33,9 @@ if "%VENV_DIR%"=="" (
 :: Activate venv
 echo   Using virtual environment: %VENV_DIR%
 call %VENV_DIR%\Scripts\activate.bat
+if exist "%VENV_DIR%\node-runtime\node.exe" set "PATH=%CD%\%VENV_DIR%\node-runtime;%PATH%"
+python shogun\security_maintenance.py check --node
+if errorlevel 1 exit /b 1
 
 :: Build frontend on every launch so the served UI always matches this codebase.
 :: This prevents stale laptop builds from hiding newly-added tabs or panels.

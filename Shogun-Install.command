@@ -115,6 +115,11 @@ PY_VER=$("$PYTHON_CMD" --version 2>&1)
 echo -e "  ${GREEN}✅  $PY_VER${NC}"
 
 # ── Check Node.js ──────────────────────────────────────────────
+for environment in venv .venv; do
+    if [ -x "$INSTALL_DIR/$environment/node-runtime/bin/node" ]; then
+        export PATH="$INSTALL_DIR/$environment/node-runtime/bin:$PATH"
+    fi
+done
 if ! command -v node &>/dev/null; then
     echo -e "  ${RED}❌  Node.js is not installed.${NC}"
     echo ""
@@ -123,8 +128,8 @@ if ! command -v node &>/dev/null; then
     echo ""
     exit 1
 fi
-if ! node -e "const [major,minor]=process.versions.node.split('.').map(Number); process.exit((major>22||major===22&&minor>=12)&&major<25?0:1)"; then
-    echo -e "  ${RED}❌  Node.js 22.12 or newer, but lower than 25, is required.${NC}"
+if ! node -e "const v=process.versions.node; const [major,minor,patch]=v.split('.').map(Number); process.exit(/^\d+\.\d+\.\d+$/.test(v)&&((major===22&&(minor>23||minor===23&&patch>=4))||(major===24&&(minor>22||minor===22&&patch>=1)))?0:1)"; then
+    echo -e "  ${RED}❌  Node.js 22.23.4+ (22.x) or 24.22.1+ (24.x), is required.${NC}"
     exit 1
 fi
 

@@ -7,3 +7,10 @@
 *.sh  text eol=lf
 *.command text eol=lf
 .githooks/* text eol=lf
+
+# Public incident fixture digests are calculated over the downloaded PEM bytes.
+tests/fixtures/emudhra/*.crt text eol=lf
+
+# Keep generated frontend entry points consistent across release builders.
+frontend/*.html text eol=lf
+frontend/dist/*.html text eol=lf

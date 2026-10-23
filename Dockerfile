@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-bookworm-slim AS frontend-builder
+FROM node:22.23.4-bookworm-slim AS frontend-builder
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --silent
+RUN npm ci --silent --strict-ssl=true --engine-strict
 COPY LICENSE.md /build/LICENSE.md
 COPY frontend/ ./
 RUN npm run build
@@ -35,22 +35,32 @@ ENV SHOGUN_GIT_SHA=${VCS_REF}
 
 WORKDIR /app
 
+COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=frontend-builder /usr/local/LICENSE /usr/local/share/licenses/node/LICENSE
+ENV PLAYWRIGHT_NODEJS_PATH=/usr/local/bin/node
+
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends ca-certificates curl git tini \
+    && apt-get install -y --no-install-recommends ca-certificates curl git tini libatomic1 libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md alembic.ini version.json ./
 COPY shogun/ ./shogun/
 COPY migrations/ ./migrations/
 
-RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.4.0" \
+RUN python shogun/security_maintenance.py bootstrap --allow-system \
+    && python shogun/security_maintenance.py check --node \
+    && python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.4.0" \
     && pip install --no-cache-dir ".[server]" \
     && pip install --no-cache-dir --upgrade \
         "jaraco.context>=6.1.0" \
         "setuptools>=78.1.1" \
         "wheel>=0.46.2" \
     && python -m playwright install --with-deps chromium \
+    && python -m pip check \
+    && python -m pip uninstall --yes pip \
+    && python -c "import pathlib, shutil, sysconfig; shutil.rmtree(pathlib.Path(sysconfig.get_path('stdlib')) / 'ensurepip')" \
+    && python shogun/security_maintenance.py check --runtime-only --node \
     && rm -rf /var/lib/apt/lists/* /root/.cache
 
 COPY --from=frontend-builder /build/frontend/dist ./frontend/dist

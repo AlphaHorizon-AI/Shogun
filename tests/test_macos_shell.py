@@ -180,7 +180,7 @@ exit 0
 def test_unsupported_node_stops_before_download_or_install(shell_install, script):
     result = _run(shell_install, script, FAIL_STAGE="node")
     assert result.returncode != 0
-    assert "Node.js 22.12" in result.stdout
+    assert "Node.js 22.23.4" in result.stdout
     assert "network-called" not in _calls(shell_install)
     assert "-m pip" not in _calls(shell_install)
 

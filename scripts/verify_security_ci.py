@@ -35,6 +35,11 @@ RUFF_PATHS = (
     "shogun/api/updates.py",
     "shogun/config.py",
     "shogun/edition.py",
+    "shogun/security_maintenance.py",
+    "shogun/services/update_installer.py",
+    "scripts/apply_prepared_update.py",
+    "scripts/install_security_node.py",
+    "scripts/verify_tls_incident.py",
     "shogun/integrations/a2a_client.py",
     "shogun/services/a2a_crypto.py",
     "shogun/services/calendar_service.py",
@@ -116,6 +121,8 @@ PYTEST_PATHS = (
     "tests/test_setup_routing.py",
     "tests/test_setup_security_incident_acknowledgement.py",
     "tests/test_update_provenance.py",
+    "tests/test_security_maintenance.py",
+    "tests/test_update_installer.py",
     "tests/test_update_checker.py",
     "tests/test_updates.py",
     "tests/test_yellow_label_edition.py",
@@ -144,6 +151,7 @@ def _npm_command(*arguments: str) -> list[str]:
 
 def verify_backend() -> None:
     python = sys.executable
+    _run([python, "shogun/security_maintenance.py", "check", "--node"])
     _run([python, "scripts/sync_guide_translations.py", "--check"])
     # Match a clean CI checkout and avoid loading an operator's local .env.
     import_env = os.environ.copy()
@@ -209,9 +217,12 @@ def main() -> None:
         const="dependency-audit",
         dest="mode",
     )
+    modes.add_argument("--runtime-security", action="store_const", const="runtime-security", dest="mode")
     modes.add_argument("--frontend", action="store_const", const="frontend", dest="mode")
     args = parser.parse_args()
 
+    if args.mode == "runtime-security":
+        _run([sys.executable, "shogun/security_maintenance.py", "check", "--node"])
     if args.mode in {"all", "backend"}:
         verify_backend()
     if args.mode in {"all", "dependency-audit"}:

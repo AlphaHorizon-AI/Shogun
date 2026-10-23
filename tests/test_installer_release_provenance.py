@@ -44,8 +44,8 @@ def test_shogun_installers_enforce_declared_python_and_node_engines():
     ):
         installer = _read(relative_path)
         assert "sys.version_info >= (3, 10)" in installer
-        assert "major===22&&minor>=12" in installer
-        assert "major<25" in installer
+        assert "major===22&&(minor>23||minor===23&&patch>=4)" in installer
+        assert "major===24&&(minor>22||minor===22&&patch>=1)" in installer
 
 
 def test_mac_desktop_installer_pins_archive_and_uses_private_temporary_state():
@@ -64,7 +64,7 @@ def test_mac_desktop_installer_pins_archive_and_uses_private_temporary_state():
     assert "write_release_metadata_evidence.py" in installer
 
 
-def test_repair_updater_pins_public_and_private_archives_and_never_fails_on_evidence():
+def test_repair_updater_pins_archives_and_uses_fail_closed_preparation():
     installer = _read("Shogun-Repair-Update.bat")
 
     assert "archive/refs/heads" not in installer
@@ -75,9 +75,12 @@ def test_repair_updater_pins_public_and_private_archives_and_never_fails_on_evid
     assert "source-commit.txt" in installer
     assert "shogun-update-'+[Guid]::NewGuid()" in installer
     assert "%TEMP%\\shogun-inplace-update" not in installer
-    assert 'fc /b "%SOURCE_DIR%\\version.json" "%INSTALL_DIR%\\version.json"' in installer
-    assert "write_release_metadata_evidence.py" in installer
-    assert "The update was applied, but release provenance could not be recorded" in installer
+    assert "apply_prepared_update.py" in installer
+    assert "security_maintenance.py" in installer
+    assert "bootstrap" in installer
+    assert "if errorlevel 1" in installer
+    assert "robocopy" not in installer
+    assert "No success is being reported" in installer
 
 
 def test_server_installers_pin_source_and_persist_vcs_ref_for_compose():
