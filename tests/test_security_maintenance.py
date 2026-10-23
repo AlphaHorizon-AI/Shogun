@@ -125,6 +125,38 @@ def test_runtime_only_flag_cannot_bypass_installer_bootstrap(action):
     assert "only valid for the read-only check" in result.stderr
 
 
+def test_direct_entrypoint_checks_trust_before_environment_or_restore_changes(monkeypatch):
+    from shogun import __main__ as entrypoint
+
+    def reject_trust(**kwargs):
+        assert kwargs == {"require_installer": False}
+        raise maintenance.SecurityMaintenanceError("unsafe trust fixture")
+
+    monkeypatch.setattr(sys, "argv", ["shogun"])
+    monkeypatch.setattr(entrypoint, "_reexec_in_project_venv", lambda: None)
+    monkeypatch.setattr(entrypoint, "_ensure_env_file", lambda: pytest.fail("environment changed before trust check"))
+    monkeypatch.setattr(maintenance, "check_python_security", reject_trust)
+    with pytest.raises(maintenance.SecurityMaintenanceError, match="unsafe trust fixture"):
+        entrypoint.main()
+
+
+@pytest.mark.asyncio
+async def test_direct_asgi_startup_checks_trust_before_database_migrations(monkeypatch):
+    from fastapi import FastAPI
+
+    import shogun.app as application
+
+    def reject_trust(**kwargs):
+        assert kwargs == {"require_installer": False}
+        raise maintenance.SecurityMaintenanceError("unsafe trust fixture")
+
+    monkeypatch.setattr(application, "check_python_security", reject_trust)
+    monkeypatch.setattr(application, "_upgrade_database_schema", lambda: pytest.fail("database migration started"))
+    with pytest.raises(maintenance.SecurityMaintenanceError, match="unsafe trust fixture"):
+        async with application.lifespan(FastAPI()):
+            pytest.fail("unsafe application started")
+
+
 def test_managed_node_is_used_for_npm_and_playwright_without_losing_ca_settings(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "prefix", str(tmp_path))
     node = tmp_path / "node-runtime" / ("node.exe" if os.name == "nt" else "bin/node")

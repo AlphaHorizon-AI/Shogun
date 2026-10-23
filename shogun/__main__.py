@@ -256,6 +256,10 @@ def main() -> None:
 
     """Start Shogun — Unified FastAPI + React entrypoint."""
 
+    from shogun.security_maintenance import check_python_security
+
+    check_python_security(require_installer=False)
+
     import uvicorn
 
     # Step 1: Ensure .env exists

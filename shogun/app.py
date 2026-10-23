@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from shogun import __version__
 from shogun.config import settings
+from shogun.security_maintenance import check_python_security
 from shogun.services.oauth_callback_relay import OAuthCallbackLogFilter
 
 logging.getLogger("uvicorn.access").addFilter(OAuthCallbackLogFilter())
@@ -222,6 +223,7 @@ async def _protect_legacy_provider_credentials(session_factory=None, migration=N
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown hooks."""
     # Startup
+    check_python_security(require_installer=False)
     settings.validate_security()
     settings.ensure_directories()
     from shogun.services.startup_notices import record_startup_notice, resolve_startup_notice

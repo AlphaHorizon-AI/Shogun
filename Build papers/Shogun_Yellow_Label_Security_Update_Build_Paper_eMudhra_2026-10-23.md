@@ -4,7 +4,7 @@
 | Document field | Value |
 | --- | --- |
 | Document ID | SHOGUN-YL-SEC-2026-10-EMUDHRA |
-| Version | 1.4 |
+| Version | 1.5 |
 | Prepared for | Michael Peric / M37 |
 | Date | 23 October 2026 — Europe/Copenhagen |
 | Priority | Urgent security maintenance |
@@ -682,7 +682,7 @@ Preserve existing dirty-tree work, data, credentials, configuration, permissions
 
 ---
 
-## 20. Implementation and verification record — version 1.4
+## 20. Implementation and verification record — version 1.5
 
 The maintenance release is **1.47.119, build 270**, prepared in an isolated checkout on remote main `ede4b879f8acff9aeff97ff141c353c888adb06f`. That parent already contains the existing workbook releases through 1.47.118. Unrelated local integration work and persistent application state are excluded from the security commit and preserved in the original workspace.
 
@@ -696,8 +696,9 @@ Implemented changes:
 - Worker-owned installation locks and temporary source trees that survive HTTP cancellation; shared in-app/repair preparation; public offline fixtures and opt-in credential-free live verification.
 - Vitest 4.1.12 and matching lockfile updates for the code-injection and Windows traversal advisories found by the dependency gate. [S28], [S29]
 - Native CA updates before CI's Python downloads. Container builds preserve strict TLS verification and select corrected Node explicitly.
+- Trust enforcement on direct CLI and ASGI startup before environment changes, pending restores or database migrations; a shell-launcher bypass does not bypass the correction.
 
-The isolated release passed the complete backend security gate: **662 Python tests passed, four platform-specific skips**, plus lint, clean imports, guide synchronization and telemetry privacy validation. Native Linux shell/security/updater regressions separately passed **83 tests without skips**. The final frontend passed locked installation, TypeScript/Vite build, security lint, **14 security tests**, bundle-size validation and the dependency gate with no moderate/high/critical findings. The audit gate's own **15 regression tests** passed.
+The isolated release passed the complete backend security gate: **664 Python tests passed, four platform-specific skips**, plus lint, clean imports, guide synchronization and telemetry privacy validation. Native Linux shell/security/updater regressions separately passed **85 tests without skips**. The final frontend passed locked installation, TypeScript/Vite build, security lint, **14 security tests**, bundle-size validation and the dependency gate with no moderate/high/critical findings. The audit gate's own **15 regression tests** passed.
 
 Windows and WSL each recorded **45 PASS / 0 FAIL / 0 INCONCLUSIVE** across HTTPX, pip's actual combined trust context and the selected Node runtime, covering all 14 affected endpoints and a legitimate control. The Windows fresh-venv bootstrap and actual headless Playwright/Chromium smoke test also passed. Offline chain tests retain fixed verification times and a positive control.
 

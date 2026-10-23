@@ -2,7 +2,7 @@
 
 The security maintenance release is **1.47.119, build 270**. Python trust, Node selection, installers and both updater paths are corrected. Windows and WSL each passed all 45 live incident checks. Ubuntu WSL recovered after the approved restart following host disk exhaustion; its corrected trust, native regressions and existing Qdrant data were verified again.
 
-The release is based on remote main `ede4b879f8acff9aeff97ff141c353c888adb06f`, which already contains the workbook releases through 1.47.118. An isolated checkout keeps unrelated local integration changes out of the security commit. The build paper is version 1.4 in the repository and its original Downloads location. No existing application database, credentials, approval state, saved browser profile or persistent container volume was replaced or removed.
+The release is based on remote main `ede4b879f8acff9aeff97ff141c353c888adb06f`, which already contains the workbook releases through 1.47.118. An isolated checkout keeps unrelated local integration changes out of the security commit. The build paper is version 1.5 in the repository and its original Downloads location. No existing application database, credentials, approval state, saved browser profile or persistent container volume was replaced or removed.
 
 **Implemented changes**
 
@@ -10,6 +10,7 @@ The release is based on remote main `ede4b879f8acff9aeff97ff141c353c888adb06f`, 
 - Corrected Node 22/24 floors in installers, package/lock metadata, launchers, updater, CI and containers. Application-owned Node 24.22.1 is selected explicitly for npm and Playwright; global runtimes and saved browser profiles are retained.
 - Read-only checks for affected roots and the 12 known affected TLS intermediate/cross-sign certificate identities in Python/custom PEM trust. Effective Linux native trust is also checked.
 - Immutable updater source resolution, administrator authorization, Yellow Label validation, protected-state exclusions and dependency/frontend preparation before application-file promotion.
+- Direct CLI and ASGI startup check runtime trust before environment changes, pending restores or database migrations, so bypassing a shell launcher cannot bypass the trust policy.
 - Safe preparation failures, recoverable code promotion, and worker-owned locks/temporary files that remain valid after HTTP cancellation.
 - Shared in-app/repair preparation, public incident fixtures, credential-free live diagnostics and an operator runbook.
 - Vitest 4.1.12 and matching lockfile corrections for the two additional advisories found by the required dependency gate. [Maintainer code-injection advisory](https://github.com/vitest-dev/vitest/security/advisories/GHSA-qxg6-89mg-rqv8), [maintainer Windows traversal advisory](https://github.com/vitest-dev/vitest/security/advisories/GHSA-xp26-3454-mjgp).
@@ -23,9 +24,9 @@ No schema migration or edition conversion was introduced. No PHP source or Compo
 
 | Check | Result |
 | --- | --- |
-| Complete required backend security gate, including workbook, SkillOpt, ToolGate, Ronin, Mado, installer and updater regressions | 662 passed, 4 platform-specific skips |
+| Complete required backend security gate, including workbook, SkillOpt, ToolGate, Ronin, Mado, installer and updater regressions | 664 passed, 4 platform-specific skips |
 | Backend lint, guide synchronization, clean application import and telemetry privacy contract | PASS |
-| Native Linux shell, security policy and updater regressions | 83 passed, no skips |
+| Native Linux shell, security policy and updater regressions | 85 passed, no skips |
 | Windows dependency consistency (`pip check`) | PASS |
 | Fresh venv authenticated bootstrap from seeded pip 25.2 | PASS: pip 26.2.2 and certifi 2026.10.19 |
 | Existing Playwright/Chromium with corrected external Node | PASS: isolated headless page; saved profiles unopened |
