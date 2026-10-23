@@ -1,5 +1,7 @@
 """Regression coverage for standalone launcher startup behavior."""
 
+import io
+import json
 import socket
 import sys
 from pathlib import Path
@@ -8,6 +10,29 @@ import pytest
 
 from shogun import __main__ as launcher
 from shogun.__main__ import _port_in_use
+
+
+@pytest.mark.parametrize("payload,expected", [
+    ({"service": "shogun", "status": "ok"}, True),
+    ({"service": "njord", "status": "ok"}, False),
+    ({"service": "shogun", "status": "starting"}, False),
+    ({"status": "ok"}, False),
+    ([], False),
+])
+def test_existing_listener_requires_shogun_health_identity(monkeypatch, payload, expected):
+    import urllib.request
+
+    response = io.BytesIO(json.dumps(payload).encode())
+    response.status = 200
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *_args, **_kwargs: response)
+    assert launcher._existing_shogun_is_ready("http://localhost:8001/api/v1/health") is expected
+
+
+def test_browser_url_uses_configured_port_and_preserves_override(monkeypatch):
+    monkeypatch.delenv("SHOGUN_BROWSER_URL", raising=False)
+    assert launcher._browser_url("127.0.0.1", 8001) == "http://127.0.0.1:8001"
+    monkeypatch.setenv("SHOGUN_BROWSER_URL", "http://localhost:8001/setup")
+    assert launcher._browser_url("127.0.0.1", 8001) == "http://localhost:8001/setup"
 
 
 def test_port_in_use_detects_existing_listener() -> None:

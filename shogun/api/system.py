@@ -495,7 +495,8 @@ async def get_local_models(
                     models = [m.get("name") or m.get("model") for m in data.get("models", [])]
 
                     # ── Auto-sync providers with Ollama ──
-                    # Register new models, remove stale providers
+                    # Discovery is additive; another daemon or a temporary
+                    # inventory change must not erase operator configuration.
                     try:
                         await _sync_ollama_providers(models, base_url)
                     except Exception:
@@ -545,7 +546,7 @@ async def _sync_ollama_providers(ollama_models: list[str], base_url: str):
     """Sync the model_providers table with Ollama's actual model list.
 
     - Registers any models present in Ollama but missing from providers.
-    - Removes provider entries for models no longer in Ollama.
+    - Preserves existing providers when a model is absent from this discovery.
     """
     import json as _json
     import logging
@@ -586,16 +587,7 @@ async def _sync_ollama_providers(ollama_models: list[str], base_url: str):
             )
             _log.info("Auto-registered Ollama model '%s' (synced from CLI)", model_name)
 
-        # Remove stale providers (models no longer in Ollama)
-        stale_models = registered_set - ollama_set
-        for model_name in stale_models:
-            await session.execute(
-                text("DELETE FROM model_providers WHERE id = :id"),
-                {"id": registered[model_name]},
-            )
-            _log.info("Removed stale Ollama provider '%s' (no longer installed)", model_name)
-
-        if new_models or stale_models:
+        if new_models:
             await session.commit()
 
 

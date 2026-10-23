@@ -55,26 +55,15 @@ if errorlevel 1 (
 cd ..
 echo   Frontend assets ready.
 
-:: A second shortcut launch should reopen the existing Tenshu, not try to bind
-:: the same port and report that Shogun stopped.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $response = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 'http://localhost:8000/api/v1/health'; if ($response.StatusCode -eq 200) { exit 0 } } catch {}; exit 1" >nul 2>&1
-if not errorlevel 1 (
-    echo.
-    echo   Shogun is already running. Opening the Tenshu...
-    set "SHOGUN_BROWSER_URL=http://localhost:8000"
-    set "SHOGUN_MANAGED_BROWSER=true"
-    python -m shogun
-    exit /b !ERRORLEVEL!
-)
-
-echo   Shogun is starting at http://localhost:8000
+:: The Python entry point resolves the configured address and recognizes an
+:: existing Shogun listener before opening the browser.
+echo   Shogun is starting...
 echo   Your browser will open automatically.
 echo.
 echo   Press Ctrl+C to stop the server.
 echo.
 
 :: The Python server opens the browser as soon as it is ready.
-set "SHOGUN_BROWSER_URL=http://localhost:8000"
 set "SHOGUN_MANAGED_BROWSER=true"
 
 :: Start the server (blocking; keeps the window open)

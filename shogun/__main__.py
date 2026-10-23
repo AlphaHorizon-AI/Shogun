@@ -117,11 +117,15 @@ def _port_in_use(host: str, port: int) -> bool:
 
 def _existing_shogun_is_ready(health_url: str) -> bool:
     """Recognize an already-running local Shogun instance."""
+    import json
     import urllib.request
 
     try:
         with urllib.request.urlopen(health_url, timeout=2) as response:
-            return 200 <= response.status < 500
+            if response.status != 200:
+                return False
+            identity = json.load(response)
+            return isinstance(identity, dict) and identity.get("service") == "shogun" and identity.get("status") == "ok"
     except Exception:
         return False
 

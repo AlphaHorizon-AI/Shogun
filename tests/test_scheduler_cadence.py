@@ -16,6 +16,7 @@ from shogun.db.models.agent_flow import AgentFlow, AgentFlowEdge, AgentFlowNode
 from shogun.db.models.bushido import BushidoSchedule
 from shogun.schemas.agent_flow import AgentFlowUpdate
 from shogun.schemas.bushido import BushidoScheduleCreate
+from shogun.services.bushido_engine import PRESET_SCHEDULES
 from shogun.services.bushido_service import BushidoScheduleService
 
 
@@ -240,7 +241,8 @@ async def test_agentflow_cron_callback_starts_a_scheduled_flow_run(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_operational_cadence_lists_bushido_and_agentflow(monkeypatch):
+@pytest.mark.parametrize("job_type", [preset["job_type"] for preset in PRESET_SCHEDULES])
+async def test_operational_cadence_lists_bushido_and_agentflow(monkeypatch, job_type):
     import shogun.scheduler as scheduler_module
 
     scheduler = AsyncIOScheduler()
@@ -264,7 +266,7 @@ async def test_operational_cadence_lists_bushido_and_agentflow(monkeypatch):
     async with sessions() as session:
         bushido = BushidoSchedule(
             name="Nightly",
-            job_type="memory_consolidation",
+            job_type=job_type,
             frequency="nightly",
             schedule_time="02:00",
             scope={},
@@ -287,6 +289,7 @@ async def test_operational_cadence_lists_bushido_and_agentflow(monkeypatch):
         sources = {item["source"] for item in response.data}
 
         assert sources == {"bushido", "agent_flow"}
+        assert next(item for item in response.data if item["source"] == "bushido")["job_type"] == job_type
         flow_item = next(item for item in response.data if item["source"] == "agent_flow")
         assert flow_item["schedule_time"] == "08:00"
         assert flow_item["scheduler_job_id"] == f"agentflow_{flow.id}"

@@ -270,6 +270,7 @@ class BushidoJobType(str, Enum):
     MEMORY_CONSOLIDATION = "memory_consolidation"
     PERFORMANCE_AUDIT = "performance_audit"
     SKILL_HEALTH_CHECK = "skill_health_check"
+    SKILLOPT_REGRESSION_SWEEP = "skillopt_regression_sweep"
     PERSONA_DRIFT_CHECK = "persona_drift_check"
     CUSTOM_TASK = "custom_task"
 
