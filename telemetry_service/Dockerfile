@@ -16,7 +16,11 @@ COPY telemetry_service/requirements.txt ./requirements.txt
 COPY shogun ./shogun
 COPY telemetry_service ./telemetry_service
 RUN python shogun/security_maintenance.py bootstrap --allow-system \
-    && python -m pip install --no-cache-dir -r requirements.txt
+    && python -m pip install --no-cache-dir -r requirements.txt \
+    && python -m pip check \
+    && python -m pip uninstall --yes pip \
+    && python -c "import pathlib, shutil, sysconfig; shutil.rmtree(pathlib.Path(sysconfig.get_path('stdlib')) / 'ensurepip')" \
+    && python shogun/security_maintenance.py check --runtime-only
 RUN mkdir -p /app/data && chown -R telemetry:telemetry /app/data
 USER telemetry
 EXPOSE 8080

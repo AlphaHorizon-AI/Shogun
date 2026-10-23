@@ -1,8 +1,8 @@
 # Yellow Label eMudhra implementation — 23 October 2026
 
-The security maintenance release is **1.47.119, build 270**. Python trust, Node selection, installers and both updater paths are corrected. Windows and WSL each passed all 45 live incident checks. A subsequent container build exhausted the Windows host disk and left Ubuntu WSL reporting filesystem I/O errors; host recovery and container activation must be tracked separately from those successful security checks.
+The security maintenance release is **1.47.119, build 270**. Python trust, Node selection, installers and both updater paths are corrected. Windows and WSL each passed all 45 live incident checks. Ubuntu WSL recovered after the approved restart following host disk exhaustion; its corrected trust, native regressions and existing Qdrant data were verified again.
 
-The release is based on remote main `ede4b879f8acff9aeff97ff141c353c888adb06f`, which already contains the workbook releases through 1.47.118. An isolated checkout keeps unrelated local integration changes out of the security commit. The build paper is version 1.3 in the repository and its original Downloads location. No existing application database, credentials, approval state, saved browser profile or persistent container volume was replaced or removed.
+The release is based on remote main `ede4b879f8acff9aeff97ff141c353c888adb06f`, which already contains the workbook releases through 1.47.118. An isolated checkout keeps unrelated local integration changes out of the security commit. The build paper is version 1.4 in the repository and its original Downloads location. No existing application database, credentials, approval state, saved browser profile or persistent container volume was replaced or removed.
 
 **Implemented changes**
 
@@ -14,6 +14,8 @@ The release is based on remote main `ede4b879f8acff9aeff97ff141c353c888adb06f`, 
 - Shared in-app/repair preparation, public incident fixtures, credential-free live diagnostics and an operator runbook.
 - Vitest 4.1.12 and matching lockfile corrections for the two additional advisories found by the required dependency gate. [Maintainer code-injection advisory](https://github.com/vitest-dev/vitest/security/advisories/GHSA-qxg6-89mg-rqv8), [maintainer Windows traversal advisory](https://github.com/vitest-dev/vitest/security/advisories/GHSA-xp26-3454-mjgp).
 - Native CA correction before CI's Python dependency downloads; no TLS verification bypass.
+- Immutable server/telemetry images exclude pip, its ensurepip seed and npm after build preparation, removing the vulnerable bundled tooling reported by image scans. Corrected Node, the built UI, Playwright/Chromium and application dependencies remain. Desktop installers and updaters retain pip/npm.
+- Runtime-only trust validation is read-only and cannot bypass installer bootstrap. Official container updates require image replacement through the deployment platform with existing volumes; desktop update preparation still requires corrected package managers.
 
 No schema migration or edition conversion was introduced. No PHP source or Composer application was identified in this repository; the separate PHP RCE advisories and corrected branches remain documented in the build paper.
 
@@ -21,9 +23,9 @@ No schema migration or edition conversion was introduced. No PHP source or Compo
 
 | Check | Result |
 | --- | --- |
-| Complete required backend security gate, including workbook, SkillOpt, ToolGate, Ronin, Mado, installer and updater regressions | 658 passed, 4 platform-specific skips |
+| Complete required backend security gate, including workbook, SkillOpt, ToolGate, Ronin, Mado, installer and updater regressions | 662 passed, 4 platform-specific skips |
 | Backend lint, guide synchronization, clean application import and telemetry privacy contract | PASS |
-| Native Linux shell, security policy and updater regressions | 79 passed, no skips |
+| Native Linux shell, security policy and updater regressions | 83 passed, no skips |
 | Windows dependency consistency (`pip check`) | PASS |
 | Fresh venv authenticated bootstrap from seeded pip 25.2 | PASS: pip 26.2.2 and certifi 2026.10.19 |
 | Existing Playwright/Chromium with corrected external Node | PASS: isolated headless page; saved profiles unopened |
@@ -34,9 +36,8 @@ No schema migration or edition conversion was introduced. No PHP source or Compo
 | Frontend bundle | 101 JavaScript chunks; largest 385.10 KiB, below 500 KiB |
 | Windows live incident checks | 45 PASS, 0 FAIL, 0 INCONCLUSIVE |
 | WSL live incident checks after native CA correction | 45 PASS, 0 FAIL, 0 INCONCLUSIVE |
-| Telemetry container build | PASS: image 04e4f50ac6cbca27f91e631a156d6293f3f958e77488ec442b2e9ef41cc40ab6 |
-| Server container build | Dependency, frontend and browser installation completed; final image step blocked by host disk exhaustion/I/O failure |
-| Container process activation / native macOS | Local execution not certified; CI supplies the independent execution gates |
+| Container verification | Required CI builds both images, scans high/critical findings, tests non-root health and validates runtime trust; current results are on PR #85 |
+| Native macOS | Both required native jobs passed on the initial security commit, including Safari after a runner retry; final source remains subject to those same PR gates |
 
 Each live set covers the 14 published affected endpoints plus a legitimate positive control through HTTPX, pip's actual combined trust context and the selected Node runtime. The recorded WSL run completed before the later host disk failure. Offline fixtures additionally verify both Python CA bundles with fixed verifier times and an isolated original-root positive control; neither the machine clock nor host trust is changed by those tests.
 
@@ -48,7 +49,9 @@ The authorized `dpkg --configure -a` completed the pre-existing pending package 
 
 The WSL application environment has Python 3.12.3, pip 26.2.2, certifi 2026.10.19 and selected application-owned Node 24.22.1. Windows has the same corrected tooling with Python 3.14.0.
 
-Later Docker build writes filled the Windows host disk. The final server-image permission step reported I/O errors, Docker reported SIGBUS, and WSL could no longer read its account files. Only task-owned disposable build files were removed to recover space. Automatic approval review rejected terminating Ubuntu because its running services and containers would be stopped; explicit approval was requested for that recovery action. No restart, filesystem repair, broad cache purge or removal of existing volumes was performed without that authorization. Do not represent the recorded pre-failure TLS checks as proof that the currently affected WSL host is healthy.
+The first local Docker build filled the Windows host disk and WSL reported filesystem I/O errors. Disposable task-owned build copies were removed. Following explicit operator approval, Ubuntu WSL was restarted while retaining its filesystem and Docker volumes. The existing Qdrant container recovered with its mount intact; its retained collection is readable and its restart-error count is zero. The package database audit is clean, the maintenance gate passes, and a fresh live probe again recorded 45 PASS / 0 FAIL / 0 INCONCLUSIVE. No volume recreation, database restore or unrelated filesystem cleanup was used.
+
+Independent CI then identified vulnerable components inside pip/npm's bundled build tooling. The final runtime packaging omits those build tools without modifying their vendored code or adding scan exceptions. The required container jobs exercise the resulting runtime, and the normal desktop installer/updater path retains its corrected tooling. [PR #85 and required checks](https://github.com/AlphaHorizon-AI/Shogun/pull/85) record the exact source revisions and executed platform, scan and runtime results.
 
 **Evidence, artifacts and deployment**
 

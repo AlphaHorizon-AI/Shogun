@@ -127,6 +127,8 @@ jobs:
           done
           curl --fail --silent http://127.0.0.1:8080/v1/schema
           test "$(docker exec telemetry-ci whoami)" = "telemetry"
+          docker exec telemetry-ci python shogun/security_maintenance.py check --runtime-only
+          docker exec telemetry-ci python -c "import importlib.util; assert importlib.util.find_spec('pip') is None"
       - name: Telemetry service logs
         if: failure()
         run: docker logs telemetry-ci || true
@@ -169,6 +171,8 @@ jobs:
           curl --fail --silent http://127.0.0.1:8000/
           curl --fail --silent http://127.0.0.1:8000/setup
           test "$(docker exec shogun-server whoami)" = "shogun"
+          docker exec shogun-server python shogun/security_maintenance.py check --runtime-only --node
+          docker exec shogun-server python -c "import importlib.util; assert importlib.util.find_spec('pip') is None"
       - name: Launch Mado Chromium as the runtime user
         run: |
           docker exec shogun-server python -c "import asyncio; from playwright.async_api import async_playwright; exec('async def smoke():\n async with async_playwright() as p:\n  browser = await p.chromium.launch(headless=True)\n  page = await browser.new_page()\n  await page.set_content(\"<title>mado-smoke</title>\")\n  assert await page.title() == \"mado-smoke\"\n  await browser.close()\nasyncio.run(smoke())')"

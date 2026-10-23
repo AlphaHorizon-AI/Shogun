@@ -5,6 +5,7 @@ Shogun Updates API — Check for updates and trigger self-update.
 import asyncio
 import hashlib
 import logging
+import os
 import tempfile
 from pathlib import Path
 
@@ -242,6 +243,14 @@ async def apply_update(_actor: str = Depends(require_infrastructure_admin)):
     """Prepare one pinned Yellow Label release, then promote only application files."""
     import httpx
 
+    if os.environ.get("SHOGUN_DISTRIBUTION_CHANNEL") == "official_docker":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Update this container through its deployment platform with a rebuilt image "
+                "and the existing data volumes."
+            ),
+        )
     root = Path(__file__).resolve().parent.parent.parent
     try:
         check_python_security()

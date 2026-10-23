@@ -4,13 +4,13 @@
 | Document field | Value |
 | --- | --- |
 | Document ID | SHOGUN-YL-SEC-2026-10-EMUDHRA |
-| Version | 1.3 |
+| Version | 1.4 |
 | Prepared for | Michael Peric / M37 |
 | Date | 23 October 2026 — Europe/Copenhagen |
 | Priority | Urgent security maintenance |
 | Product | Shogun Yellow Label, with the installed edition preserved |
 | Audience | Coding agent, maintainer and authorized installation operator |
-| Status | Security release 1.47.119 / build 270 implemented and verified on Windows and WSL; subsequent host disk/I/O failure blocks local container activation; deployment outcomes remain explicit |
+| Status | Security release 1.47.119 / build 270 implemented and verified; Ubuntu WSL recovered with retained data and volumes; protected-main integration follows the required CI and native-platform gates on PR #85 |
 | Evidence | Incident guidance rechecked on 23 October 2026; supporting documentation consulted on 22–23 October |
 | Deliverable | Focused patch, rebuilt Yellow Label artifacts, verification evidence and local deployment/recovery procedure |
 
@@ -682,7 +682,7 @@ Preserve existing dirty-tree work, data, credentials, configuration, permissions
 
 ---
 
-## 20. Implementation and verification record — version 1.3
+## 20. Implementation and verification record — version 1.4
 
 The maintenance release is **1.47.119, build 270**, prepared in an isolated checkout on remote main `ede4b879f8acff9aeff97ff141c353c888adb06f`. That parent already contains the existing workbook releases through 1.47.118. Unrelated local integration work and persistent application state are excluded from the security commit and preserved in the original workspace.
 
@@ -697,15 +697,19 @@ Implemented changes:
 - Vitest 4.1.12 and matching lockfile updates for the code-injection and Windows traversal advisories found by the dependency gate. [S28], [S29]
 - Native CA updates before CI's Python downloads. Container builds preserve strict TLS verification and select corrected Node explicitly.
 
-The isolated release passed the complete backend security gate: **658 Python tests passed, four platform-specific skips**, plus lint, clean imports, guide synchronization and telemetry privacy validation. Native Linux shell/security/updater regressions separately passed **79 tests without skips**. The final frontend passed locked installation, TypeScript/Vite build, security lint, **14 security tests**, bundle-size validation and the dependency gate with no moderate/high/critical findings. The audit gate's own **15 regression tests** passed.
+The isolated release passed the complete backend security gate: **662 Python tests passed, four platform-specific skips**, plus lint, clean imports, guide synchronization and telemetry privacy validation. Native Linux shell/security/updater regressions separately passed **83 tests without skips**. The final frontend passed locked installation, TypeScript/Vite build, security lint, **14 security tests**, bundle-size validation and the dependency gate with no moderate/high/critical findings. The audit gate's own **15 regression tests** passed.
 
 Windows and WSL each recorded **45 PASS / 0 FAIL / 0 INCONCLUSIVE** across HTTPX, pip's actual combined trust context and the selected Node runtime, covering all 14 affected endpoints and a legitimate control. The Windows fresh-venv bootstrap and actual headless Playwright/Chromium smoke test also passed. Offline chain tests retain fixed verification times and a positive control.
 
 The authorized interrupted-package repair completed successfully. WSL now has Ubuntu's corrected `ca-certificates` **20260816ubuntu0.24.04.1**, pip 26.2.2, certifi 2026.10.19 and application-owned Node 24.22.1. Its prerequisite gate passes and all 14 previously failing pip incident checks now reject the affected chains. [S27]
 
-A later server-container build filled the Windows host disk and encountered filesystem I/O errors during its final permission step. Dependency installation, frontend build and Chromium download had completed. The telemetry container built successfully, but neither result certifies container process activation. Only disposable task-owned build files were cleared. Ubuntu WSL subsequently reported account-file I/O errors. Automatic approval review rejected terminating it because that would stop running services and containers; explicit recovery approval was requested. WSL's recorded successful TLS run predates this host failure and does not establish current host health.
+A local server-container build filled the Windows host disk and WSL encountered filesystem I/O errors. After disposable task-owned build files were cleared, the operator explicitly approved restarting Ubuntu WSL. Its filesystem and Docker volumes were retained. The existing Qdrant mount and collection remained readable, the package database audit was clean, and the restarted environment again passed all 45 live TLS probes and its native regression suite.
 
-No existing database, credentials, approval state, saved browser profile or persistent volume was replaced or removed. No live application migration, database restore, key/account reset or application restart was used as a test. Code-recovery backups are not presented as independently verified secure fallbacks. Native macOS, live application activation and other installations require their own recorded results.
+Independent image scans found separate vulnerabilities bundled inside package-manager tooling. The final runtime images exclude pip, its ensurepip seed and npm after dependency/browser/frontend preparation; corrected Node, Playwright/Chromium, the UI and application libraries remain. No vendored source patch or scanner exception was introduced. Desktop installation/update workflows retain corrected pip and npm. A runtime-only read-only trust gate checks certifi and native/custom trust without requiring installer tools; it cannot skip installer bootstrap. Official containers are updated through image replacement with existing data volumes, which the in-app endpoint reports before any package operation.
+
+Both native macOS jobs passed on the initial security commit, with the macOS 14 Safari driver succeeding on a runner retry. The final source is subject to the same protected-main gates. [PR #85](https://github.com/AlphaHorizon-AI/Shogun/pull/85) records exact commit identities and executed CodeQL, backend, frontend, image-scan, container-runtime and native macOS results.
+
+No existing database, credentials, approval state, saved browser profile or persistent volume was replaced or removed. No live application migration, database restore, key/account reset or application restart was used as a test. Code-recovery backups are not presented as independently verified secure fallbacks. Production application activation and other installations require their own recorded results; native-platform and disposable container execution are recorded by the required CI jobs.
 
 The detailed implementation report is `docs/security/emudhra-implementation-2026-10-23.md`; the recovery runbook is `docs/security/emudhra-maintenance.md`; retained local evidence is under `tmp/emudhra-maintenance/`. The final Git commit identifies the release source; old uncommitted candidate archives must not be published as that commit.
 

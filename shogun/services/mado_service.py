@@ -113,7 +113,7 @@ async def install_chromium() -> dict[str, Any]:
     import sys
 
     def _do_install():
-        check_python_security()
+        check_python_security(require_installer=False)
         environment = node_environment()
         steps = []
 
@@ -123,6 +123,7 @@ async def install_chromium() -> dict[str, Any]:
 
             steps.append({"step": "pip_install", "status": "skipped", "message": "playwright already installed"})
         except ImportError:
+            check_python_security()
             log.info("Mado: Installing playwright Python package...")
             pip_result = subprocess.run(
                 [sys.executable, "-m", "pip", "install", "playwright>=1.44.0"],

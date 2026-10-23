@@ -78,16 +78,23 @@ def package_version(name: str) -> str:
         return "0"
 
 
-def check_python_security(*, include_system: bool = True) -> None:
-    for name, minimum in (("pip", PIP_MINIMUM), ("certifi", CERTIFI_MINIMUM)):
+def check_python_security(*, include_system: bool = True, require_installer: bool = True) -> None:
+    required = [("certifi", CERTIFI_MINIMUM)]
+    if require_installer:
+        required.append(("pip", PIP_MINIMUM))
+    for name, minimum in required:
         if not release_at_least(package_version(name), minimum):
             raise SecurityMaintenanceError(
                 f"{name}>={minimum} is required. Run the security bootstrap with this installation's Python."
             )
     import certifi
-    import pip._vendor.certifi as pip_certifi
 
-    for bundle in (certifi.where(), pip_certifi.where()):
+    bundles = [certifi.where()]
+    if require_installer:
+        import pip._vendor.certifi as pip_certifi
+
+        bundles.append(pip_certifi.where())
+    for bundle in bundles:
         check_pem_bundle(Path(bundle))
     for key in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "PIP_CERT"):
         if os.environ.get(key):
@@ -216,12 +223,17 @@ def main() -> int:
     parser.add_argument("action", choices=("bootstrap", "check", "node"))
     parser.add_argument("--allow-system", action="store_true", help="Only for a managed CI/container interpreter")
     parser.add_argument("--node", action="store_true", help="Also check the selected Node/Playwright runtime")
+    parser.add_argument(
+        "--runtime-only", action="store_true", help="Check immutable runtime trust without installer tools"
+    )
     args = parser.parse_args()
+    if args.runtime_only and args.action != "check":
+        parser.error("--runtime-only is only valid for the read-only check action")
     try:
         if args.action == "bootstrap":
             bootstrap_python(allow_system=args.allow_system)
         elif args.action == "check":
-            check_python_security()
+            check_python_security(require_installer=not args.runtime_only)
         if args.node or args.action == "node":
             node_environment()
     except (SecurityMaintenanceError, subprocess.TimeoutExpired) as exc:

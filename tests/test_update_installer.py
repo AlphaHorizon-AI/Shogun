@@ -191,6 +191,20 @@ def test_preparation_errors_are_safe_and_never_return_success(monkeypatch, tmp_p
 
 
 @pytest.mark.asyncio
+async def test_container_update_requires_image_replacement_before_tooling_or_network(monkeypatch):
+    from fastapi import HTTPException
+
+    from shogun.api import updates
+
+    monkeypatch.setenv("SHOGUN_DISTRIBUTION_CHANNEL", "official_docker")
+    monkeypatch.setattr(updates, "check_python_security", lambda: pytest.fail("container must not install packages"))
+    with pytest.raises(HTTPException) as error:
+        await updates.apply_update("test-admin")
+    assert error.value.status_code == 409
+    assert "existing data volumes" in error.value.detail
+
+
+@pytest.mark.asyncio
 async def test_api_returns_failure_on_dependency_error_and_releases_lock(installation, monkeypatch):
     import httpx
     from fastapi import HTTPException

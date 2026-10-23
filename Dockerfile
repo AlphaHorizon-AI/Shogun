@@ -36,9 +36,7 @@ ENV SHOGUN_GIT_SHA=${VCS_REF}
 WORKDIR /app
 
 COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
-COPY --from=frontend-builder /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
 COPY --from=frontend-builder /usr/local/LICENSE /usr/local/share/licenses/node/LICENSE
-RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
 ENV PLAYWRIGHT_NODEJS_PATH=/usr/local/bin/node
 
 RUN apt-get update \
@@ -59,6 +57,10 @@ RUN python shogun/security_maintenance.py bootstrap --allow-system \
         "setuptools>=78.1.1" \
         "wheel>=0.46.2" \
     && python -m playwright install --with-deps chromium \
+    && python -m pip check \
+    && python -m pip uninstall --yes pip \
+    && python -c "import pathlib, shutil, sysconfig; shutil.rmtree(pathlib.Path(sysconfig.get_path('stdlib')) / 'ensurepip')" \
+    && python shogun/security_maintenance.py check --runtime-only --node \
     && rm -rf /var/lib/apt/lists/* /root/.cache
 
 COPY --from=frontend-builder /build/frontend/dist ./frontend/dist

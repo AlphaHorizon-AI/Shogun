@@ -100,6 +100,31 @@ def test_bootstrap_refuses_unintended_global_python(monkeypatch):
         maintenance.bootstrap_python()
 
 
+def test_runtime_trust_check_allows_an_immutable_image_without_installer_tools(monkeypatch):
+    monkeypatch.setattr(
+        maintenance, "package_version", lambda name: maintenance.CERTIFI_MINIMUM if name == "certifi" else "0"
+    )
+    with pytest.raises(maintenance.SecurityMaintenanceError, match="pip>="):
+        maintenance.check_python_security(include_system=False)
+    maintenance.check_python_security(include_system=False, require_installer=False)
+    monkeypatch.setattr(certifi, "where", lambda: str(FIXTURES / "emsign-g3.crt"))
+    with pytest.raises(maintenance.SecurityMaintenanceError, match="affected public trust path"):
+        maintenance.check_python_security(include_system=False, require_installer=False)
+
+
+@pytest.mark.parametrize("action", ["bootstrap", "node"])
+def test_runtime_only_flag_cannot_bypass_installer_bootstrap(action):
+    result = subprocess.run(
+        [sys.executable, maintenance.__file__, action, "--runtime-only"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == 2
+    assert "only valid for the read-only check" in result.stderr
+
+
 def test_managed_node_is_used_for_npm_and_playwright_without_losing_ca_settings(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "prefix", str(tmp_path))
     node = tmp_path / "node-runtime" / ("node.exe" if os.name == "nt" else "bin/node")
