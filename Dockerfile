@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-bookworm-slim AS frontend-builder
+FROM node:22.23.4-bookworm-slim AS frontend-builder
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --silent
+RUN npm ci --silent --strict-ssl=true --engine-strict
 COPY LICENSE.md /build/LICENSE.md
 COPY frontend/ ./
 RUN npm run build
@@ -35,16 +35,24 @@ ENV SHOGUN_GIT_SHA=${VCS_REF}
 
 WORKDIR /app
 
+COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=frontend-builder /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+COPY --from=frontend-builder /usr/local/LICENSE /usr/local/share/licenses/node/LICENSE
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
+ENV PLAYWRIGHT_NODEJS_PATH=/usr/local/bin/node
+
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends ca-certificates curl git tini \
+    && apt-get install -y --no-install-recommends ca-certificates curl git tini libatomic1 libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md alembic.ini version.json ./
 COPY shogun/ ./shogun/
 COPY migrations/ ./migrations/
 
-RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.4.0" \
+RUN python shogun/security_maintenance.py bootstrap --allow-system \
+    && python shogun/security_maintenance.py check --node \
+    && python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.4.0" \
     && pip install --no-cache-dir ".[server]" \
     && pip install --no-cache-dir --upgrade \
         "jaraco.context>=6.1.0" \

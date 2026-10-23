@@ -54,12 +54,17 @@ if [ ! -x "$PYTHON_CMD" ]; then
     exit 1
 fi
 
+if [ -x "$PWD/$VENV_DIR/node-runtime/bin/node" ]; then
+    export PATH="$PWD/$VENV_DIR/node-runtime/bin:$PATH"
+fi
+"$PYTHON_CMD" shogun/security_maintenance.py check --node
+
 # Check if frontend is built
 if [ ! -f "frontend/dist/index.html" ]; then
     echo "  ⚠️  Frontend not built. Building now..."
     (
         cd frontend
-        npm ci --no-audit --no-fund
+        npm ci --no-audit --no-fund --strict-ssl=true --engine-strict
         npm run build
     )
     echo -e "  ${GREEN}✅  Frontend built.${NC}"

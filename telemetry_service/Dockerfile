@@ -15,7 +15,8 @@ RUN groupadd --gid 10002 telemetry \
 COPY telemetry_service/requirements.txt ./requirements.txt
 COPY shogun ./shogun
 COPY telemetry_service ./telemetry_service
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python shogun/security_maintenance.py bootstrap --allow-system \
+    && python -m pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /app/data && chown -R telemetry:telemetry /app/data
 USER telemetry
 EXPOSE 8080

@@ -1,6 +1,6 @@
 [project]
 name = "shogun"
-version = "1.47.115"
+version = "1.47.119"
 description = "Shogun — A GUI-first AI agent framework with structured memory, governed autonomy, and OpenClaw compatibility"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,6 +37,7 @@ dependencies = [
 
     # --- HTTP Client ---
     "httpx>=0.27.0",
+    "certifi>=2026.10.19",
 
     # --- Browser Automation (Mado) ---
     "playwright>=1.44.0",

@@ -4,7 +4,7 @@ import process from 'node:process'
 
 const limitKiB = 500
 const limitBytes = limitKiB * 1024
-const assetsDirectory = path.resolve('dist', 'assets')
+const assetsDirectory = path.resolve(process.argv[2] || 'dist', 'assets')
 const assetNames = await readdir(assetsDirectory)
 const javascriptAssets = assetNames.filter(name => name.endsWith('.js'))
 const measuredAssets = await Promise.all(

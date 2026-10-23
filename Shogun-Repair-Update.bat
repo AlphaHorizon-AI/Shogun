@@ -69,51 +69,32 @@ if not defined SOURCE_DIR (
     exit /b 1
 )
 
-echo  Updating application files while preserving your data and settings...
-robocopy "%SOURCE_DIR%" "%INSTALL_DIR%" /E /R:2 /W:1 ^
-  /XD "%INSTALL_DIR%\data" "%INSTALL_DIR%\venv" "%INSTALL_DIR%\.venv" "%INSTALL_DIR%\node_modules" "%INSTALL_DIR%\frontend\node_modules" "%INSTALL_DIR%\configs" "%INSTALL_DIR%\vault" "%INSTALL_DIR%\logs" "%INSTALL_DIR%\scratch" "%INSTALL_DIR%\.states" "%INSTALL_DIR%\.git" __pycache__ ^
-  /XF .env >nul
-if errorlevel 8 (
-    echo  ERROR: Some application files could not be updated.
+set "UPDATE_PYTHON="
+if exist "%INSTALL_DIR%\venv\Scripts\python.exe" set "UPDATE_PYTHON=%INSTALL_DIR%\venv\Scripts\python.exe"
+if exist "%INSTALL_DIR%\.venv\Scripts\python.exe" set "UPDATE_PYTHON=%INSTALL_DIR%\.venv\Scripts\python.exe"
+if not defined UPDATE_PYTHON (
+    echo  ERROR: The application virtual environment could not be identified.
+    exit /b 1
+)
+if not exist "%SOURCE_DIR%\shogun\security_maintenance.py" (
+    echo  ERROR: This release lacks the authenticated security bootstrap. Nothing was applied.
+    exit /b 1
+)
+echo  Stop Shogun before continuing this operator-assisted update.
+"%UPDATE_PYTHON%" "%SOURCE_DIR%\shogun\security_maintenance.py" bootstrap
+if errorlevel 1 exit /b 1
+"%UPDATE_PYTHON%" "%SOURCE_DIR%\scripts\apply_prepared_update.py" --root "%INSTALL_DIR%" --source "%SOURCE_DIR%" --git-sha "%SOURCE_COMMIT%"
+if errorlevel 1 (
+    echo  ERROR: Update preparation or installation failed. No success is being reported.
+    echo  Keep the downloaded source for diagnosis; review the reported recovery status.
     pause
     exit /b 1
 )
-fc /b "%SOURCE_DIR%\version.json" "%INSTALL_DIR%\version.json" >nul 2>&1
-if errorlevel 1 (
-    echo  ERROR: Installed release metadata does not match the pinned update package.
-    echo  Release provenance was not recorded.
-    pause
-    exit /b 1
-)
-
-set "PROVENANCE_PYTHON=python"
-if exist "%INSTALL_DIR%\.venv\Scripts\python.exe" set "PROVENANCE_PYTHON=%INSTALL_DIR%\.venv\Scripts\python.exe"
-if exist "%INSTALL_DIR%\venv\Scripts\python.exe" set "PROVENANCE_PYTHON=%INSTALL_DIR%\venv\Scripts\python.exe"
-"%PROVENANCE_PYTHON%" "%INSTALL_DIR%\scripts\write_release_metadata_evidence.py" --root "%INSTALL_DIR%" --git-sha "%SOURCE_COMMIT%" >nul 2>&1
-if errorlevel 1 (
-    echo  WARNING: The update was applied, but release provenance could not be recorded.
-) else (
-    echo  Release provenance recorded for %SOURCE_COMMIT%.
-)
-
-echo  Refreshing dependencies in the existing environment...
-if exist "%INSTALL_DIR%\.venv\Scripts\python.exe" (
-    "%INSTALL_DIR%\.venv\Scripts\python.exe" -m pip install -e "%INSTALL_DIR%[office]" --disable-pip-version-check
-) else if exist "%INSTALL_DIR%\venv\Scripts\python.exe" (
-    "%INSTALL_DIR%\venv\Scripts\python.exe" -m pip install -e "%INSTALL_DIR%[office]" --disable-pip-version-check
-)
-
-if exist "%INSTALL_DIR%\frontend\package.json" (
-    pushd "%INSTALL_DIR%\frontend"
-    call npm install --silent
-    call npm run build --silent
-    popd
-)
-
-rmdir /s /q "%WORK_DIR%" >nul 2>&1
+powershell -NoProfile -Command "$root=[IO.Path]::GetFullPath($env:WORK_DIR); $parent=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'; if($root.StartsWith($parent,[StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($root) -match '\Ashogun-update-[0-9a-f]{32}\z'){Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction Stop}else{exit 1}"
+if errorlevel 1 echo  WARNING: Temporary update files remain in the reported working directory.
 
 echo.
-echo  Update complete. Your data, settings, vault, and existing environment were preserved.
-echo  Restart Shogun now. Future updates can be installed from the Updates screen.
+echo  Application files installed. Existing data, settings, vault, and logs were preserved.
+echo  Restart Shogun through its original launcher and verify activation.
 echo.
 pause

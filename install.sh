@@ -8,6 +8,11 @@ umask 077
 
 # Ensure we run from the script's own directory
 cd "$(dirname "$0")"
+for environment in venv .venv; do
+    if [ -x "$PWD/$environment/node-runtime/bin/node" ]; then
+        export PATH="$PWD/$environment/node-runtime/bin:$PATH"
+    fi
+done
 
 TELEMETRY_MODE="${SHOGUN_TELEMETRY:-ask}"
 TELEMETRY_NOTICE="${SHOGUN_TELEMETRY_NOTICE_VERSION:-}"
@@ -124,8 +129,8 @@ if ! command -v node &>/dev/null; then
     fi
     exit 1
 fi
-if ! node -e "const [major,minor]=process.versions.node.split('.').map(Number); process.exit((major>22||major===22&&minor>=12)&&major<25?0:1)"; then
-    echo -e "${RED}  ERROR: Node.js 22.12 or newer, but lower than 25, is required.${NC}"
+if ! node -e "const v=process.versions.node; const [major,minor,patch]=v.split('.').map(Number); process.exit(/^\d+\.\d+\.\d+$/.test(v)&&((major===22&&(minor>23||minor===23&&patch>=4))||(major===24&&(minor>22||minor===22&&patch>=1)))?0:1)"; then
+    echo -e "${RED}  ERROR: Node.js 22.23.4+ (22.x) or 24.22.1+ (24.x), is required.${NC}"
     exit 1
 fi
 
@@ -146,6 +151,9 @@ fi
 source venv/bin/activate
 # Always use this environment, including when PYTHON_CMD was an absolute path.
 PYTHON_CMD="$(pwd)/venv/bin/python"
+if [ -x "$PWD/venv/node-runtime/bin/node" ]; then
+    export PATH="$PWD/venv/node-runtime/bin:$PATH"
+fi
 if ! "$PYTHON_CMD" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
     echo "ERROR: Existing venv is unusable. Move it aside and run install.sh again."
     exit 1
@@ -157,6 +165,9 @@ fi
 
 # ── Step 4: Install Python dependencies ────────────────────────
 echo -e "${GOLD}[4/8]${NC} Installing Python dependencies..."
+"$PYTHON_CMD" shogun/security_maintenance.py bootstrap
+"$PYTHON_CMD" shogun/security_maintenance.py check --node
+export PLAYWRIGHT_NODEJS_PATH="${PLAYWRIGHT_NODEJS_PATH:-$(command -v node)}"
 "$PYTHON_CMD" -m pip install ".[office]" --disable-pip-version-check
 echo -e "       ${GREEN}Python dependencies installed.${NC}"
 
@@ -252,7 +263,7 @@ echo -e "       ${GREEN}Database ready.${NC}"
 echo -e "${GOLD}[6/8]${NC} Building frontend..."
 (
     cd frontend
-    npm ci --no-audit --no-fund
+    npm ci --no-audit --no-fund --strict-ssl=true --engine-strict
     npm run build
 )
 echo -e "       ${GREEN}Frontend built.${NC}"

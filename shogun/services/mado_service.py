@@ -22,6 +22,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from shogun.config import settings
+from shogun.security_maintenance import check_python_security, configure_playwright_node, node_environment
 
 log = logging.getLogger("shogun.mado")
 
@@ -112,6 +113,8 @@ async def install_chromium() -> dict[str, Any]:
     import sys
 
     def _do_install():
+        check_python_security()
+        environment = node_environment()
         steps = []
 
         # Step 1: Ensure playwright Python package is installed
@@ -123,6 +126,7 @@ async def install_chromium() -> dict[str, Any]:
             log.info("Mado: Installing playwright Python package...")
             pip_result = subprocess.run(
                 [sys.executable, "-m", "pip", "install", "playwright>=1.44.0"],
+                env=environment,
                 capture_output=True,
                 text=True,
                 timeout=120,
@@ -139,6 +143,7 @@ async def install_chromium() -> dict[str, Any]:
         log.info("Mado: Downloading and installing Chromium browser...")
         browser_result = subprocess.run(
             [sys.executable, "-m", "playwright", "install", "chromium"],
+            env=environment,
             capture_output=True,
             text=True,
             timeout=300,
@@ -185,6 +190,7 @@ def _get_playwright_sync():
     """
     global _playwright_instance
     if _playwright_instance is None:
+        configure_playwright_node()
         from playwright.sync_api import sync_playwright
 
         _playwright_instance = sync_playwright().start()

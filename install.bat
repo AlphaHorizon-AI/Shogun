@@ -22,6 +22,8 @@ if defined CI if /I "%TELEMETRY_MODE%"=="ask" set "TELEMETRY_MODE=off"
 
 :: Ensure we run from the script's own directory
 cd /d "%~dp0"
+if exist "venv\node-runtime\node.exe" set "PATH=%CD%\venv\node-runtime;%PATH%"
+if exist ".venv\node-runtime\node.exe" set "PATH=%CD%\.venv\node-runtime;%PATH%"
 
 echo.
 echo  +----------------------------------------------------------+
@@ -60,15 +62,15 @@ node --version >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo.
     echo  ERROR: Node.js is not installed or not in PATH.
-    echo  Please install Node.js 22.12+ ^(but lower than 25^) from https://nodejs.org
+    echo  Please install Node.js 22.23.4+ ^(22.x^) or 24.22.1+ ^(24.x^) from https://nodejs.org
     echo.
     pause
     exit /b 1
 )
-node -e "const [major,minor]=process.versions.node.split('.').map(Number); process.exit((major>22||major===22&&minor>=12)&&major<25?0:1)" >nul 2>&1
+node -e "const v=process.versions.node; const [major,minor,patch]=v.split('.').map(Number); process.exit(/^\d+\.\d+\.\d+$/.test(v)&&((major===22&&(minor>23||minor===23&&patch>=4))||(major===24&&(minor>22||minor===22&&patch>=1)))?0:1)" >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo  ERROR: Node.js 22.12 or newer, but lower than 25, is required.
+    echo  ERROR: Node.js 22.23.4+ ^(22.x^) or 24.22.1+ ^(24.x^), is required.
     pause
     exit /b 1
 )
@@ -101,7 +103,13 @@ if "%VENV_DIR%"=="" (
 :: -- Step 4: Install Python dependencies ------------------------
 echo [4/8] Installing Python dependencies...
 call %VENV_DIR%\Scripts\activate.bat
-pip install ".[office]" --quiet --disable-pip-version-check
+if exist "%VENV_DIR%\node-runtime\node.exe" set "PATH=%CD%\%VENV_DIR%\node-runtime;%PATH%"
+python shogun\security_maintenance.py bootstrap
+if errorlevel 1 exit /b 1
+python shogun\security_maintenance.py check --node
+if errorlevel 1 exit /b 1
+for /f "delims=" %%N in ('where node.exe') do if not defined PLAYWRIGHT_NODEJS_PATH set "PLAYWRIGHT_NODEJS_PATH=%%N"
+python -m pip install ".[office]" --quiet --disable-pip-version-check
 if %ERRORLEVEL% neq 0 (
     echo  ERROR: Failed to install Python dependencies.
     pause
@@ -157,7 +165,8 @@ if /I "%TELEMETRY_MODE%"=="on" (
 
 :: -- Step 4b: Install Mado browser (Playwright Chromium) --------
 echo        Installing Mado browser engine (Chromium)...
-playwright install chromium --with-deps 2>nul || python -m playwright install chromium --with-deps 2>nul
+python -m playwright install chromium --with-deps
+if errorlevel 1 exit /b 1
 echo        Mado browser engine ready.
 
 :: -- Step 4c: Install Ronin desktop control (optional) ----------
@@ -165,7 +174,7 @@ echo.
 set /p INSTALL_RONIN="  Enable desktop control (Ronin)? Allows AI to control mouse/keyboard. [y/N]: "
 if /i "%INSTALL_RONIN%"=="y" (
     echo        Installing Ronin desktop dependencies...
-    pip install ".[ronin]" --quiet --disable-pip-version-check
+    python -m pip install ".[ronin]" --quiet --disable-pip-version-check
     if %ERRORLEVEL% neq 0 (
         echo        Warning: Ronin dependencies failed to install. You can try again later in the Setup Wizard.
     ) else (
@@ -183,19 +192,18 @@ echo        Database ready.
 :: -- Step 6: Install and build frontend -------------------------
 echo [6/8] Building frontend...
 cd frontend
-call npm install --silent
+call npm ci --no-audit --no-fund --strict-ssl=true --engine-strict
 if %ERRORLEVEL% neq 0 (
-    echo  WARNING: npm install failed. The frontend may not work correctly.
-    echo           Try running 'npm install' manually in the frontend folder.
+    echo  ERROR: Frontend dependency installation failed.
     cd ..
-    goto step7
+    exit /b 1
 )
 call npm run build
 if %ERRORLEVEL% neq 0 (
     echo  WARNING: Frontend build failed. The UI may be outdated.
     echo           Try running 'npm run build' manually in the frontend folder.
     cd ..
-    goto step7
+    exit /b 1
 )
 cd ..
 echo        Frontend built.
