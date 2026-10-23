@@ -57,6 +57,8 @@ echo   Frontend assets ready.
 
 :: The Python entry point resolves the configured address and recognizes an
 :: existing Shogun listener before opening the browser.
+:: Preserve an explicit SHOGUN_BROWSER_URL; Python supplies the default from
+:: API_HOST/API_PORT rather than forcing another application's port.
 echo   Shogun is starting...
 echo   Your browser will open automatically.
 echo.
