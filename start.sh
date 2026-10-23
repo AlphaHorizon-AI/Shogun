@@ -70,7 +70,7 @@ if [ ! -f "frontend/dist/index.html" ]; then
     echo -e "  ${GREEN}✅  Frontend built.${NC}"
 fi
 
-echo -e "  ${GREEN}🌐  Shogun is starting at http://localhost:8000${NC}"
+echo -e "  ${GREEN}🌐  Shogun is starting...${NC}"
 echo "  📖  Your browser will open automatically."
 echo ""
 echo "  Press Ctrl+C to stop the server."
@@ -78,7 +78,8 @@ echo ""
 
 # Start the server (blocking). A UI restart request leaves a marker that makes
 # this launcher supervise a clean stop/start cycle.
-export SHOGUN_BROWSER_URL=${SHOGUN_BROWSER_URL:-http://localhost:8000}
+# The Python entry point resolves API_HOST/API_PORT and preserves any explicit
+# SHOGUN_BROWSER_URL supplied by the operator.
 export SHOGUN_LAUNCHER_MANAGED=true
 while true; do
     set +e

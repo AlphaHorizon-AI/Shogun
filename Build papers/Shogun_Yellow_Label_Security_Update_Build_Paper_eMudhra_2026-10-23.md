@@ -4,13 +4,13 @@
 | Document field | Value |
 | --- | --- |
 | Document ID | SHOGUN-YL-SEC-2026-10-EMUDHRA |
-| Version | 1.5 |
+| Version | 1.6 |
 | Prepared for | Michael Peric / M37 |
 | Date | 23 October 2026 — Europe/Copenhagen |
 | Priority | Urgent security maintenance |
 | Product | Shogun Yellow Label, with the installed edition preserved |
 | Audience | Coding agent, maintainer and authorized installation operator |
-| Status | Security release 1.47.119 / build 270 implemented and verified; Ubuntu WSL recovered with retained data and volumes; protected-main integration follows the required CI and native-platform gates on PR #85 |
+| Status | Security release 1.47.119 / build 270 merged through PR #85; live Windows activation, updater restart and preservation verified; activation follow-up fixes covered by 688 passing backend regressions |
 | Evidence | Incident guidance rechecked on 23 October 2026; supporting documentation consulted on 22–23 October |
 | Deliverable | Focused patch, rebuilt Yellow Label artifacts, verification evidence and local deployment/recovery procedure |
 
@@ -715,6 +715,16 @@ No existing database, credentials, approval state, saved browser profile or pers
 The detailed implementation report is `docs/security/emudhra-implementation-2026-10-23.md`; the recovery runbook is `docs/security/emudhra-maintenance.md`; retained local evidence is under `tmp/emudhra-maintenance/`. The final Git commit identifies the release source; old uncommitted candidate archives must not be published as that commit.
 
 ---
+
+## 21. Live activation and preservation follow-up — version 1.6
+
+The authorized desktop activation reports running and installed **1.47.119, build 270**, with no pending activation. The authenticated updater restart replaced the live process successfully. Testing used localhost port 8001 because another application occupies the default port; existing credentials and `.env` were retained.
+
+Live smoke testing found and fixed hardcoded launcher browser addresses, a missing enum value for the existing SkillOpt schedule preset, and destructive provider cleanup during local-model discovery. Discovery now preserves saved providers when a daemon reports a different inventory. The six affected provider/catalog rows were recovered from the consistent pre-start backup without overwriting other rows.
+
+Final verification passed: 688 backend tests with four platform skips, frontend build/bundle validation, 16 rendered Yellow Label pages without JavaScript or API server errors, and 27 authenticated feature API reads. Updater checks succeeded; unauthorized privileged calls were rejected; dirty-checkout Apply protection prevented promotion; restricted enterprise endpoints remained blocked. The private preservation comparison confirmed all original table/record identities and files, unchanged schema and credentials, preserved schedule definitions, and healthy existing Qdrant storage. Normal scheduling, inferred-capability, audit and consented-telemetry bookkeeping evolved as documented.
+
+The [activation report](https://github.com/AlphaHorizon-AI/Shogun/blob/main/docs/security/yellow-label-activation-2026-10-23.md) records executed checks and limits. External business actions and live code promotion over local edits were not performed. Backups and private fingerprints remain outside committed release artifacts.
 
 ## Project references
 

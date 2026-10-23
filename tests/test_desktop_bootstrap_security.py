@@ -223,9 +223,14 @@ def test_desktop_installers_bootstrap_privately_and_launch_via_python():
         assert sid in bootstrap
     assert "WindowsIdentity]::GetCurrent().User.Value" in bootstrap
 
-    for launcher in (windows, unix, windows_start, unix_start):
+    for launcher in (windows, unix):
         assert "SHOGUN_BROWSER_URL" in launcher and "http://localhost:8000" in launcher
+    for launcher in (windows, unix, windows_start, unix_start):
         assert "python -m shogun" in launcher or '"$PYTHON_CMD" -m shogun' in launcher
+    # Desktop restarts inherit configuration; the entry point resolves its
+    # default address and attaches the private administrator fragment.
+    assert 'set "SHOGUN_BROWSER_URL=http://localhost:8000"' not in windows_start
+    assert '${SHOGUN_BROWSER_URL:-http://localhost:8000}' not in unix_start
     assert 'start "" "http://localhost:8000"' not in windows_start
     assert 'open "http://localhost:8000' not in unix
     assert 'xdg-open "http://localhost:8000' not in unix

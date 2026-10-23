@@ -2,7 +2,9 @@
 
 The security maintenance release is **1.47.119, build 270**. Python trust, Node selection, installers and both updater paths are corrected. Windows and WSL each passed all 45 live incident checks. Ubuntu WSL recovered after the approved restart following host disk exhaustion; its corrected trust, native regressions and existing Qdrant data were verified again.
 
-The release is based on remote main `ede4b879f8acff9aeff97ff141c353c888adb06f`, which already contains the workbook releases through 1.47.118. An isolated checkout keeps unrelated local integration changes out of the security commit. The build paper is version 1.5 in the repository and its original Downloads location. No existing application database, credentials, approval state, saved browser profile or persistent container volume was replaced or removed.
+PR #85 was merged into protected main with all eleven PR checks and the post-merge workflows successful. Subsequent live Windows activation, updater restart, compatibility findings and preservation verification are recorded in [the activation report](yellow-label-activation-2026-10-23.md).
+
+The release is based on remote main `ede4b879f8acff9aeff97ff141c353c888adb06f`, which already contains the workbook releases through 1.47.118. An isolated checkout keeps unrelated local integration changes out of the security commit. The build paper is version 1.6 in the repository and its original Downloads location. The existing application database, credentials, approval state, saved browser profiles and persistent container volumes are retained.
 
 **Implemented changes**
 
@@ -37,8 +39,8 @@ No schema migration or edition conversion was introduced. No PHP source or Compo
 | Frontend bundle | 101 JavaScript chunks; largest 385.10 KiB, below 500 KiB |
 | Windows live incident checks | 45 PASS, 0 FAIL, 0 INCONCLUSIVE |
 | WSL live incident checks after native CA correction | 45 PASS, 0 FAIL, 0 INCONCLUSIVE |
-| Container verification | Required CI builds both images, scans high/critical findings, tests non-root health and validates runtime trust; current results are on PR #85 |
-| Native macOS | Both required native jobs passed on the initial security commit, including Safari after a runner retry; final source remains subject to those same PR gates |
+| Container verification | Both required image build/scan/non-root health/runtime trust jobs passed on PR #85 and its merged main commit |
+| Native macOS | Required macOS 14 and 26 checks passed on the final PR #85 head and merged main commit |
 
 Each live set covers the 14 published affected endpoints plus a legitimate positive control through HTTPX, pip's actual combined trust context and the selected Node runtime. The recorded WSL run completed before the later host disk failure. Offline fixtures additionally verify both Python CA bundles with fixed verifier times and an isolated original-root positive control; neither the machine clock nor host trust is changed by those tests.
 
@@ -58,4 +60,4 @@ Independent CI then identified vulnerable components inside pip/npm's bundled bu
 
 Raw and sanitized local evidence is under `tmp/emudhra-maintenance/`; the release manifest identifies current verification and any superseded candidate artifacts. Earlier dirty-working-tree candidates are review evidence only and must not be published under an unrelated commit SHA. The final Git commit identifies the focused release source. The runbook is [emudhra-maintenance.md](emudhra-maintenance.md).
 
-Live application migrations, remote updater execution, credential resets, database restores and user-profile tests were not performed. Restart an intended installation only through its established launcher/supervisor, then verify fresh process and TLS identities. Existing local Git edits intentionally block automatic updater application. Code recovery material is not an independently verified secure fallback; dependency installation is not transactional. Retain corrected trust when repairing forward.
+The initial security-build verification did not activate the live desktop installation. The subsequent activation report records the authorized live restart, existing migration checks, isolated browser smoke, and targeted recovery of catalog records removed by pre-existing discovery behavior. Existing local Git edits intentionally block automatic updater application. Code recovery material is not an independently verified secure fallback; dependency installation is not transactional. Retain corrected trust when repairing forward.
