@@ -200,6 +200,31 @@ The inclusive column bounds are one-based. Supported styles are `thin`, `medium`
 and `thick`; the color is an eight-digit ARGB value. Existing row borders and other
 cell formatting remain unchanged. This option does not restyle an already populated
 row or require changing the source template.
+
+To distinguish inserted records by a date relative to a source reference date,
+add `inserted_row_date_band_fill` to a record rule in `populate_template` mode:
+
+```json
+"inserted_row_date_band_fill": {
+  "reference_date_spec": {"field": "report_date", "value_type": "iso_date"},
+  "date_spec": {"group": "due_date", "value_type": "iso_date"},
+  "months": 3,
+  "columns": [1, 5],
+  "within_color": "FFDDF3DE",
+  "after_color": "FFDCEBFA"
+}
+```
+
+Both value specifications must resolve to dates or the run fails. The inclusive
+cutoff is the reference date plus the specified number of calendar months;
+when the target month is shorter, it uses that month's last day. A record on
+or before the cutoff receives `within_color`; one after it receives `after_color`.
+Dates before the reference date are also in the within band. Colors are ARGB,
+and the one-based column numbers specify which cells of newly inserted records
+receive the fill. Other cell styles and existing records remain unchanged.
+Record rules without the option behave as before. If a template combines a
+section heading with its first detail row, that detail's band fills are retained.
+
 Template population keeps the original freeze boundary (for example `A3` for two
 header rows) while adding data below it. Updating an existing plan continues to
 move its freeze boundary with the preserved rows.

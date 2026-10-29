@@ -7,6 +7,7 @@ reruns, and cell-by-cell preservation comparison.
 
 from __future__ import annotations
 
+import calendar
 import copy
 import datetime
 import hashlib
@@ -20,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import openpyxl
-from openpyxl.styles import Border, Side
+from openpyxl.styles import Border, PatternFill, Side
 from openpyxl.utils.cell import coordinate_from_string
 
 from shogun.services.structured_transformations import (
@@ -80,6 +81,15 @@ def _planning_month_key_from_value(value: Any) -> str | None:
     except ValueError:
         return None
     return None
+
+def _date_plus_months(value: datetime.date, months: int) -> datetime.date:
+    """Add calendar months, clipping the day to the last day of the target month."""
+    month_index = (value.year - 1) * 12 + value.month - 1 + months
+    if month_index >= 9999 * 12:
+        raise ValueError("Date band cutoff exceeds the supported calendar year range.")
+    year, month = month_index // 12 + 1, month_index % 12 + 1
+    return datetime.date(year, month, min(value.day, calendar.monthrange(year, month)[1]))
+
 
 ALLOWED_WORKBOOK_UPDATE_KEYS = {
     "mode",
@@ -150,6 +160,7 @@ ALLOWED_RECORD_RULE_KEYS = {
     "duplicate_status",
     "require_date_in_planning_horizon",
     "require_planning_horizon",
+    "inserted_row_date_band_fill",
 }
 
 ALLOWED_LEGACY_DEMAND_CHECK_KEYS = {
@@ -536,6 +547,28 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
             ):
                 if spec_name in r:
                     _validate_value_spec(r[spec_name], f"record_rules[{idx}].{spec_name}")
+            if "inserted_row_date_band_fill" in r:
+                band = r["inserted_row_date_band_fill"]
+                keys = {"reference_date_spec", "date_spec", "months", "columns", "within_color", "after_color"}
+                if not isinstance(band, dict) or set(band) != keys:
+                    raise ValueError("inserted_row_date_band_fill requires reference_date_spec, date_spec, "
+                                     "months, columns, within_color and after_color.")
+                if mode != "populate_template":
+                    raise ValueError("inserted_row_date_band_fill requires populate_template mode.")
+                _validate_value_spec(band["reference_date_spec"], "inserted_row_date_band_fill.reference_date_spec")
+                _validate_value_spec(band["date_spec"], "inserted_row_date_band_fill.date_spec")
+                if type(band["months"]) is not int or not 0 <= band["months"] <= 120:
+                    raise ValueError("inserted_row_date_band_fill.months must be an integer from 0 to 120.")
+                columns = band["columns"]
+                if not isinstance(columns, list) or not columns:
+                    raise ValueError("inserted_row_date_band_fill.columns must be a non-empty list.")
+                for column in columns:
+                    _validate_column_index(column, "inserted_row_date_band_fill.columns")
+                if len(set(columns)) != len(columns):
+                    raise ValueError("inserted_row_date_band_fill.columns must not contain duplicates.")
+                for name in ("within_color", "after_color"):
+                    if not isinstance(band[name], str) or not re.fullmatch(r"[a-fA-F0-9]{8}", band[name]):
+                        raise ValueError(f"inserted_row_date_band_fill.{name} must be an eight-digit ARGB color.")
             if "legacy_demand_check" in r:
                 chk = r["legacy_demand_check"]
                 if not isinstance(chk, dict):
@@ -1490,6 +1523,29 @@ class SafeWorkbookUpdater:
                             s, anchor, row_values, ins_status, r, matched_rule.get("date_number_format", "dd.mm.yyyy")
                         )
                         record_insertion["event"]["chosen_quantity"] = qty
+                        band = matched_rule.get("inserted_row_date_band_fill")
+                        if band:
+                            try:
+                                reference_date = self._eval_spec(band["reference_date_spec"], s, r)
+                                band_date = self._eval_spec(band["date_spec"], s, r)
+                                if isinstance(reference_date, datetime.datetime):
+                                    reference_date = reference_date.date()
+                                if isinstance(band_date, datetime.datetime):
+                                    band_date = band_date.date()
+                                if not isinstance(reference_date, datetime.date) or not isinstance(
+                                    band_date, datetime.date
+                                ):
+                                    raise ValueError("Both values must resolve to dates.")
+                                cutoff = _date_plus_months(reference_date, band["months"])
+                            except (ValueError, TypeError, OverflowError) as exc:
+                                raise ValueError("inserted_row_date_band_fill requires valid source dates.") from exc
+                            within = band_date <= cutoff
+                            record_insertion["date_band_fill"] = {
+                                "columns": band["columns"],
+                                "color": band["within_color"] if within else band["after_color"],
+                            }
+                            record_insertion["event"]["date_band"] = "within" if within else "after"
+                            record_insertion["event"]["date_band_cutoff"] = cutoff.isoformat()
 
                     if (
                         populate_template
@@ -1545,6 +1601,11 @@ class SafeWorkbookUpdater:
                         border = Border(left=side, right=side, top=side, bottom=side)
                         for column in range(border_spec["first_column"], border_spec["last_column"] + 1):
                             ws.cell(new_r, column).border = border
+                    band_fill = item.get("date_band_fill")
+                    if band_fill:
+                        fill = PatternFill("solid", fgColor=band_fill["color"])
+                        for column in band_fill["columns"]:
+                            ws.cell(new_r, column).fill = fill
                     for col_idx, val in item["values"].items():
                         ws.cell(new_r, col_idx).value = val
                         if isinstance(val, str):
