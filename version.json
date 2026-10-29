@@ -1,8 +1,8 @@
 {
-  "version": "1.47.120",
+  "version": "1.47.121",
   "name": "Shogun AFM",
-  "build": 271,
+  "build": 272,
   "channel": "stable",
-  "released": "2026-10-29T08:14:52Z",
-  "changelog": "Support conditional component selection, contiguous section families and configurable borders for generated workbook rows in private transformation profiles. Preserve existing profile behavior when these options are omitted. Update a development-only validation dependency to satisfy the release security audit."
+  "released": "2026-10-29T10:14:25Z",
+  "changelog": "Support rolling workbook calendars with separate overdue and future columns. Keep future boundaries aligned with the selected report month and preserve existing profile behavior."
 }

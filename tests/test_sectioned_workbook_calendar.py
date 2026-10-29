@@ -239,3 +239,53 @@ def test_update_existing_still_moves_freeze_with_preserved_rows(calendar_populat
         assert book["Schedule"]["B5"].value == "UNIT-2"
     finally:
         book.close()
+
+
+def test_rolling_calendar_routes_past_current_and_future_records(calendar_population, tmp_path):
+    template, profile = calendar_population
+    book = openpyxl.load_workbook(template)
+    sheet = book["Schedule"]
+    sheet.insert_cols(7)
+    sheet["G1"] = "Overdue"
+    sheet["T1"] = ">= 2021/01"
+    book.save(template)
+    book.close()
+    policy = profile["parameters"]["workbook_update"]
+    policy["backlog_headers"] = ["Overdue"]
+    policy["future_header_patterns"] = [r"^>="]
+    policy["template_planning_months"].update(month_start_column=8, future_header_column=20)
+    del policy["record_rules"][0]["require_date_in_planning_horizon"]
+    before = hashlib.sha256(template.read_bytes()).hexdigest()
+    for month, past, present, future, expected_header in [
+        ("2026/10", "2026-09-01", "2026-10-01", "2027-10-01", ">= 2027/10"),
+        ("2027/01", "2026-12-01", "2027-01-01", "2028-01-01", ">= 2028/01"),
+    ]:
+        text = (f"Equipment: UNIT-1\nReport: {month}\n"
+                f"JOB-1 2 {past}\nJOB-2 3 {present}\nJOB-3 4 {future}\n")
+        output = tmp_path / f"boundaries_{month.replace('/', '_')}.xlsx"
+        summary = SafeWorkbookUpdater(template, profile).execute(parse_sections(profile, text), output)
+        assert summary["record_disposition_counts"] == {"INSERTED_RECORD_ROW": 3}
+        assert WorkbookPreservationComparator().compare_workbooks(template, output, summary)["status"] == "PASS"
+        result = openpyxl.load_workbook(output)
+        try:
+            sheet = result["Schedule"]
+            assert sheet["T1"].value == expected_header
+            assert sheet["H1"].value.strftime("%Y/%m") == month
+            rows = {sheet.cell(row, 3).value: row for row in range(3, sheet.max_row + 1)}
+            assert sheet.cell(rows["JOB-1"], 7).value == 2
+            assert sheet.cell(rows["JOB-2"], 8).value == 3
+            assert sheet.cell(rows["JOB-3"], 20).value == 4
+        finally:
+            result.close()
+    assert hashlib.sha256(template.read_bytes()).hexdigest() == before
+
+
+def test_rolling_future_requires_a_real_matching_header(calendar_population, tmp_path):
+    template, profile = calendar_population
+    calendar = profile["parameters"]["workbook_update"]["template_planning_months"]
+    calendar["future_header_column"] = 19
+    profile["parameters"]["workbook_update"]["future_header_patterns"] = [r"^>="]
+    with pytest.raises(ValueError, match="exactly one configured future header"):
+        SafeWorkbookUpdater(template, profile).execute(
+            parse_sections(profile, source_text("2026/10")), tmp_path / "bad.xlsx",
+        )
