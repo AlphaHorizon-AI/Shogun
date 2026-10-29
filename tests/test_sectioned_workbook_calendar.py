@@ -88,6 +88,87 @@ def source_text(month):
     return f"Equipment: UNIT-1\nReport: {month}\nJOB-1 7 {month.replace('/', '-')}-06\n"
 
 
+@pytest.mark.parametrize("reference,last_within,first_after", [
+    ("2026-10-19", "2027-01-19", "2027-01-20"),
+    ("2024-01-31", "2024-04-30", "2024-05-01"),
+    ("2024-11-30", "2025-02-28", "2025-03-01"),
+])
+def test_inserted_rows_date_band_uses_inclusive_calendar_month_cutoff(
+    calendar_population, tmp_path, reference, last_within, first_after,
+):
+    template, profile = calendar_population
+    rule = profile["parameters"]["workbook_update"]["record_rules"][0]
+    rule["inserted_row_date_band_fill"] = {
+        "reference_date_spec": {"literal": reference, "value_type": "iso_date"},
+        "date_spec": {"group": "date", "value_type": "iso_date"},
+        "months": 3,
+        "columns": [1, 5],
+        "within_color": "FFDDF3DE",
+        "after_color": "FFDCEBFA",
+    }
+    year, month = reference[:7].split("-")
+    sections = parse_sections(profile, f"Equipment: UNIT-1\nReport: {year}/{month}\n"
+                              f"JOB-1 7 {last_within}\nJOB-2 8 {first_after}\n")
+    output = tmp_path / "bands.xlsx"
+    summary = SafeWorkbookUpdater(template, profile).execute(sections, output)
+    assert WorkbookPreservationComparator().compare_workbooks(template, output, summary)["status"] == "PASS"
+    book = openpyxl.load_workbook(output)
+    try:
+        sheet = book["Schedule"]
+        jobs = {sheet.cell(row, 3).value: row for row in range(3, sheet.max_row + 1)}
+        for job, color in [("JOB-1", "FFDDF3DE"), ("JOB-2", "FFDCEBFA")]:
+            row = jobs[job]
+            assert sheet.cell(row, 1).fill.fgColor.rgb == color
+            assert sheet.cell(row, 5).fill.fgColor.rgb == color
+            assert sheet.cell(row, 4).fill.fgColor.rgb != color
+    finally:
+        book.close()
+
+
+def test_inserted_row_date_band_rejects_missing_dates(calendar_population, tmp_path):
+    template, profile = calendar_population
+    rule = profile["parameters"]["workbook_update"]["record_rules"][0]
+    rule["inserted_row_date_band_fill"] = {
+        "reference_date_spec": {"field": "missing"}, "date_spec": {"group": "date", "value_type": "iso_date"},
+        "months": 3, "columns": [1], "within_color": "FFDDF3DE", "after_color": "FFDCEBFA",
+    }
+    output = tmp_path / "invalid-date-band.xlsx"
+    with pytest.raises(ValueError, match="requires valid source dates"):
+        SafeWorkbookUpdater(template, profile).execute(parse_sections(profile, source_text("2026/10")), output)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("changes", [
+    {"months": True}, {"months": -1}, {"months": 121}, {"columns": []}, {"columns": [1, 1]},
+    {"within_color": "red"}, {"unexpected": "value"},
+])
+def test_inserted_row_date_band_schema_rejects_invalid_settings(calendar_population, changes):
+    _, profile = calendar_population
+    band = {
+        "reference_date_spec": {"literal": "2026-10-19", "value_type": "iso_date"},
+        "date_spec": {"group": "date", "value_type": "iso_date"}, "months": 3,
+        "columns": [1], "within_color": "FFDDF3DE", "after_color": "FFDCEBFA",
+    }
+    band.update(changes)
+    profile["parameters"]["workbook_update"]["record_rules"][0]["inserted_row_date_band_fill"] = band
+    with pytest.raises(ValueError, match="inserted_row_date_band_fill"):
+        validate_workbook_update_profile(profile)
+
+
+def test_inserted_row_date_band_does_not_restyle_existing_workbooks(calendar_population):
+    _, profile = calendar_population
+    policy = profile["parameters"]["workbook_update"]
+    del policy["template_planning_months"]
+    policy["mode"] = "update_existing"
+    policy["record_rules"][0]["inserted_row_date_band_fill"] = {
+        "reference_date_spec": {"literal": "2026-10-19", "value_type": "iso_date"},
+        "date_spec": {"group": "date", "value_type": "iso_date"}, "months": 3,
+        "columns": [1], "within_color": "FFDDF3DE", "after_color": "FFDCEBFA",
+    }
+    with pytest.raises(ValueError, match="requires populate_template"):
+        validate_workbook_update_profile(profile)
+
+
 def test_same_template_rolls_to_two_source_report_months(calendar_population, tmp_path):
     template, profile = calendar_population
     original_hash = hashlib.sha256(template.read_bytes()).hexdigest()

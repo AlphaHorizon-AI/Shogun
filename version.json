@@ -1,8 +1,8 @@
 {
-  "version": "1.47.121",
+  "version": "1.47.122",
   "name": "Shogun AFM",
-  "build": 272,
+  "build": 273,
   "channel": "stable",
-  "released": "2026-10-29T10:14:25Z",
-  "changelog": "Support rolling workbook calendars with separate overdue and future columns. Keep future boundaries aligned with the selected report month and preserve existing profile behavior."
+  "released": "2026-10-29T10:59:52Z",
+  "changelog": "Support configurable calendar-date bands for generated workbook rows. Preserve existing profiles and source data when no date-band rule is configured."
 }
