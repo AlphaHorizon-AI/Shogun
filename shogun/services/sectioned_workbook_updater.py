@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import openpyxl
+from openpyxl.styles import Border, Side
 from openpyxl.utils.cell import coordinate_from_string
 
 from shogun.services.structured_transformations import (
@@ -86,6 +87,7 @@ ALLOWED_WORKBOOK_UPDATE_KEYS = {
     "template_section_sort",
     "template_section_row_policy",
     "template_planning_months",
+    "generated_row_border",
     "sheet_name",
     "header_row",
     "data_start_row",
@@ -175,6 +177,7 @@ ALLOWED_SECTION_SELECTION_DEPENDENCY_KEYS = {
     "fields",
     "transitive",
     "missing",
+    "when",
 }
 
 
@@ -293,6 +296,9 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
         raise ValueError("Profile must be a dictionary.")
     parameters = profile.get("parameters") or {}
     _validate_condition_spec(parameters.get("section_selection"))
+    section_order = parameters.get("section_order")
+    if isinstance(section_order, dict) and "family_key" in section_order:
+        _validate_value_spec(section_order["family_key"], "section_order.family_key")
     dependency_spec = parameters.get("section_selection_dependencies")
     if dependency_spec is not None:
         if not isinstance(dependency_spec, dict):
@@ -320,6 +326,7 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
         missing = dependency_spec.get("missing", "ignore")
         if not isinstance(missing, str) or missing.strip().lower() not in {"ignore", "error"}:
             raise ValueError("section_selection_dependencies.missing must be 'ignore' or 'error'.")
+        _validate_condition_spec(dependency_spec.get("when"))
 
     if "workbook_update" in profile:
         policy = profile["workbook_update"]
@@ -347,6 +354,18 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
         raise ValueError(
             "workbook_update.template_section_row_policy 'merge_first_detail' requires populate_template mode."
         )
+    if "generated_row_border" in policy:
+        border = policy["generated_row_border"]
+        if not isinstance(border, dict) or set(border) != {"first_column", "last_column", "style", "color"}:
+            raise ValueError("generated_row_border requires first_column, last_column, style and color.")
+        first = _validate_column_index(border["first_column"], "generated_row_border.first_column")
+        last = _validate_column_index(border["last_column"], "generated_row_border.last_column")
+        if first > last:
+            raise ValueError("generated_row_border columns must be in ascending order.")
+        if border["style"] not in ("thin", "medium", "thick"):
+            raise ValueError("generated_row_border.style must be thin, medium or thick.")
+        if not isinstance(border["color"], str) or not re.fullmatch(r"[a-fA-F0-9]{8}", border["color"]):
+            raise ValueError("generated_row_border.color must be an eight-digit ARGB color.")
     for key in ("backlog_headers", "future_header_patterns"):
         if key in policy:
             values = policy[key]
@@ -547,6 +566,7 @@ def _expand_section_selection(
     fields = [field.strip() for field in dependency_spec["fields"]]
     transitive = dependency_spec.get("transitive", True)
     missing_mode = str(dependency_spec.get("missing", "ignore")).strip().lower()
+    dependency_condition = dependency_spec.get("when")
 
     by_key: dict[str, list[Any]] = defaultdict(list)
     for section in sections:
@@ -589,6 +609,8 @@ def _expand_section_selection(
                     "with that key."
                 )
             dependency = candidates[0]
+            if not _section_condition_matches(dependency, dependency_condition):
+                continue
             resolved.append((field_name, dependency_key, dependency))
         dependency_cache[section_id] = resolved
         return resolved
@@ -1508,6 +1530,12 @@ class SafeWorkbookUpdater:
                     new_r = anchor + offset
                     for col_idx, st in enumerate(styles, 1):
                         ws.cell(new_r, col_idx)._style = copy.copy(st)
+                    border_spec = self.policy.get("generated_row_border")
+                    if border_spec:
+                        side = Side(style=border_spec["style"], color=border_spec["color"])
+                        border = Border(left=side, right=side, top=side, bottom=side)
+                        for column in range(border_spec["first_column"], border_spec["last_column"] + 1):
+                            ws.cell(new_r, column).border = border
                     for col_idx, val in item["values"].items():
                         ws.cell(new_r, col_idx).value = val
                         if isinstance(val, str):

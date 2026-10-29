@@ -158,6 +158,23 @@ as `IGNORED_MISSING_SELECTION_DEPENDENCY` audit events. Included sections produc
 is exact and source-driven, so profiles do not need fixed material or asset lists.
 Referenced duplicate keys and reachable cycles fail before publication.
 
+An optional `section_selection_dependencies.when` condition restricts which
+referenced sections may be added. It uses the same declarative conditions as
+`section_selection`, evaluated against the referenced section. A rejected section
+is neither included nor traversed; its source records remain in the ordinary
+excluded-section accounting. Apply a condition to both `section_selection` and
+this dependency setting when it must cover direct and indirectly selected
+sections alike. Omitting it preserves unrestricted dependency expansion.
+
+An optional `section_order.family_key` value specification keeps sections with
+the same resolved text key together without changing their actual identifiers.
+Blank values fall back to each section's own identifier. The ordinary sort and
+dependency order is computed first, then families are ordered as contiguous units
+while retaining their internal member order. Dependencies outside a family still
+precede the entire family. If contiguous grouping conflicts with dependency
+ordering, execution fails instead of silently breaking either rule. Omitting
+this setting preserves the existing section order.
+
 ```json
 "section_selection_dependencies": {
   "fields": ["component", "subcomponent"],
@@ -168,6 +185,21 @@ Referenced duplicate keys and reachable cycles fail before publication.
 
 Generated rows use the formatting and row height at `data_start_row`; the original
 headers, blank formatted rows and all other sheets remain preserved.
+Optional `workbook_update.generated_row_border` adds a grid to inserted rows only:
+
+```json
+"generated_row_border": {
+  "first_column": 1,
+  "last_column": 12,
+  "style": "thin",
+  "color": "FF808080"
+}
+```
+
+The inclusive column bounds are one-based. Supported styles are `thin`, `medium`
+and `thick`; the color is an eight-digit ARGB value. Existing row borders and other
+cell formatting remain unchanged. This option does not restyle an already populated
+row or require changing the source template.
 Template population keeps the original freeze boundary (for example `A3` for two
 header rows) while adding data below it. Updating an existing plan continues to
 move its freeze boundary with the preserved rows.

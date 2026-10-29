@@ -630,6 +630,101 @@ def test_transitive_section_selection_handles_long_acyclic_chains_without_recurs
     assert missing == []
 
 
+@pytest.mark.parametrize("transitive", [False, True])
+def test_dependency_eligibility_excludes_ineligible_sections_and_their_descendants(transitive):
+    root = SimpleNamespace(key="ASSEMBLY", fields={"component": "BLOCKED", "drawing": "D-A"})
+    blocked = SimpleNamespace(key="BLOCKED", fields={"component": "RAW", "drawing": ""})
+    raw = SimpleNamespace(key="RAW", fields={"drawing": "D-R"})
+    selected, included, missing = _expand_section_selection(
+        [root, blocked, raw], [root],
+        {"fields": ["component"], "transitive": transitive, "missing": "error",
+         "when": {"field": "drawing", "operator": "truthy"}},
+        "eligible_equipment",
+    )
+    assert selected == [root]
+    assert included == missing == []
+
+
+def test_dependency_eligibility_includes_a_valid_section_outside_the_direct_selection():
+    root = SimpleNamespace(key="ASSEMBLY", fields={"component": "PART", "drawing": "D-A"})
+    part = SimpleNamespace(key="PART", fields={"drawing": "D-P"})
+    selected, included, missing = _expand_section_selection(
+        [part, root], [root],
+        {"fields": ["component"], "when": {"field": "drawing", "operator": "truthy"}},
+        "eligible_equipment",
+    )
+    assert selected == [part, root]
+    assert included[0]["section"] is part
+    assert missing == []
+
+
+def test_dependency_eligibility_keeps_excluded_record_accounting(dependency_population, tmp_path):
+    template, profile = dependency_population
+    parameters = profile["parameters"]
+    parameters["section_selection"] = {"field": "id", "operator": "equals", "value": "KEEP-100"}
+    parameters["section_selection_dependencies"] = {
+        "fields": ["dependency"], "when": {"field": "size", "operator": "equals", "value": "100"},
+    }
+    parameters["section_order"]["dependencies_before"]["missing"] = "ignore"
+    path, summary = execute(dependency_population, tmp_path, (
+        "Equipment: KEEP-100 Size: 100 Dependency: DROP-200\nJOB-1 4 2026-07-06\n\f"
+        "Equipment: DROP-200 Size: 200\nJOB-2 7 2026-08-03\n"
+    ))
+    assert {row[1] for row in schedule_rows(path)} == {"KEEP-100"}
+    assert summary["status_counts"]["EXCLUDED_RECORD"] == 1
+    assert summary["normalized_record_count"] == summary["accounted_record_count"] == 2
+    assert WorkbookPreservationComparator().compare_workbooks(template, path, summary)["status"] == "PASS"
+
+
+@pytest.mark.parametrize("condition", ["drawing", [True], {"all": []}, {"unknown": "x"}])
+def test_dependency_eligibility_condition_is_validated(population, condition):
+    _, profile = population
+    profile["parameters"]["section_selection_dependencies"] = {
+        "fields": ["component"], "when": condition,
+    }
+    with pytest.raises(ValueError):
+        validate_workbook_update_profile(profile)
+
+
+def test_generated_borders_cover_configured_cells_and_preserve_the_empty_template(population, tmp_path):
+    template, profile = population
+    before = template.read_bytes()
+    profile["parameters"]["workbook_update"]["generated_row_border"] = {
+        "first_column": 1, "last_column": 9, "style": "thin", "color": "FF808080",
+    }
+    path, summary = execute(population, tmp_path, (
+        "Equipment: NEW-100 Size: 100\nJOB-1 7 2026-07-06\n"
+    ))
+    book = openpyxl.load_workbook(path)
+    try:
+        for row in range(3, 5):
+            for column in range(1, 10):
+                cell = book["Schedule"].cell(row, column)
+                for name in ("left", "right", "top", "bottom"):
+                    side = getattr(cell.border, name)
+                    assert side.style == "thin"
+                    assert side.color.rgb == "FF808080"
+        assert book["Schedule"]["B3"].fill.fgColor.rgb == "00AADDCC"
+    finally:
+        book.close()
+    assert template.read_bytes() == before
+    assert WorkbookPreservationComparator().compare_workbooks(template, path, summary)["status"] == "PASS"
+
+
+@pytest.mark.parametrize("border", [
+    {"first_column": 0, "last_column": 9, "style": "thin", "color": "FF808080"},
+    {"first_column": 9, "last_column": 1, "style": "thin", "color": "FF808080"},
+    {"first_column": 1, "last_column": 9, "style": "unknown", "color": "FF808080"},
+    {"first_column": 1, "last_column": 9, "style": "thin", "color": "grey"},
+    {"style": "thin"},
+])
+def test_generated_border_configuration_is_validated(population, border):
+    _, profile = population
+    profile["parameters"]["workbook_update"]["generated_row_border"] = border
+    with pytest.raises(ValueError):
+        validate_workbook_update_profile(profile)
+
+
 def test_dependency_order_refuses_duplicate_selected_section_keys(dependency_population, tmp_path):
     template, _ = dependency_population
     before = template.read_bytes()

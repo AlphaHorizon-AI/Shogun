@@ -1230,6 +1230,13 @@ def _order_sections(
     ordered.extend(unmatched)
     dependency_spec = order_spec.get("dependencies_before")
     if not dependency_spec:
+        if "family_key" in order_spec:
+            from shogun.services.section_family_order import order_section_families
+
+            return order_section_families(
+                ordered, lambda section: _resolve_value_spec(order_spec["family_key"], section, None),
+                [], profile_id,
+            )
         return ordered
     if not isinstance(dependency_spec, dict):
         raise ValueError(f"Transformation profile '{profile_id}' dependencies_before must be an object.")
@@ -1268,6 +1275,13 @@ def _order_sections(
 
     for section in ordered:
         emit(section)
+    if "family_key" in order_spec:
+        from shogun.services.section_family_order import order_section_families
+
+        return order_section_families(
+            result, lambda section: _resolve_value_spec(order_spec["family_key"], section, None),
+            fields, profile_id,
+        )
     return result
 
 
