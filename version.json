@@ -1,8 +1,8 @@
 {
-  "version": "1.47.119",
+  "version": "1.47.120",
   "name": "Shogun AFM",
-  "build": 270,
+  "build": 271,
   "channel": "stable",
-  "released": "2026-10-23T07:30:32Z",
-  "changelog": "Correct eMudhra TLS trust for Python and Node.js, authenticate security bootstrapping, and prepare pinned Yellow Label updates before safe code promotion. Patch Vitest advisories; preserve existing functionality and persistent data."
+  "released": "2026-10-29T08:14:52Z",
+  "changelog": "Support conditional component selection, contiguous section families and configurable borders for generated workbook rows in private transformation profiles. Preserve existing profile behavior when these options are omitted."
 }
