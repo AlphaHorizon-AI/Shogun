@@ -4,5 +4,5 @@
   "build": 271,
   "channel": "stable",
   "released": "2026-10-29T08:14:52Z",
-  "changelog": "Support conditional component selection, contiguous section families and configurable borders for generated workbook rows in private transformation profiles. Preserve existing profile behavior when these options are omitted."
+  "changelog": "Support conditional component selection, contiguous section families and configurable borders for generated workbook rows in private transformation profiles. Preserve existing profile behavior when these options are omitted. Update a development-only validation dependency to satisfy the release security audit."
 }
