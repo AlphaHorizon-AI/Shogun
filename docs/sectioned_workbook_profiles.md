@@ -234,6 +234,15 @@ with consecutive months, preserving their formatting and the source template.
 Records use the resulting calendar. Omitting this option preserves static headings;
 it is unavailable in `update_existing` mode.
 
+For layouts with an overdue column before the dated months, set the optional
+`month_start_column` to the first dated column while `planning_start_column` still
+includes the overdue header. Set `future_header_column` to the column immediately
+after the dated months to roll the existing, uniquely configured future header to
+`>= YYYY/MM` for the first month after the current horizon. The configured future
+header pattern must match that generated label. The original template remains
+unchanged. Omit these options to retain existing behavior. For overdue/future
+routing, do not enable exact-horizon filtering on the record rule.
+
 Optional `backlog_headers` declares exact labels for dates before the first visible
 month. Optional `future_header_patterns` identifies headers such as `>= Sep 2028`;
 the date in that header defines the threshold. These use the existing monthly bucket

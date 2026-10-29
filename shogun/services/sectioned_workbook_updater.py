@@ -411,8 +411,10 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
 
     if "template_planning_months" in policy:
         calendar = policy["template_planning_months"]
-        if not isinstance(calendar, dict) or set(calendar) != {"start_month_spec", "count"}:
-            raise ValueError("template_planning_months requires only start_month_spec and count.")
+        if (not isinstance(calendar, dict)
+                or not {"start_month_spec", "count"} <= set(calendar)
+                or set(calendar) - {"start_month_spec", "count", "month_start_column", "future_header_column"}):
+            raise ValueError("template_planning_months requires start_month_spec and count with supported options.")
         if mode not in {"populate_template", "maintain_master"}:
             raise ValueError("template_planning_months requires populate_template mode.")
         if plan_col is None:
@@ -421,8 +423,15 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
         count = calendar["count"]
         if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= 120:
             raise ValueError("template_planning_months.count must be an integer from one to 120.")
-        if plan_col + count - 1 > MAX_EXCEL_COLUMNS:
+        month_start = _validate_column_index(calendar.get("month_start_column", plan_col), "month_start_column")
+        if month_start < plan_col:
+            raise ValueError("month_start_column must not precede planning_start_column.")
+        if month_start + count - 1 > MAX_EXCEL_COLUMNS:
             raise ValueError("template_planning_months exceeds the Excel column limit.")
+        if "future_header_column" in calendar:
+            future = _validate_column_index(calendar["future_header_column"], "future_header_column")
+            if future != month_start + count:
+                raise ValueError("future_header_column must immediately follow the dated months.")
 
     if "require_planning_months" in policy and not isinstance(policy["require_planning_months"], bool):
         raise ValueError("workbook_update.require_planning_months must be a boolean.")
@@ -1654,10 +1663,10 @@ class SafeWorkbookUpdater:
 
     def _template_planning_headers(
         self, sections: list[Any], sheet: Any, contract: WorkbookLayoutContract,
-    ) -> list[tuple[int, datetime.datetime]]:
+    ) -> list[tuple[int, Any]]:
         calendar = self.policy["template_planning_months"]
         count = calendar["count"]
-        start_column = contract.planning_start_column
+        start_column = calendar.get("month_start_column", contract.planning_start_column)
         columns = list(range(start_column, start_column + count))
         dated_columns = sorted(
             column for month, column in contract.month_to_col.items()
@@ -1669,8 +1678,14 @@ class SafeWorkbookUpdater:
         ):
             raise ValueError(
                 "template_planning_months requires exactly count contiguous dated header cells "
-                "at planning_start_column; other headers cannot be replaced."
+                "at the configured month start; other headers cannot be replaced."
             )
+
+        future_column = calendar.get("future_header_column")
+        if future_column is not None:
+            futures = [column for key, column in contract.month_to_col.items() if key.startswith(">=")]
+            if futures != [future_column]:
+                raise ValueError("future_header_column requires exactly one configured future header.")
 
         if not sections:
             raise ValueError("template_planning_months requires a source month from every section.")
@@ -1693,12 +1708,20 @@ class SafeWorkbookUpdater:
 
         year, month = map(int, next(iter(source_months)).split("/"))
         first_month = (year - 1) * 12 + month - 1
-        if first_month + count > 9999 * 12:
+        if first_month + count > 9999 * 12 or (future_column is not None and first_month + count >= 9999 * 12):
             raise ValueError("template_planning_months exceeds the supported calendar year range.")
-        return [
+        headers = [
             (column, datetime.datetime((first_month + offset) // 12 + 1, (first_month + offset) % 12 + 1, 1))
             for offset, column in enumerate(columns)
         ]
+        if future_column is not None:
+            future_month = first_month + count
+            label = f">= {future_month // 12 + 1:04d}/{future_month % 12 + 1:02d}"
+            patterns = self.policy.get("future_header_patterns", [])
+            if not any(_compile_pattern(pattern, "future planning header").search(label) for pattern in patterns):
+                raise ValueError("Generated future header does not match future_header_patterns.")
+            headers.append((future_column, label))
+        return headers
 
     def _template_section_sort_key(self, section: Any) -> tuple:
         values = []
