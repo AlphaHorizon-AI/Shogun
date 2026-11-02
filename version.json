@@ -4,5 +4,5 @@
   "build": 274,
   "channel": "stable",
   "released": "2026-11-02T10:11:44Z",
-  "changelog": "Support routing later date-band records to a separate worksheet while retaining record provenance and existing profile behavior."
+  "changelog": "Support routing later date-band records to a separate worksheet while preserving record provenance and existing profile behavior. Update vulnerable transitive frontend dependencies."
 }
