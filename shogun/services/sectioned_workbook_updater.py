@@ -98,6 +98,7 @@ ALLOWED_WORKBOOK_UPDATE_KEYS = {
     "template_section_row_policy",
     "template_planning_months",
     "generated_row_border",
+    "after_date_band_sheet",
     "sheet_name",
     "header_row",
     "data_start_row",
@@ -377,6 +378,16 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
             raise ValueError("generated_row_border.style must be thin, medium or thick.")
         if not isinstance(border["color"], str) or not re.fullmatch(r"[a-fA-F0-9]{8}", border["color"]):
             raise ValueError("generated_row_border.color must be an eight-digit ARGB color.")
+    if "after_date_band_sheet" in policy:
+        target = policy["after_date_band_sheet"]
+        if (not isinstance(target, str) or not target.strip() or target != target.strip()
+                or len(target) > 31 or re.search(r"[\\/*?:\[\]]", target)
+                or target.startswith("'") or target.endswith("'")):
+            raise ValueError("after_date_band_sheet must be a valid Excel worksheet name.")
+        if mode != "populate_template":
+            raise ValueError("after_date_band_sheet requires populate_template mode.")
+        if policy.get("template_section_row_policy", "always") != "always":
+            raise ValueError("after_date_band_sheet requires separate section rows.")
     for key in ("backlog_headers", "future_header_patterns"):
         if key in policy:
             values = policy[key]
@@ -593,6 +604,10 @@ def validate_workbook_update_profile(profile: dict[str, Any]) -> None:
                         raise ValueError(f"Invalid column in record_rules[{idx}].insert_row_values: {col_k!r}")
                     _validate_column_index(col_int, f"record_rules[{idx}].insert_row_values[{col_k}]")
                     _validate_value_spec(col_spec, f"record_rules[{idx}].insert_row_values[{col_k}]")
+    if policy.get("after_date_band_sheet") and not any(
+        "inserted_row_date_band_fill" in rule for rule in (rec_rules or [])
+    ):
+        raise ValueError("after_date_band_sheet requires at least one record date-band rule.")
 
 
 def _expand_section_selection(
@@ -917,6 +932,12 @@ class SafeWorkbookUpdater:
 
             contract = WorkbookLayoutContract(ws, self.policy)
             preflight_workbook(book, ws)
+            after_sheet_name = self.policy.get("after_date_band_sheet")
+            if after_sheet_name and (
+                after_sheet_name.casefold() in {name.casefold() for name in book.sheetnames}
+                or after_sheet_name.casefold() == metadata_sheet_name.casefold()
+            ):
+                raise ValueError("after_date_band_sheet conflicts with an existing or metadata sheet.")
 
             original_rows = ws.max_row
             original_columns = ws.max_column
@@ -1546,6 +1567,8 @@ class SafeWorkbookUpdater:
                             }
                             record_insertion["event"]["date_band"] = "within" if within else "after"
                             record_insertion["event"]["date_band_cutoff"] = cutoff.isoformat()
+                            if after_sheet_name and not within:
+                                record_insertion["section_context"] = dict(section_values)
 
                     if (
                         populate_template
@@ -1584,56 +1607,91 @@ class SafeWorkbookUpdater:
                                 first_detail["row_events"].extend(section_insertion["row_events"])
                                 del section_items[section_index]
 
+            after_insertions: dict[int, list[dict[str, Any]]] = defaultdict(list)
+            after_sheet = None
+            if after_sheet_name:
+                after_sheet = book.copy_worksheet(ws)
+                after_sheet.title = after_sheet_name
+                after_sheet.freeze_panes = ws.freeze_panes
+                for anchor, items in insertions.items():
+                    kept = []
+                    for item in items:
+                        if item["event"].get("date_band") == "after":
+                            context_values = {
+                                col: val for col, val in item.get("section_context", {}).items()
+                                if val not in (None, "")
+                            }
+                            item["values"] = {**context_values, **item["values"]}
+                            after_insertions[anchor].append(item)
+                        else:
+                            kept.append(item)
+                    insertions[anchor] = kept
+
+            def moved_in(row_idx: int, batches: dict[int, list[dict[str, Any]]]) -> int:
+                return row_idx + sum(len(items) for anch, items in batches.items() if anch < row_idx)
+
             def moved(row_idx: int) -> int:
-                return row_idx + sum(len(items) for anch, items in insertions.items() if anch < row_idx)
+                return moved_in(row_idx, insertions)
 
-            for anchor, items in sorted(insertions.items(), reverse=True):
-                style_row = contract.data_start_row if populate_template else anchor
-                styles = [copy.copy(ws.cell(style_row, col)._style) for col in range(1, ws.max_column + 1)]
-                ws.insert_rows(anchor + 1, len(items))
-                for offset, item in enumerate(items, 1):
-                    new_r = anchor + offset
-                    for col_idx, st in enumerate(styles, 1):
-                        ws.cell(new_r, col_idx)._style = copy.copy(st)
-                    border_spec = self.policy.get("generated_row_border")
-                    if border_spec:
-                        side = Side(style=border_spec["style"], color=border_spec["color"])
-                        border = Border(left=side, right=side, top=side, bottom=side)
-                        for column in range(border_spec["first_column"], border_spec["last_column"] + 1):
-                            ws.cell(new_r, column).border = border
-                    band_fill = item.get("date_band_fill")
-                    if band_fill:
-                        fill = PatternFill("solid", fgColor=band_fill["color"])
-                        for column in band_fill["columns"]:
-                            ws.cell(new_r, column).fill = fill
-                    for col_idx, val in item["values"].items():
-                        ws.cell(new_r, col_idx).value = val
-                        if isinstance(val, str):
-                            ws.cell(new_r, col_idx).data_type = "s"
-                        if isinstance(val, (datetime.date, datetime.datetime)):
-                            ws.cell(new_r, col_idx).number_format = item["date_format"]
-                    final_r = moved(anchor) + offset
-                    for row_event in item["row_events"]:
-                        row_event["row"] = final_r
-                    item["row"] = final_r
-                    if "record_id" in item["event"]:
-                        metadata[item["event"]["record_id"]] = {
-                            "row": final_r,
-                            "final": True,
-                            "values": {str(c): _plain(v) for c, v in item["metadata_values"].items()},
-                        }
-
-            ws.row_dimensions.clear()
-            for r_idx, dim in original_dimensions.items():
-                dim.index = moved(r_idx)
-                ws.row_dimensions[moved(r_idx)] = dim
-            for anchor, items in insertions.items():
-                for item in items:
+            def write_insertions(target, batches):
+                for anchor, items in sorted(batches.items(), reverse=True):
+                    if not items:
+                        continue
                     style_row = contract.data_start_row if populate_template else anchor
-                    if style_row in original_dimensions:
-                        dim = copy.copy(original_dimensions[style_row])
-                        dim.index = item["row"]
-                        ws.row_dimensions[item["row"]] = dim
+                    styles = [copy.copy(target.cell(style_row, col)._style) for col in range(1, target.max_column + 1)]
+                    target.insert_rows(anchor + 1, len(items))
+                    for offset, item in enumerate(items, 1):
+                        new_r = anchor + offset
+                        for col_idx, st in enumerate(styles, 1):
+                            target.cell(new_r, col_idx)._style = copy.copy(st)
+                        border_spec = self.policy.get("generated_row_border")
+                        if border_spec:
+                            side = Side(style=border_spec["style"], color=border_spec["color"])
+                            border = Border(left=side, right=side, top=side, bottom=side)
+                            for column in range(border_spec["first_column"], border_spec["last_column"] + 1):
+                                target.cell(new_r, column).border = border
+                        band_fill = item.get("date_band_fill")
+                        if band_fill:
+                            fill = PatternFill("solid", fgColor=band_fill["color"])
+                            for column in band_fill["columns"]:
+                                target.cell(new_r, column).fill = fill
+                        for col_idx, val in item["values"].items():
+                            target.cell(new_r, col_idx).value = val
+                            if isinstance(val, str):
+                                target.cell(new_r, col_idx).data_type = "s"
+                            if isinstance(val, (datetime.date, datetime.datetime)):
+                                target.cell(new_r, col_idx).number_format = item["date_format"]
+                        final_r = moved_in(anchor, batches) + offset
+                        for row_event in item["row_events"]:
+                            row_event["row"] = final_r
+                            if after_sheet_name:
+                                row_event["sheet"] = target.title
+                        item["row"] = final_r
+                        item["sheet"] = target.title
+                        if "record_id" in item["event"]:
+                            metadata[item["event"]["record_id"]] = {
+                                "row": final_r,
+                                "sheet": target.title,
+                                "final": True,
+                                "values": {str(c): _plain(v) for c, v in item["metadata_values"].items()},
+                            }
+
+                target.row_dimensions.clear()
+                for r_idx, dim in original_dimensions.items():
+                    cloned = copy.copy(dim)
+                    cloned.index = moved_in(r_idx, batches)
+                    target.row_dimensions[cloned.index] = cloned
+                for anchor, items in batches.items():
+                    for item in items:
+                        style_row = contract.data_start_row if populate_template else anchor
+                        if style_row in original_dimensions:
+                            dim = copy.copy(original_dimensions[style_row])
+                            dim.index = item["row"]
+                            target.row_dimensions[item["row"]] = dim
+
+            write_insertions(ws, insertions)
+            if after_sheet is not None:
+                write_insertions(after_sheet, after_insertions)
 
             if freeze and not populate_template:
                 freeze_col, freeze_row = coordinate_from_string(freeze)
@@ -1653,7 +1711,8 @@ class SafeWorkbookUpdater:
             current_hash = self.profile_hash
             for ident, entry in sorted(metadata.items()):
                 meta.append(
-                    [1, ws.title, entry["row"], ident, json.dumps(entry["values"], ensure_ascii=False), current_hash]
+                    [1, entry.get("sheet", ws.title), entry["row"], ident,
+                     json.dumps(entry["values"], ensure_ascii=False), current_hash]
                 )
             meta.sheet_state = "hidden"
 
@@ -1668,8 +1727,10 @@ class SafeWorkbookUpdater:
                 ],
                 "events": events,
                 "inserted_rows": [
-                    {"row": it["row"], "values": {str(c): _plain(v) for c, v in it["values"].items()}}
-                    for items in insertions.values()
+                    {"row": it["row"], **({"sheet": it["sheet"]} if after_sheet_name else {}),
+                     "values": {str(c): _plain(v) for c, v in it["values"].items()}}
+                    for batches in (insertions, after_insertions)
+                    for items in batches.values()
                     for it in items
                 ],
                 "relevant_sections_count": len(relevant),
@@ -1686,7 +1747,7 @@ class SafeWorkbookUpdater:
                     }
                     for item in missing_selection_dependencies
                 ],
-                "total_rows_inserted": sum(map(len, insertions.values())),
+                "total_rows_inserted": sum(map(len, insertions.values())) + sum(map(len, after_insertions.values())),
                 "out_of_horizon_records_count": sum(e["status"] == "OUTSIDE_PLANNING_HORIZON" for e in events),
                 "status_counts": dict(Counter(e["status"] for e in events)),
                 "record_disposition_counts": dict(Counter(e["status"] for e in events if "record_id" in e)),
@@ -1697,6 +1758,11 @@ class SafeWorkbookUpdater:
                 "horizon_months": list(contract.month_to_col),
                 "metadata_sheet_name": metadata_sheet_name,
             }
+            if after_sheet is not None:
+                summary["after_date_band_sheet"] = after_sheet.title
+                summary["data_start_row"] = contract.data_start_row
+                summary["primary_rows_inserted"] = sum(map(len, insertions.values()))
+                summary["after_rows_inserted"] = sum(map(len, after_insertions.values()))
             if summary["normalized_record_count"] != summary["accounted_record_count"]:
                 raise ValueError("Each normalized source record must have exactly one final disposition.")
 
@@ -1879,6 +1945,11 @@ class WorkbookPreservationComparator:
             meta_sheet = validation_summary.get("metadata_sheet_name", DEFAULT_METADATA_SHEET)
             controlled_sheets = validation_summary.get("controlled_sheets", {})
             managed_sheets = {meta_sheet, *controlled_sheets}
+            after_sheet = validation_summary.get("after_date_band_sheet")
+            if after_sheet:
+                managed_sheets.add(after_sheet)
+                if after_sheet not in generated:
+                    issues.append({"type": "missing_date_band_sheet", "sheet": after_sheet})
             column_mapping = validation_summary.get("calendar_column_mapping", {})
             comment_changes = {
                 (item["original_row"], item["column"]): item
@@ -2000,18 +2071,43 @@ class WorkbookPreservationComparator:
 
             ws = generated[title]
             for item in validation_summary["inserted_rows"]:
+                item_sheet = item.get("sheet", title)
+                if item_sheet not in generated:
+                    issues.append({"type": "missing_inserted_record_sheet", "sheet": item_sheet})
+                    continue
                 for col, expected in item["values"].items():
-                    if _plain(ws.cell(item["row"], int(col)).value) != expected:
-                        issues.append({"type": "inserted_record_value", "row": item["row"], "column": col})
+                    if _plain(generated[item_sheet].cell(item["row"], int(col)).value) != expected:
+                        issues.append({"type": "inserted_record_value", "sheet": item_sheet,
+                                       "row": item["row"], "column": col})
 
             # A header-only template may end before data_start_row. Its first
             # generated rows also establish the previously unused data area.
             expected_rows = max(
-                base[title].max_row + validation_summary["total_rows_inserted"],
-                max((row["row"] for row in validation_summary["inserted_rows"]), default=0),
+                base[title].max_row + validation_summary.get(
+                    "primary_rows_inserted", validation_summary["total_rows_inserted"]
+                ),
+                max((row["row"] for row in validation_summary["inserted_rows"]
+                     if row.get("sheet", title) == title), default=0),
             )
             if ws.max_row != expected_rows:
                 issues.append({"type": "row_count", "expected": expected_rows, "actual": ws.max_row})
+
+            if after_sheet and after_sheet in generated:
+                future = generated[after_sheet]
+                expected_after_rows = base[title].max_row + validation_summary["after_rows_inserted"]
+                if future.max_row != expected_after_rows:
+                    issues.append({"type": "date_band_row_count", "sheet": after_sheet,
+                                   "expected": expected_after_rows, "actual": future.max_row})
+                if future.freeze_panes != ws.freeze_panes:
+                    issues.append({"type": "date_band_freeze_panes", "sheet": after_sheet})
+                for row in base[title].iter_rows(max_row=validation_summary.get("data_start_row", 3) - 1):
+                    for cell in row:
+                        expected_header = ws.cell(cell.row, cell.column)
+                        actual_header = future.cell(cell.row, cell.column)
+                        if (_plain(expected_header.value) != _plain(actual_header.value)
+                                or not _same_style(expected_header, actual_header)):
+                            issues.append({"type": "date_band_header", "sheet": after_sheet,
+                                           "cell": cell.coordinate})
 
             return {
                 "status": "PASS" if not issues else "FAIL",
