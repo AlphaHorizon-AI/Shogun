@@ -124,7 +124,6 @@ def test_inserted_rows_date_band_uses_inclusive_calendar_month_cutoff(
     finally:
         book.close()
 
-
 def test_inserted_row_date_band_rejects_missing_dates(calendar_population, tmp_path):
     template, profile = calendar_population
     rule = profile["parameters"]["workbook_update"]["record_rules"][0]
@@ -166,6 +165,137 @@ def test_inserted_row_date_band_does_not_restyle_existing_workbooks(calendar_pop
         "columns": [1], "within_color": "FFDDF3DE", "after_color": "FFDCEBFA",
     }
     with pytest.raises(ValueError, match="requires populate_template"):
+        validate_workbook_update_profile(profile)
+
+
+def _configure_separate_date_band(profile):
+    policy = profile["parameters"]["workbook_update"]
+    policy["after_date_band_sheet"] = "Later"
+    policy["template_section_values"] = {"1": {"literal": "Equipment description"}}
+    rule = policy["record_rules"][0]
+    rule["inserted_row_date_band_fill"] = {
+        "reference_date_spec": {"literal": "2026-10-19", "value_type": "iso_date"},
+        "date_spec": {"group": "date", "value_type": "iso_date"}, "months": 3,
+        "columns": [1, 5], "within_color": "FFDDF3DE", "after_color": "FFDCEBFA",
+    }
+    return policy
+
+
+def test_date_band_routes_future_records_to_separate_sheet_with_context(calendar_population, tmp_path):
+    template, profile = calendar_population
+    policy = _configure_separate_date_band(profile)
+    policy["section_rules"] = [{
+        "name": "stock", "value_spec": {"literal": 4}, "match_column": 3,
+        "match_pattern": "^STOCK$", "value_column": 4,
+        "insert_row_values": {"2": {"section_key": True}, "3": {"literal": "STOCK"}},
+    }]
+    sections = parse_sections(profile, "Equipment: UNIT-1\nReport: 2026/10\n"
+                              "JOB-1 7 2027-01-19\nJOB-2 8 2027-01-20\n")
+    output = tmp_path / "separate.xlsx"
+    summary = SafeWorkbookUpdater(template, profile).execute(sections, output)
+    comparison = WorkbookPreservationComparator().compare_workbooks(template, output, summary)
+    assert comparison["status"] == "PASS", comparison["issues"]
+    assert summary["after_rows_inserted"] == 1
+    assert summary["primary_rows_inserted"] == 3  # section, stock and current job
+    assert summary["normalized_record_count"] == summary["accounted_record_count"] == 2
+    book = openpyxl.load_workbook(output)
+    try:
+        main, future = book["Schedule"], book["Later"]
+        assert main["C4"].value == "STOCK"
+        assert main["C5"].value == "JOB-1"
+        assert future["C3"].value == "JOB-2"
+        assert future["A3"].value == "Equipment description"
+        assert future["B3"].value == "UNIT-1"
+        assert future["A3"].fill.fgColor.rgb == "FFDCEBFA"
+        assert main["A5"].fill.fgColor.rgb == "FFDDF3DE"
+        assert future.freeze_panes == main.freeze_panes
+        metadata = book[summary["metadata_sheet_name"]]
+        entries = {(row[1], row[2]) for row in metadata.iter_rows(min_row=2, values_only=True)}
+        assert entries == {("Schedule", 5), ("Later", 3)}
+        recorded = {(event["sheet"], event["row"]) for event in summary["events"] if "record_id" in event}
+        assert recorded == {("Schedule", 5), ("Later", 3)}
+    finally:
+        book.close()
+
+    altered = openpyxl.load_workbook(output)
+    try:
+        altered["Later"]["C3"] = "CHANGED"
+        altered.save(output)
+    finally:
+        altered.close()
+    changed_comparison = WorkbookPreservationComparator().compare_workbooks(template, output, summary)
+    assert changed_comparison["status"] == "FAIL"
+    assert any(item["type"] == "inserted_record_value" and item["sheet"] == "Later"
+               for item in changed_comparison["issues"])
+
+
+def test_date_band_separate_sheet_can_be_empty_and_refuses_conflicting_names(calendar_population, tmp_path):
+    template, profile = calendar_population
+    policy = _configure_separate_date_band(profile)
+    sections = parse_sections(profile, source_text("2026/10"))
+    output = tmp_path / "all-current.xlsx"
+    summary = SafeWorkbookUpdater(template, profile).execute(sections, output)
+    assert summary["after_rows_inserted"] == 0
+    assert WorkbookPreservationComparator().compare_workbooks(template, output, summary)["status"] == "PASS"
+    policy["after_date_band_sheet"] = "schedule"
+    with pytest.raises(ValueError, match="conflicts with an existing"):
+        SafeWorkbookUpdater(template, profile).execute(sections, tmp_path / "collision.xlsx")
+
+
+def test_date_band_routes_multiple_configured_record_types(calendar_population, tmp_path):
+    template, profile = calendar_population
+    policy = _configure_separate_date_band(profile)
+    requirement = policy["record_rules"][0]
+    requirement.update(id="requirement", category="requirement", match={"job": "JOB-1"})
+    order = copy.deepcopy(requirement)
+    order.update(id="order", category="order", match={"job": "JOB-2"})
+    policy["record_rules"].append(order)
+    sections = parse_sections(profile, "Equipment: UNIT-1\nReport: 2026/10\n"
+                              "JOB-1 7 2027-01-20\nJOB-2 8 2027-02-01\n")
+    output = tmp_path / "types.xlsx"
+    summary = SafeWorkbookUpdater(template, profile).execute(sections, output)
+    assert summary["after_rows_inserted"] == 2
+    book = openpyxl.load_workbook(output, read_only=True)
+    try:
+        assert [book["Later"].cell(row, 3).value for row in (3, 4)] == ["JOB-1", "JOB-2"]
+    finally:
+        book.close()
+
+
+def test_date_band_reroutes_same_record_when_reference_date_advances(calendar_population, tmp_path):
+    template, profile = calendar_population
+    policy = _configure_separate_date_band(profile)
+    profile["parameters"]["section_fields"].append({
+        "target": "report_date", "pattern": r"As of: (?P<value>\d{4}-\d{2}-\d{2})", "group": "value",
+    })
+    policy["record_rules"][0]["inserted_row_date_band_fill"]["reference_date_spec"] = {
+        "field": "report_date", "value_type": "iso_date",
+    }
+    for report, expected_sheet in [("2026-10-19", "Later"), ("2026-11-19", "Schedule")]:
+        month = report[:7].replace("-", "/")
+        sections = parse_sections(profile, f"Equipment: UNIT-1\nReport: {month}\nAs of: {report}\n"
+                                  "JOB-1 7 2027-01-20\n")
+        output = tmp_path / f"{report}.xlsx"
+        summary = SafeWorkbookUpdater(template, profile).execute(sections, output)
+        event = next(event for event in summary["events"] if "record_id" in event)
+        assert event["sheet"] == expected_sheet
+        assert WorkbookPreservationComparator().compare_workbooks(template, output, summary)["status"] == "PASS"
+
+
+@pytest.mark.parametrize("name", ["", "x" * 32, "Invalid/Name", "'Name", "Name'", " x"])
+def test_date_band_separate_sheet_rejects_invalid_names(calendar_population, name):
+    _, profile = calendar_population
+    policy = _configure_separate_date_band(profile)
+    policy["after_date_band_sheet"] = name
+    with pytest.raises(ValueError, match="after_date_band_sheet"):
+        validate_workbook_update_profile(profile)
+
+
+def test_date_band_separate_sheet_requires_independent_section_rows(calendar_population):
+    _, profile = calendar_population
+    policy = _configure_separate_date_band(profile)
+    policy["template_section_row_policy"] = "merge_first_detail"
+    with pytest.raises(ValueError, match="separate section rows"):
         validate_workbook_update_profile(profile)
 
 

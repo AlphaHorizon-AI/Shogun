@@ -225,6 +225,18 @@ receive the fill. Other cell styles and existing records remain unchanged.
 Record rules without the option behave as before. If a template combines a
 section heading with its first detail row, that detail's band fills are retained.
 
+To place records in the `after` band on a second worksheet instead of the main
+worksheet, set `workbook_update.after_date_band_sheet` to a new valid worksheet
+name and keep `template_section_row_policy` as `always`. The option requires
+`populate_template` mode and at least one record rule with a date-band fill.
+Unbanded records and section rows remain on the main sheet; rules for each
+record type determine which records can be routed. The second sheet copies the
+template headers, rolling calendar, formatting, and freeze boundary. Routed
+records carry section values as context without overwriting their own values.
+The validation events and hidden provenance record the destination sheet and
+row; all input records still receive exactly one disposition. A destination
+name that conflicts with an existing or metadata sheet is rejected.
+
 Template population keeps the original freeze boundary (for example `A3` for two
 header rows) while adding data below it. Updating an existing plan continues to
 move its freeze boundary with the preserved rows.
