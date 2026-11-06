@@ -590,3 +590,55 @@ async def test_mapping_template_crud_is_versioned_and_soft_deleted(api_app, clie
     finally:
         api_app.dependency_overrides.pop(get_db, None)
         await engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_cell_mapping_to_excel_write_ignores_python_dict_context_str(tmp_path, monkeypatch):
+    from openpyxl import Workbook
+
+    source_wb = tmp_path / "source.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Berechnung Fertigungsstunden"
+    ws["V247"] = 71
+    ws["W247"] = 90
+    wb.save(source_wb)
+    wb.close()
+
+    mapped = execute_mapping(
+        {"V247": 0, "W247": 0},
+        {
+            "name": "cells_fix",
+            "version": "1.0",
+            "execution_mode": "transform",
+            "mode": "lenient",
+            "mappings": [
+                {"source": "V247", "target": "V247", "type": "number", "required": True},
+                {"source": "W247", "target": "W247", "type": "number", "required": True},
+            ],
+            "output": {"type": "cells", "sheet": "Berechnung Fertigungsstunden", "start_cell": "A1"},
+        },
+    )
+    monkeypatch.setattr(settings, "workspace_path", tmp_path)
+    monkeypatch.setattr("shogun.office.config.load_office_config", lambda: SimpleNamespace(enabled=True))
+
+    result = await _exec_office(
+        {
+            "action": "excel_write",
+            "input_path": "source.xlsx",
+            "output_path": "Output",
+            "output_filename": "updated.xlsx",
+            "sheet_name": "Berechnung Fertigungsstunden",
+        },
+        f"[Output from 'Map Cells']:\n{mapped}",
+        predecessor_outputs={"mapping": mapped},
+    )
+
+    assert "updated.xlsx" in result
+    updated = load_workbook(tmp_path / "Output" / "updated.xlsx", data_only=True)
+    try:
+        sheet = updated["Berechnung Fertigungsstunden"]
+        assert sheet["V247"].value == 0
+        assert sheet["W247"].value == 0
+    finally:
+        updated.close()
