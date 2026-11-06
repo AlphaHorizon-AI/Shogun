@@ -5389,8 +5389,10 @@ async def _exec_office(
             handle = open_workbook(abs_in)
             try:
                 data = (
-                    _mapping_table_rows(mapping_payload)
-                    if mapping_payload and mapping_payload.get("type") != "cells"
+                    []
+                    if mapping_payload and mapping_payload.get("type") == "cells"
+                    else _mapping_table_rows(mapping_payload)
+                    if mapping_payload
                     else _excel_rows_from_context(context_str)
                 )
                 target_sheet = str((mapping_payload or {}).get("sheet") or sheet_name or handle.workbook.sheetnames[0])
