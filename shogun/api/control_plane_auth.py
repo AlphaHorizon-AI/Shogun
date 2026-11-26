@@ -1,4 +1,4 @@
-"""Request-level protection for the Shogun operator control plane."""
+"""Request-level protection for the Shogun AgentFlow control plane."""
 
 from __future__ import annotations
 
@@ -13,50 +13,38 @@ from fastapi.responses import JSONResponse
 from shogun.api.infrastructure_auth import INFRASTRUCTURE_TOKEN_HEADER
 from shogun.config import settings
 
-_MACHINE_AUTHENTICATED_PATHS = {
-    "/api/v1/a2a/inbound",
-    "/api/v1/katana/command/dispatch",
-}
-_MACHINE_AUTHENTICATED_PREFIXES = (
-    "/api/v1/nexus/external/a2a/task",
-    "/api/v1/nexus/external/task/",
-)
 _PUBLIC_PATHS = {
     "/api/v1/health",
-    # Product/release identity is intentionally non-sensitive and is required
-    # by the persistent About navigation before an operator token is available.
-    "/api/v1/updates/version",
 }
-_SENSITIVE_STATIC_PREFIXES = ("/uploads/", "/mado/screenshots/", "/ronin/screenshots/")
+_SENSITIVE_STATIC_PREFIXES = ("/uploads/",)
 _request_windows: dict[tuple[str, str], deque[float]] = {}
 
 
 def _is_public_request(request: Request) -> bool:
-    # Only the loopback browser return uses its one-use OAuth state as authority.
-    # All management operations retain administrator authentication.
     if (
         request.method == "GET"
-        and request.client and request.client.host in {"127.0.0.1", "::1"}
+        and request.client
+        and request.client.host in {"127.0.0.1", "::1"}
         and re.fullmatch(
             r"/api/v1/model-providers/oauth/callback/chatgpt/(?:[0-9a-fA-F-]{36}|result/(?:success|error))",
             request.url.path,
         )
     ):
         return True
+    if request.method == "GET" and request.url.path == "/api/v1/model-providers/oauth/callback":
+        return True
     return request.method in {"GET", "HEAD"} and request.url.path in _PUBLIC_PATHS
 
 
 async def enforce_control_plane_access(request: Request, call_next):
-    """Require the per-install administrator credential for operator APIs."""
-
+    """Allow local desktop loopback access directly; require admin token in server/remote mode."""
     path = request.url.path
     protected = path.startswith("/api/v1/") or path.startswith(_SENSITIVE_STATIC_PREFIXES)
-    if (
-        not protected
-        or _is_public_request(request)
-        or path in _MACHINE_AUTHENTICATED_PATHS
-        or path.startswith(_MACHINE_AUTHENTICATED_PREFIXES)
-    ):
+    if not protected or _is_public_request(request):
+        return await call_next(request)
+
+    client_host = request.client.host if request.client else None
+    if settings.deployment_mode == "desktop" and client_host in {"127.0.0.1", "::1", "localhost", "testclient"}:
         return await call_next(request)
 
     expected = str(settings.infrastructure_admin_token or "").strip()
@@ -68,14 +56,6 @@ async def enforce_control_plane_access(request: Request, call_next):
             or ""
         )
     if expected and supplied and hmac.compare_digest(supplied, expected):
-        return await call_next(request)
-
-    client_host = request.client.host if request.client else None
-    if (
-        not expected
-        and settings.deployment_mode == "desktop"
-        and client_host == "testclient"
-    ):
         return await call_next(request)
 
     status_code = 503 if not expected else 401

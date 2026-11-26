@@ -1368,12 +1368,7 @@ class ModelRoutingService:
 
     @staticmethod
     async def _audit(event_type: str, action: str, result: str = "success", **kwargs: Any) -> None:
-        try:
-            from shogun.services.event_logger import EventLogger
-
-            await EventLogger.emit(category="model", event_type=event_type, action=action, result=result, **kwargs)
-        except Exception:
-            pass
+        return None
 
 
 class ModelUsageLogger:
@@ -1384,24 +1379,6 @@ class ModelUsageLogger:
         item = ModelUsageEvent(**body.model_dump())
         self.session.add(item)
         await self.session.flush()
-        await ModelRoutingService._audit(
-            "model.usage.logged" if body.success else "model.usage.error",
-            f"Model usage recorded for {body.model_id}",
-            result="success" if body.success else "failure",
-            model_used=body.model_id,
-            provider_used=body.provider,
-            duration_ms=body.latency_ms,
-            db_session=self.session,
-        )
-        try:
-            from shogun.services.college_telemetry import queue_model_usage
-
-            decision = None
-            if body.routing_decision_id:
-                decision = await self.session.get(ModelRoutingDecision, body.routing_decision_id)
-            queue_model_usage(body, decision)
-        except Exception as exc:
-            log.debug("College ecosystem telemetry could not be queued: %s", exc)
         return item
 
     async def list(self, stack_run_id: uuid.UUID | None = None, limit: int = 200) -> list[ModelUsageEvent]:

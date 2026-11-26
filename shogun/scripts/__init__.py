@@ -1,1 +1,0 @@
-# Shogun migration/maintenance scripts

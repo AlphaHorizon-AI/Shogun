@@ -1,7 +1,11 @@
 """Prepare pinned Yellow Label updates before promoting application files.
 
-Persistent state is never part of promotion or code recovery. Package installation
-in the existing environment is not transactional; failures report that limitation.
+Persistent state (data/, data/workspace/, data/shogun.db, configs/, vault/,
+logs/, .env, virtual environments) is NEVER modified or pruned during updates.
+Obsolete legacy application files inside managed code directories are backed up
+into .states/ and pruned so upgrading a full Yellow Label installation leaves a
+clean bare-bones Shogun AgentFlow installation with all user files and
+AgentFlows intact.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ import sys
 import tempfile
 import zipfile
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 from shogun.security_maintenance import CERTIFI_MINIMUM
@@ -37,6 +42,14 @@ PROTECTED_TOP_LEVEL = frozenset(
         ".codex",
         "AGENTS.md",
     }
+)
+# Only obsolete files under these application code trees are eligible for pruning.
+MANAGED_CODE_ROOTS = (
+    PurePosixPath("shogun"),
+    PurePosixPath("frontend/src"),
+    PurePosixPath("frontend/dist"),
+    PurePosixPath("frontend/public"),
+    PurePosixPath("scripts"),
 )
 
 
@@ -59,7 +72,7 @@ def installation_update_lock(root: Path):
             output.write(str(os.getpid()))
         yield
     finally:
-        lock.unlink()
+        lock.unlink(missing_ok=True)
 
 
 def require_clean_application_checkout(root: Path) -> None:
@@ -154,7 +167,6 @@ def _run_preparation(command: list[str], *, cwd: Path, environment: dict[str, st
             f"{stage} failed. Application files were not changed; dependency changes may need recovery."
         ) from exc
     if result.returncode:
-        # Package-manager output may contain private index URLs or tokens.
         logger.error("Update preparation failed (stage=%s, exit_code=%s)", stage, result.returncode)
         raise UpdateInstallError(
             f"{stage} failed. Application files were not changed; dependency changes may need recovery."
@@ -166,19 +178,130 @@ def _protected(relative: Path) -> bool:
     return (
         first in PROTECTED_TOP_LEVEL
         or first.startswith(".venv")
-        or first.startswith(".env")
-        and first not in {".env.example", ".env.server.example"}
+        or (first.startswith(".env") and first not in {".env.example", ".env.server.example"})
         or any(part in {"node_modules", "__pycache__"} for part in relative.parts)
     )
 
 
+def _in_managed_code_root(relative: Path) -> bool:
+    posix = PurePosixPath(relative.as_posix())
+    return any(posix.is_relative_to(code_root) for code_root in MANAGED_CODE_ROOTS)
+
+
+def collect_managed_code_files(root: Path) -> list[str]:
+    """Return sorted POSIX relative paths of all non-protected managed code files."""
+    files: list[str] = []
+    for code_root in MANAGED_CODE_ROOTS:
+        base = root / Path(code_root.as_posix())
+        if not base.is_dir():
+            continue
+        for item in sorted(base.rglob("*")):
+            if not item.is_file():
+                continue
+            relative = item.relative_to(root)
+            if _protected(relative):
+                continue
+            files.append(relative.as_posix())
+    return sorted(set(files))
+
+
+def _remove_empty_managed_dirs(root: Path) -> None:
+    for code_root in MANAGED_CODE_ROOTS:
+        base = root / Path(code_root.as_posix())
+        if not base.is_dir():
+            continue
+        dirs = sorted((d for d in base.rglob("*") if d.is_dir()), key=lambda p: len(p.parts), reverse=True)
+        for directory in dirs:
+            if directory.name == "__pycache__":
+                shutil.rmtree(directory, ignore_errors=True)
+                continue
+            try:
+                if not any(directory.iterdir()):
+                    directory.rmdir()
+            except OSError:
+                pass
+
+
+def prune_obsolete_application_files(
+    root: Path,
+    expected_managed_files: set[str],
+    backup: Path,
+) -> list[tuple[Path, Path]]:
+    """Remove obsolete files under managed code roots after backing them up.
+
+    Never touches data/, configs/, vault/, logs/, .env, venv/, or user folders.
+    Returns (removed_path, backup_path) pairs for rollback support.
+    """
+    pruned: list[tuple[Path, Path]] = []
+    resolved_root = root.resolve()
+    for rel_posix in collect_managed_code_files(root):
+        if rel_posix in expected_managed_files:
+            continue
+        relative = Path(rel_posix)
+        if _protected(relative) or not _in_managed_code_root(relative):
+            continue
+        target = root / relative
+        if not target.resolve().is_relative_to(resolved_root) or target.is_symlink():
+            continue
+        backup_copy = backup / relative
+        backup_copy.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(target, backup_copy)
+        target.unlink()
+        pruned.append((target, backup_copy))
+    _remove_empty_managed_dirs(root)
+    return pruned
+
+
+def prune_legacy_from_manifest(root: Path) -> int:
+    """Safely prune leftover full-Yellow-Label code files after an in-app update.
+
+    Runs only on non-Git installations when ``shogun/resources/barebones_manifest.json``
+    is present and obsolete files remain under ``MANAGED_CODE_ROOTS``. User data
+    (data/, configs/, vault/, logs/, .env, venv/) is never touched.
+    """
+    resolved_root = root.resolve()
+    if (resolved_root / ".git").exists():
+        return 0
+    manifest_path = resolved_root / "shogun" / "resources" / "barebones_manifest.json"
+    if not manifest_path.is_file():
+        return 0
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        managed = payload.get("managed_files")
+        if not isinstance(managed, list) or not managed:
+            return 0
+        expected = {str(item) for item in managed if isinstance(item, str)}
+    except (OSError, json.JSONDecodeError):
+        return 0
+
+    current = set(collect_managed_code_files(resolved_root))
+    obsolete = sorted(current - expected)
+    if not obsolete:
+        return 0
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    backup = resolved_root / ".states" / f"barebones-upgrade-backup-{stamp}"
+    backup.mkdir(parents=True, exist_ok=True)
+    pruned = prune_obsolete_application_files(resolved_root, expected, backup)
+    if pruned:
+        logger.info(
+            "Pruned %d obsolete legacy application files into %s (user data and AgentFlows preserved).",
+            len(pruned),
+            backup,
+        )
+    return len(pruned)
+
+
 def promote_application_files(source: Path, root: Path, backup: Path) -> int:
-    """Keep original code for recovery and restore it on a partial copy failure."""
+    """Promote release files and prune obsolete code files with full rollback."""
     entries = []
+    source_managed_files: set[str] = set()
     for item in sorted(source.rglob("*")):
         relative = item.relative_to(source)
         if _protected(relative) or not item.is_file():
             continue
+        if _in_managed_code_root(relative):
+            source_managed_files.add(relative.as_posix())
         destination = root / relative
         if not destination.resolve().is_relative_to(root.resolve()) or destination.is_symlink():
             raise UpdateInstallError("An application path escapes the installation; update stopped.")
@@ -191,6 +314,7 @@ def promote_application_files(source: Path, root: Path, backup: Path) -> int:
         entries.append((item, destination, original))
 
     promoted = []
+    pruned: list[tuple[Path, Path]] = []
     try:
         for item, destination, original in entries:
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -202,11 +326,15 @@ def promote_application_files(source: Path, root: Path, backup: Path) -> int:
                 promoted.append((destination, original))
             finally:
                 staged.unlink(missing_ok=True)
+        pruned = prune_obsolete_application_files(root, source_managed_files, backup)
     except OSError as exc:
         try:
+            for removed_path, backup_copy in reversed(pruned):
+                removed_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(backup_copy, removed_path)
             for destination, original in reversed(promoted):
                 if original is None:
-                    destination.unlink()
+                    destination.unlink(missing_ok=True)
                 else:
                     os.replace(original, destination)
         except OSError as recovery_error:
@@ -263,7 +391,6 @@ def prepare_and_install_update(
         environment=environment,
         stage="Security prerequisite validation",
     )
-    # Backup creation happens after successful preparation and before promotion.
     backup = Path(tempfile.mkdtemp(prefix=f"update-backup-{source_commit[:12]}-", dir=root / ".states"))
     count = promote_application_files(source, root, backup)
     return manifest, count, str(backup.relative_to(root))

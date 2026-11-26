@@ -1225,7 +1225,9 @@ class FileFormatService:
 
         This is the content-level counterpart to ``inspect``. It never
         executes file content and caps the returned payload before it reaches
-        an LLM context window.
+        an LLM context window. For text and Markdown, ``start`` and ``end``
+        are 1-based inclusive character positions in the masked text. For PDFs
+        and presentations they retain their existing page and slide meanings.
         """
         target = await self._path(path, file_id)
         target, warnings = self.safety.resolve(target)
@@ -1239,6 +1241,7 @@ class FileFormatService:
         start = max(1, int(start or 1))
         content: Any
         metadata: dict[str, Any] = {}
+        text_page: tuple[str, bool] | None = None
 
         try:
             if format_id == "pdf":
@@ -1343,6 +1346,31 @@ class FileFormatService:
                     metadata = {"slide_count": slide_count, "start_slide": start, "end_slide": last}
                 finally:
                     close_presentation(handle)
+            elif format_id in {"markdown", "text"}:
+                # Redact the entire document before paging: otherwise a secret
+                # spanning a page boundary could leak in both partial pages.
+                text, encoding = _read_text(target)
+                text, masked_count = _masked(text)
+                if masked_count:
+                    warnings.append(f"Masked {masked_count} likely secret(s) in file content.")
+                total_characters = len(text)
+                if start > total_characters + 1 or (end is not None and int(end) < start):
+                    raise FileFormatError("Requested text character range is outside the document.", "invalid_request")
+                first_index = start - 1
+                requested_end = min(int(end) if end is not None else total_characters, total_characters)
+                last_index = min(requested_end, first_index + limit)
+                has_more = last_index < total_characters
+                metadata = {
+                    "encoding": encoding,
+                    "offset_basis": "masked_text",
+                    "start_character": start,
+                    "end_character": last_index,
+                    "total_characters": total_characters,
+                    "has_more": has_more,
+                    "next_start_character": last_index + 1 if has_more else None,
+                }
+                text_page = (text[first_index:last_index], has_more)
+                content = text_page[0]
             else:
                 inspected = registry.get(format_id).inspect(target, settings.file_max_rows_preview)
                 content = inspected.preview
@@ -1354,12 +1382,16 @@ class FileFormatService:
             raise FileFormatError(f"Could not read {target.name}: {exc}", "parse_error") from exc
 
         serialized = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False, default=str)
-        if settings.file_mask_secrets_in_preview:
+        if settings.file_mask_secrets_in_preview and text_page is None:
             serialized, masked_count = _masked(serialized)
             if masked_count:
                 warnings.append(f"Masked {masked_count} likely secret(s) in file content.")
-        truncated = len(serialized) > limit
-        if truncated:
+        truncated = text_page[1] if text_page is not None else len(serialized) > limit
+        if text_page is not None and truncated:
+            warnings.append(
+                f"More text is available; continue with start={metadata['next_start_character']}."
+            )
+        elif truncated:
             serialized = serialized[:limit]
             warnings.append(f"Content was truncated to {limit:,} characters for safe chat use.")
         event_id = await self._audit(

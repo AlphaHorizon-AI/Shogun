@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 from typing import Any
 
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shogun.services.email_service import decrypt_password, encrypt_password
+from shogun.config import settings
 
 _SENSITIVE_KEYS = {
     "api_key",
@@ -21,6 +24,29 @@ _SENSITIVE_KEYS = {
     "oauth_client_secret",
 }
 _MASKED_VALUES = {"********", "••••••••"}
+
+
+def _get_fernet(key: str | None = None) -> Fernet:
+    """Derive a 32-byte URL-safe base64 key from settings.vault_encryption_key."""
+    key_bytes = (key or settings.vault_encryption_key).encode("utf-8")
+    hashed = hashlib.sha256(key_bytes).digest()
+    fernet_key = base64.urlsafe_b64encode(hashed)
+    return Fernet(fernet_key)
+
+
+def encrypt_password(password: str) -> str:
+    return _get_fernet().encrypt(password.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_password(encrypted: str) -> str:
+    payload = encrypted.encode("utf-8")
+    try:
+        return _get_fernet().decrypt(payload).decode("utf-8")
+    except InvalidToken:
+        legacy_key = "change-me-to-a-fernet-base64-key"
+        if settings.vault_encryption_key == legacy_key:
+            raise
+        return _get_fernet(legacy_key).decrypt(payload).decode("utf-8")
 
 
 def protect_provider_config(
@@ -51,8 +77,6 @@ def protect_provider_config(
         return "enc:" + encrypt_password(value)
 
     def retain_secrets(value: Any, key: str = "") -> Any:
-        """Retain omitted encrypted secrets without retaining unrelated stale config."""
-
         if key.casefold() in _SENSITIVE_KEYS and isinstance(value, str) and value:
             return value
         if isinstance(value, dict):
