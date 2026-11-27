@@ -1,8 +1,8 @@
 {
-  "version": "1.47.123",
-  "name": "Shogun AFM",
-  "build": 274,
+  "version": "1.48.0",
+  "name": "Shogun AgentFlow",
+  "build": 275,
   "channel": "stable",
-  "released": "2026-11-02T10:11:44Z",
-  "changelog": "Support routing later date-band records to a separate worksheet while preserving record provenance and existing profile behavior. Update vulnerable transitive frontend dependencies."
+  "released": "2026-11-26T15:00:00Z",
+  "changelog": "Streamlined Shogun Yellow Label into the bare-bones Shogun AgentFlow edition with all 15 workflow nodes, Office/Mapping RPA/Workbook engine, AI Providers, Routing Profiles, and Local Folder setup while preserving existing workspace folders, files, AgentFlows, transformation profiles, and provider credentials."
 }

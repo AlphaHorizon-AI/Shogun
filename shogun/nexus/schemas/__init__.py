@@ -1,1 +1,0 @@
-# Nexus schemas sub-package.

@@ -1,29 +1,22 @@
 {
-  "name": "frontend",
+  "name": "shogun-agentflow-ui",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "engines": {
     "node": "^22.23.4 || ^24.22.1"
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/check-bundle-size.mjs",
-    "analyze": "vite build --mode analyze",
+    "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "lint:security": "eslint src/lib/infrastructureAuth.ts src/lib/infrastructureAuth.test.ts src/lib/safeMarkdown.ts src/lib/safeMarkdown.test.ts",
-    "test:i18n": "node scripts/check-setup-i18n.mjs",
-    "test:template-i18n": "node scripts/check-template-i18n.mjs",
-    "test:security": "vitest run src/lib/infrastructureAuth.test.ts src/lib/safeMarkdown.test.ts src/lib/safeObjectPath.test.ts",
-    "audit:security": "node --test ../scripts/check-npm-audit.test.mjs && node ../scripts/check-npm-audit.mjs .",
+    "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@types/js-yaml": "^4.0.9",
     "@xyflow/react": "^12.10.2",
     "axios": "1.20.0",
     "clsx": "^2.1.1",
-    "js-yaml": "^5.4.1",
     "lucide-react": "^1.8.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

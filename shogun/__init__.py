@@ -1,3 +1,3 @@
-"""Shogun — AI Agent Framework."""
+"""Shogun AgentFlow — Bare-Bones Workflow Runtime."""
 
-__version__ = "1.47.123"
+__version__ = "1.48.0"

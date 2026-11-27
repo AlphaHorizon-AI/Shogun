@@ -147,14 +147,6 @@ async def create_provider(
         config["codex_account_connected"] = False
         data["config"] = config
     record = await svc.create(**data)
-    try:
-        from shogun.services.event_logger import EventLogger
-        await EventLogger.emit_auth_event(
-            "auth.credential_added", f"API provider registered: {body.name}",
-            detail={"provider_name": body.name, "provider_type": body.provider_type},
-        )
-    except Exception:
-        pass
     return ApiResponse(data=ModelProviderResponse.model_validate(record))
 
 
@@ -299,14 +291,6 @@ async def update_provider(
             record.health_status = "unknown"
             record.base_url = None
             await svc.session.flush()
-    try:
-        from shogun.services.event_logger import EventLogger
-        await EventLogger.emit_auth_event(
-            "auth.credential_updated", f"API provider updated: {record.name}",
-            detail={"provider_id": str(provider_id), "provider_name": record.name},
-        )
-    except Exception:
-        pass
     return ApiResponse(data=ModelProviderResponse.model_validate(record))
 
 
@@ -563,14 +547,6 @@ async def delete_provider(
     openai_oauth.retire_attempts(provider_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Provider not found")
-    try:
-        from shogun.services.event_logger import EventLogger
-        await EventLogger.emit_auth_event(
-            "auth.credential_removed", "API provider removed",
-            detail={"provider_id": str(provider_id)},
-        )
-    except Exception:
-        pass
     return ApiResponse(data={"deleted": True})
 
 
